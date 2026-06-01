@@ -265,13 +265,13 @@ const handleDeleteVariable = (key: string, name: string) => {
       <div class="p-4 border-b border-slate-100 flex items-center justify-between">
         <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900">
           <Layers class="w-4 h-4 text-violet-500" />
-          <span>变量模型数据蓝图</span>
+          <span>数据模型</span>
         </div>
 
         <button 
           @click="showModelModal = true"
           class="p-1 rounded bg-[#1890ff] hover:bg-sky-600 text-white cursor-pointer"
-          title="创建新模型"
+          title="新建模型"
         >
           <Plus class="w-4 h-4" />
         </button>
@@ -325,13 +325,13 @@ const handleDeleteVariable = (key: string, name: string) => {
             class="bg-violet-600 hover:bg-violet-700 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all shadow-sm"
           >
             <Plus class="w-4 h-4" />
-            定义新点位标签
+            添加变量
           </button>
           
           <button 
             @click="handleDeleteModel(currentModel.id, currentModel.name)"
             class="text-rose-600 hover:text-rose-800 border border-rose-100 font-bold text-xs px-2.5 py-1.5 rounded-lg bg-rose-50 cursor-pointer"
-            title="销毁数据模型"
+            title="删除模型"
           >
             <Trash2 class="w-4 h-4" />
           </button>
@@ -344,15 +344,15 @@ const handleDeleteVariable = (key: string, name: string) => {
         <div v-if="currentModel" class="space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200">
             <div class="flex items-center gap-1.5 text-xs font-bold text-slate-500 tracking-wider uppercase">
-              <Sliders class="w-4 h-4 text-violet-500" />
-              <span>模板寻址字段集 ({{ filteredVariables.length }} / {{ currentModel.variables.length }} 个配置字段)</span>
-            </div>
+            <Sliders class="w-4 h-4 text-violet-500" />
+            <span>变量列表 ({{ filteredVariables.length }} / {{ currentModel.variables.length }} 个变量)</span>
+          </div>
             
             <div class="relative w-full sm:w-64 shrink-0">
               <input 
                 v-model="varSearchQuery"
                 type="text"
-                placeholder="搜索点位代号、点位名称..."
+                placeholder="搜索变量标识、名称..."
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:bg-white text-slate-900 focus:outline-none focus:border-violet-500 placeholder-slate-400 font-sans"
               />
             </div>
@@ -362,12 +362,12 @@ const handleDeleteVariable = (key: string, name: string) => {
             <table class="w-full text-xs font-mono divide-y divide-slate-100">
               <thead>
                 <tr class="bg-slate-50 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                  <th class="px-4 py-3.5">变量绑定位 / Variable Key</th>
-                  <th class="px-4 py-3.5">点位名称</th>
-                  <th class="px-4 py-3.5">数据格式 Type</th>
-                  <th class="px-4 py-3.5">工程物理单位</th>
-                  <th class="px-4 py-3.5">典型寻址地址 / Register Offset</th>
-                  <th class="px-4 py-3.5 text-right">撤销</th>
+                  <th class="px-4 py-3.5">变量标识</th>
+                  <th class="px-4 py-3.5">变量名称</th>
+                  <th class="px-4 py-3.5">数据类型</th>
+                  <th class="px-4 py-3.5">单位</th>
+                  <th class="px-4 py-3.5">寄存器地址</th>
+                  <th class="px-4 py-3.5 text-right">删除</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-slate-100 font-mono">
@@ -425,7 +425,7 @@ const handleDeleteVariable = (key: string, name: string) => {
                       {{ v.type === 'digital' ? 'Boolean' : 'Analog' }}
                     </span>
                   </td>
-                  <td class="px-4 py-4 text-slate-600 font-bold">{{ v.unit || '无 (Unitless)' }}</td>
+                  <td class="px-4 py-4 text-slate-600 font-bold">{{ v.unit || '无' }}</td>
                   <td class="px-4 py-4 text-slate-500 font-bold text-[11px]">{{ v.address }}</td>
                   <td class="px-4 py-4 text-right">
                     <button 
@@ -440,7 +440,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
                 <tr v-if="currentModel.variables.length === 0">
                   <td colspan="6" class="p-8 text-center text-slate-400 font-sans">
-                    暂未挂载任何采集点位，请点击右上角 <b>"定义新点位标签"</b> 扩展 PLC 变量库。
+                    暂未添加任何变量，请点击右上角 <b>"添加变量"</b> 扩展变量库。
                   </td>
                 </tr>
               </tbody>
@@ -461,14 +461,14 @@ const handleDeleteVariable = (key: string, name: string) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <FileJson class="w-4 h-4 text-violet-400" />
-            <span>建立设备数据映射模型</span>
+            <span>新建数据模型</span>
           </div>
           <button @click="showModelModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 font-bold block mb-1">模型名称 (Model Label)</label>
+            <label class="text-slate-500 font-bold block mb-1">模型名称</label>
             <input 
               v-model="modelName"
               type="text"
@@ -477,19 +477,19 @@ const handleDeleteVariable = (key: string, name: string) => {
             />
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">模型通讯协议类型</label>
+            <label class="text-slate-500 font-bold block mb-1">协议类型</label>
             <select 
               v-model="modelType"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 font-bold focus:outline-none focus:border-violet-500"
             >
-              <option value="OPCUA">OPC-UA 全双工订阅寻址</option>
-              <option value="S7">Siemens S7 通用寄存器读取</option>
-              <option value="MQTT">MQTT 遥测 JSON 消息负载</option>
-              <option value="Virtual">Virtual 虚拟底层自动合成</option>
+              <option value="OPCUA">OPC UA</option>
+              <option value="S7">Siemens S7</option>
+              <option value="MQTT">MQTT</option>
+              <option value="Virtual">Virtual</option>
             </select>
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">数据点模板宏说明</label>
+            <label class="text-slate-500 font-bold block mb-1">描述</label>
             <textarea 
               v-model="modelDesc"
               rows="2"
@@ -510,7 +510,7 @@ const handleDeleteVariable = (key: string, name: string) => {
             @click="handleCreateModel"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            保存建立
+            保存
           </button>
         </div>
       </div>
@@ -522,7 +522,7 @@ const handleDeleteVariable = (key: string, name: string) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Tag class="w-4 h-4 text-[#1890ff]" />
-            <span>挂载采集物理标签</span>
+            <span>添加变量</span>
           </div>
           <button @click="showVarModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
@@ -530,7 +530,7 @@ const handleDeleteVariable = (key: string, name: string) => {
         <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[400px]">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">系统绑定键名 (Key)</label>
+              <label class="text-slate-500 font-bold block mb-1">变量标识</label>
               <input 
                 v-model="varKey"
                 type="text"
@@ -539,7 +539,7 @@ const handleDeleteVariable = (key: string, name: string) => {
               />
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">中文标签解释 (Label)</label>
+              <label class="text-slate-500 font-bold block mb-1">变量名称</label>
               <input 
                 v-model="varName"
                 type="text"
@@ -551,9 +551,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">
-                {{ currentModel?.type === 'S7' ? '西门子 S7 数据类型' : currentModel?.type === 'OPCUA' ? 'OPC UA 数据类型' : '点位点数据类型 (DataType)' }}
-              </label>
+              <label class="text-slate-500 font-bold block mb-1">数据类型</label>
               <select 
                 v-model="varDataType"
                 @change="handleDataTypeChange"
@@ -565,7 +563,7 @@ const handleDeleteVariable = (key: string, name: string) => {
               </select>
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">工程显示单位 (Unit)</label>
+              <label class="text-slate-500 font-bold block mb-1">单位</label>
               <input 
                 v-model="varUnit"
                 type="text"
@@ -596,7 +594,7 @@ const handleDeleteVariable = (key: string, name: string) => {
           </div>
 
           <div>
-            <label class="text-slate-500 font-bold block mb-1">标签物理地址/引脚代号 / Register Address</label>
+            <label class="text-slate-500 font-bold block mb-1">寄存器地址</label>
             <input 
               v-model="varAddress"
               type="text"
@@ -607,10 +605,10 @@ const handleDeleteVariable = (key: string, name: string) => {
 
           <!-- Siemens S7 Specific Variable Fields -->
           <div v-if="currentModel && currentModel.type === 'S7'" class="p-3 bg-indigo-50/50 rounded-xl space-y-3.5 border border-indigo-100/50 text-indigo-950">
-            <div class="font-bold text-[10px] text-indigo-700 uppercase tracking-wider">西门子 S7 专属寄存器属性</div>
+            <div class="font-bold text-[10px] text-indigo-700 uppercase tracking-wider">S7 寄存器配置</div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-500 font-bold block mb-0.5">西门子数据区 (Data Area)</label>
+                <label class="text-slate-500 font-bold block mb-0.5">数据区域</label>
                 <input 
                   v-model="varDataArea"
                   type="text"
@@ -619,19 +617,19 @@ const handleDeleteVariable = (key: string, name: string) => {
                 />
               </div>
               <div>
-                <label class="text-slate-500 font-bold block mb-0.5">读写特权等级 (Access)</label>
+                <label class="text-slate-500 font-bold block mb-0.5">访问权限</label>
                 <select 
                   v-model="varAccessLevel"
                   class="w-full bg-white border border-indigo-200 rounded p-1.5 focus:outline-none text-xs font-sans font-bold text-slate-800"
                 >
-                  <option value="RW">可读可写 (RW)</option>
-                  <option value="RO">只读点位 (RO)</option>
+                  <option value="RW">读写</option>
+                  <option value="RO">只读</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label class="text-slate-500 font-bold block mb-0.5">分辨率放缩换算公式 (Conversion Scale)</label>
+              <label class="text-slate-500 font-bold block mb-0.5">放缩公式</label>
               <input 
                 v-model="varScaleExpr"
                 type="text"
@@ -643,7 +641,7 @@ const handleDeleteVariable = (key: string, name: string) => {
             <div class="flex items-center justify-between py-1 border-t border-indigo-100 mt-2">
               <label class="flex items-center gap-1.5 font-bold text-slate-700 cursor-pointer text-xs">
                 <input type="checkbox" v-model="varIsStored" class="rounded text-indigo-600 focus:ring-0" />
-                时序数据库历史存储 (TSDB Hist)
+                历史存储
               </label>
               <select 
                 v-if="varIsStored"
@@ -651,16 +649,16 @@ const handleDeleteVariable = (key: string, name: string) => {
                 class="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 focus:outline-none"
               >
                 <option value="change">变动存储</option>
-                <option value="interval">定时轮询存</option>
+                <option value="interval">定时存储</option>
               </select>
             </div>
           </div>
 
           <!-- OPCUA Specific Variable Fields -->
           <div v-if="currentModel && currentModel.type === 'OPCUA'" class="p-3 bg-sky-50/50 rounded-xl space-y-3 border border-sky-100/50">
-            <div class="font-bold text-[10px] text-sky-700 uppercase tracking-wider">OPC UA 节点配置 (Addressing)</div>
+            <div class="font-bold text-[10px] text-sky-700 uppercase tracking-wider">OPC UA 配置</div>
             <div>
-              <label class="text-slate-500 font-bold block mb-0.5">物理节点标识 (NodeId)</label>
+              <label class="text-slate-500 font-bold block mb-0.5">节点ID</label>
               <input 
                 v-model="varNodeId"
                 type="text"
@@ -670,13 +668,13 @@ const handleDeleteVariable = (key: string, name: string) => {
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-500 font-bold block mb-0.5">推送更新机制 (Sync)</label>
+                <label class="text-slate-500 font-bold block mb-0.5">更新模式</label>
                 <select 
                   v-model="varUpdateMode"
                   class="w-full bg-white border border-sky-200 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800 font-medium"
                 >
-                  <option value="subscription">实时订阅 (Subscription)</option>
-                  <option value="polling">高速定时轮询 (Polling)</option>
+                  <option value="subscription">实时订阅</option>
+                  <option value="polling">定时轮询</option>
                 </select>
               </div>
               <div>
@@ -694,21 +692,21 @@ const handleDeleteVariable = (key: string, name: string) => {
 
           <!-- MQTT Specific Variable Fields -->
           <div v-if="currentModel && currentModel.type === 'MQTT'" class="p-3 bg-teal-50/50 rounded-xl space-y-3 border border-teal-100 text-teal-900">
-            <div class="font-bold text-[10px] text-teal-800 uppercase tracking-wider">MQTT 专属遥测轮询配置</div>
+            <div class="font-bold text-[10px] text-teal-800 uppercase tracking-wider">MQTT 配置</div>
             <div>
-              <label class="text-slate-500 font-bold block mb-0.5">外部报文拉取刷新周期 (秒)</label>
+              <label class="text-slate-500 font-bold block mb-0.5">刷新周期 (秒)</label>
               <input 
                 v-model="varPollIntervalSecs"
                 type="number"
                 min="1"
                 class="w-full bg-white border border-teal-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
               />
-              <p class="text-[9px] text-slate-400 mt-1">设置本遥测变量在 MQTT 主题刷新消息提取解析的定时器速度 (秒)</p>
+              <p class="text-[9px] text-slate-400 mt-1">设置变量在 MQTT 主题刷新消息提取解析的定时器速度 (秒)</p>
             </div>
           </div>
 
           <div>
-            <label class="text-slate-500 font-bold block mb-1">标签物理职责描述</label>
+            <label class="text-slate-500 font-bold block mb-1">描述</label>
             <input 
               v-model="varDesc"
               type="text"
@@ -729,7 +727,7 @@ const handleDeleteVariable = (key: string, name: string) => {
             @click="handleSaveVariable"
             class="px-4 py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer"
           >
-            注册点位
+            保存
           </button>
         </div>
       </div>

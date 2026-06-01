@@ -245,9 +245,9 @@ const toggleDeviceStateInGrid = (device: Device) => {
     <!-- Header panel with tab switches -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-5 gap-4 text-left">
       <div>
-        <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight">物理拓扑与设备配置管理</h1>
+        <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight">设备管理</h1>
         <p class="text-xs text-slate-500 mt-1">
-          划分物理车间，挂载 OPC UA / S7 PLC 物理网关寻址，管理设备通道生命周期。
+          管理设备、区域及通信配置
         </p>
       </div>
 
@@ -258,14 +258,14 @@ const toggleDeviceStateInGrid = (device: Device) => {
           class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none"
           :class="activeSection === 'list' ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'"
         >
-          设备通道汇总
+          设备列表
         </button>
         <button 
           @click="activeSection = 'areas'"
           class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none"
           :class="activeSection === 'areas' ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'"
         >
-          工艺区域设定 ({{ areas.length }})
+          区域管理 ({{ areas.length }})
         </button>
       </div>
     </div>
@@ -274,7 +274,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
     <div v-if="activeSection === 'list'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500">
-          全厂区在网工业以太网络通道 ({{ devices.length }})
+          所有设备 ({{ devices.length }})
         </h3>
         
         <button 
@@ -282,7 +282,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
           class="bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 shadow-sm"
         >
           <Plus class="w-4 h-4" />
-          部署新设备网关
+          添加设备
         </button>
       </div>
 
@@ -303,7 +303,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <div class="space-y-1">
               <div class="flex items-center gap-1.5">
                 <span class="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase">
-                  {{ d.type }} 通信
+                  {{ d.type }}
                 </span>
                 <span class="text-xs text-slate-400 font-mono">CODE: {{ d.code }}</span>
               </div>
@@ -319,26 +319,26 @@ const toggleDeviceStateInGrid = (device: Device) => {
               :class="d.status === 'online' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'"
             >
               <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
-              {{ d.status === 'online' ? '在线(Online)' : '离线(Offline)' }}
+              {{ d.status === 'online' ? '在线' : '离线' }}
             </button>
           </div>
 
           <!-- Mid: Address properties -->
           <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 py-3 border-t border-b border-slate-100/80 mt-4 text-[11px] font-mono">
             <div>
-              <span class="text-slate-400">所属工艺区域:</span>
+              <span class="text-slate-400">所属区域:</span>
               <span class="text-slate-800 font-sans font-medium block">
-                {{ areas.find(a => a.id === d.areaId)?.name || '未选划定' }}
+                {{ areas.find(a => a.id === d.areaId)?.name || '未选择' }}
               </span>
             </div>
             <div>
-              <span class="text-slate-400">承载参数模型:</span>
+              <span class="text-slate-400">数据模型:</span>
               <span class="text-[#1890ff] font-sans font-medium block">
-                {{ dataModels.find(m => m.id === d.modelId)?.name || '无映射' }}
+                {{ dataModels.find(m => m.id === d.modelId)?.name || '未配置' }}
               </span>
             </div>
             <div class="col-span-2 space-y-1">
-              <span class="text-slate-400">网络通信寻址 (Physical Connection Status):</span>
+              <span class="text-slate-400">连接地址:</span>
               <div class="text-slate-700 font-bold block truncate leading-relaxed">
                 <template v-if="d.type === 'OPCUA'">
                   <span class="text-sky-600 font-bold">OPCUA:</span> opc.tcp://{{ d.ipAddress || '127.0.0.1' }}:{{ d.port || '4840' }}
@@ -367,7 +367,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
           <!-- Bottom: action edits -->
           <div class="flex items-center justify-between mt-3 text-[11px]">
-            <span class="text-slate-400">最后轮存: <b class="font-mono text-slate-600">{{ d.lastUpdated }}</b></span>
+            <span class="text-slate-400">最后更新: <b class="font-mono text-slate-600">{{ d.lastUpdated }}</b></span>
             
             <div class="flex items-center gap-2">
               <button 
@@ -375,14 +375,14 @@ const toggleDeviceStateInGrid = (device: Device) => {
                 class="text-[#1890ff] hover:text-sky-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
               >
                 <Edit3 class="w-3.5 h-3.5" />
-                网关配置
+                编辑
               </button>
               <button 
                 @click="handleDeleteDevice(d.id, d.name)"
                 class="text-rose-500 hover:text-rose-700 font-bold inline-flex items-center gap-0.5 cursor-pointer ml-1"
               >
                 <Trash2 class="w-3.5 h-3.5" />
-                删除网关
+                删除
               </button>
             </div>
           </div>
@@ -394,7 +394,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
     <div v-else-if="activeSection === 'areas'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500">
-          全厂区划定工艺区域目录 / AREAS
+          所有区域
         </h3>
         
         <button 
@@ -402,7 +402,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
           class="bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all text-center"
         >
           <Plus class="w-4 h-4" />
-          划定新车间/工艺段
+          添加区域
         </button>
       </div>
 
@@ -411,10 +411,10 @@ const toggleDeviceStateInGrid = (device: Device) => {
         <table class="w-full text-xs hover:border-collapse">
           <thead>
             <tr class="bg-slate-50 ring-1 ring-slate-100 uppercase text-[10px] text-slate-400 font-bold tracking-wider">
-              <th class="px-6 py-4">区域识别代号</th>
-              <th class="px-6 py-4">工艺区域名称</th>
-              <th class="px-6 py-4">厂区位置及工艺职责描述</th>
-              <th class="px-6 py-4">部署在网通道数</th>
+              <th class="px-6 py-4">区域ID</th>
+              <th class="px-6 py-4">区域名称</th>
+              <th class="px-6 py-4">描述</th>
+              <th class="px-6 py-4">设备数量</th>
               <th class="px-6 py-4 text-right">操作</th>
             </tr>
           </thead>
@@ -425,7 +425,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
               <td class="px-6 py-4 font-sans text-slate-500 text-[11px] leading-relaxed max-w-sm">{{ a.description }}</td>
               <td class="px-6 py-4 text-center">
                 <span class="bg-sky-50 font-sans text-[#1890ff] font-bold px-2 py-0.5 rounded-full text-[10px]">
-                  {{ devices.filter(d => d.areaId === a.id).length }} 台物理端
+                  {{ devices.filter(d => d.areaId === a.id).length }} 台
                 </span>
               </td>
               <td class="px-6 py-4 text-right">
@@ -434,7 +434,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
-                  撤除区域
+                  删除
                 </button>
               </td>
             </tr>
@@ -449,14 +449,14 @@ const toggleDeviceStateInGrid = (device: Device) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <MapPin class="w-4 h-4 text-sky-400" />
-            <span>划定生产车间工艺域</span>
+            <span>添加区域</span>
           </div>
           <button @click="showAreaModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 font-bold block mb-1">工艺区域名称 (车间段名)</label>
+            <label class="text-slate-500 font-bold block mb-1">区域名称</label>
             <input 
               v-model="newAreaName"
               type="text"
@@ -465,7 +465,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
             />
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">工艺管道/位置职责说明</label>
+            <label class="text-slate-500 font-bold block mb-1">描述</label>
             <textarea 
               v-model="newAreaDesc"
               rows="3"
@@ -486,7 +486,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
             @click="handleAddArea"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            保存并部署
+            保存
           </button>
         </div>
       </div>
@@ -500,7 +500,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Cpu class="w-4 h-4 text-[#1890ff]" />
-            <span>{{ isEditingDevice ? '修改工业 PLC 网关通讯层' : '注册新物理网关通道物' }}</span>
+            <span>{{ isEditingDevice ? '编辑设备' : '添加设备' }}</span>
           </div>
           <button @click="showDeviceModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
@@ -508,7 +508,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
         <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[450px]">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">设备通道名称 (Device Name)</label>
+              <label class="text-slate-500 font-bold block mb-1">设备名称</label>
               <input 
                 v-model="devName"
                 type="text"
@@ -517,7 +517,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
               />
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">标签物理代号 (PLC Register)</label>
+              <label class="text-slate-500 font-bold block mb-1">设备编号</label>
               <input 
                 v-model="devCode"
                 type="text"
@@ -529,7 +529,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">部署工艺区域 (Area Location)</label>
+              <label class="text-slate-500 font-bold block mb-1">所属区域</label>
               <select 
                 v-model="devArea"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
@@ -538,7 +538,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
               </select>
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">选择映射数据模型</label>
+              <label class="text-slate-500 font-bold block mb-1">数据模型</label>
               <select 
                 v-model="devModel"
                 @change="onModelChange"
@@ -553,15 +553,15 @@ const toggleDeviceStateInGrid = (device: Device) => {
           <div class="p-3 bg-slate-50 rounded-xl space-y-3 border border-slate-100">
             <div class="flex items-center gap-1.5 text-slate-400 font-mono scale-95 origin-left">
               <Info class="w-3.5 h-3.5" />
-              <span>所选模型协议归属: {{ devType }} 驱动</span>
+              <span>协议类型: {{ devType }}</span>
             </div>
 
             <!-- OPCUA / Virtual Connection Setup -->
             <div v-if="devType === 'OPCUA' || devType === 'Virtual'" class="space-y-2">
-              <div class="text-[10px] text-[#1890ff] font-bold uppercase tracking-wider mb-1">OPC UA 服务器寻址 (Endpoint)</div>
+              <div class="text-[10px] text-[#1890ff] font-bold uppercase tracking-wider mb-1">OPC UA 连接配置</div>
               <div class="grid grid-cols-3 gap-2">
                 <div class="col-span-2">
-                  <label class="text-slate-400 font-bold block mb-0.5">服务器宿主 IP 地址 (Host)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">IP 地址</label>
                   <input 
                     v-model="devIP"
                     type="text"
@@ -570,7 +570,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">端口号 (Port)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">端口</label>
                   <input 
                     v-model="devPort"
                     type="text"
@@ -583,11 +583,11 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
             <!-- Siemens S7 Connection Setup -->
             <div v-if="devType === 'S7'" class="space-y-3">
-              <div class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mb-1">西门子 S7 通道配置 (TCP Link)</div>
+              <div class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mb-1">S7 连接配置</div>
               
               <div class="grid grid-cols-3 gap-2">
                 <div class="col-span-2">
-                  <label class="text-slate-400 font-bold block mb-0.5">PLC 网络 IP 地址</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">IP 地址</label>
                   <input 
                     v-model="devIP"
                     type="text"
@@ -596,7 +596,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">S7 端口 (Port)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">端口</label>
                   <input 
                     v-model="devPort"
                     type="text"
@@ -608,7 +608,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
               <div class="grid grid-cols-3 gap-2">
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">PLC/CPU型号</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">CPU 型号</label>
                   <select 
                     v-model="devCpuType"
                     class="w-full bg-white border border-slate-200 rounded px-1.5 py-1.5 focus:outline-none text-[11px] font-bold text-slate-700"
@@ -620,7 +620,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   </select>
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">机架号 (Rack)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">机架</label>
                   <input 
                     v-model="devRack"
                     type="number"
@@ -630,7 +630,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">插槽号 (Slot)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">插槽</label>
                   <input 
                     v-model="devSlot"
                     type="number"
@@ -644,10 +644,10 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
             <!-- MQTT Router Configuration -->
             <div v-if="devType === 'MQTT'" class="space-y-2.5">
-              <div class="text-[10px] text-emerald-500 font-bold uppercase tracking-wider mb-1">MQTT 边缘服务器路由 (Broker Setup)</div>
+              <div class="text-[10px] text-emerald-500 font-bold uppercase tracking-wider mb-1">MQTT 连接配置</div>
 
               <div>
-                <label class="text-slate-400 font-bold block mb-0.5">MQTT Broker 地址 URL</label>
+                <label class="text-slate-400 font-bold block mb-0.5">Broker 地址</label>
                 <input 
                   v-model="devMqttServer"
                   type="text"
@@ -658,7 +658,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">订阅主题 (Subscribe)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">订阅主题</label>
                   <input 
                     v-model="devTopic"
                     type="text"
@@ -667,7 +667,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">外部命令主题 (Command)</label>
+                  <label class="text-slate-400 font-bold block mb-0.5">发布主题</label>
                   <input 
                     v-model="devPublishTopic"
                     type="text"
@@ -678,7 +678,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
               </div>
 
               <div>
-                <label class="text-slate-400 font-bold block mb-0.5">载荷数据 JSON 格式内容模板</label>
+                <label class="text-slate-400 font-bold block mb-0.5">JSON 载荷模板</label>
                 <textarea 
                   v-model="devPayloadTemplate"
                   rows="3"
@@ -691,15 +691,15 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
           <!-- Device state radio selection -->
           <div>
-            <label class="text-slate-500 font-bold block mb-1">初验连接状态</label>
+            <label class="text-slate-500 font-bold block mb-1">连接状态</label>
             <div class="flex items-center gap-4 py-1">
               <label class="flex items-center gap-1.5 font-bold text-slate-700 cursor-pointer text-xs">
                 <input type="radio" value="online" v-model="devStatus" class="text-emerald-500 focus:ring-0" />
-                得电正常运行 (Online)
+                在线
               </label>
               <label class="flex items-center gap-1.5 font-bold text-slate-400 cursor-pointer text-xs">
                 <input type="radio" value="offline" v-model="devStatus" class="text-rose-500 focus:ring-0" />
-                断联停工备用 (Offline)
+                离线
               </label>
             </div>
           </div>
@@ -716,7 +716,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
             @click="handleSaveDevice"
             class="px-4 py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer"
           >
-            确认并激活
+            保存
           </button>
         </div>
       </div>
