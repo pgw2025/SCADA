@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { systemUsers, addLog } from '../store';
+import { ref, computed, onMounted } from 'vue';
+import { 
+  systemUsers, 
+  addLog, 
+  loadSystemUsers, 
+  createSystemUser, 
+  updateSystemUser, 
+  deleteSystemUser 
+} from '../store';
 import { SystemUser } from '../types';
 import { 
   Plus, 
@@ -19,14 +26,23 @@ import {
 
 const showModal = ref(false);
 const isEditing = ref(false);
-const editingUserId = ref<string | null>(null);
+const editingUserId = ref<number | null>(null);
 
 // Form Fields
 const uName = ref('');
-const uRole = ref<'超级管理员' | '管理员' | '操作员' | '观察员'>('操作员');
-const uStatus = ref<'active' | 'inactive'>('active');
+const uRole = ref<string>('操作员');
+const uStatus = ref<string>('active');
+const uPassword = ref('');
 
 const filterQuery = ref('');
+
+onMounted(async () => {
+  try {
+    await loadSystemUsers();
+  } catch (error) {
+    console.error('加载用户列表失败:', error);
+  }
+});
 
 // Filtered listed users
 const filteredUsers = computed(() => {
@@ -41,6 +57,7 @@ const openNewUserModal = () => {
   uName.value = '';
   uRole.value = '操作员';
   uStatus.value = 'active';
+  uPassword.value = '';
   showModal.value = true;
 };
 
@@ -50,52 +67,55 @@ const openEditUserModal = (user: SystemUser) => {
   uName.value = user.username;
   uRole.value = user.role;
   uStatus.value = user.status;
+  uPassword.value = '';
   showModal.value = true;
 };
 
-const handleSaveUser = () => {
+const handleSaveUser = async () => {
   if (!uName.value.trim()) return;
 
-  // Check unique username for new users
-  if (!isEditing.value && systemUsers.value.some(u => u.username.toLowerCase() === uName.value.trim().toLowerCase())) {
-    alert(`用户名 [${uName.value}] 已存在，请换一个名称再试。`);
-    return;
-  }
-
-  if (isEditing.value && editingUserId.value) {
-    const idx = systemUsers.value.findIndex(u => u.id === editingUserId.value);
-    if (idx !== -1) {
-      systemUsers.value[idx] = {
-        ...systemUsers.value[idx],
+  try {
+    if (isEditing.value && editingUserId.value !== null) {
+      await updateSystemUser({
         username: uName.value.trim(),
         role: uRole.value,
         status: uStatus.value
-      };
+      });
       addLog('用户管理', `更新了账户 [${uName.value}] 级别为: ${uRole.value}`, 'normal');
+    } else {
+      if (!uPassword.value.trim()) {
+        alert('新建用户必须设置初始密码');
+        return;
+      }
+      await createSystemUser({
+        username: uName.value.trim(),
+        password: uPassword.value,
+        role: uRole.value,
+        status: uStatus.value
+      });
+      addLog('用户管理', `新开设了职工操作柜账户 [${uName.value}] 授权为: ${uRole.value}`, 'normal');
     }
-  } else {
-    systemUsers.value.push({
-      id: `user-${Date.now()}`,
-      username: uName.value.trim(),
-      role: uRole.value,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      status: uStatus.value
-    });
-    addLog('用户管理', `新开设了职工操作柜账户 [${uName.value}] 授权为: ${uRole.value}`, 'normal');
+    await loadSystemUsers();
+    showModal.value = false;
+  } catch (error: any) {
+    alert('保存用户失败: ' + (error.response?.data?.message || error.message));
   }
-
-  showModal.value = false;
 };
 
-const handleDeleteUser = (id: string, name: string) => {
+const handleDeleteUser = async (id: number, name: string) => {
   if (name === 'admin') {
     alert('安全机制警告：主中控超级管理员 [admin] 无法删除！这是全系统底层唯一默认硬核安全点。');
     return;
   }
 
   if (confirm(`确定永久注销系统用户 [${name}] 的中控台控制权限吗？`)) {
-    systemUsers.value = systemUsers.value.filter(u => u.id !== id);
-    addLog('用户管理', `注销了系统登录帐户 [${name}]`, 'warning');
+    try {
+      await deleteSystemUser(id);
+      await loadSystemUsers();
+      addLog('用户管理', `注销了系统登录帐户 [${name}]`, 'warning');
+    } catch (error: any) {
+      alert('删除用户失败: ' + (error.response?.data?.message || error.message));
+    }
   }
 };
 </script>
@@ -219,7 +239,7 @@ const handleDeleteUser = (id: string, name: string) => {
             </td>
 
             <!-- Created At -->
-            <td class="px-6 py-4 text-slate-400 text-[11px] font-bold leading-none">{{ u.createdAt }}</td>
+            <td class="px-6 py-4 text-slate-400 text-[11px] font-bold leading-none">--</td>
 
             <!-- System status toggles -->
             <td class="px-6 py-4 text-left">
@@ -288,6 +308,16 @@ const handleDeleteUser = (id: string, name: string) => {
               placeholder="e.g. engineer_zhou"
               :disabled="isEditing && uName === 'admin'"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-slate-800 disabled:bg-slate-100 disabled:cursor-not-allowed"
+            />
+          </div>
+
+          <div v-if="!isEditing">
+            <label class="text-slate-500 font-bold block mb-1">初始登录密码 (Password)</label>
+            <input 
+              v-model="uPassword"
+              type="password"
+              placeholder="请输入初始密码"
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-slate-800"
             />
           </div>
 

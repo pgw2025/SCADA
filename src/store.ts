@@ -25,10 +25,62 @@ import { HubConnectionBuilder, HubConnection, HubConnectionState } from '@micros
 // === BACKEND CONFIGURATION ===
 // 使用相对路径，通过 Vite proxy 代理到后端 (开发环境推荐)
 // 生产环境可通过环境变量配置或 nginx 反向代理
-// const API_BASE_URL = '';
-
-// 可选：如果是独立部署，可以通过 window.location 动态计算
 const API_BASE_URL = window.location.origin.replace(':3000', ':5000');
+
+// === AXIOS INTERCEPTOR: AUTO ADD JWT TOKEN ===
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('scada_access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// === USER MANAGEMENT API ===
+export const fetchSystemUsers = async (): Promise<SystemUser[]> => {
+  const response = await axios.get(`${API_BASE_URL}/api/SystemUser`);
+  return response.data;
+};
+
+export const fetchSystemUserById = async (id: number): Promise<SystemUser> => {
+  const response = await axios.get(`${API_BASE_URL}/api/SystemUser/${id}`);
+  return response.data;
+};
+
+export const createSystemUser = async (userData: CreateUserDto): Promise<SystemUser> => {
+  const response = await axios.post(`${API_BASE_URL}/api/SystemUser`, {
+    username: userData.username,
+    password: userData.password,
+    role: userData.role,
+    status: userData.status || 'active'
+  });
+  return response.data;
+};
+
+export const updateSystemUser = async (userData: UpdateUserDto): Promise<SystemUser> => {
+  const response = await axios.put(`${API_BASE_URL}/api/SystemUser`, userData);
+  return response.data;
+};
+
+export const deleteSystemUser = async (id: number): Promise<void> => {
+  await axios.delete(`${API_BASE_URL}/api/SystemUser/${id}`);
+};
+
+export const loadSystemUsers = async (): Promise<SystemUser[]> => {
+  try {
+    const users = await fetchSystemUsers();
+    systemUsers.value = users;
+    return users;
+  } catch (error: any) {
+    addLog('用户管理', `加载用户列表失败: ${error.message}`, 'error');
+    throw error;
+  }
+};
 
 // === 1. NAVIGATION TAB STATE ===
 export const activeTab = ref<
@@ -163,9 +215,9 @@ export const dataConversions = ref<DataConversion[]>([
 
 // === SYSTEM USERS STATE ===
 export const systemUsers = ref<SystemUser[]>([
-  { id: 'user-1', username: 'admin', role: '超级管理员', createdAt: '2026-05-01 10:00:00', status: 'active' },
-  { id: 'user-2', username: 'operator_li', role: '操作员', createdAt: '2026-05-15 14:30:00', status: 'active' },
-  { id: 'user-3', username: 'viewer_wang', role: '观察员', createdAt: '2026-05-20 09:15:00', status: 'active' }
+  { id: 1, username: 'admin', role: '超级管理员', status: 'active' },
+  { id: 2, username: 'operator_li', role: '操作员', status: 'active' },
+  { id: 3, username: 'viewer_wang', role: '观察员', status: 'active' }
 ]);
 
 // === CYCLE DETECTION ALGORITHM FOR DATA CONVERSIONS ===

@@ -167,11 +167,29 @@ export interface DataConversion {
 }
 
 export interface SystemUser {
-  id: string;
+  id: number;
   username: string;
-  role: '超级管理员' | '管理员' | '操作员' | '观察员';
-  createdAt: string;
-  status: 'active' | 'inactive';
+  passwordHash?: string;
+  role: string;
+  status: string;
+}
+
+export interface CreateUserDto {
+  username: string;
+  password: string;
+  role: string;
+  status?: string;
+}
+
+export interface UpdateUserDto {
+  username?: string;
+  role?: string;
+  status?: string;
+}
+
+export interface LoginDto {
+  username: string;
+  password: string;
 }
 
 export interface ScadaPage {
