@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue';
 import axios from 'axios';
-import { HubConnectionBuilder, HubConnection, HubConnectionState } from '@microsoft/signalr';
 import { 
   Area, 
   DataModel, 
@@ -21,11 +20,10 @@ import {
   SystemUser
 } from './types';
 import { TEMPLATES } from './templates';
+import { HubConnectionBuilder, HubConnection, HubConnectionState } from '@microsoft/signalr';
 
 // === BACKEND CONFIGURATION ===
 const API_BASE_URL = 'http://localhost:5000';
-let signalRConnection: HubConnection | null = null;
-export const isBackendConnected = ref(false);
 
 // === 1. NAVIGATION TAB STATE ===
 export const activeTab = ref<
@@ -66,6 +64,7 @@ let resourceInterval: any = null;
 export const startSystemResourceMonitoring = () => {
   if (resourceInterval) return;
   resourceInterval = setInterval(() => {
+    if (!systemConfig.value.isSimulationActive) return; // Skip if local simulation is disabled
     // Generate organic industrial system telemetry drift
     serverStatus.value.cpuUsage = Math.min(99, Math.max(1, +(serverStatus.value.cpuUsage + (Math.random() - 0.5) * 4).toFixed(1)));
     serverStatus.value.memUsage = Math.min(95, Math.max(20, +(serverStatus.value.memUsage + (Math.random() - 0.5) * 0.4).toFixed(1)));
@@ -373,54 +372,14 @@ export const devices = ref<Device[]>([
   }
 ]);
 
-// === BACKEND INITIALIZATION ===
-export const initializeBackendConnection = async () => {
-  try {
-    // 1. Fetch initial devices state
-    const resp = await axios.get(`${API_BASE_URL}/api/scada/devices`);
-    devices.value = resp.data;
-    isBackendConnected.value = true;
-    addLog('系统内核', '已成功从 .NET Core 后端同步设备元数据', 'normal');
-
-    // 2. Setup SignalR
-    signalRConnection = new HubConnectionBuilder()
-      .withUrl(`${API_BASE_URL}/hubs/scada`)
-      .withAutomaticReconnect()
-      .build();
-
-    signalRConnection.on('ReceiveVariableUpdate', (variableKey: string, newValue: any) => {
-      // Find device and update value
-      devices.value.forEach(dev => {
-        if (dev.variables[variableKey] !== undefined) {
-          dev.variables[variableKey] = newValue;
-          if (!dev.variableTimestamps) dev.variableTimestamps = {};
-          dev.variableTimestamps[variableKey] = new Date().toLocaleTimeString();
-          propagateDataLinkages(dev.id, variableKey, newValue);
-        }
-      });
-    });
-
-    await signalRConnection.start();
-    addLog('SignalR', '工业遥测实时长连接已建立', 'info');
-    
-    // Once backend is connected, we might want to fetch initial history as well
-    const histResp = await axios.get(`${API_BASE_URL}/api/scada/history?variableKey=tank_level&limit=100`);
-    historicalRecords.value = histResp.data;
-  } catch (err) {
-    console.error('Failed to connect to backend:', err);
-    addLog('系统内核', '后端连接失败，切换回本地模拟模式', 'warning');
-    isBackendConnected.value = false;
-    startDeviceSimulation(); // Fallback to simulation
-  }
-};
-
 // Continuous simulation update background driver
 let simulationInterval: any = null;
 export const startDeviceSimulation = () => {
-  if (simulationInterval || isBackendConnected.value) return;
+  if (simulationInterval) return;
   
   let tick = 0;
   simulationInterval = setInterval(() => {
+    if (!systemConfig.value.isSimulationActive) return; // Skip if local simulation is disabled
     tick++;
     const time = Date.now() * 0.001;
     const pad2 = (n: number) => n.toString().padStart(2, '0');
@@ -598,24 +557,8 @@ export const getDeviceVariableValue = (variableKey: string): number | boolean =>
   return 0;
 };
 
-export const setDeviceVariableValue = async (variableKey: string, newValue: number | boolean) => {
-  // If backend is connected, prioritize sending the command to the server
-  if (isBackendConnected.value) {
-    try {
-      if (signalRConnection && signalRConnection.state === HubConnectionState.Connected) {
-        await signalRConnection.invoke('WritePlcVariable', variableKey, newValue);
-      } else {
-        await axios.post(`${API_BASE_URL}/api/scada/variables/write`, { variableKey, value: newValue });
-      }
-      // Note: We don't update local state here; we wait for the SignalR broadcast (ReceiveVariableUpdate)
-      return;
-    } catch (err) {
-      addLog('核心控制器', `后端写入指令失败: ${variableKey}`, 'warning');
-      // Fallback to local update if backend call fails
-    }
-  }
-
-  // Seek and update across all online devices that have this key (Local/Simulation Mode)
+export const setDeviceVariableValue = (variableKey: string, newValue: number | boolean) => {
+  // Seek and update across all online devices that have this key
   devices.value.forEach((dev) => {
     if (dev.status === 'online' && dev.variables[variableKey] !== undefined) {
       dev.variables[variableKey] = newValue;
@@ -634,6 +577,11 @@ export const setDeviceVariableValue = async (variableKey: string, newValue: numb
       addLog('核心控制器', `写变量 [${variableKey}] -> ${newValue} (${typeof newValue === 'boolean' ? (newValue ? 'ON/合闸' : 'OFF/开路') : newValue})`, 'info');
     }
   });
+
+  // Call backend API if simulation data is deactivated
+  if (!systemConfig.value.isSimulationActive) {
+    writeVariableToBackend(variableKey, newValue);
+  }
 };
 
 // === 7. MULTI-PROJECT & MULTI-PAGE TOPOLOGY SCADA SCREEN STATE ===
@@ -764,23 +712,70 @@ export const updateCurrentPageComponents = (newComponents: HMIComponent[]) => {
 export const isAuthenticated = ref<boolean>(false);
 export const loginUser = ref<{ username: string; role: string } | null>(null);
 
-export const performLogin = (username: string, passwordString: string): boolean => {
-  if (username === 'admin' && passwordString === 'admin888') {
-    isAuthenticated.value = true;
-    loginUser.value = {
-      username: 'admin',
-      role: '系统超级管理员 (Super Admin)'
-    };
-    addLog('安全认证', '用户 [admin] 登录系统成功 (PC/移动客户端适配版)', 'normal');
-    return true;
+// JWT Token 常量
+const TOKEN_KEY = 'scada_access_token';
+
+// 从 localStorage 读取 Token 并尝试自动登录
+export const initializeAuth = () => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    // 检查 Token 是否过期（简单实现）
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.exp * 1000 > Date.now()) {
+        // Token 有效，设置登录状态
+        isAuthenticated.value = true;
+        loginUser.value = {
+          username: payload.username || 'admin',
+          role: payload.role || '系统管理员'
+        };
+        addLog('安全认证', 'Token 自动登录成功', 'normal');
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+    }
   }
-  return false;
+};
+
+// 登录接口对接：POST /api/Auth/login
+export const performLogin = async (username: string, passwordString: string): Promise<{ success: boolean; errorMessage?: string }> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/Auth/login`, {
+      username: username,
+      password: passwordString
+    });
+
+    if (response.data && response.data.success) {
+      const token = response.data.token;
+      localStorage.setItem(TOKEN_KEY, token);
+
+      isAuthenticated.value = true;
+      loginUser.value = {
+        username: response.data.user?.username || username,
+        role: response.data.user?.role || '系统管理员'
+      };
+
+      addLog('安全认证', `用户 [${username}] 通过API登录系统成功`, 'normal');
+      return { success: true };
+    } else {
+      const errorMsg = response.data?.message || '用户名或密码错误';
+      addLog('安全认证', `用户 [${username}] 登录失败: ${errorMsg}`, 'warning');
+      return { success: false, errorMessage: errorMsg };
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.message || error.message || '服务器连接失败，请检查网络或后端服务';
+    addLog('安全认证', `登录失败: ${errorMessage}`, 'warning');
+    return { success: false, errorMessage: errorMessage };
+  }
 };
 
 export const performLogout = () => {
   addLog('安全认证', `用户 [${loginUser.value?.username || 'admin'}] 注销系统登录`, 'normal');
   isAuthenticated.value = false;
   loginUser.value = null;
+  localStorage.removeItem(TOKEN_KEY);
 };
 
 // === 9. VARIABLE TRIGGERS STATE & EVAL ENGINE ===
@@ -1106,7 +1101,9 @@ export const systemConfig = ref<SystemConfig>({
   opcUaDiscoveryUrl: 'opc.tcp://10.120.44.12:4840',
   alarmEmailNotify: true,
   alarmEmailAddress: 'ops_alerts@iota-factory.com',
-  retentionPeriodDays: 90
+  retentionPeriodDays: 90,
+  isSimulationActive: false, // Default: False (Deactivated), so we fetch from backend instead
+  backendApiUrl: 'http://localhost:5000'
 });
 
 // === 15. SEEDING ENGINE FOR REALTIME / HISTORICAL COMPARISON ===
@@ -1150,4 +1147,213 @@ const generateSeededHistoricalRecords = (): HistoricalRecord[] => {
 };
 
 export const historicalRecords = ref<HistoricalRecord[]>(generateSeededHistoricalRecords());
+
+// === 16. ASP.NET CORE BACKEND BRIDGE INTEGRATION ===
+
+export const isBackendConnected = ref<boolean>(false);
+export const signalRConnection = ref<HubConnection | null>(null);
+
+export const fetchDevicesFromBackend = async () => {
+  if (systemConfig.value.isSimulationActive) return;
+
+  try {
+    const res = await fetch(`${systemConfig.value.backendApiUrl}/api/scada/devices`);
+    if (!res.ok) {
+      throw new Error(`HTTP Status ${res.status}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      data.forEach((backendDev: any) => {
+        const localDev = devices.value.find(d => d.id === backendDev.id || d.code === backendDev.code);
+        if (localDev) {
+          localDev.status = backendDev.status || localDev.status;
+          if (backendDev.variables) {
+            Object.keys(backendDev.variables).forEach(k => {
+              localDev.variables[k] = backendDev.variables[k];
+            });
+          }
+          if (backendDev.lastUpdated) {
+            localDev.lastUpdated = backendDev.lastUpdated;
+          }
+        } else {
+          // If a new device is created on the backend, add it locally!
+          devices.value.push({
+            id: backendDev.id || `dev-${Date.now()}`,
+            name: backendDev.name,
+            code: backendDev.code || 'UNKNOWN',
+            areaId: backendDev.areaId || 'area-1',
+            modelId: backendDev.modelId || 'model-wastewater',
+            type: backendDev.type || 'OPCUA',
+            status: backendDev.status || 'online',
+            variables: backendDev.variables || {},
+            lastUpdated: backendDev.lastUpdated || '刚刚'
+          });
+        }
+      });
+    }
+  } catch (err: any) {
+    if (Math.random() > 0.95) {
+      addLog('REST 轮询', `无法同步设备变量: ${err.message}`, 'warning');
+    }
+  }
+};
+
+let backendPollInterval: any = null;
+export const startBackendPolling = () => {
+  if (backendPollInterval) return;
+  
+  let lastRun = 0;
+  backendPollInterval = setInterval(() => {
+    if (systemConfig.value.isSimulationActive) return;
+    
+    const now = Date.now();
+    const isSigsConnected = signalRConnection.value && signalRConnection.value.state === HubConnectionState.Connected;
+    const interval = isSigsConnected ? 5000 : systemConfig.value.pollIntervalMs;
+    
+    if (now - lastRun >= interval) {
+      lastRun = now;
+      fetchDevicesFromBackend();
+    }
+  }, 100);
+};
+
+export const initializeRealtimeSignals = () => {
+  if (systemConfig.value.isSimulationActive) {
+    if (signalRConnection.value) {
+      signalRConnection.value.stop().catch(() => {});
+      signalRConnection.value = null;
+    }
+    isBackendConnected.value = false;
+    return;
+  }
+
+  if (signalRConnection.value) return; // Avoid double initialization
+
+  addLog('后端对接', `正在构建 ASP.NET Core SignalR 信道 (网关: ${systemConfig.value.backendApiUrl})...`, 'info');
+
+  try {
+    const connection = new HubConnectionBuilder()
+      .withUrl(`${systemConfig.value.backendApiUrl}/hubs/scada`)
+      .withAutomaticReconnect()
+      .build();
+
+    connection.on("ReceiveVariableUpdate", (variableKey: string, newValue: any) => {
+      let updated = false;
+      devices.value.forEach(dev => {
+        if (dev.variables[variableKey] !== undefined) {
+          dev.variables[variableKey] = newValue;
+          if (!dev.variableTimestamps) dev.variableTimestamps = {};
+          const pad2 = (n: number) => n.toString().padStart(2, '0');
+          const d = new Date();
+          dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+          updated = true;
+        }
+      });
+      if (updated) {
+        addLog('SignalR 接收', `网络遥测更新: [${variableKey}] -> ${newValue}`, 'info');
+      }
+    });
+
+    connection.on("ReceiveSystemAlarm", (message: string) => {
+      addLog('后端发布警报', message, 'warning');
+    });
+
+    connection.start()
+      .then(() => {
+        isBackendConnected.value = true;
+        addLog('后端对接', `SignalR 通信链路握手建立成功！桥接工业控制链网关。`, 'normal');
+        fetchDevicesFromBackend();
+      })
+      .catch((err) => {
+        isBackendConnected.value = false;
+        addLog('后端对接', `SignalR 连接失败: ${err.message}. 系统自适配并启用 HTTP 降级轮询机制...`, 'warning');
+      });
+
+    connection.onreconnecting((error) => {
+      isBackendConnected.value = false;
+      addLog('后端对接', `SignalR 桥接网络瞬断重连中: ${error?.message || '未知异常'}`, 'warning');
+    });
+
+    connection.onreconnected((connectionId) => {
+      isBackendConnected.value = true;
+      addLog('后端对接', `SignalR 物理转发信道自动重连成功！ID: ${connectionId}`, 'normal');
+      fetchDevicesFromBackend();
+    });
+
+    connection.onclose((error) => {
+      isBackendConnected.value = false;
+      addLog('后端对接', `SignalR 信道已关闭断开: ${error?.message || '正常退出'}`, 'warning');
+    });
+
+    signalRConnection.value = connection;
+  } catch (error: any) {
+    addLog('后端对接', `SignalR 信道初始化失败: ${error.message}`, 'warning');
+  }
+};
+
+export const writeVariableToBackend = async (variableKey: string, value: any) => {
+  if (systemConfig.value.isSimulationActive) return;
+
+  // SignalR socket write first
+  if (signalRConnection.value && signalRConnection.value.state === HubConnectionState.Connected) {
+    try {
+      await signalRConnection.value.invoke("WritePlcVariable", variableKey, value);
+      addLog('SignalR 写入', `下行写指令成功 (WebSocket): [${variableKey}] = ${value}`, 'info');
+      return;
+    } catch (err: any) {
+      addLog('SignalR 写入', `Websocket 下发失败: ${err.message}，正在尝试使用 REST API 写入...`, 'warning');
+    }
+  }
+
+  // REST API write fallback
+  try {
+    const res = await fetch(`${systemConfig.value.backendApiUrl}/api/scada/variables/write`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ variableKey, value })
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP status code ${res.status}`);
+    }
+    const data = await res.json();
+    if (data.success) {
+      addLog('REST 写入', `下行写指令成功 (REST): [${variableKey}] = ${value}`, 'normal');
+    } else {
+      addLog('REST 写入', `接口下行拦截报错: ${data.message || '未知原因'}`, 'warning');
+    }
+  } catch (err: any) {
+    addLog('REST 写入', `下行链路硬阻断: ${err.message}`, 'warning');
+  }
+};
+
+export const fetchHistoryFromBackend = async (variableKey: string, limit: number = 80) => {
+  if (systemConfig.value.isSimulationActive) return;
+
+  try {
+    addLog('历史查询', `正在向后端调取时间曲线. 变量: ${variableKey}, 长度: ${limit}...`, 'info');
+    const res = await fetch(`${systemConfig.value.backendApiUrl}/api/scada/history?variableKey=${variableKey}&limit=${limit}`);
+    if (!res.ok) {
+      throw new Error(`HTTP status code ${res.status}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      const otherRecords = historicalRecords.value.filter(r => r.variableKey !== variableKey);
+      
+      const converted: HistoricalRecord[] = data.map((item: any) => ({
+        id: item.id || `hist-net-${Date.now()}-${Math.random().toString().slice(-4)}`,
+        variableKey: item.variableKey || variableKey,
+        variableName: item.variableName || variableKey,
+        value: Number(item.value),
+        timestamp: item.timestamp
+      }));
+
+      historicalRecords.value = [...converted, ...otherRecords];
+      addLog('历史查询', `同步后端时序库记录成功！拉取 ${converted.length} 条数据点`, 'normal');
+    }
+  } catch (err: any) {
+    addLog('历史查询', `调取时序时钟出线硬阻塞: ${err.message}`, 'warning');
+  }
+};
 

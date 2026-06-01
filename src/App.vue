@@ -4,12 +4,14 @@ import {
   activeTab, 
   startSystemResourceMonitoring, 
   startDeviceSimulation,
-  initializeBackendConnection,
   isAuthenticated,
   loginUser,
   performLogin,
   performLogout,
-  systemConfig
+  systemConfig,
+  initializeRealtimeSignals,
+  startBackendPolling,
+  initializeAuth
 } from './store';
 
 // Core static views
@@ -73,11 +75,11 @@ const loginUsernameInput = ref('admin');
 const loginPasswordInput = ref('admin888');
 const loginErrorMessage = ref('');
 
-const triggerFormLogin = () => {
+const triggerFormLogin = async () => {
   loginErrorMessage.value = '';
-  const success = performLogin(loginUsernameInput.value.trim(), loginPasswordInput.value.trim());
-  if (!success) {
-    loginErrorMessage.value = '用户名或密码授权校验失败！(注: admin / admin888)';
+  const result = await performLogin(loginUsernameInput.value.trim(), loginPasswordInput.value.trim());
+  if (!result.success) {
+    loginErrorMessage.value = result.errorMessage || '登录失败，请检查网络连接';
   }
 };
 
@@ -102,12 +104,15 @@ const startClock = () => {
 };
 
 onMounted(() => {
+  // 初始化认证状态（检查 localStorage 中的 Token）
+  initializeAuth();
+  
   startClock();
   // Fire off the background SCADA physics loops & hardware load simulations
   startSystemResourceMonitoring();
-  
-  // Try to connect to real .NET Core backend; falls back to simulation if unreachable
-  initializeBackendConnection();
+  startDeviceSimulation();
+  initializeRealtimeSignals();
+  startBackendPolling();
 });
 
 onUnmounted(() => {
@@ -282,7 +287,7 @@ onUnmounted(() => {
           <!-- Category A: Core Control Panel -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              中控主管理看板
+              核心面板
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -290,7 +295,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'dashboard'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left cursor-pointer group w-full"
-                :title="isSidebarCollapsed ? '现场业务主仪表盘' : ''"
+                :title="isSidebarCollapsed ? '仪表盘' : ''"
                 :class="[
                   activeTab === 'dashboard' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -298,13 +303,13 @@ onUnmounted(() => {
                 ]"
               >
                 <LayoutDashboard class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">现场业务主仪表盘</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">仪表盘</span>
               </button>
 
               <button 
                 @click="activeTab = 'live-data'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left cursor-pointer group w-full"
-                :title="isSidebarCollapsed ? '分布式运行据数据仓库' : ''"
+                :title="isSidebarCollapsed ? '实时数据' : ''"
                 :class="[
                   activeTab === 'live-data' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -312,13 +317,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Database class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">分布式运行据数据仓库</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">实时数据</span>
               </button>
 
               <button 
                 @click="activeTab = 'device-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '智能物理设备总台' : ''"
+                :title="isSidebarCollapsed ? '设备管理' : ''"
                 :class="[
                   activeTab === 'device-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -326,13 +331,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Cpu class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">智能物理设备总台</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">设备管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'data-models'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '点位物理数据模型库' : ''"
+                :title="isSidebarCollapsed ? '数据模型' : ''"
                 :class="[
                   activeTab === 'data-models' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -340,13 +345,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Layers class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">点位物理数据模型库</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">数据模型</span>
               </button>
 
               <button 
                 @click="activeTab = 'scada-editor'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '多屏交互工业组态总局' : ''"
+                :title="isSidebarCollapsed ? '组态编辑' : ''"
                 :class="[
                   activeTab === 'scada-editor' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -354,13 +359,13 @@ onUnmounted(() => {
                 ]"
               >
                 <MonitorPlay class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">多屏交互工业组态总局</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">组态编辑</span>
               </button>
 
               <button 
                 @click="activeTab = 'system-logs'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '时序异常日志审计仓' : ''"
+                :title="isSidebarCollapsed ? '系统日志' : ''"
                 :class="[
                   activeTab === 'system-logs' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -368,7 +373,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Terminal class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">时序异常日志审计仓</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">系统日志</span>
               </button>
             </nav>
           </div>
@@ -376,7 +381,7 @@ onUnmounted(() => {
           <!-- Category B: Automation & SCADA plugins -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              工业自动化控制链 (Plugins)
+              自动化控制
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -384,7 +389,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'trigger-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '联动安全触发器策略' : ''"
+                :title="isSidebarCollapsed ? '触发管理' : ''"
                 :class="[
                   activeTab === 'trigger-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -392,13 +397,13 @@ onUnmounted(() => {
                 ]"
               >
                 <ShieldAlert class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">联动安全触发器策略</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">触发管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'task-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '自动化任务时间调度' : ''"
+                :title="isSidebarCollapsed ? '任务调度' : ''"
                 :class="[
                   activeTab === 'task-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -406,13 +411,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Calendar class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">自动化任务时间调度</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">任务调度</span>
               </button>
 
               <button 
                 @click="activeTab = 'system-scripts'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '可编程自治逻辑脚本' : ''"
+                :title="isSidebarCollapsed ? '脚本管理' : ''"
                 :class="[
                   activeTab === 'system-scripts' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -420,13 +425,13 @@ onUnmounted(() => {
                 ]"
               >
                 <FileCode class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">可编程自治逻辑脚本</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">脚本管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'data-interfaces'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? 'RESTful API 外输网关' : ''"
+                :title="isSidebarCollapsed ? 'API网关' : ''"
                 :class="[
                   activeTab === 'data-interfaces' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -434,13 +439,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Network class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">RESTful API 外输网关</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">API网关</span>
               </button>
 
               <button 
                 @click="activeTab = 'historical-query'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '多维时序历史曲线查询' : ''"
+                :title="isSidebarCollapsed ? '历史查询' : ''"
                 :class="[
                   activeTab === 'historical-query' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -448,13 +453,13 @@ onUnmounted(() => {
                 ]"
               >
                 <History class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">多维时序历史曲线查询</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">历史查询</span>
               </button>
 
               <button 
                 @click="activeTab = 'mqtt-servers'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? 'MQTT服务器物理转发' : ''"
+                :title="isSidebarCollapsed ? 'MQTT转发' : ''"
                 :class="[
                   activeTab === 'mqtt-servers' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -462,13 +467,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Rss class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">MQTT 网关通道总台</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">MQTT转发</span>
               </button>
 
               <button 
                 @click="activeTab = 'data-conversion'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '交叉物理变量耦合转换' : ''"
+                :title="isSidebarCollapsed ? '数据转换' : ''"
                 :class="[
                   activeTab === 'data-conversion' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -476,7 +481,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Shuffle class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">设备物理变量交叉联动</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">数据转换</span>
               </button>
             </nav>
           </div>
@@ -484,7 +489,7 @@ onUnmounted(() => {
           <!-- Category C: Core System configuration -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              工业安全和存储设置
+              安全与设置
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -492,7 +497,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'database-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '现场时序写数据库连接' : ''"
+                :title="isSidebarCollapsed ? '数据库' : ''"
                 :class="[
                   activeTab === 'database-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -500,13 +505,13 @@ onUnmounted(() => {
                 ]"
               >
                 <HardDrive class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">现场时序写数据库连接</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">数据库</span>
               </button>
 
               <button 
                 @click="activeTab = 'user-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '中控操作帐户及安全特权组' : ''"
+                :title="isSidebarCollapsed ? '账户权限' : ''"
                 :class="[
                   activeTab === 'user-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -514,13 +519,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Users class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">中控账户与安全特权组</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">账户权限</span>
               </button>
 
               <button 
                 @click="activeTab = 'settings-center'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '全车间大脑配置中心' : ''"
+                :title="isSidebarCollapsed ? '系统设置' : ''"
                 :class="[
                   activeTab === 'settings-center' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -528,7 +533,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Settings class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">全车间大脑配置中心</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">系统设置</span>
               </button>
             </nav>
           </div>
@@ -605,7 +610,7 @@ onUnmounted(() => {
               :class="activeTab === 'dashboard' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <LayoutDashboard class="w-4 h-4" />
-              <span>现场业务主仪表盘</span>
+              <span>仪表盘</span>
             </button>
 
             <button 
@@ -614,7 +619,7 @@ onUnmounted(() => {
               :class="activeTab === 'live-data' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Database class="w-4 h-4" />
-              <span>分布式数据仓库</span>
+              <span>实时数据</span>
             </button>
 
             <button 
@@ -623,7 +628,7 @@ onUnmounted(() => {
               :class="activeTab === 'device-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Cpu class="w-4 h-4" />
-              <span>智能设备管理柜</span>
+              <span>设备管理</span>
             </button>
 
             <button 
@@ -632,7 +637,7 @@ onUnmounted(() => {
               :class="activeTab === 'data-models' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Layers class="w-4 h-4" />
-              <span>点位物理数据模型库</span>
+              <span>数据模型</span>
             </button>
 
             <button 
@@ -641,7 +646,7 @@ onUnmounted(() => {
               :class="activeTab === 'scada-editor' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <MonitorPlay class="w-4 h-4" />
-              <span>多屏组态画廊总站</span>
+              <span>组态编辑</span>
             </button>
 
             <button 
@@ -650,7 +655,7 @@ onUnmounted(() => {
               :class="activeTab === 'system-logs' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Terminal class="w-4 h-4" />
-              <span>时序异常日志审计仓</span>
+              <span>系统日志</span>
             </button>
 
             <button 
@@ -659,7 +664,7 @@ onUnmounted(() => {
               :class="activeTab === 'trigger-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <ShieldAlert class="w-4 h-4" />
-              <span>联动安全触发器策略</span>
+              <span>触发管理</span>
             </button>
 
             <button 
@@ -668,7 +673,7 @@ onUnmounted(() => {
               :class="activeTab === 'task-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Calendar class="w-4 h-4" />
-              <span>时间计划调度日常</span>
+              <span>任务调度</span>
             </button>
 
             <button 
@@ -677,7 +682,7 @@ onUnmounted(() => {
               :class="activeTab === 'system-scripts' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <FileCode class="w-4 h-4" />
-              <span>可编程自治脚本中心</span>
+              <span>脚本管理</span>
             </button>
 
             <button 
@@ -686,7 +691,7 @@ onUnmounted(() => {
               :class="activeTab === 'data-interfaces' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Network class="w-4 h-4" />
-              <span>REST 外传数据网关</span>
+              <span>API网关</span>
             </button>
 
             <button 
@@ -695,7 +700,7 @@ onUnmounted(() => {
               :class="activeTab === 'historical-query' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <History class="w-4 h-4" />
-              <span>历史时序数据查询</span>
+              <span>历史查询</span>
             </button>
 
             <button 
@@ -703,8 +708,8 @@ onUnmounted(() => {
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
               :class="activeTab === 'mqtt-servers' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
-              <Rss class="w-4 h-4" />
-              <span>MQTT 网关设备转发</span>
+              <Rss class="w-4 h-4 text-slate-400" />
+              <span>MQTT转发</span>
             </button>
 
             <button 
@@ -713,7 +718,7 @@ onUnmounted(() => {
               :class="activeTab === 'data-conversion' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Shuffle class="w-4 h-4" />
-              <span>物理设备联动跟随</span>
+              <span>数据转换</span>
             </button>
 
             <button 
@@ -722,7 +727,7 @@ onUnmounted(() => {
               :class="activeTab === 'database-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <HardDrive class="w-4 h-4" />
-              <span>现场时序写数据库连接</span>
+              <span>数据库</span>
             </button>
 
             <button 
@@ -731,7 +736,7 @@ onUnmounted(() => {
               :class="activeTab === 'user-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Users class="w-4 h-4" />
-              <span>安全用户管理权限</span>
+              <span>账户权限</span>
             </button>
 
             <button 
@@ -740,7 +745,7 @@ onUnmounted(() => {
               :class="activeTab === 'settings-center' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Settings class="w-4 h-4" />
-              <span>全厂区SCADA总设置</span>
+              <span>系统设置</span>
             </button>
           </nav>
         </div>
