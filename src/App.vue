@@ -2,8 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { 
   activeTab, 
-  startSystemResourceMonitoring, 
-  startDeviceSimulation,
+  startSystemResourceMonitoring,
   isAuthenticated,
   loginUser,
   performLogin,
@@ -12,7 +11,7 @@ import {
   initializeRealtimeSignals,
   startBackendPolling,
   initializeAuth
-} from './store';
+  } from './store';
 
 // Core static views
 import DashboardView from './components/DashboardView.vue';
@@ -110,7 +109,6 @@ onMounted(() => {
   startClock();
   // Fire off the background SCADA physics loops & hardware load simulations
   startSystemResourceMonitoring();
-  startDeviceSimulation();
   initializeRealtimeSignals();
   startBackendPolling();
 });
