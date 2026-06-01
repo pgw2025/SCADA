@@ -23,7 +23,12 @@ import { TEMPLATES } from './templates';
 import { HubConnectionBuilder, HubConnection, HubConnectionState } from '@microsoft/signalr';
 
 // === BACKEND CONFIGURATION ===
-const API_BASE_URL = 'http://localhost:5000';
+// 使用相对路径，通过 Vite proxy 代理到后端 (开发环境推荐)
+// 生产环境可通过环境变量配置或 nginx 反向代理
+// const API_BASE_URL = '';
+
+// 可选：如果是独立部署，可以通过 window.location 动态计算
+const API_BASE_URL = window.location.origin.replace(':3000', ':5000');
 
 // === 1. NAVIGATION TAB STATE ===
 export const activeTab = ref<
