@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { dataModels, devices, addLog } from '../store';
+import { ref, computed, watch, onMounted } from 'vue';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend } from '../store';
 import { DataModel, ModelVariable, DeviceType } from '../types';
+
+onMounted(() => {
+  fetchDataModelsFromBackend();
+});
+
 import { 
   FileCode, 
   Layers, 
@@ -135,40 +140,40 @@ const filteredVariables = computed(() => {
 });
 
 // Create standard new model schema
-const handleCreateModel = () => {
+const handleCreateModel = async () => {
   if (!modelName.value.trim()) return;
 
-  const newId = `model-${Date.now()}`;
-  dataModels.value.push({
-    id: newId,
+  const newModel = await createDataModelOnBackend({
     name: modelName.value,
     description: modelDesc.value,
-    type: modelType.value,
+    type: modelType.value as any,
     variables: []
   });
 
-  addLog('模型建立', `创建数据模型 [${modelName.value}] (${modelType.value})`, 'normal');
-  
-  selectedModelId.value = newId;
-  showModelModal.value = false;
+  if (newModel) {
+    selectedModelId.value = newModel.id;
+    showModelModal.value = false;
 
-  // Clear
-  modelName.value = '';
-  modelDesc.value = '';
+    // Clear
+    modelName.value = '';
+    modelDesc.value = '';
+  }
 };
 
 // Delete model template
-const handleDeleteModel = (id: string, name: string) => {
+const handleDeleteModel = async (id: string, name: string) => {
   // Check if any devices rely on it
   const reliesCount = devices.value.filter(d => d.modelId === id).length;
   if (reliesCount > 0) {
     alert(`无法删除此模型 [${name}]: 仍然有 ${reliesCount} 台在网物理设备实例依赖于该模型。`);
     return;
   }
-  dataModels.value = dataModels.value.filter(m => m.id !== id);
-  addLog('模型建立', `删除数据模型 [${name}]`, 'warning');
   
-  selectedModelId.value = dataModels.value[0]?.id || '';
+  const success = await deleteDataModelOnBackend(id);
+  if (success) {
+    addLog('模型建立', `删除数据模型 [${name}]`, 'warning');
+    selectedModelId.value = dataModels.value[0]?.id || '';
+  }
 };
 
 // Append tag to current selected model variables
