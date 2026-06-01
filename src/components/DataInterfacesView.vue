@@ -164,10 +164,10 @@ const handleCopyUrl = (url: string) => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Network class="w-5 h-5 text-sky-500 animate-pulse" />
-          多级物联数据网关 HTTP / RESTful API 发布大盘
+          数据接口管理
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          将采集上来的设备寄存器状态及遥测数据流转换成标准 JSON 数据格式，提供给企业 ERP、MES 或第三方大数据系统。
+          将设备数据转换为标准 RESTful API，供外部系统调用。
         </p>
       </div>
 
@@ -176,7 +176,7 @@ const handleCopyUrl = (url: string) => {
         class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Plus class="w-4 h-4" />
-        发布新 API 数据接口
+        新建接口
       </button>
     </div>
 
@@ -186,7 +186,7 @@ const handleCopyUrl = (url: string) => {
       <!-- Left side: List of active routes -->
       <div class="w-full lg:w-96 bg-white border-r border-slate-200 flex flex-col shrink-0">
         <div class="p-4 border-b border-slate-100 font-bold text-[10px] text-slate-400 uppercase tracking-widest text-left">
-          已发布 API 路由目录 ({{ exposedApis.length }})
+          API 接口列表 ({{ exposedApis.length }})
         </div>
 
         <div class="flex-1 overflow-y-auto divide-y divide-slate-100 text-left">
@@ -222,7 +222,7 @@ const handleCopyUrl = (url: string) => {
 
             <div class="flex items-center gap-2">
               <span class="text-[9px] bg-sky-50 text-[#1890ff] font-bold px-1.5 py-0.5 rounded border border-sky-100">
-                绑定源变量: {{ api.exposedKey }}
+                变量: {{ api.exposedKey }}
               </span>
             </div>
           </div>
@@ -235,10 +235,10 @@ const handleCopyUrl = (url: string) => {
         <!-- REST client top panel bar -->
         <div class="bg-indigo-950/40 p-4 border-b border-indigo-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
           <div class="space-y-1">
-            <span class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest font-mono">REST CLIENT SANDBOX TESTER</span>
+            <span class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest font-mono">API TESTER</span>
             <h3 class="font-bold text-sm text-white flex items-center gap-1">
               <Server class="w-4 h-4 text-sky-400" />
-              API 集成调试沙盒
+              接口测试
             </h3>
           </div>
 
@@ -248,7 +248,7 @@ const handleCopyUrl = (url: string) => {
             class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg inline-flex items-center gap-1.5 cursor-pointer shadow-md tracking-wide max-w-fit active:translate-y-0.5 transition-all"
           >
             <Send class="w-3.5 h-3.5 sm:animate-bounce" />
-            {{ isSendingRequest ? '网关数据读取中...' : '发送实时 HTTP 请求' }}
+            {{ isSendingRequest ? '请求处理中...' : '测试接口' }}
           </button>
         </div>
 
@@ -289,27 +289,27 @@ const handleCopyUrl = (url: string) => {
           
           <div class="bg-slate-950/90 px-5 py-2.5 border-b border-slate-900 flex items-center justify-between text-slate-400 font-mono text-[10px]">
             <div class="flex items-center gap-2">
-              <Globe class="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              <span>HTTP RESPONSE BODY (JSON)</span>
-            </div>
+            <Globe class="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+            <span>响应结果</span>
+          </div>
 
-            <!-- TABS FOR HEADERS OR BODY -->
-            <div class="flex bg-slate-900 p-0.5 rounded gap-1 font-bold text-[9px]">
-              <button 
-                @click="activeTabTest = 'payload'"
-                class="px-2 py-0.5 rounded cursor-pointer"
-                :class="activeTabTest === 'payload' ? 'bg-slate-800 text-white' : 'text-slate-500'"
-              >
-                JSON Payload
-              </button>
-              <button 
-                @click="activeTabTest = 'headers'"
-                class="px-2 py-0.5 rounded cursor-pointer"
-                :class="activeTabTest === 'headers' ? 'bg-slate-800 text-white' : 'text-slate-500'"
-              >
-                Headers
-              </button>
-            </div>
+          <!-- TABS FOR HEADERS OR BODY -->
+          <div class="flex bg-slate-900 p-0.5 rounded gap-1 font-bold text-[9px]">
+            <button 
+              @click="activeTabTest = 'payload'"
+              class="px-2 py-0.5 rounded cursor-pointer"
+              :class="activeTabTest === 'payload' ? 'bg-slate-800 text-white' : 'text-slate-500'"
+            >
+              响应体
+            </button>
+            <button 
+              @click="activeTabTest = 'headers'"
+              class="px-2 py-0.5 rounded cursor-pointer"
+              :class="activeTabTest === 'headers' ? 'bg-slate-800 text-white' : 'text-slate-500'"
+            >
+              响应头
+            </button>
+          </div>
           </div>
 
           <!-- Response display block -->
@@ -329,13 +329,13 @@ const handleCopyUrl = (url: string) => {
 
             <div v-else-if="isSendingRequest" class="flex flex-col items-center justify-center py-16 gap-3 text-slate-500 font-sans">
               <Code class="w-10 h-10 animate-spin text-sky-400" />
-              <span>正在握手网关并封装 JSON 对象...</span>
+              <span>正在处理请求...</span>
             </div>
 
             <div v-else class="flex flex-col items-center justify-center py-20 gap-3 text-slate-600 font-sans text-center">
               <Code class="w-8 h-8 text-slate-700 animate-pulse" />
               <p class="text-xs">
-                就绪。请点击右上方 <b class="text-slate-400 hover:underline">发送实时 HTTP 请求</b> 模拟第三方接收物联网网卡抛包。
+                就绪。点击右上角 <b class="text-slate-400 hover:underline">测试接口</b> 发送请求。
               </p>
             </div>
           </div>
@@ -346,7 +346,7 @@ const handleCopyUrl = (url: string) => {
 
       <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 py-16 gap-3">
         <Network class="w-10 h-10 text-slate-300 animate-pulse" />
-        <span>主网关路由已被排空。创建您的第一单 REST 数据端口。</span>
+        <span>暂无接口。点击右上角按钮创建第一个接口。</span>
       </div>
 
     </div>
@@ -358,7 +358,7 @@ const handleCopyUrl = (url: string) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-[#1890ff]">
             <Globe class="w-4 h-4" />
-            <span>向系统总承暴露发布实时 API 的端口</span>
+            <span>新建数据接口</span>
           </div>
           <button @click="showAddModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4.5 h-4.5" /></button>
         </div>
@@ -366,11 +366,11 @@ const handleCopyUrl = (url: string) => {
         <div class="p-5 space-y-4 text-xs font-sans">
           
           <div>
-            <label class="font-bold text-slate-500 block mb-1">开放接口语义名称</label>
+            <label class="font-bold text-slate-500 block mb-1">接口名称</label>
             <input 
               v-model="newApiName"
               type="text"
-              placeholder="如: 食品变频1号流水变调遥测读取API"
+              placeholder="如: 储水罐液位接口"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
             />
           </div>
@@ -378,7 +378,7 @@ const handleCopyUrl = (url: string) => {
           <!-- Route Path & Method -->
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">请求 Method</label>
+              <label class="font-bold text-slate-500 block mb-1">请求方法</label>
               <select 
                 v-model="apiMethod"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-bold"
@@ -389,7 +389,7 @@ const handleCopyUrl = (url: string) => {
             </div>
 
             <div class="col-span-2">
-              <label class="font-bold text-slate-500 block mb-1">路由相对映射路径 (Relative Path)</label>
+              <label class="font-bold text-slate-500 block mb-1">路由路径</label>
               <input 
                 v-model="routePathInput"
                 type="text"
@@ -402,7 +402,7 @@ const handleCopyUrl = (url: string) => {
           <!-- Variable choices -->
           <div class="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">数据暴露源设备</label>
+              <label class="font-bold text-slate-500 block mb-1">源设备</label>
               <select 
                 v-model="targetDeviceId"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus:bg-white text-slate-800 font-bold focus:outline-none"
@@ -414,7 +414,7 @@ const handleCopyUrl = (url: string) => {
             </div>
 
             <div>
-              <label class="font-bold text-slate-500 block mb-1">要暴露映射的 PLC 变量</label>
+              <label class="font-bold text-slate-500 block mb-1">映射变量</label>
               <select 
                 v-model="targetVarKey"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus:bg-white text-slate-800 font-mono font-bold focus:outline-none"
@@ -441,7 +441,7 @@ const handleCopyUrl = (url: string) => {
             @click.stop="handleCreateApi"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            校验并挂载发布
+            保存接口
           </button>
         </div>
 

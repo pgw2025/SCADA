@@ -39,9 +39,9 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
   <div v-if="!selectedComponent" class="h-full bg-[#fafafa] border-l border-[#d9d9d9] p-6 text-gray-400 text-xs flex flex-col justify-center items-center text-center">
     <!-- Spinning Cog -->
     <Settings class="w-8 h-8 text-[#1890ff] mb-2 animate-spin-slow opacity-60" />
-    <p class="font-semibold text-gray-700">属性配置面板</p>
+    <p class="font-semibold text-gray-700">属性面板</p>
     <p class="text-[10px] text-gray-400 mt-2.5 max-w-[200px] leading-relaxed">
-      请在中央画布上点击选中任意组态元件，即可在此配置它的专属工业逻辑与 PLC 绑定参数。
+      请在画布上选择元件以配置属性。
     </p>
   </div>
 
@@ -50,7 +50,7 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
     <div class="p-4 border-b border-[#f0f0f0] bg-[#fafafa] flex items-center gap-2">
       <Layout class="w-4 h-4 text-[#1890ff]" />
       <h3 class="text-xs font-bold text-[#141414] uppercase tracking-wider">
-        属性物统绑定
+        属性配置
       </h3>
     </div>
 
@@ -59,7 +59,7 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
       <section class="space-y-3">
         <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
           <Sliders class="w-3.5 h-3.5 text-[#1890ff]" />
-          基础布局属性
+          布局属性
         </div>
 
         <div class="grid grid-cols-2 gap-2 text-xs">
@@ -142,17 +142,17 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
       <section class="space-y-3">
         <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
           <Tag class="w-3.5 h-3.5 text-[#1890ff]" />
-          工业 PLC 寄存器绑定
+          数据绑定
         </div>
 
         <div>
-          <label class="text-[10px] text-gray-500">选择绑定的 PLC 变量 (OPC-UA Tag)</label>
+          <label class="text-[10px] text-gray-500">绑定变量</label>
           <select
             :value="selectedComponent.bindField"
             @change="updateComponentField('bindField', ($event.target as HTMLSelectElement).value)"
             class="w-full bg-white border border-[#d9d9d9] hover:border-[#1890ff] focus:border-[#1890ff] rounded px-2.5 py-1.5 mt-0.5 text-[#262626] focus:outline-none text-xs"
           >
-            <option value="">-- 静态常量单元 (无数据绑定) --</option>
+            <option value="">-- 无绑定 --</option>
             <option v-for="tag in plcTags" :key="tag.key" :value="tag.key">
               {{ tag.name }} ({{ tag.key }})
             </option>
@@ -166,11 +166,11 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
       <section class="space-y-3">
         <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
           <Hash class="w-3.5 h-3.5 text-[#1890ff]" />
-          特色工业属性
+          组件属性
         </div>
 
         <div>
-          <label class="text-[10px] text-gray-500">标定说明 (Label)</label>
+          <label class="text-[10px] text-gray-500">标签</label>
           <textarea
             rows="2"
             :value="selectedComponent.label"

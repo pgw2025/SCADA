@@ -50,10 +50,10 @@ const handleSaveConfig = (db: DatabaseConfig) => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Database class="w-5 h-5 text-indigo-500" />
-          全站物理数据库引擎与持久化配置中心
+          数据库管理
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          SCADA 控制底层数据库挂载面板。配置分别承载实时高速缓存与高密度时序采集指标的时序数据库及历史多维数据库连接池。
+          管理时序数据库和历史数据库连接配置。
         </p>
       </div>
     </div>
@@ -81,7 +81,7 @@ const handleSaveConfig = (db: DatabaseConfig) => {
                 <span class="text-[9px] uppercase tracking-wider font-bold block"
                   :class="db.type === 'realtime' ? 'text-sky-600' : 'text-purple-600'"
                 >
-                  {{ db.type === 'realtime' ? '1. 工业实时高频写缓冲 (Realtime Cache)' : '2. 大数据时序时频归档 (Historical Time-Series)' }}
+                  {{ db.type === 'realtime' ? '实时缓存库' : '时序数据库' }}
                 </span>
                 <h3 class="font-bold text-xs text-slate-900 mt-0.5 leading-snug">{{ db.name }}</h3>
               </div>
@@ -92,7 +92,7 @@ const handleSaveConfig = (db: DatabaseConfig) => {
               :class="db.status === 'connected' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'"
             >
               <span class="w-1.5 h-1.5 rounded-full" :class="db.status === 'connected' ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-rose-500'" />
-              {{ db.status === 'connected' ? '链路畅通' : '未连接/脱轨' }}
+              {{ db.status === 'connected' ? '已连接' : '未连接' }}
             </span>
           </div>
 
@@ -159,16 +159,16 @@ const handleSaveConfig = (db: DatabaseConfig) => {
               <!-- Tester indicator -->
               <div v-if="connectionTesters[db.id]?.loading" class="flex items-center gap-1.5 text-[#1890ff] font-bold">
                 <RefreshCw class="w-3.5 h-3.5 animate-spin" />
-                <span>正在向目的实例握手机制发送 IP 封装数据分组...</span>
+                <span>正在测试连接...</span>
               </div>
               
               <div v-else-if="connectionTesters[db.id]?.success" class="text-slate-550 leading-relaxed font-sans font-medium text-slate-500">
-                <span class="text-emerald-650 font-bold text-emerald-600 block">连接建立成功 (Success)</span>
+                <span class="text-emerald-650 font-bold text-emerald-600 block">连接成功</span>
                 <span class="text-[10px] font-mono text-slate-400 block mt-0.5">{{ connectionTesters[db.id]?.message }}</span>
               </div>
               
               <p v-else class="text-slate-400">
-                请配置完毕数据库物理配置后，运行链路测试验证连通性。
+                配置完成后点击"测试连接"验证连通性。
               </p>
             </div>
 
@@ -179,7 +179,7 @@ const handleSaveConfig = (db: DatabaseConfig) => {
                 :disabled="connectionTesters[db.id]?.loading"
                 class="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 font-bold text-slate-700 bg-white rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 disabled:opacity-50"
               >
-                测试链路
+                测试连接
               </button>
 
               <button 
@@ -200,11 +200,10 @@ const handleSaveConfig = (db: DatabaseConfig) => {
         <div class="space-y-1.5 max-w-2xl text-left">
           <h4 class="font-bold text-white text-xs font-sans flex items-center gap-1.5">
             <CpuIcon class="w-4 h-4 text-indigo-400 animate-spin" />
-            分布式数据缓冲同步中间件运行指引 (Cluster Sync Middleware)
+            数据同步说明
           </h4>
           <p class="leading-relaxed text-indigo-200">
-            本 SCADA 内核由自主 M2M 连接中间件驱动。在读取 OPC-UA、Modbus 或 MQTT 采集变量时，自动维护一个高频虚拟存储体（Realtime Memory Cache），并在此以
-            <mark class="bg-indigo-800 text-white font-bold px-1.5 rounded">1200ms</mark> 周期归入 TimescaleDB 数据仓库，避免物理层过载，保障工业生产数据 100% 不溢失。
+            SCADA内核以高频虚拟存储体自动维护数据。读取采集变量时，以<mark class="bg-indigo-800 text-white font-bold px-1.5 rounded">1200ms</mark>周期写入时序数据库，避免物理层过载，保障数据完整。
           </p>
         </div>
       </div>

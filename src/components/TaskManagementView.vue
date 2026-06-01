@@ -101,10 +101,10 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Calendar class="w-5 h-5 text-indigo-500" />
-          自动化任务与计划调度管理器
+          任务调度管理
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          支持设定时序数据清理、工业参数巡回重写、系统内核定期脚本启动和实时数据库导出异地冷备自动化任务。
+          配置定时执行的自动化任务，支持数据备份、变量写入、脚本执行和历史清理。
         </p>
       </div>
 
@@ -113,7 +113,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
         class="font-bold text-xs bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Plus class="w-4 h-4" />
-        挂载新调度任务
+        新建任务
       </button>
     </div>
 
@@ -164,7 +164,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
                       'border-rose-200 text-rose-600 bg-rose-50/20': task.type === 'clear_history'
                     }"
                   >
-                    {{ task.type === 'backup' ? '数据冷备' : task.type === 'set_value' ? '参数自整' : task.type === 'execute_script' ? '脚本轮询' : '时序物理落盘清理' }}
+                    {{ task.type === 'backup' ? '数据备份' : task.type === 'set_value' ? '变量写入' : task.type === 'execute_script' ? '脚本执行' : '历史清理' }}
                   </span>
                 </div>
               </div>
@@ -182,18 +182,18 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
 
           <!-- Parameter values print -->
           <div class="text-[11px] bg-slate-50 border border-slate-100 p-2.5 rounded-lg text-slate-600">
-            <span class="font-bold block mb-1 text-slate-400">调度详细配置:</span>
+            <span class="font-bold block mb-1 text-slate-400">任务配置:</span>
             <div v-if="task.type === 'set_value'" class="font-mono">
-              寄存器下写: <span class="text-[#1890ff] font-bold">{{ task.params.variableKey }}</span> 写入值 -> <mark class="bg-amber-100/60 px-1 font-sans rounded font-bold text-slate-800">{{ task.params.newValue }}</mark>
+              变量: <span class="text-[#1890ff] font-bold">{{ task.params.variableKey }}</span> → 值: <mark class="bg-amber-100/60 px-1 font-sans rounded font-bold text-slate-800">{{ task.params.newValue }}</mark>
             </div>
             <div v-else-if="task.type === 'backup'">
-              备份归档策略: 工业组态项目节点拓扑与设备配置一键导出 (.sql 文件，保留结构)
+              导出系统配置和时序数据到备份文件
             </div>
             <div v-else-if="task.type === 'execute_script'" class="font-mono text-indigo-700 font-bold">
-              执行脚本 ID: {{ task.params.scriptId }}
+              脚本 ID: {{ task.params.scriptId }}
             </div>
             <div v-else-if="task.type === 'clear_history'">
-              清理深度: 保留时序日志记录时间跨度 <b class="text-rose-600 px-1 font-bold font-sans">{{ task.params.retentionDays || 30 }}</b> 天，早期溢出块作安全销毁。
+              保留 <b class="text-rose-600 px-1 font-bold font-sans">{{ task.params.retentionDays || 30 }}</b> 天内数据，超出部分自动清理
             </div>
           </div>
 
@@ -208,15 +208,15 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
               <!-- Success status blinkers -->
               <div v-if="task.status === 'running'" class="inline-flex items-center gap-1 text-indigo-600 font-bold font-sans">
                 <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                <span>运行中...</span>
+                <span>执行中</span>
               </div>
               <div v-else-if="task.status === 'success'" class="inline-flex items-center gap-1 text-emerald-600 font-bold">
                 <CheckCircle2 class="w-3.5 h-3.5" />
-                <span>上次成功</span>
+                <span>成功</span>
               </div>
               <div v-else-if="task.status === 'failed'" class="inline-flex items-center gap-1 text-rose-600 font-bold">
                 <X class="w-3.5 h-3.5" />
-                <span>执行故障</span>
+                <span>失败</span>
               </div>
 
               <!-- Manual bypass trigger -->
@@ -226,7 +226,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
                 class="px-2.5 py-1 text-[10px] font-bold border border-slate-200 hover:bg-slate-50 bg-white rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all disabled:opacity-45 disabled:cursor-not-allowed select-none"
               >
                 <Play class="w-3 h-3 text-slate-500" />
-                强制触发
+                立即执行
               </button>
 
               <!-- Deletion -->
@@ -252,7 +252,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-indigo-400">
             <Clock class="w-4 h-4" />
-            <span>挂载新调度批处理自动化任务</span>
+            <span>新建调度任务</span>
           </div>
           <button @click="showAddModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4.5 h-4.5" /></button>
         </div>
@@ -262,11 +262,11 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
           
           <!-- Task Name -->
           <div>
-            <label class="font-bold text-slate-500 block mb-1">计划任务名称</label>
+            <label class="font-bold text-slate-500 block mb-1">任务名称</label>
             <input 
               v-model="newTaskName"
               type="text"
-              placeholder="如: 食品车间每日污水溢流安全巡检备份"
+              placeholder="如: 每日数据备份"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
             />
           </div>
@@ -274,39 +274,39 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
           <!-- Cron timing and types -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">执行机制 (Cron / Time)</label>
+              <label class="font-bold text-slate-500 block mb-1">执行周期</label>
               <select 
                 v-model="cronInput"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-sans font-bold"
               >
-                <option value="每 5 秒自动触发">每 5 秒自动触发</option>
-                <option value="每分钟间隔">每分钟间隔</option>
+                <option value="每 5 秒自动触发">每 5 秒</option>
+                <option value="每分钟间隔">每分钟</option>
                 <option value="每 15 分钟">每 15 分钟</option>
-                <option value="每天凌晨 02:00:00">每天热休 02:00:00</option>
-                <option value="每周日 00:00:00">每周日凌晨 00:00</option>
+                <option value="每天凌晨 02:00:00">每天 02:00</option>
+                <option value="每周日 00:00:00">每周日 00:00</option>
               </select>
             </div>
 
             <div>
-              <label class="font-bold text-slate-500 block mb-1">任务运作类型</label>
+              <label class="font-bold text-slate-500 block mb-1">任务类型</label>
               <select 
                 v-model="taskTypeSelected"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-sans font-bold"
               >
-                <option value="backup">全库异地备份 (Backup)</option>
-                <option value="set_value">写寄存器设定 (Set Val)</option>
-                <option value="execute_script">后台执行脚本 (Script)</option>
-                <option value="clear_history">老旧时序清扫 (Prune)</option>
+                <option value="backup">数据备份</option>
+                <option value="set_value">变量写入</option>
+                <option value="execute_script">脚本执行</option>
+                <option value="clear_history">历史清理</option>
               </select>
             </div>
           </div>
 
           <!-- Conditional param fields based on type selected -->
           <div v-if="taskTypeSelected === 'set_value'" class="bg-slate-50 rounded-lg p-3 border border-slate-150 space-y-2">
-            <h4 class="font-bold text-slate-600 block mb-1">下发变量参数值</h4>
+            <h4 class="font-bold text-slate-600 block mb-1">变量配置</h4>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-[10px] text-slate-400 block mb-0.5">目标物理变量Key</label>
+                <label class="text-[10px] text-slate-400 block mb-0.5">目标变量</label>
                 <select 
                   v-model="selectedVarKey"
                   class="w-full bg-white border border-slate-200 p-1 rounded font-mono"
@@ -315,7 +315,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
                 </select>
               </div>
               <div>
-                <label class="text-[10px] text-slate-400 block mb-0.5">需要修改写入的数值</label>
+                <label class="text-[10px] text-slate-400 block mb-0.5">写入值</label>
                 <input 
                   v-model.number="targetWriteVal"
                   type="number"
@@ -326,20 +326,20 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
           </div>
 
           <div v-else-if="taskTypeSelected === 'execute_script'" class="bg-indigo-50/50 rounded-lg p-3 border border-indigo-100">
-            <label class="font-bold text-indigo-700 block mb-1">关联的系统脚本</label>
+            <label class="font-bold text-indigo-700 block mb-1">选择脚本</label>
             <select 
               v-model="selectedScriptId"
               class="w-full bg-white border border-indigo-200 text-slate-800 p-2 rounded-lg font-bold outline-none"
             >
               <option v-for="scr in systemScripts" :key="scr.id" :value="scr.id">
-                {{ scr.name }} ({{ scr.triggerType === 'auto' ? '自动' : '手动' }})
+                {{ scr.name }} ({{ scr.triggerType === 'auto' ? '定时' : '手动' }})
               </option>
-              <option v-if="systemScripts.length === 0" disabled>无任何可用系统脚本，请先前往脚本中心创建</option>
+              <option v-if="systemScripts.length === 0" disabled>暂无可用脚本</option>
             </select>
           </div>
 
           <div v-else-if="taskTypeSelected === 'clear_history'" class="bg-rose-50/50 rounded-lg p-3 border border-rose-100 flex items-center justify-between">
-            <span class="font-bold text-rose-800">数据库清理时间边界</span>
+            <span class="font-bold text-rose-800">数据保留期限</span>
             <div class="flex items-center gap-1 text-slate-700 font-bold">
               <span>保留</span>
               <input 
@@ -347,12 +347,12 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
                 type="number"
                 class="w-14 bg-white border border-rose-200 rounded p-1 text-center font-mono font-bold"
               />
-              <span>天内数据</span>
+              <span>天</span>
             </div>
           </div>
 
           <div v-else-if="taskTypeSelected === 'backup'" class="text-[11px] leading-relaxed text-emerald-700 bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
-            <b>备份动作：</b>系统将在到达预定时间点后，自锁当前指令线，安全压缩写入历史时序表及全局SCADA拖曳点位数据库，输出异地灾备的 ZIP 打包数据。
+            <b>备份内容：</b>系统配置、时序数据和设备点位信息将被打包导出。
           </div>
 
         </div>
@@ -369,7 +369,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
             @click="handleCreateTask"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            保存上架计划
+            创建任务
           </button>
         </div>
       </div>

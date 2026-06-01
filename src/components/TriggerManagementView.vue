@@ -129,10 +129,10 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <ShieldAlert class="w-5 h-5 text-amber-500 animate-pulse" />
-          多变量触发器与安全联锁策略中心
+          触发器管理
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          为底层各种 PLC 变量配置安全监控策略。当设定值溢流时，自主发出全系统高亮报警或反向下发硬联锁控制改写其他寄存器变量。
+          配置变量监控规则，当变量值满足条件时触发告警或执行联动控制。
         </p>
       </div>
 
@@ -141,7 +141,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
         class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center active:scale-95 transition-all"
       >
         <Plus class="w-4 h-4" />
-        部署新安全触发器
+        新建触发器
       </button>
     </div>
 
@@ -152,7 +152,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
           <Bell class="w-5 h-5" />
         </div>
         <div>
-          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">布防触发器数</span>
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">触发器总数</span>
           <h3 class="text-xl font-bold font-mono text-slate-900 leading-none mt-1">
             {{ triggers.length }} <span class="text-xs font-sans text-slate-400">个</span>
           </h3>
@@ -164,9 +164,9 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
           <ToggleRight class="w-5 h-5" />
         </div>
         <div>
-          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">运行拦截中</span>
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">已启用</span>
           <h3 class="text-xl font-bold font-mono text-emerald-600 leading-none mt-1">
-            {{ triggers.filter(t => t.active).length }} <span class="text-xs font-sans text-slate-400">核</span>
+            {{ triggers.filter(t => t.active).length }} <span class="text-xs font-sans text-slate-400">个</span>
           </h3>
         </div>
       </div>
@@ -176,7 +176,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
           <Link2 class="w-5 h-5" />
         </div>
         <div>
-          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">级联联动配置点</span>
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">联动规则</span>
           <h3 class="text-xl font-bold font-mono text-indigo-600 leading-none mt-1">
             {{ triggers.filter(t => t.actionType === 'linkage').length }} <span class="text-xs font-sans text-slate-400">条</span>
           </h3>
@@ -192,12 +192,12 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
             <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-100 select-none">
               <tr>
                 <th class="p-4 pl-5">规则名称</th>
-                <th class="p-4">关联设备与通道</th>
-                <th class="p-4">触发逻辑表达式</th>
-                <th class="p-4">实时当前数据</th>
-                <th class="p-4">响应行为</th>
-                <th class="p-4 font-center text-center">布防状态</th>
-                <th class="p-4 pr-5 text-right w-24">管理控制</th>
+                <th class="p-4">关联设备</th>
+                <th class="p-4">触发条件</th>
+                <th class="p-4">当前值</th>
+                <th class="p-4">响应动作</th>
+                <th class="p-4 font-center text-center">状态</th>
+                <th class="p-4 pr-5 text-right w-24">操作</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-slate-700">
@@ -251,13 +251,13 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
                       class="px-2 py-0.5 rounded font-sans tracking-wide uppercase text-white"
                       :class="trig.alarmLevel === 'warning' ? 'bg-rose-500' : trig.alarmLevel === 'normal' ? 'bg-amber-500' : 'bg-sky-500'"
                     >
-                      系统告警 ({{ trig.alarmLevel === 'warning' ? 'Warning' : trig.alarmLevel === 'normal' ? 'Normal' : 'Info' }})
+                      {{ trig.alarmLevel === 'warning' ? '严重告警' : trig.alarmLevel === 'normal' ? '一般告警' : '提示信息' }}
                     </span>
                   </div>
                   
                   <div v-else class="inline-flex items-center gap-1 font-bold text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg">
                     <Link2 class="w-3 h-3 text-indigo-500" />
-                    <span>联动写: {{ trig.linkageVariableKey }} = {{ trig.linkageValue }}</span>
+                    <span>联动: {{ trig.linkageVariableKey }} = {{ trig.linkageValue }}</span>
                   </div>
                 </td>
 
@@ -287,7 +287,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
               <tr v-if="triggers.length === 0">
                 <td colspan="7" class="text-center py-16 text-slate-400">
                   <AlertTriangle class="w-8 h-8 mx-auto text-slate-300 mb-2 animate-bounce" />
-                  <span>暂无任何安全拦截器。点击右上方开始定义一个联锁！</span>
+                  <span>暂无触发器。点击右上角创建新规则。</span>
                 </td>
               </tr>
             </tbody>
@@ -303,7 +303,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-[#1890ff]">
             <ShieldAlert class="w-4 h-4" />
-            <span>布画全系统寄存器监控触发点</span>
+            <span>新建触发器</span>
           </div>
           <button @click="showAddModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4.5 h-4.5" /></button>
         </div>
@@ -312,11 +312,11 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
         <div class="p-5 space-y-4 text-xs font-sans">
           <!-- Trigger Name -->
           <div>
-            <label class="font-bold text-slate-500 block mb-1">拦截保护项名称</label>
+            <label class="font-bold text-slate-500 block mb-1">规则名称</label>
             <input 
               v-model="newTriggerName"
               type="text"
-              placeholder="如: 食品加热锅炉二级温控联锁报警"
+              placeholder="如: 温度超限告警"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-semibold focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
             />
           </div>
@@ -324,7 +324,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
           <!-- Target Device -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">被检测物理设备</label>
+              <label class="font-bold text-slate-500 block mb-1">监控设备</label>
               <select 
                 v-model="selectedDeviceId"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 font-bold focus:outline-none"
@@ -337,7 +337,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
 
             <!-- Target Variable Key -->
             <div>
-              <label class="font-bold text-slate-500 block mb-1">联动遥测变量</label>
+              <label class="font-bold text-slate-500 block mb-1">监控变量</label>
               <select 
                 v-model="selectedVariableKey"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 font-mono font-bold focus:outline-none"
@@ -345,7 +345,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
                 <option v-for="v in availableVariablesForSelectedDevice" :key="v.key" :value="v.key">
                   {{ v.name }} ({{ v.key }})
                 </option>
-                <option v-if="availableVariablesForSelectedDevice.length === 0" disabled>设备离线或无对应模型</option>
+                <option v-if="availableVariablesForSelectedDevice.length === 0" disabled>设备离线或无模型</option>
               </select>
             </div>
           </div>
@@ -353,19 +353,19 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
           <!-- Condition & threshold -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">表达式判断算子</label>
+              <label class="font-bold text-slate-500 block mb-1">比较条件</label>
               <select 
                 v-model="selectedCondition"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none"
               >
                 <option value="greater">大于 (>)</option>
                 <option value="less">小于 (&lt;)</option>
-                <option value="equal">严格等于 (==)</option>
+                <option value="equal">等于 (==)</option>
               </select>
             </div>
             
             <div>
-              <label class="font-bold text-slate-500 block mb-1">阈值触发数边界值</label>
+              <label class="font-bold text-slate-500 block mb-1">阈值</label>
               <input 
                 v-model.number="thresholdValue"
                 type="number"
@@ -377,7 +377,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
 
           <!-- Action block type -->
           <div class="border-t border-slate-100 pt-3">
-            <label class="font-bold text-slate-500 block mb-1.5">联动响应触发行为</label>
+            <label class="font-bold text-slate-500 block mb-1.5">响应动作</label>
             <div class="flex gap-4">
               <label class="flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
                 <input 
@@ -386,7 +386,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
                   v-model="actionTypeSelected"
                   class="accent-slate-900" 
                 />
-                1. 产生时序日志告警
+                触发告警
               </label>
               <label class="flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
                 <input 
@@ -395,29 +395,29 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
                   v-model="actionTypeSelected"
                   class="accent-slate-900" 
                 />
-                2. 触发反向数据联动
+                变量联动
               </label>
             </div>
           </div>
 
           <!-- Conditional details Form views -->
           <div v-if="actionTypeSelected === 'alarm'" class="bg-amber-50/50 rounded-lg p-3 border border-amber-100 flex items-center justify-between">
-            <span class="font-bold text-amber-800">设定告警警告等级</span>
+            <span class="font-bold text-amber-800">告警级别</span>
             <select 
               v-model="alarmLevelSelected"
               class="bg-white border border-amber-200 text-amber-900 font-bold rounded p-1 outline-none font-sans"
             >
-              <option value="info">常规通知 (Info)</option>
-              <option value="normal">工艺异常 (Normal)</option>
-              <option value="warning">红灯禁行越限 (Warning)</option>
+              <option value="info">提示信息</option>
+              <option value="normal">一般告警</option>
+              <option value="warning">严重告警</option>
             </select>
           </div>
 
           <div v-else class="bg-indigo-50/50 rounded-lg p-3 border border-indigo-100 space-y-3">
-            <h4 class="font-bold text-indigo-800">下发反向寄存器联动写入策略</h4>
+            <h4 class="font-bold text-indigo-800">联动配置</h4>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-[10px] text-indigo-600 font-bold block mb-0.5">目标物理变量绑定键</label>
+                <label class="text-[10px] text-indigo-600 font-bold block mb-0.5">目标变量</label>
                 <select 
                   v-model="linkageVarSelected"
                   class="w-full bg-white border border-indigo-100 text-slate-800 font-mono text-[11px] p-1.5 rounded focus:outline-none"
@@ -429,16 +429,16 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
               </div>
               
               <div>
-                <label class="text-[10px] text-indigo-600 font-bold block mb-0.5">强制覆写值 (Boolean/Val)</label>
+                <label class="text-[10px] text-indigo-600 font-bold block mb-0.5">设置值</label>
                 <select 
                   v-model="linkageValSelected"
                   class="w-full bg-white border border-indigo-100 text-slate-800 text-[11px] p-1.5 rounded focus:outline-none"
                 >
-                  <option value="true">合闸 (true)</option>
-                  <option value="false">开路 (false)</option>
-                  <option value="50">参数中档 (50)</option>
-                  <option value="0">完全归零 (0)</option>
-                  <option value="120">极限高值 (120)</option>
+                  <option value="true">开启 (true)</option>
+                  <option value="false">关闭 (false)</option>
+                  <option value="50">中等 (50)</option>
+                  <option value="0">零值 (0)</option>
+                  <option value="120">高值 (120)</option>
                 </select>
               </div>
             </div>
@@ -458,7 +458,7 @@ const toggleTriggerActive = (trig: VariableTrigger) => {
             @click="handleCreateTrigger"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            校验并布防
+            创建触发器
           </button>
         </div>
       </div>

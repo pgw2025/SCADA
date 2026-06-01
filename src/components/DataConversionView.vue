@@ -193,10 +193,10 @@ const toggleLinkStatus = (c: DataConversion) => {
       <div>
         <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight flex items-center gap-2">
           <Shuffle class="w-5 h-5 text-indigo-500" />
-          <span>全设备级数据联动与桥接转换</span>
+          <span>数据转换</span>
         </h1>
         <p class="text-xs text-slate-500 mt-1">
-          配置网关各物理通道间的交叉联动转发，无需控制器硬写即可搭建设备与设备之间的数据桥。
+          配置设备间的数据映射和值跟随规则。
         </p>
       </div>
 
@@ -205,7 +205,7 @@ const toggleLinkStatus = (c: DataConversion) => {
         class="bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 shadow-sm"
       >
         <Plus class="w-4 h-4" />
-        建立设备级仿真联动组
+        新建转换规则
       </button>
     </div>
 
@@ -219,7 +219,7 @@ const toggleLinkStatus = (c: DataConversion) => {
           已启用: <b class="text-emerald-600 text-sm font-mono">{{ dataConversions.filter(c => c.active).length }}</b> 条
         </span>
         <span class="inline-flex items-center gap-1 border-l border-slate-200 pl-4 text-[10px] text-slate-400 font-mono">
-          🛡️ 反向 DFS 环路保护: 自动拦截
+          🛡️ 环路保护: 已启用
         </span>
       </div>
 
@@ -273,35 +273,35 @@ const toggleLinkStatus = (c: DataConversion) => {
           <div class="grid grid-cols-5 gap-2 items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
             <!-- Source Node -->
             <div class="col-span-2 space-y-1 text-left select-text">
-              <span class="text-[9px] font-bold text-indigo-500 uppercase font-mono">SOURCE (源变量点)</span>
+              <span class="text-[9px] font-bold text-indigo-500 uppercase font-mono">源</span>
               <h5 class="text-xs font-bold text-slate-800 truncate">
-                {{ devices.find(d => d.id === c.sourceDeviceId)?.name || '未知源物理端' }}
+                {{ devices.find(d => d.id === c.sourceDeviceId)?.name || '未知源设备' }}
               </h5>
               <div class="font-mono text-[10px] text-slate-500 font-bold bg-[#1890ff]/5 px-2 py-0.5 rounded truncate inline-block border border-[#1890ff]/10">
                 {{ c.sourceVariableKey }}
               </div>
               <p class="text-[10px] text-slate-400 font-mono">
-                实时值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.sourceDeviceId)?.variables[c.sourceVariableKey] }}</span>
+                当前值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.sourceDeviceId)?.variables[c.sourceVariableKey] }}</span>
               </p>
             </div>
 
             <!-- Connection icon arrow -->
             <div class="flex flex-col items-center justify-center space-y-1">
-              <span class="text-[8px] font-extrabold text-slate-400 tracking-wider">MAPPED</span>
+              <span class="text-[8px] font-extrabold text-slate-400 tracking-wider">映射</span>
               <ArrowRight class="w-4 h-4 text-slate-400" />
             </div>
 
             <!-- Target Node -->
             <div class="col-span-2 space-y-1 text-left select-text">
-              <span class="text-[9px] font-bold text-emerald-600 uppercase font-mono">TARGET (目标变点)</span>
+              <span class="text-[9px] font-bold text-emerald-600 uppercase font-mono">目标</span>
               <h5 class="text-xs font-bold text-slate-800 truncate">
-                {{ devices.find(d => d.id === c.targetDeviceId)?.name || '未知目标端' }}
+                {{ devices.find(d => d.id === c.targetDeviceId)?.name || '未知目标设备' }}
               </h5>
               <div class="font-mono text-[10px] text-slate-500 font-bold bg-emerald-50 px-2 py-0.5 rounded truncate inline-block border border-emerald-100">
                 {{ c.targetVariableKey }}
               </div>
               <p class="text-[10px] text-slate-400 font-mono">
-                实时值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.targetDeviceId)?.variables[c.targetVariableKey] }}</span>
+                当前值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.targetDeviceId)?.variables[c.targetVariableKey] }}</span>
               </p>
             </div>
           </div>
@@ -309,13 +309,13 @@ const toggleLinkStatus = (c: DataConversion) => {
 
         <!-- Footer actions -->
         <div class="bg-slate-50/70 p-3 flex justify-between items-center text-[10px] text-slate-400 border-t border-slate-100 shrink-0 font-mono">
-          <span>🛡️ loop checking filter passed / OK</span>
+          <span>🛡️ 环路检查已通过</span>
           <button 
             @click="handleDeleteLinkage(c.id, c.name)"
             class="text-rose-500 hover:text-rose-700 font-bold inline-flex items-center gap-0.5 cursor-pointer font-sans"
           >
             <Trash2 class="w-3.5 h-3.5" />
-            删除联动规则
+            删除规则
           </button>
         </div>
       </div>
@@ -326,8 +326,8 @@ const toggleLinkStatus = (c: DataConversion) => {
       >
         <Shuffle class="w-8 h-8 text-indigo-300 animate-pulse" />
         <div class="text-xs">
-          <p class="font-bold text-slate-500">没有查找到符合条件的数据联动转换规则</p>
-          <p class="text-[11px] text-slate-400 mt-1">您可以点击右上角按钮新建一组设备间的值跟随和级联传导机制</p>
+          <p class="font-bold text-slate-500">暂无转换规则</p>
+          <p class="text-[11px] text-slate-400 mt-1">点击右上角按钮新建规则</p>
         </div>
       </div>
     </div>
@@ -339,14 +339,14 @@ const toggleLinkStatus = (c: DataConversion) => {
         <div class="bg-[#1e1b4b] text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Shuffle class="w-4 h-4 text-indigo-400" />
-            <span>配置设备变量级联跟随联动规则</span>
+            <span>配置转换规则</span>
           </div>
           <button @click="showModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 block mb-1 font-bold">联动规则名称 (Label)</label>
+            <label class="text-slate-500 block mb-1 font-bold">规则名称</label>
             <input 
               v-model="linkageName"
               type="text"
@@ -356,11 +356,11 @@ const toggleLinkStatus = (c: DataConversion) => {
 
           <!-- Source dropdown selection box -->
           <div class="p-3 bg-slate-50/50 rounded-xl border border-slate-100 space-y-2.5">
-            <span class="text-[9px] font-bold text-indigo-500 font-mono tracking-wider block">SOURCE (源变跟随点)</span>
+            <span class="text-[9px] font-bold text-indigo-500 font-mono tracking-wider block">源</span>
             
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">选择源设备</label>
+                <label class="text-slate-400 block mb-0.5 text-[10px]">源设备</label>
                 <select 
                   v-model="sourceDevId"
                   @change="onSourceDeviceChange"
@@ -370,7 +370,7 @@ const toggleLinkStatus = (c: DataConversion) => {
                 </select>
               </div>
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">关联源变量 (Key)</label>
+                <label class="text-slate-400 block mb-0.5 text-[10px]">源变量</label>
                 <select 
                   v-model="sourceVarKey"
                   class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-mono text-[11px]"
@@ -381,22 +381,22 @@ const toggleLinkStatus = (c: DataConversion) => {
             </div>
             
             <p v-if="sourceVarKey" class="text-[10px] text-slate-400 text-left font-mono leading-none">
-              当前实时源值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === sourceDevId)?.variables[sourceVarKey] }}</b>
+              当前值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === sourceDevId)?.variables[sourceVarKey] }}</b>
             </p>
           </div>
 
           <!-- Icon Separator -->
           <div class="flex justify-center select-none text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-            ▼ 值跟随并自动传导数据 ▼
+            ▼ 值跟随传导 ▼
           </div>
 
           <!-- Target dropdown selection box -->
           <div class="p-3 bg-slate-50/50 rounded-xl border border-slate-100 space-y-2.5">
-            <span class="text-[9px] font-bold text-emerald-600 font-mono tracking-wider block">TARGET (目标响应点)</span>
+            <span class="text-[9px] font-bold text-emerald-600 font-mono tracking-wider block">目标</span>
             
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">选择目标设备</label>
+                <label class="text-slate-400 block mb-0.5 text-[10px]">目标设备</label>
                 <select 
                   v-model="targetDevId"
                   @change="onTargetDeviceChange"
@@ -406,7 +406,7 @@ const toggleLinkStatus = (c: DataConversion) => {
                 </select>
               </div>
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">被写入目标变量 (Key)</label>
+                <label class="text-slate-400 block mb-0.5 text-[10px]">目标变量</label>
                 <select 
                   v-model="targetVarKey"
                   class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-mono text-[11px]"
@@ -417,13 +417,13 @@ const toggleLinkStatus = (c: DataConversion) => {
             </div>
 
             <p v-if="targetVarKey" class="text-[10px] text-slate-400 text-left font-mono leading-none">
-              当前实时目标值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === targetDevId)?.variables[targetVarKey] }}</b>
+              当前值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === targetDevId)?.variables[targetVarKey] }}</b>
             </p>
           </div>
 
           <!-- Enable state toggle on save -->
           <div class="flex items-center justify-between py-1">
-            <span class="text-slate-500 font-bold">保存并立即就绪启用</span>
+            <span class="text-slate-500 font-bold">保存并启用</span>
             <button 
               @click="isActiveState = !isActiveState"
               class="rounded-full cursor-pointer transition-colors"
@@ -446,7 +446,7 @@ const toggleLinkStatus = (c: DataConversion) => {
             @click="handleSaveLinkage"
             class="px-4 py-1.5 bg-indigo-650 rounded-lg bg-indigo-650 bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white cursor-pointer"
           >
-            校验并保存联动
+            保存规则
           </button>
         </div>
 

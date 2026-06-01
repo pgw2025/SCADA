@@ -136,14 +136,14 @@ onUnmounted(() => {
       
       <!-- Brand banner inside login -->
       <div class="bg-slate-950 p-6 flex flex-col items-center justify-center border-b border-slate-800 text-center gap-3">
-        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-lg">
-          <Server class="w-6 h-6 text-white animate-pulse" />
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-lg">
+            <Server class="w-6 h-6 text-white animate-pulse" />
+          </div>
+          <div>
+            <h1 class="text-sm font-black tracking-widest text-white uppercase">IOTA-SCADA 系统</h1>
+            <span class="text-[10px] text-slate-400 font-medium tracking-wide mt-1 block">工业控制与数据采集平台</span>
+          </div>
         </div>
-        <div>
-          <h1 class="text-sm font-black tracking-widest text-white uppercase">IOTA-SCADA 工业物联大脑</h1>
-          <span class="text-[10px] text-slate-400 font-medium tracking-wide mt-1 block">多源 PLC 映射与高维交互组态集中式控制系统</span>
-        </div>
-      </div>
 
       <!-- Login inputs form -->
       <form @submit.prevent="triggerFormLogin" class="p-6 space-y-4">
@@ -154,18 +154,18 @@ onUnmounted(() => {
         </div>
 
         <div>
-          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">操作员账户 (Username)</label>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">用户名</label>
           <input 
             v-model="loginUsernameInput"
             type="text"
             required
             class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs font-bold text-white outline-none focus:border-sky-500 transition-colors"
-            placeholder="Username / e.g. admin"
+            placeholder="用户名"
           />
         </div>
 
         <div>
-          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">授权口令密码 (Password)</label>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">密码</label>
           <div class="relative">
             <input 
               v-model="loginPasswordInput"
@@ -179,16 +179,15 @@ onUnmounted(() => {
         </div>
 
         <!-- Submit btn -->
-        <button 
-          type="submit" 
+        <button type="submit" 
           class="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg transition-transform active:scale-95 cursor-pointer mt-2"
         >
-          登 录 系 统
+          登录
         </button>
 
         <div class="border-t border-slate-800 pt-4 mt-2 grid grid-cols-1 gap-2.5 text-center">
           <div class="text-[10px] text-slate-500 font-sans leading-relaxed">
-            默认中控台授权账号: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin</button> &nbsp;密码: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin888</button>
+            默认账户: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin</button> / <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin888</button>
           </div>
 
           <!-- Quick bypass button for high fidelity UX -->
@@ -198,7 +197,7 @@ onUnmounted(() => {
             class="py-1.5 border border-slate-800 hover:bg-slate-805/30 bg-slate-850/10 text-slate-350 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <UserCheck class="w-3.5 h-3.5" />
-            快速一键工程登录免输密码
+            快速登录
           </button>
         </div>
 
@@ -234,11 +233,11 @@ onUnmounted(() => {
           <h1 class="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2 leading-none text-slate-50">
             {{ systemConfig.systemTitle }}
             <span class="text-[9px] bg-slate-900 text-[#1890ff] font-bold px-1.5 py-0.5 rounded border border-slate-800 select-none font-mono hidden sm:inline-block">
-              V6.0 企业级
+              V6.0
             </span>
           </h1>
           <span class="text-[9px] sm:text-[10px] text-slate-400 leading-none mt-1 inline-block select-all">
-            集控台中心 · 多通路实时 M2M 数据交换后台
+            SCADA 控制中心
           </span>
         </div>
       </div>
@@ -252,10 +251,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Master active state -->
-        <div class="flex items-center gap-1.5 bg-[#10b981]/10 text-emerald-400 border border-[#10b981]/25 px-2 py-0.5 sm:py-1 rounded-lg">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-          <span class="font-bold uppercase tracking-wider text-[8px] sm:text-[9px]">SCADA NET: ON</span>
-        </div>
+          <div class="flex items-center gap-1.5 bg-[#10b981]/10 text-emerald-400 border border-[#10b981]/25 px-2 py-0.5 sm:py-1 rounded-lg">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+            <span class="font-bold uppercase tracking-wider text-[8px] sm:text-[9px]">系统运行中</span>
+          </div>
       </div>
     </header>
 
@@ -272,12 +271,12 @@ onUnmounted(() => {
           <button 
             @click="isSidebarCollapsed = !isSidebarCollapsed" 
             class="w-full py-1.5 hover:bg-slate-800 bg-slate-900 border border-slate-800/60 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95"
-            :title="isSidebarCollapsed ? '展开中控导航' : '收起中控导航'"
+            :title="isSidebarCollapsed ? '展开导航' : '收起导航'"
           >
             <ChevronRight v-if="isSidebarCollapsed" class="w-4 h-4 text-slate-400" />
             <template v-else>
               <ChevronLeft class="w-4 h-4 text-slate-400" />
-              <span>收起中控控制台</span>
+              <span>收起导航</span>
             </template>
           </button>
         </div>
@@ -287,7 +286,7 @@ onUnmounted(() => {
           <!-- Category A: Core Control Panel -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              核心面板
+              监控中心
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -309,7 +308,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'live-data'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left cursor-pointer group w-full"
-                :title="isSidebarCollapsed ? '实时数据' : ''"
+                :title="isSidebarCollapsed ? '实时监控' : ''"
                 :class="[
                   activeTab === 'live-data' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -317,7 +316,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Database class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">实时数据</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">实时监控</span>
               </button>
 
               <button 
@@ -351,7 +350,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'scada-editor'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '组态编辑' : ''"
+                :title="isSidebarCollapsed ? '组态设计' : ''"
                 :class="[
                   activeTab === 'scada-editor' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -359,7 +358,7 @@ onUnmounted(() => {
                 ]"
               >
                 <MonitorPlay class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">组态编辑</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">组态设计</span>
               </button>
 
               <button 
@@ -381,7 +380,7 @@ onUnmounted(() => {
           <!-- Category B: Automation & SCADA plugins -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              自动化控制
+              自动化
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -389,7 +388,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'trigger-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '触发管理' : ''"
+                :title="isSidebarCollapsed ? '告警管理' : ''"
                 :class="[
                   activeTab === 'trigger-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -397,7 +396,7 @@ onUnmounted(() => {
                 ]"
               >
                 <ShieldAlert class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">触发管理</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">告警管理</span>
               </button>
 
               <button 
@@ -417,7 +416,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'system-scripts'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '脚本管理' : ''"
+                :title="isSidebarCollapsed ? '脚本引擎' : ''"
                 :class="[
                   activeTab === 'system-scripts' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -425,13 +424,13 @@ onUnmounted(() => {
                 ]"
               >
                 <FileCode class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">脚本管理</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">脚本引擎</span>
               </button>
 
               <button 
                 @click="activeTab = 'data-interfaces'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? 'API网关' : ''"
+                :title="isSidebarCollapsed ? '接口管理' : ''"
                 :class="[
                   activeTab === 'data-interfaces' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -439,13 +438,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Network class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">API网关</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">接口管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'historical-query'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '历史查询' : ''"
+                :title="isSidebarCollapsed ? '历史数据' : ''"
                 :class="[
                   activeTab === 'historical-query' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -453,13 +452,13 @@ onUnmounted(() => {
                 ]"
               >
                 <History class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">历史查询</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">历史数据</span>
               </button>
 
               <button 
                 @click="activeTab = 'mqtt-servers'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? 'MQTT转发' : ''"
+                :title="isSidebarCollapsed ? 'MQTT代理' : ''"
                 :class="[
                   activeTab === 'mqtt-servers' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -467,7 +466,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Rss class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">MQTT转发</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">MQTT代理</span>
               </button>
 
               <button 
@@ -489,7 +488,7 @@ onUnmounted(() => {
           <!-- Category C: Core System configuration -->
           <div>
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">
-              安全与设置
+              系统设置
             </span>
             <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
 
@@ -497,7 +496,7 @@ onUnmounted(() => {
               <button 
                 @click="activeTab = 'database-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '数据库' : ''"
+                :title="isSidebarCollapsed ? '数据库管理' : ''"
                 :class="[
                   activeTab === 'database-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -505,13 +504,13 @@ onUnmounted(() => {
                 ]"
               >
                 <HardDrive class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">数据库</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">数据库管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'user-management'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '账户权限' : ''"
+                :title="isSidebarCollapsed ? '用户管理' : ''"
                 :class="[
                   activeTab === 'user-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -519,13 +518,13 @@ onUnmounted(() => {
                 ]"
               >
                 <Users class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">账户权限</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">用户管理</span>
               </button>
 
               <button 
                 @click="activeTab = 'settings-center'"
                 class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full"
-                :title="isSidebarCollapsed ? '系统设置' : ''"
+                :title="isSidebarCollapsed ? '系统配置' : ''"
                 :class="[
                   activeTab === 'settings-center' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white',
                   isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent',
@@ -533,7 +532,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Settings class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-                <span v-if="!isSidebarCollapsed" class="truncate">系统设置</span>
+                <span v-if="!isSidebarCollapsed" class="truncate">系统配置</span>
               </button>
             </nav>
           </div>
@@ -549,8 +548,8 @@ onUnmounted(() => {
             </div>
             
             <div class="text-left overflow-hidden w-28 shrink-0">
-              <h4 class="text-[11px] font-bold text-white truncate">工况员: {{ loginUser?.username || 'admin' }}</h4>
-              <span class="text-[9px] text-slate-400 block truncate">{{ loginUser?.role || '超级管理员' }}</span>
+              <h4 class="text-[11px] font-bold text-white truncate">{{ loginUser?.username || 'admin' }}</h4>
+              <span class="text-[9px] text-slate-400 block truncate">{{ loginUser?.role || '管理员' }}</span>
             </div>
           </div>
 
@@ -558,21 +557,21 @@ onUnmounted(() => {
             v-if="!isSidebarCollapsed"
             @click="performLogout"
             class="p-1.5 hover:bg-rose-900/30 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-            title="登出中控控制台"
+            title="退出"
           >
             <LogOut class="w-4 h-4" />
           </button>
 
           <!-- Collapsed Profile Avatar & Vertical Stack -->
           <div v-else class="flex flex-col items-center gap-3.5 py-1 w-full shrink-0">
-            <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center relative shrink-0" :title="(loginUser?.username || 'admin') + ' · ' + (loginUser?.role || '超级管理员')">
+            <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center relative shrink-0" :title="(loginUser?.username || 'admin') + ' · ' + (loginUser?.role || '管理员')">
               <UserCheck class="w-4 h-4 text-sky-450 text-sky-400" />
               <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-slate-950"></span>
             </div>
             <button 
               @click="performLogout"
               class="p-1.5 hover:bg-rose-900/20 rounded-lg text-slate-550 hover:text-[#ef4444] transition-colors cursor-pointer"
-              title="登出中控控制台"
+              title="退出"
             >
               <LogOut class="w-4 h-4" />
             </button>
@@ -595,7 +594,7 @@ onUnmounted(() => {
         <div class="flex-1 flex flex-col pt-4 overflow-y-auto space-y-2 pb-4">
           <div class="flex items-center justify-between px-4 mb-2 shrink-0">
             <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-left block">
-              移动集控台目录
+              导航
             </span>
             <button @click="isMobileSidebarOpen = false" class="text-slate-400 hover:text-white p-1 cursor-pointer">
               <X class="w-4.5 h-4.5" />
@@ -619,7 +618,7 @@ onUnmounted(() => {
               :class="activeTab === 'live-data' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Database class="w-4 h-4" />
-              <span>实时数据</span>
+              <span>实时监控</span>
             </button>
 
             <button 
@@ -646,7 +645,7 @@ onUnmounted(() => {
               :class="activeTab === 'scada-editor' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <MonitorPlay class="w-4 h-4" />
-              <span>组态编辑</span>
+              <span>组态设计</span>
             </button>
 
             <button 
@@ -664,7 +663,7 @@ onUnmounted(() => {
               :class="activeTab === 'trigger-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <ShieldAlert class="w-4 h-4" />
-              <span>触发管理</span>
+              <span>告警管理</span>
             </button>
 
             <button 
@@ -682,7 +681,7 @@ onUnmounted(() => {
               :class="activeTab === 'system-scripts' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <FileCode class="w-4 h-4" />
-              <span>脚本管理</span>
+              <span>脚本引擎</span>
             </button>
 
             <button 
@@ -691,7 +690,7 @@ onUnmounted(() => {
               :class="activeTab === 'data-interfaces' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Network class="w-4 h-4" />
-              <span>API网关</span>
+              <span>接口管理</span>
             </button>
 
             <button 
@@ -700,7 +699,7 @@ onUnmounted(() => {
               :class="activeTab === 'historical-query' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <History class="w-4 h-4" />
-              <span>历史查询</span>
+              <span>历史数据</span>
             </button>
 
             <button 
@@ -709,7 +708,7 @@ onUnmounted(() => {
               :class="activeTab === 'mqtt-servers' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Rss class="w-4 h-4 text-slate-400" />
-              <span>MQTT转发</span>
+              <span>MQTT代理</span>
             </button>
 
             <button 
@@ -727,7 +726,7 @@ onUnmounted(() => {
               :class="activeTab === 'database-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <HardDrive class="w-4 h-4" />
-              <span>数据库</span>
+              <span>数据库管理</span>
             </button>
 
             <button 
@@ -736,7 +735,7 @@ onUnmounted(() => {
               :class="activeTab === 'user-management' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Users class="w-4 h-4" />
-              <span>账户权限</span>
+              <span>用户管理</span>
             </button>
 
             <button 
@@ -745,16 +744,16 @@ onUnmounted(() => {
               :class="activeTab === 'settings-center' ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400'"
             >
               <Settings class="w-4 h-4" />
-              <span>系统设置</span>
+              <span>系统配置</span>
             </button>
           </nav>
         </div>
 
         <div class="p-3 bg-slate-950 border-t border-slate-900 flex shrink-0 justify-between items-center">
           <div class="flex items-center gap-2 text-xs">
-            <span class="font-bold text-white">工况: {{ loginUser?.username }}</span>
+            <span class="font-bold text-white">{{ loginUser?.username || 'admin' }}</span>
           </div>
-          <button @click="performLogout(); isMobileSidebarOpen = false;" class="text-rose-500 text-xs">登出注销</button>
+          <button @click="performLogout(); isMobileSidebarOpen = false;" class="text-rose-500 text-xs">退出</button>
         </div>
       </aside>
 

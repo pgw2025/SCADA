@@ -147,7 +147,7 @@ const handleCreateModel = () => {
     variables: []
   });
 
-  addLog('模型建立', `创建新工业变量模型模板 [${modelName.value}] (${modelType.value})`, 'normal');
+  addLog('模型建立', `创建数据模型 [${modelName.value}] (${modelType.value})`, 'normal');
   
   selectedModelId.value = newId;
   showModelModal.value = false;
@@ -166,7 +166,7 @@ const handleDeleteModel = (id: string, name: string) => {
     return;
   }
   dataModels.value = dataModels.value.filter(m => m.id !== id);
-  addLog('模型建立', `已注销数据模型模板 [${name}]`, 'warning');
+  addLog('模型建立', `删除数据模型 [${name}]`, 'warning');
   
   selectedModelId.value = dataModels.value[0]?.id || '';
 };
@@ -216,7 +216,7 @@ const handleSaveVariable = () => {
     }
   });
 
-  addLog('模型建立', `模型 [${model.name}] 新增点位映射标签 [${varName.value}]`, 'normal');
+  addLog('模型建立', `模型 [${model.name}] 添加变量 [${varName.value}]`, 'normal');
 
   // Clear states
   varKey.value = '';
@@ -252,7 +252,7 @@ const handleDeleteVariable = (key: string, name: string) => {
     }
   });
 
-  addLog('模型建立', `从模板 [${model.name}] 注销点位 [${name}]`, 'warning');
+  addLog('模型建立', `模型 [${model.name}] 删除变量 [${name}]`, 'warning');
 };
 </script>
 
@@ -345,16 +345,16 @@ const handleDeleteVariable = (key: string, name: string) => {
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200">
             <div class="flex items-center gap-1.5 text-xs font-bold text-slate-500 tracking-wider uppercase">
             <Sliders class="w-4 h-4 text-violet-500" />
-            <span>变量列表 ({{ filteredVariables.length }} / {{ currentModel.variables.length }} 个变量)</span>
+            <span>共 <b class="text-indigo-600">{{ totalVariableCount }}</b> 个变量</span>
           </div>
             
             <div class="relative w-full sm:w-64 shrink-0">
               <input 
-                v-model="varSearchQuery"
-                type="text"
-                placeholder="搜索变量标识、名称..."
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:bg-white text-slate-900 focus:outline-none focus:border-violet-500 placeholder-slate-400 font-sans"
-              />
+              v-model="varSearchQuery"
+              type="text"
+              placeholder="搜索变量..."
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:bg-white text-slate-900 focus:outline-none focus:border-violet-500 placeholder-slate-400 font-sans"
+            />
             </div>
           </div>
 
@@ -362,12 +362,12 @@ const handleDeleteVariable = (key: string, name: string) => {
             <table class="w-full text-xs font-mono divide-y divide-slate-100">
               <thead>
                 <tr class="bg-slate-50 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                  <th class="px-4 py-3.5">变量标识</th>
-                  <th class="px-4 py-3.5">变量名称</th>
-                  <th class="px-4 py-3.5">数据类型</th>
+                  <th class="px-4 py-3.5">标识</th>
+                  <th class="px-4 py-3.5">名称</th>
+                  <th class="px-4 py-3.5">类型</th>
                   <th class="px-4 py-3.5">单位</th>
-                  <th class="px-4 py-3.5">寄存器地址</th>
-                  <th class="px-4 py-3.5 text-right">删除</th>
+                  <th class="px-4 py-3.5">地址</th>
+                  <th class="px-4 py-3.5 text-right">操作</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-slate-100 font-mono">
@@ -440,7 +440,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
                 <tr v-if="currentModel.variables.length === 0">
                   <td colspan="6" class="p-8 text-center text-slate-400 font-sans">
-                    暂未添加任何变量，请点击右上角 <b>"添加变量"</b> 扩展变量库。
+                    暂无变量，点击"添加变量"创建
                   </td>
                 </tr>
               </tbody>

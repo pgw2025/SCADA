@@ -110,10 +110,10 @@ const handleUpdateCode = (evt: Event) => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <FileCode class="w-5 h-5 text-indigo-600" />
-          系统逻辑控制与自治脚本工作台 (Sandbox Editor)
+          系统脚本管理
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          内置浏览器端轻量安全执行引擎。支持读取、改写底层寄存器，并能编写基于时间段及联动逻辑的安全自动化程序。
+          编写和管理自动化控制脚本，支持定时执行和手动触发。
         </p>
       </div>
 
@@ -122,7 +122,7 @@ const handleUpdateCode = (evt: Event) => {
         class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Plus class="w-4 h-4" />
-        编写新业务脚本
+        新建脚本
       </button>
     </div>
 
@@ -132,7 +132,7 @@ const handleUpdateCode = (evt: Event) => {
       <!-- Left sidebar selector -->
       <div class="w-full lg:w-72 bg-white border-r border-slate-200 flex flex-col shrink-0">
         <div class="p-4 border-b border-slate-100 font-bold text-[10px] text-slate-400 uppercase tracking-widest text-left">
-          脚本库目录 ({{ systemScripts.length }})
+          脚本列表 ({{ systemScripts.length }})
         </div>
 
         <div class="flex-1 overflow-y-auto divide-y divide-slate-100 text-left">
@@ -161,13 +161,13 @@ const handleUpdateCode = (evt: Event) => {
               <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border"
                 :class="scr.triggerType === 'auto' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-150'"
               >
-                {{ scr.triggerType === 'auto' ? '自动运行 (' + scr.intervalSeconds + 's)' : '事件/手动触发' }}
+                {{ scr.triggerType === 'auto' ? '定时执行 (' + scr.intervalSeconds + 's)' : '手动触发' }}
               </span>
 
               <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border"
                 :class="scr.executionStatus === 'success' ? 'bg-emerald-500 text-white border-emerald-500' : scr.executionStatus === 'error' ? 'bg-rose-500 text-white border-rose-500' : scr.executionStatus === 'running' ? 'bg-indigo-500 text-white border-indigo-500 animate-pulse' : 'bg-slate-100 text-slate-400 border-slate-200'"
               >
-                {{ scr.executionStatus === 'success' ? '执行正常' : scr.executionStatus === 'error' ? '常规异常' : scr.executionStatus === 'running' ? '编译解调' : '空闲中' }}
+                {{ scr.executionStatus === 'success' ? '执行成功' : scr.executionStatus === 'error' ? '执行失败' : scr.executionStatus === 'running' ? '执行中' : '空闲' }}
               </span>
             </div>
           </div>
@@ -181,19 +181,19 @@ const handleUpdateCode = (evt: Event) => {
         <div class="bg-slate-950/80 px-5 py-3 border-b border-slate-950 flex items-center justify-between text-white text-xs">
           <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-rose-500" />
-            <b class="font-sans text-slate-300">活跃编辑器:</b>
+            <b class="font-sans text-slate-300">当前脚本:</b>
             <span class="font-bold text-[#1890ff] font-mono select-all">{{ currentScriptObj.name }}</span>
           </div>
 
           <div class="flex items-center gap-2 font-sans">
-            <span class="text-[10px] text-slate-500 font-mono hidden sm:inline-block">Last: {{ currentScriptObj.lastExecuted || '无运行印记' }}</span>
+            <span class="text-[10px] text-slate-500 font-mono hidden sm:inline-block">上次执行: {{ currentScriptObj.lastExecuted || '未执行' }}</span>
             <button 
               @click="handleManualExecute"
               :disabled="currentScriptObj.executionStatus === 'running'"
               class="px-4 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 font-sans shadow-sm disabled:opacity-40"
             >
               <Play class="w-3.5 h-3.5" />
-              立即运行验证
+              运行脚本
             </button>
           </div>
         </div>
@@ -221,12 +221,12 @@ const handleUpdateCode = (evt: Event) => {
           <!-- Console log output -->
           <div class="h-48 border-t border-slate-950 bg-slate-950 flex flex-col min-h-[140px] shrink-0 text-left">
             <div class="bg-slate-900 border-b border-slate-950 px-4 py-1.5 flex items-center justify-between text-slate-400 font-mono text-[10px] select-none">
-              <div class="flex items-center gap-1 text-[#1890ff] font-bold">
-                <Terminal class="w-3.5 h-3.5" />
-                <span>实时逻辑解调控制台 (Script Diagnostic Terminal)</span>
-              </div>
-              <span>Lines: {{ currentScriptObj.logOutput ? currentScriptObj.logOutput.split('\n').length : 0 }}</span>
+            <div class="flex items-center gap-1 text-[#1890ff] font-bold">
+              <Terminal class="w-3.5 h-3.5" />
+              <span>控制台输出</span>
             </div>
+            <span>行数: {{ currentScriptObj.logOutput ? currentScriptObj.logOutput.split('\n').length : 0 }}</span>
+          </div>
 
             <!-- Scroll output -->
             <div class="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-[10.5px] text-slate-300 leading-relaxed max-w-full break-all select-all">
@@ -234,7 +234,7 @@ const handleUpdateCode = (evt: Event) => {
                 <span class="text-indigo-400 font-bold mr-1.5">>>></span> {{ line }}
               </div>
               <div v-if="!currentScriptObj.logOutput" class="text-slate-600 text-center py-6">
-                等待点击 "立即运行验证" 捕获控制台输出重叠段...
+                点击 "运行脚本" 执行并查看输出...
               </div>
             </div>
           </div>
@@ -255,7 +255,7 @@ const handleUpdateCode = (evt: Event) => {
 
       <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 py-16 gap-3">
         <FileCode class="w-10 h-10 text-slate-300 animate-pulse" />
-        <span>目录已被排空。创建您的第一段工业整编脚本。</span>
+        <span>暂无脚本。点击右上角按钮创建新脚本。</span>
       </div>
 
     </div>
@@ -266,7 +266,7 @@ const handleUpdateCode = (evt: Event) => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-indigo-400">
             <Zap class="w-4 h-4" />
-            <span>编写全新逻辑控制程序模块</span>
+            <span>新建脚本</span>
           </div>
           <button @click="showAddModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4.5 h-4.5" /></button>
         </div>
@@ -274,29 +274,29 @@ const handleUpdateCode = (evt: Event) => {
         <div class="p-5 space-y-4 text-xs font-sans">
           
           <div>
-            <label class="font-bold text-slate-500 block mb-1">控制脚本别称</label>
+            <label class="font-bold text-slate-500 block mb-1">脚本名称</label>
             <input 
               v-model="newScriptName"
               type="text"
-              placeholder="如: 分拣履带主轴安全倾倒保护程序"
+              placeholder="如: 温度保护脚本"
               class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
             />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">触发加载机制</label>
+              <label class="font-bold text-slate-500 block mb-1">触发方式</label>
               <select 
                 v-model="newScriptTriggerType"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-bold"
               >
-                <option value="manual">仅手动 / 计划任务调度</option>
-                <option value="auto">后台自动间隔运行</option>
+                <option value="manual">手动触发</option>
+                <option value="auto">定时执行</option>
               </select>
             </div>
 
             <div v-if="newScriptTriggerType === 'auto'">
-              <label class="font-bold text-slate-500 block mb-1">轮询时间间隔 (秒)</label>
+              <label class="font-bold text-slate-500 block mb-1">执行间隔 (秒)</label>
               <input 
                 v-model.number="newScriptInterval"
                 type="number"
@@ -319,7 +319,7 @@ const handleUpdateCode = (evt: Event) => {
             @click="handleCreateScript"
             class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
           >
-            初始化代码模块
+            创建脚本
           </button>
         </div>
 

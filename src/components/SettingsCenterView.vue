@@ -48,10 +48,10 @@ const handleSaveSettings = () => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Settings class="w-5 h-5 text-slate-700" />
-          SCADA 全新物联控制及系统参数配置中心 (Settings Console)
+          系统设置
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          高度集中的内核参数控制底盘。支持编辑全局轮询心跳时长、MQTT 消息中间网桥服务器地址和全车间异常邮件告警推送地址。
+          配置系统核心参数，包括数据源连接、轮询间隔、告警通知等。
         </p>
       </div>
 
@@ -62,7 +62,7 @@ const handleSaveSettings = () => {
         class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-5  py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Save class="w-4 h-4" />
-        {{ isSaving ? '应用并重整内核中...' : '保存应用全局配置' }}
+        {{ isSaving ? '应用配置中...' : '保存配置' }}
       </button>
     </div>
 
@@ -84,35 +84,34 @@ const handleSaveSettings = () => {
         <div class="md:col-span-2 bg-gradient-to-r from-blue-50/60 to-indigo-50/40 border border-indigo-200/90 rounded-2xl p-6 shadow-sm space-y-4">
           <div class="flex items-start justify-between gap-4 flex-col sm:flex-row">
             <div class="space-y-1 text-left">
-              <h3 class="font-bold text-sm text-indigo-950 flex items-center gap-2">
-                <Server class="w-5 h-5 text-indigo-600 animate-pulse" />
-                ASP.NET Core API 实时物理网关数据血缘 & 组态控制台
-              </h3>
-              <p class="text-xs text-indigo-700/80 max-w-2xl font-sans leading-relaxed">
-                控制整个 SCADA 本地大屏的数据连通状态。<b>关闭模拟数据</b>后，本地虚拟物理仿真将自动熔断静默，全车间进入实战遥测模式，通过 
-                <span class="font-bold font-mono text-indigo-800">SignalR Server WebSocket</span> 即时握手监听下行及 PLC 工控变量，并支持通过 <span class="font-bold font-mono text-indigo-800">REST API</span> 双工写回 PLC 主板。
-              </p>
-            </div>
-            
-            <!-- Connection status badge -->
-            <div class="flex items-center gap-2 shrink-0 bg-white px-3 py-1.5 rounded-full border border-indigo-100 shadow-2xs">
-              <span class="relative flex h-2 w-2">
-                <span :class="systemConfig.isSimulationActive ? 'bg-amber-400' : 'bg-emerald-400 animate-ping absolute inline-flex h-full w-full rounded-full opacity-75'"></span>
-                <span :class="systemConfig.isSimulationActive ? 'bg-amber-500' : 'bg-emerald-500'" class="relative inline-flex rounded-full h-2 w-2"></span>
-              </span>
-              <span class="text-[11px] font-bold" :class="systemConfig.isSimulationActive ? 'text-amber-700' : 'text-emerald-700'">
-                {{ systemConfig.isSimulationActive ? '本地工业仿真运行中' : '物理网关已对接到 http://localhost:5000' }}
-              </span>
-            </div>
+            <h3 class="font-bold text-sm text-indigo-950 flex items-center gap-2">
+              <Server class="w-5 h-5 text-indigo-600 animate-pulse" />
+              数据源连接
+            </h3>
+            <p class="text-xs text-indigo-700/80 max-w-2xl font-sans leading-relaxed">
+              配置后端 API 连接和数据仿真模式。
+            </p>
+          </div>
+          
+          <!-- Connection status badge -->
+          <div class="flex items-center gap-2 shrink-0 bg-white px-3 py-1.5 rounded-full border border-indigo-100 shadow-2xs">
+            <span class="relative flex h-2 w-2">
+              <span :class="systemConfig.isSimulationActive ? 'bg-amber-400' : 'bg-emerald-400 animate-ping absolute inline-flex h-full w-full rounded-full opacity-75'"></span>
+              <span :class="systemConfig.isSimulationActive ? 'bg-amber-500' : 'bg-emerald-500'" class="relative inline-flex rounded-full h-2 w-2"></span>
+            </span>
+            <span class="text-[11px] font-bold" :class="systemConfig.isSimulationActive ? 'text-amber-700' : 'text-emerald-700'">
+              {{ systemConfig.isSimulationActive ? '仿真模式' : '已连接' }}
+            </span>
+          </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-3 border-t border-indigo-100/80">
             <!-- Toggle Simulation -->
             <div class="bg-white/80 border border-indigo-100/50 p-4 rounded-xl flex items-center justify-between shadow-3xs hover:bg-white transition-all">
               <div class="space-y-0.5 text-left">
-                <b class="text-xs text-slate-800 block font-bold leading-normal">本地多源工业仿真模拟数据 (Simulator)</b>
-                <span class="text-[10px] text-slate-400 font-sans block">关闭此阀门将全力对接外部工业接口（拒绝假数据）</span>
-              </div>
+              <b class="text-xs text-slate-800 block font-bold leading-normal">启用仿真模式</b>
+              <span class="text-[10px] text-slate-400 font-sans block">关闭后将连接真实数据源</span>
+            </div>
               <div class="flex items-center">
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -127,8 +126,8 @@ const handleSaveSettings = () => {
             <!-- Server Base URL Input -->
             <div class="md:col-span-2 bg-white/80 border border-indigo-100/50 p-4 rounded-xl space-y-2 shadow-3xs hover:bg-white transition-all">
               <div class="flex items-center justify-between text-left">
-                <label class="font-bold text-xs text-slate-850">ASP.NET Core API 服务宿主物理端点 (Server Endpoint)</label>
-                <span class="text-[10px] font-mono font-bold text-indigo-600">Dual WebSocket & HTTP Connection</span>
+                <label class="font-bold text-xs text-slate-850">API 服务地址</label>
+                <span class="text-[10px] font-mono font-bold text-indigo-600">WebSocket & HTTP</span>
               </div>
               <div class="flex items-center gap-2">
                 <div class="relative flex-1">
@@ -153,12 +152,12 @@ const handleSaveSettings = () => {
         <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <h3 class="font-bold text-xs text-slate-900 border-b border-slate-100 pb-2.5 flex items-center gap-2">
             <Eye class="w-4 h-4 text-emerald-600" />
-            1. 品牌定义与界面视效配置 (Visual Settings)
+            界面设置
           </h3>
 
           <div class="space-y-3.5 text-xs font-sans">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">SCADA 后台物联系统主标题</label>
+              <label class="font-bold text-slate-500 block mb-1">系统标题</label>
               <input 
                 v-model="systemConfig.systemTitle"
                 type="text"
@@ -167,7 +166,7 @@ const handleSaveSettings = () => {
             </div>
 
             <div>
-              <label class="font-bold text-slate-500 block mb-1">物理轮询采集心跳刷新间隔 (Polling Delay)</label>
+              <label class="font-bold text-slate-500 block mb-1">数据刷新间隔</label>
               <div class="flex items-center gap-2">
                 <input 
                   v-model.number="systemConfig.pollIntervalMs"
@@ -176,7 +175,7 @@ const handleSaveSettings = () => {
                   min="200"
                   class="w-32 bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 font-mono font-bold outline-none"
                 />
-                <span class="text-[11px] text-slate-500">毫秒 (ms) - 较低延迟将使组态看板图表拟合极尽丝滑</span>
+                <span class="text-[11px] text-slate-500">毫秒 (ms)</span>
               </div>
             </div>
           </div>
@@ -186,15 +185,15 @@ const handleSaveSettings = () => {
         <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <h3 class="font-bold text-xs text-slate-900 border-b border-slate-100 pb-2.5 flex items-center gap-2">
             <ShieldAlert class="w-4 h-4 text-amber-500" />
-            2. 系统异常越界 SMTP 邮件推送服务 (Alarm Mailer)
+            告警通知
           </h3>
 
           <div class="space-y-4 text-xs font-sans">
             <!-- Toggle alert email -->
             <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg">
               <div>
-                <b class="text-slate-800 font-bold block">启用工艺寄存器溢限邮件通知</b>
-                <span class="text-[10px] text-slate-400 block font-normal mt-0.5">当任何触发器告警燃沸，联动发送通知</span>
+                <b class="text-slate-800 font-bold block">启用邮件告警通知</b>
+                <span class="text-[10px] text-slate-400 block font-normal mt-0.5">触发告警时发送邮件通知</span>
               </div>
               
               <input 
@@ -206,13 +205,13 @@ const handleSaveSettings = () => {
 
             <!-- Receiver address -->
             <div :class="!systemConfig.alarmEmailNotify ? 'opacity-40 pointer-events-none' : ''" class="transition-opacity">
-              <label class="font-bold text-slate-500 block mb-1">告警中继收件群组邮箱 (SMTP Mail Register)</label>
+              <label class="font-bold text-slate-500 block mb-1">告警邮箱地址</label>
               <div class="relative">
                 <input 
                   v-model="systemConfig.alarmEmailAddress"
                   type="email"
                   class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 pl-9 text-slate-800 font-bold outline-none font-mono"
-                  placeholder="alerts@iota-factory.com"
+                  placeholder="alerts@factory.com"
                 />
                 <Mail class="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
               </div>
@@ -224,13 +223,13 @@ const handleSaveSettings = () => {
         <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <h3 class="font-bold text-xs text-slate-900 border-b border-slate-100 pb-2.5 flex items-center gap-2">
             <Radio class="w-4 h-4 text-[#1890ff]" />
-            3. 现场物联总线及协议网关 (Industrial Protocols)
+            协议网关
           </h3>
 
           <div class="space-y-3.5 text-xs font-sans">
             <div class="grid grid-cols-3 gap-3">
               <div class="col-span-2">
-                <label class="font-bold text-slate-500 block mb-1">MQTT 消息代理服务代理主干 Host</label>
+                <label class="font-bold text-slate-500 block mb-1">MQTT Broker 地址</label>
                 <input 
                   v-model="systemConfig.mqttBrokerHost"
                   type="text"
@@ -239,7 +238,7 @@ const handleSaveSettings = () => {
               </div>
 
               <div>
-                <label class="font-bold text-slate-500 block mb-1">物理端口 Port</label>
+                <label class="font-bold text-slate-500 block mb-1">端口</label>
                 <input 
                   v-model.number="systemConfig.mqttBrokerPort"
                   type="number"
@@ -249,7 +248,7 @@ const handleSaveSettings = () => {
             </div>
 
             <div>
-              <label class="font-bold text-slate-500 block mb-1">OPC-UA 主动寻踪注册链路 URL (Endpoint URI)</label>
+              <label class="font-bold text-slate-500 block mb-1">OPC-UA 发现地址</label>
               <input 
                 v-model="systemConfig.opcUaDiscoveryUrl"
                 type="text"
@@ -263,25 +262,25 @@ const handleSaveSettings = () => {
         <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <h3 class="font-bold text-xs text-slate-900 border-b border-slate-100 pb-2.5 flex items-center gap-2">
             <Layers class="w-4 h-4 text-purple-600" />
-            4. 自助物理介质与存储持久化寿命 (Data Pruner)
+            数据保留
           </h3>
 
           <div class="space-y-3.5 text-xs font-sans">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">时序大数据流物理表最长保留周期 (Days)</label>
+              <label class="font-bold text-slate-500 block mb-1">数据保留周期</label>
               <div class="flex items-center gap-2">
                 <input 
                   v-model.number="systemConfig.retentionPeriodDays"
                   type="number"
                   class="w-24 bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 font-bold font-mono outline-none"
                 />
-                <span class="text-slate-400">天数 · 超过该时域的数据将被时序清理脚本定期自动剪裁。</span>
+                <span class="text-slate-400">天 · 超过期限的数据将被自动清理。</span>
               </div>
             </div>
 
-            <div class="bg-rose-50/40 border border-rose-100 p-3 rounded-lg leading-relaxed text-rose-700">
-              <span class="font-bold block pb-0.5 text-rose-800">⚠️ 时序自削危险提示：</span>
-              缩短保留天数可最大程度提升时序计算表的聚合查询时延；但过短的天数可能会破坏工艺长期报表的审查和大数据趋势。
+            <div class="bg-amber-50/40 border border-amber-100 p-3 rounded-lg leading-relaxed text-amber-700">
+              <span class="font-bold block pb-0.5 text-amber-800">注意：</span>
+              较短的保留期限可提升查询性能，但可能影响长期趋势分析。
             </div>
           </div>
         </div>

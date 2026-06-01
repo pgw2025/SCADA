@@ -265,7 +265,7 @@ onUnmounted(() => {
           ]"
         >
           <Edit3 class="w-3.5 h-3.5" />
-          组态设计模式
+          设计模式
         </button>
         <button
           @click="emit('toggleMode'); emit('selectComponent', null)"
@@ -277,7 +277,7 @@ onUnmounted(() => {
           ]"
         >
           <Play class="w-3.5 h-3.5 animate-pulse" />
-          运行预览模式
+          运行模式
         </button>
       </div>
 
@@ -328,7 +328,7 @@ onUnmounted(() => {
                 ? 'bg-white border-[#1890ff] text-[#1890ff]'
                 : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
             ]"
-            title="吸附10px网格"
+            title="吸附网格 (10px)"
           >
             网格吸附
           </button>
@@ -348,14 +348,14 @@ onUnmounted(() => {
           <button
             @click="emit('duplicateComponent', selectedId)"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-[#1890ff] cursor-pointer"
-            title="克隆组件 (Ctrl+D)"
+            title="复制 (Ctrl+D)"
           >
             <Copy class="w-3.5 h-3.5 text-cyan-600" />
           </button>
           <button
             @click="emit('deleteComponent', selectedId)"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-red-500 cursor-pointer"
-            title="删除 (Del)"
+            title="删除"
           >
             <Trash2 class="w-3.5 h-3.5 text-red-500" />
           </button>
@@ -400,11 +400,11 @@ onUnmounted(() => {
               isActiveMode ? 'bg-amber-500 animate-pulse' : 'bg-[#1890ff]'
             ]"
           />
-          {{ isActiveMode ? 'HMI LIVE MONITORING' : 'HMI DESIGN CENTER' }}
+          {{ isActiveMode ? 'HMI 实时监控' : 'HMI 设计中心' }}
         </div>
 
         <div class="absolute bottom-3 left-4 font-mono text-[9px] text-gray-400 pointer-events-none select-none">
-          Canvas size: 1100 x 700 px (HMI Smart Grid)
+          画布尺寸: 1100 × 700 像素
         </div>
 
         <!-- Render individual canvas components -->

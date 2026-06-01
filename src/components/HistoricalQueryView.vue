@@ -217,10 +217,10 @@ syncInputLabel();
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Calendar class="w-5 h-5 text-[#1890ff]" />
-          时序大数据库遥测指标历史记录多向追踪中心
+          历史数据查询
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          支持实时、历史分列聚合。通过自定义时间筛选和模糊感知自动匹配输入框，检索时序参数，渲染指标拟合曲线图，并导出标准的时序分卷表格。
+          查询历史时序数据，支持时间筛选和趋势图表展示。
         </p>
       </div>
 
@@ -230,7 +230,7 @@ syncInputLabel();
         class="font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-xs active:translate-y-0.5"
       >
         <FileSpreadsheet class="w-4 h-4" />
-        导出 CSV 结果集 (.csv)
+        导出 CSV
       </button>
     </div>
 
@@ -240,7 +240,7 @@ syncInputLabel();
       <!-- Fuzzy autocomplete variable -->
       <div class="w-full xl:w-[420px] relative">
         <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-sans">
-          输入物理通道标识 (自动匹配/完成)
+          选择变量
         </label>
         
         <div class="relative">
@@ -249,7 +249,7 @@ syncInputLabel();
             @focus="isInputFocused = true"
             @blur="setTimeout(() => isInputFocused = false, 250)"
             type="text"
-            placeholder="输入如: tank_level 或 储水罐"
+            placeholder="搜索变量..."
             class="w-full bg-white border border-slate-200 rounded-lg p-2.5 pl-9 text-xs text-slate-800 font-bold focus:outline-none focus:border-[#1890ff] shadow-xs"
           />
           <Search class="absolute left-3 top-3 w-4 h-4 text-slate-400" />
@@ -280,7 +280,7 @@ syncInputLabel();
       <div class="flex-1 flex flex-col md:flex-row gap-4 items-stretch md:items-end">
         <div class="flex-1">
           <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-sans">
-            快捷检索时间域
+            时间范围
           </label>
           <div class="grid grid-cols-5 bg-white border border-slate-200 rounded-lg p-0.5 font-bold text-[11px] shadow-xs text-center">
             <button 
@@ -332,10 +332,10 @@ syncInputLabel();
           <div class="flex items-center gap-2">
             <TrendingUp class="w-4 h-4 text-emerald-500 animate-pulse" />
             <span class="text-xs font-bold text-slate-800 uppercase tracking-tight">
-              观测参数波动趋势图：<span class="text-indigo-600 font-mono text-[11px] font-bold">{{ activeVariableKey }} ({{ variableUnit }})</span>
+              趋势图：<span class="text-indigo-600 font-mono text-[11px] font-bold">{{ activeVariableKey }} ({{ variableUnit }})</span>
             </span>
           </div>
-          <span class="text-[10px] text-slate-400 font-mono font-medium">绘制时序样点：{{ chartDataPlotPoints.length }} 个</span>
+          <span class="text-[10px] text-slate-400 font-mono font-medium">数据点：{{ chartDataPlotPoints.length }} 个</span>
         </div>
 
         <!-- Custom SVG line/area smooth path plotter -->

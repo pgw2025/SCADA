@@ -70,10 +70,10 @@ const handleMockWarning = () => {
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
           <Terminal class="w-4 h-4 text-slate-600" />
-          系统运行与审计追踪日志
+          系统日志
         </h2>
         <p class="text-xs text-slate-500 font-sans">
-          记录每次组态编辑、PLC改写事件、物理通道离在线和服务器资源越限诊断日志。
+          记录系统运行状态、操作事件和诊断信息。
         </p>
       </div>
 
@@ -82,21 +82,21 @@ const handleMockWarning = () => {
           @click="handleMockWarning"
           class="font-bold text-xs text-slate-600 border border-slate-200 hover:bg-slate-50 bg-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
         >
-          模拟生成实时事件
+          生成测试事件
         </button>
         <button 
           @click="handleExportLogs"
           class="font-bold text-xs text-indigo-600 border border-indigo-100 hover:bg-indigo-50 bg-indigo-50/50 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
         >
           <Download class="w-4 h-4" />
-          导出系统日志
+          导出日志
         </button>
         <button 
           @click="handleClearAllLogs"
           class="font-bold text-xs text-rose-600 border border-rose-100 hover:bg-rose-50 bg-rose-50/50 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
         >
           <Trash2 class="w-4 h-4" />
-          清空记录
+          清空日志
         </button>
       </div>
     </div>
@@ -109,14 +109,14 @@ const handleMockWarning = () => {
         <input 
           v-model="searchQuery"
           type="text"
-          placeholder="按照日志内容、发出源(如 S7驱动)模糊检索审计记录..."
+          placeholder="搜索日志内容或来源..."
           class="w-full bg-slate-50 border border-slate-200 focus:bg-white text-xs pl-9 pr-3 py-1.5 rounded-lg outline-none text-slate-800 focus:border-[#1890ff]"
         />
       </div>
 
       <!-- Level tabs selection -->
       <div class="flex items-center gap-1.5 shrink-0">
-        <span class="text-xs text-slate-400 font-medium">日志分类等级:</span>
+        <span class="text-xs text-slate-400 font-medium">日志等级:</span>
         <div class="flex bg-slate-100 p-0.5 rounded-lg gap-0.5 text-[11px] font-bold">
           <button 
             v-for="lvl in ['ALL', 'info', 'normal', 'warning']" 
@@ -125,7 +125,7 @@ const handleMockWarning = () => {
             class="px-2.5 py-1 rounded-md transition-all cursor-pointer font-sans"
             :class="levelFilter === lvl ? 'bg-white shadow-xs text-slate-800' : 'text-slate-400 hover:text-slate-600'"
           >
-            {{ lvl === 'ALL' ? '全部等级' : lvl === 'info' ? '信息 / Info' : lvl === 'normal' ? '常规 / Normal' : '告警 / Warning' }}
+            {{ lvl === 'ALL' ? '全部' : lvl === 'info' ? '信息' : lvl === 'normal' ? '常规' : '告警' }}
           </button>
         </div>
       </div>
@@ -143,7 +143,7 @@ const handleMockWarning = () => {
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" />
             <span class="ml-1 text-slate-500 font-bold">audit_trail_agent.log</span>
           </div>
-          <span>LOG LINES RECORDED: {{ logs.length }}</span>
+          <span>记录数: {{ logs.length }}</span>
         </div>
 
         <!-- Scroll logs ledger box -->
@@ -185,7 +185,7 @@ const handleMockWarning = () => {
           <!-- Empty filter logs placeholder -->
           <div v-if="filteredLogs.length === 0" class="h-full flex flex-col items-center justify-center text-slate-500 py-16 gap-2">
             <Terminal class="w-8 h-8 text-slate-600 animate-pulse" />
-            <p class="text-xs font-sans">未查得匹配的日志审计线索</p>
+            <p class="text-xs font-sans">暂无匹配的日志记录</p>
           </div>
         </div>
 

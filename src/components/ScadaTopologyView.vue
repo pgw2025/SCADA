@@ -101,8 +101,8 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
   };
 
   updateCurrentPageComponents([...currentComps, newComponent]);
-  selectedId.value = newComponent.id;
-  addLog('组态编辑', `在画面 [${currentPage.value.name}] 添加组态控件 [${label}]`, 'info');
+  selectedId.value = newId;
+  addLog('组态编辑', `在页面 [${currentPage.value.name}] 添加组件 [${label}]`, 'info');
 };
 
 // Duplicate widget
@@ -122,7 +122,7 @@ const handleDuplicateComponent = (id: string) => {
 
   updateCurrentPageComponents([...currentComps, cloned]);
   selectedId.value = cloned.id;
-  addLog('组态编辑', `克隆组态控件: [${target.name}]`, 'info');
+  addLog('组态编辑', `复制组件: [${target.name}]`, 'info');
 };
 
 // Delete widget
@@ -135,15 +135,15 @@ const handleDeleteComponent = (id: string) => {
   if (selectedId.value === id) {
     selectedId.value = null;
   }
-  addLog('组态编辑', `移除了画布控件 [${name}]`, 'warning');
+  addLog('组态编辑', `删除组件 [${name}]`, 'warning');
 };
 
 // Clear active drawing canvas Layout
 const handleClearCanvas = () => {
-  if (confirm('确定要清空整张组态画布吗？此动作不可逆。')) {
+  if (confirm('确定要清空画布吗？此操作不可逆。')) {
     updateCurrentPageComponents([]);
     selectedId.value = null;
-    addLog('组态编辑', `清空了整个画布: [${currentPage.value.name}]`, 'warning');
+    addLog('组态编辑', `清空画布: [${currentPage.value.name}]`, 'warning');
   }
 };
 
@@ -180,17 +180,17 @@ const handleCreateProject = () => {
   scadaProjects.value.push({
     id: newProjId,
     name: newProjectName.value,
-    description: newProjectDesc.value || '自定义新HMI中控总网图',
+    description: newProjectDesc.value || '新建SCADA工程',
     pages: [
       {
         id: `page-${Date.now()}-primary`,
-        name: '未命名画面 1',
+        name: '未命名页面 1',
         components: []
       }
     ]
   });
 
-  addLog('组态编辑', `创建了全新SCADA中控工程: [${newProjectName.value}]`, 'normal');
+  addLog('组态编辑', `创建新工程: [${newProjectName.value}]`, 'normal');
   selectedProjectId.value = newProjId;
   selectedPageId.value = scadaProjects.value[scadaProjects.value.length - 1].pages[0].id;
   
@@ -207,13 +207,13 @@ const handleAddPage = () => {
   const newPageId = `page-${Date.now()}`;
   const newPage = {
     id: newPageId,
-    name: `未命名主控画面 ${proj.pages.length + 1}`,
+    name: `未命名页面 ${proj.pages.length + 1}`,
     components: []
   };
 
   proj.pages.push(newPage);
   selectedPageId.value = newPageId;
-  addLog('组态编辑', `项目 [${proj.name}] 追加了新图幅: [${newPage.name}]`, 'normal');
+  addLog('组态编辑', `项目 [${proj.name}] 新增页面: [${newPage.name}]`, 'normal');
 };
 
 // Copy / Duplicate child page
@@ -228,7 +228,7 @@ const handleDuplicatePage = (page: { id: string; name: string; components: any[]
     components: JSON.parse(JSON.stringify(page.components))
   });
   selectedPageId.value = newPageId;
-  addLog('组态编辑', `克隆整幅画面: [${page.name}]`, 'normal');
+  addLog('组态编辑', `复制页面: [${page.name}]`, 'normal');
 };
 
 // Delete page
@@ -237,7 +237,7 @@ const handleDeletePage = (pId: string, pName: string) => {
   if (!proj) return;
 
   if (proj.pages.length <= 1) {
-    alert('组态项目必须含有至少一幅主控图层，不允许将其完全排空。');
+    alert('项目至少需要保留一个页面。');
     return;
   }
 
@@ -245,7 +245,7 @@ const handleDeletePage = (pId: string, pName: string) => {
   if (selectedPageId.value === pId) {
     selectedPageId.value = proj.pages[0].id;
   }
-  addLog('组态编辑', `移除了图幅: [${pName}]`, 'warning');
+  addLog('组态编辑', `删除页面: [${pName}]`, 'warning');
 };
 
 // Inline rename actions
@@ -262,7 +262,7 @@ const savePageRename = (pId: string) => {
   if (pg && renamePageInput.value.trim()) {
     const oldName = pg.name;
     pg.name = renamePageInput.value.trim();
-    addLog('组态编辑', `图层画面更名: [${oldName}] 更名为 [${pg.name}]`, 'normal');
+    addLog('组态编辑', `页面更名: [${oldName}] -> [${pg.name}]`, 'normal');
   }
   isRenamingPageId.value = null;
 };
@@ -277,7 +277,7 @@ const saveProjRename = (pId: string) => {
   if (proj && renameProjInput.value.trim()) {
     const oldName = proj.name;
     proj.name = renameProjInput.value.trim();
-    addLog('组态编辑', `组态项目工程更名: [${oldName}] -> [${proj.name}]`, 'normal');
+    addLog('组态编辑', `工程更名: [${oldName}] -> [${proj.name}]`, 'normal');
   }
   isRenamingProjId.value = null;
 };
@@ -318,12 +318,12 @@ const plcTagsList = computed(() => {
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900">
             <FolderIcon class="w-4 h-4 text-amber-500" />
-            <span>发布项目选择</span>
+            <span>工程列表</span>
           </div>
           <button 
             @click="showProjectModal = true"
             class="p-1 rounded hover:bg-slate-100 text-slate-500 cursor-pointer"
-            title="添加新组态项目"
+            title="新建工程"
           >
             <Plus class="w-4 h-4" />
           </button>
@@ -344,13 +344,13 @@ const plcTagsList = computed(() => {
       <div v-if="currentProject" class="px-4 py-2 bg-slate-50/50 border-b border-slate-100 text-left">
         <!-- Project direct quick edit rename -->
         <div class="flex items-center justify-between">
-          <span class="text-[9px] uppercase font-bold tracking-wider text-slate-400">项目工程属性</span>
+          <span class="text-[9px] uppercase font-bold tracking-wider text-slate-400">工程属性</span>
           <button 
             v-if="isRenamingProjId !== currentProject.id"
             @click="startRenameProj(currentProject.id, currentProject.name)"
             class="text-[10px] text-slate-400 hover:text-[#1890ff]"
           >
-            编辑名称
+            重命名
           </button>
         </div>
 
@@ -370,11 +370,11 @@ const plcTagsList = computed(() => {
 
       <!-- Subpages Directory explorer -->
       <div class="p-4 flex items-center justify-between border-b border-slate-100/60 font-bold text-xs uppercase tracking-wider text-slate-400">
-        <span>画布幅图目录 ({{ currentProject?.pages.length || 0 }})</span>
+        <span>页面列表 ({{ currentProject?.pages.length || 0 }})</span>
         <button 
           @click="handleAddPage"
           class="p-0.5 rounded hover:bg-slate-100 text-slate-500 cursor-pointer"
-          title="新增画层"
+          title="新增页面"
         >
           <Plus class="w-3.5 h-3.5" />
         </button>
@@ -410,21 +410,21 @@ const plcTagsList = computed(() => {
               <button 
                 @click.stop="startRenamePage(page.id, page.name)"
                 class="text-xs text-slate-400 hover:text-slate-700" 
-                title="重新命名"
+                title="重命名"
               >
                 <Edit class="w-3 h-3" />
               </button>
               <button 
                 @click.stop="handleDuplicatePage(page)"
                 class="text-xs text-slate-400 hover:text-slate-700" 
-                title="复制图幅"
+                title="复制页面"
               >
                 <Copy class="w-3 h-3" />
               </button>
               <button 
                 @click.stop="handleDeletePage(page.id, page.name)"
                 class="text-xs text-rose-400 hover:text-rose-600" 
-                title="剔除图层"
+                title="删除页面"
               >
                 <Trash2 class="w-3 h-3" />
               </button>
@@ -433,7 +433,7 @@ const plcTagsList = computed(() => {
           </div>
 
           <p class="text-[9px] font-mono text-slate-400">
-            点件数: {{ page.components.length }} 个节点
+            组件数: {{ page.components.length }}
           </p>
         </div>
       </div>
@@ -451,8 +451,8 @@ const plcTagsList = computed(() => {
           <div class="flex items-center gap-2 text-left">
             <span class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]" />
             <div>
-              <h3 class="font-bold text-xs text-slate-800">当前活跃组态画布: <b class="text-slate-900 font-sans font-bold text-[13px] ml-1">{{ currentPage.name }}</b></h3>
-              <p class="text-[10px] text-slate-400 font-mono">画布辨率: Responsive Canvas Floor (Grid alignment layout)</p>
+              <h3 class="font-bold text-xs text-slate-800">当前页面: <b class="text-slate-900 font-sans font-bold text-[13px] ml-1">{{ currentPage.name }}</b></h3>
+              <p class="text-[10px] text-slate-400 font-mono">画布布局: 响应式画布</p>
             </div>
           </div>
 
@@ -464,7 +464,7 @@ const plcTagsList = computed(() => {
               :class="isActiveMode ? 'bg-emerald-600 text-white border-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-slate-900 text-[#cbd5e1] border-slate-900'"
             >
               <Activity class="w-3.5 h-3.5" :class="isActiveMode ? 'animate-pulse' : ''" />
-              {{ isActiveMode ? '监控中 (Run Mode / 运行)' : '设计中 (Edit Mode / 组态)' }}
+              {{ isActiveMode ? '运行模式' : '设计模式' }}
             </button>
           </div>
         </div>
@@ -513,14 +513,14 @@ const plcTagsList = computed(() => {
         <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <FileCode class="w-4 h-4 text-[#1890ff]" />
-            <span>注册全新组态大屏工程</span>
+            <span>新建工程</span>
           </div>
           <button @click="showProjectModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 font-bold block mb-1">工程大项目名称</label>
+            <label class="text-slate-500 font-bold block mb-1">工程名称</label>
             <input 
               v-model="newProjectName"
               type="text"
@@ -529,7 +529,7 @@ const plcTagsList = computed(() => {
             />
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">工程概要指标描述</label>
+            <label class="text-slate-500 font-bold block mb-1">工程描述</label>
             <textarea 
               v-model="newProjectDesc"
               rows="3"
