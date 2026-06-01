@@ -277,5 +277,7 @@ export interface SystemConfig {
   alarmEmailNotify: boolean;
   alarmEmailAddress: string;
   retentionPeriodDays: number;
+  isSimulationActive?: boolean;
+  backendApiUrl?: string;
 }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { historicalRecords } from '../store';
+import { ref, computed, onMounted, watch } from 'vue';
+import { historicalRecords, fetchHistoryFromBackend, systemConfig } from '../store';
 import { 
   Search, 
   Download, 
@@ -14,6 +14,13 @@ import {
   FileSpreadsheet
 } from 'lucide-vue-next';
 import { HistoricalRecord } from '../types';
+
+// Query trigger from backend DB
+const executeHistoryQuery = () => {
+  if (!systemConfig.value.isSimulationActive) {
+    fetchHistoryFromBackend(activeVariableKey.value);
+  }
+};
 
 // Autocomplete list
 const availableVariables = [
@@ -49,6 +56,15 @@ const handleSelectVariableFromDropdown = (key: string) => {
   isInputFocused.value = false;
   currentPageNum.value = 1;
 };
+
+// Listen and trigger history loads dynamically
+watch(activeVariableKey, () => {
+  executeHistoryQuery();
+});
+
+onMounted(() => {
+  executeHistoryQuery();
+});
 
 // Filter dataset criteria
 const filteredHistoricalRecords = computed(() => {

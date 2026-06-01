@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { systemConfig, addLog } from '../store';
+import { systemConfig, addLog, initializeRealtimeSignals, startBackendPolling } from '../store';
 import { 
   Settings, 
   Save, 
@@ -27,6 +27,11 @@ const handleSaveSettings = () => {
   setTimeout(() => {
     isSaving.value = false;
     saveSuccess.value = true;
+
+    // Hot-reload physical signals pipelines on user demand
+    initializeRealtimeSignals();
+    startBackendPolling();
+
     addLog('系统设置', '全局配置应用成功：重整工业服务与物联遥测通道。', 'normal');
     setTimeout(() => {
       saveSuccess.value = false;
@@ -74,6 +79,75 @@ const handleSaveSettings = () => {
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- INDUSTRIAL BACKEND BRIDGING & SIMULATOR CONSOLE -->
+        <div class="md:col-span-2 bg-gradient-to-r from-blue-50/60 to-indigo-50/40 border border-indigo-200/90 rounded-2xl p-6 shadow-sm space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-col sm:flex-row">
+            <div class="space-y-1 text-left">
+              <h3 class="font-bold text-sm text-indigo-950 flex items-center gap-2">
+                <Server class="w-5 h-5 text-indigo-600 animate-pulse" />
+                ASP.NET Core API 实时物理网关数据血缘 & 组态控制台
+              </h3>
+              <p class="text-xs text-indigo-700/80 max-w-2xl font-sans leading-relaxed">
+                控制整个 SCADA 本地大屏的数据连通状态。<b>关闭模拟数据</b>后，本地虚拟物理仿真将自动熔断静默，全车间进入实战遥测模式，通过 
+                <span class="font-bold font-mono text-indigo-800">SignalR Server WebSocket</span> 即时握手监听下行及 PLC 工控变量，并支持通过 <span class="font-bold font-mono text-indigo-800">REST API</span> 双工写回 PLC 主板。
+              </p>
+            </div>
+            
+            <!-- Connection status badge -->
+            <div class="flex items-center gap-2 shrink-0 bg-white px-3 py-1.5 rounded-full border border-indigo-100 shadow-2xs">
+              <span class="relative flex h-2 w-2">
+                <span :class="systemConfig.isSimulationActive ? 'bg-amber-400' : 'bg-emerald-400 animate-ping absolute inline-flex h-full w-full rounded-full opacity-75'"></span>
+                <span :class="systemConfig.isSimulationActive ? 'bg-amber-500' : 'bg-emerald-500'" class="relative inline-flex rounded-full h-2 w-2"></span>
+              </span>
+              <span class="text-[11px] font-bold" :class="systemConfig.isSimulationActive ? 'text-amber-700' : 'text-emerald-700'">
+                {{ systemConfig.isSimulationActive ? '本地工业仿真运行中' : '物理网关已对接到 http://localhost:5000' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-3 border-t border-indigo-100/80">
+            <!-- Toggle Simulation -->
+            <div class="bg-white/80 border border-indigo-100/50 p-4 rounded-xl flex items-center justify-between shadow-3xs hover:bg-white transition-all">
+              <div class="space-y-0.5 text-left">
+                <b class="text-xs text-slate-800 block font-bold leading-normal">本地多源工业仿真模拟数据 (Simulator)</b>
+                <span class="text-[10px] text-slate-400 font-sans block">关闭此阀门将全力对接外部工业接口（拒绝假数据）</span>
+              </div>
+              <div class="flex items-center">
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    v-model="systemConfig.isSimulationActive"
+                    class="accent-indigo-600 w-5 h-5 cursor-pointer"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <!-- Server Base URL Input -->
+            <div class="md:col-span-2 bg-white/80 border border-indigo-100/50 p-4 rounded-xl space-y-2 shadow-3xs hover:bg-white transition-all">
+              <div class="flex items-center justify-between text-left">
+                <label class="font-bold text-xs text-slate-850">ASP.NET Core API 服务宿主物理端点 (Server Endpoint)</label>
+                <span class="text-[10px] font-mono font-bold text-indigo-600">Dual WebSocket & HTTP Connection</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <input 
+                    v-model="systemConfig.backendApiUrl"
+                    type="text"
+                    :disabled="systemConfig.isSimulationActive"
+                    placeholder="e.g. http://localhost:5000"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 pl-8 text-slate-800 font-bold font-mono outline-none text-xs focus:bg-white focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <Code class="absolute left-2.5 top-3.5 w-4 h-4 text-slate-400" />
+                </div>
+                <div class="bg-indigo-50 px-3 py-2.5 rounded-lg border border-indigo-150 text-indigo-700 text-xs font-mono font-bold select-none whitespace-nowrap">
+                  PORT: 5000
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         
         <!-- MODULE 1: System Title & UI settings -->
         <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
