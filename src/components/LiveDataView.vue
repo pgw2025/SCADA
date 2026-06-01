@@ -135,7 +135,7 @@ const cancelOverride = () => {
       <div class="p-4 border-b border-slate-100 space-y-3">
         <div class="flex items-center gap-1.5 font-bold text-sm text-[#0f172a]">
           <Database class="w-4 h-4 text-[#1890ff]" />
-          <span>边缘设备遥测列表</span>
+          <span>设备列表</span>
         </div>
 
         <div class="relative">
@@ -143,7 +143,7 @@ const cancelOverride = () => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="搜索设备名称、代码..."
+            placeholder="搜索设备名称或编码"
             class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#262626] focus:outline-none focus:border-[#1890ff]"
           />
         </div>
@@ -191,7 +191,7 @@ const cancelOverride = () => {
 
         <!-- Empty state tracker -->
         <div v-if="filteredDevices.length === 0" class="p-8 text-center text-xs text-slate-400 font-mono">
-          未检索到匹配的工业通道
+          未找到匹配的设备
         </div>
       </div>
     </div>
@@ -204,27 +204,27 @@ const cancelOverride = () => {
         <div class="space-y-1.5 text-left">
           <div class="flex items-center gap-2">
             <span class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 border border-slate-200/50 rounded-full font-mono uppercase text-slate-500">
-              {{ selectedDevice.type }} 驱动
+              {{ selectedDevice.type }}
             </span>
             <span 
               class="text-[9px] font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-1"
               :class="selectedDevice.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'"
             >
               <span class="w-1.5 h-1.5 rounded-full" :class="selectedDevice.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'" />
-              {{ selectedDevice.status === 'online' ? '运行中 (ONLINE)' : '离线 (OFFLINE)' }}
+              {{ selectedDevice.status === 'online' ? '在线' : '离线' }}
             </span>
           </div>
           <h2 class="font-bold text-base text-slate-900 tracking-tight">
             {{ selectedDevice.name }}
           </h2>
           <p class="text-xs font-mono text-slate-500 flex items-center gap-3 flex-wrap">
-            <span>物理映射地址: {{ selectedDevice.ipAddress ? `${selectedDevice.ipAddress}:${selectedDevice.port || 502}` : selectedDevice.topic || '本地总线' }}</span>
+            <span>通信地址: {{ selectedDevice.ipAddress ? `${selectedDevice.ipAddress}:${selectedDevice.port || 502}` : selectedDevice.topic || '本地总线' }}</span>
           </p>
         </div>
 
         <div class="flex items-center gap-2 shrink-0 self-start sm:self-center">
           <span class="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-200/40">
-            全量寄存器: <b class="text-emerald-600">{{ renderedVariables.length }} 个测点</b>
+            变量总数: <b class="text-emerald-600">{{ renderedVariables.length }} 个</b>
           </span>
         </div>
       </div>
@@ -238,7 +238,7 @@ const cancelOverride = () => {
             <input 
               v-model="varQuery"
               type="text"
-              placeholder="通过变量标识 (Key)、绝对地址或中文名称检索..."
+              placeholder="搜索变量标识、地址或名称"
               class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-lg pl-8 pr-7 py-1.5 text-xs text-[#262626] focus:outline-none focus:border-[#1890ff] focus:ring-1 focus:ring-[#1890ff]"
             />
             <Search class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -260,9 +260,9 @@ const cancelOverride = () => {
         <div v-if="selectedDevice && selectedDevice.status !== 'online'" class="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-4 flex gap-3 text-xs leading-relaxed text-left">
           <AlertTriangle class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
           <div>
-            <h5 class="font-bold">该物理驱动通道离线 (Connection Timeout)</h5>
+            <h5 class="font-bold">设备已离线</h5>
             <p class="mt-0.5 text-rose-600 opacity-90">
-              由于以太网络轮询超时，系统已自动阻断写入链路以保全物理安全。若需调试或强制调压，请在下方“设备管理”子项中恢复在线握手状态。
+              设备连接超时，写入功能已禁用。请在设备管理中恢复连接。
             </p>
           </div>
         </div>
@@ -273,12 +273,12 @@ const cancelOverride = () => {
             <table class="w-full text-left text-xs font-mono divide-y divide-slate-100">
               <thead>
                 <tr class="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                  <th class="px-4 py-3.5">变量标识 / Tag Id</th>
-                  <th class="px-4 py-3.5">标签中文名称</th>
-                  <th class="px-4 py-3.5">寄存器绝对地址</th>
-                  <th class="px-4 py-3.5">物理值 (REALTIME VALUE)</th>
-                  <th class="px-4 py-3.5">独立采样时间</th>
-                  <th class="px-4 py-3.5 text-right">人工遥调强制</th>
+                  <th class="px-4 py-3.5">变量标识</th>
+                  <th class="px-4 py-3.5">变量名称</th>
+                  <th class="px-4 py-3.5">寄存器地址</th>
+                  <th class="px-4 py-3.5">当前值</th>
+                  <th class="px-4 py-3.5">更新时间</th>
+                  <th class="px-4 py-3.5 text-right">操作</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 bg-white">
@@ -326,7 +326,7 @@ const cancelOverride = () => {
                       :class="v.value ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'"
                     >
                       <span class="w-1.5 h-1.5 rounded-full" :class="v.value ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'" />
-                      {{ v.value ? 'ON / 得电吸合' : 'OFF / 释开失电' }}
+                      {{ v.value ? 'ON / 闭合' : 'OFF / 断开' }}
                     </span>
                     <!-- Numerical type -->
                     <span v-else class="text-sm font-bold text-slate-900 flex items-center gap-1">
@@ -351,8 +351,8 @@ const cancelOverride = () => {
                         v-model="overrideValueInput"
                         class="bg-white border border-slate-300 rounded px-1.5 py-1 text-[11px] focus:outline-none"
                       >
-                        <option value="true">True (得电)</option>
-                        <option value="false">False (释电)</option>
+                        <option value="true">ON</option>
+                        <option value="false">OFF</option>
                       </select>
                       <input 
                         v-else
@@ -385,9 +385,9 @@ const cancelOverride = () => {
                       class="text-[11px] font-sans font-bold text-[#1890ff] hover:text-sky-600 border border-slate-200 px-2 py-1 rounded hover:bg-slate-50 inline-flex items-center gap-1 transition-all"
                     >
                       <Settings class="w-3 h-3" />
-                      强制改写
+                      写入
                     </button>
-                    <span v-else class="text-slate-300 text-[10px] font-sans">写禁锁</span>
+                    <span v-else class="text-slate-300 text-[10px] font-sans">已锁定</span>
                   </td>
                 </tr>
               </tbody>
@@ -430,7 +430,7 @@ const cancelOverride = () => {
                     :class="v.value ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' : 'bg-rose-50 text-rose-505 bg-rose-50 text-rose-500 border border-rose-100/30'"
                   >
                     <span class="w-1.5 h-1.5 rounded-full" :class="v.value ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'" />
-                    {{ v.value ? 'ON / 得电' : 'OFF / 失电' }}
+                    {{ v.value ? 'ON / 闭合' : 'OFF / 断开' }}
                   </span>
                   <span v-else class="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/50 inline-flex items-center gap-1 font-mono">
                     {{ v.value }} <span class="text-[9px] font-sans font-normal text-slate-500">{{ v.unit }}</span>
@@ -446,7 +446,7 @@ const cancelOverride = () => {
 
               <!-- Variable custom timestamp indicator -->
               <div class="flex items-center justify-between text-[9px] font-mono text-slate-400 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                <span class="font-sans">独立更新时序:</span>
+                <span class="font-sans">更新时间:</span>
                 <span class="font-bold text-slate-600 flex items-center gap-1">
                   <Clock class="w-3 h-3 text-slate-405 shrink-0" />
                   {{ v.updatedAt }}
@@ -455,7 +455,7 @@ const cancelOverride = () => {
 
               <!-- Overrides control -->
               <div class="flex items-center justify-between pt-2">
-                <span class="text-[10px] text-slate-400 font-sans">数值强制调优</span>
+                <span class="text-[10px] text-slate-400 font-sans">数值写入</span>
                 
                 <div class="shrink-0 font-sans">
                   <!-- Mode Override Active -->
@@ -465,8 +465,8 @@ const cancelOverride = () => {
                       v-model="overrideValueInput"
                       class="bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none font-sans"
                     >
-                      <option value="true">True (ON)</option>
-                      <option value="false">False (OFF)</option>
+                      <option value="true">ON</option>
+                      <option value="false">OFF</option>
                     </select>
                     <input 
                       v-else
@@ -498,9 +498,9 @@ const cancelOverride = () => {
                     class="text-[10px] font-sans font-bold text-[#1890ff] border border-slate-200 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 inline-flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                   >
                     <Settings class="w-3 h-3" />
-                    强制改写
+                    写入
                   </button>
-                  <span v-else class="text-slate-300 text-[10px] font-sans">锁定只读</span>
+                  <span v-else class="text-slate-300 text-[10px] font-sans">已锁定</span>
                 </div>
               </div>
 
@@ -511,7 +511,7 @@ const cancelOverride = () => {
         <!-- Select Device Empty state -->
         <div v-else class="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
           <Database class="w-8 h-8 text-slate-300" />
-          <p class="text-xs">请点击左侧列表选择一台在线驱动设备以检索其 PLC 寄存器物理地址参数</p>
+          <p class="text-xs">请选择设备查看变量数据</p>
         </div>
       </div>
     </div>
