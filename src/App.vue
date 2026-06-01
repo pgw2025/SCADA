@@ -85,7 +85,7 @@ const triggerFormLogin = async () => {
 
 const triggerBypassLogin = () => {
   loginUsernameInput.value = 'admin';
-  loginPasswordInput.value = 'admin888';
+  loginPasswordInput.value = '123456';
   triggerFormLogin();
 };
 
@@ -187,7 +187,7 @@ onUnmounted(() => {
 
         <div class="border-t border-slate-800 pt-4 mt-2 grid grid-cols-1 gap-2.5 text-center">
           <div class="text-[10px] text-slate-500 font-sans leading-relaxed">
-            默认账户: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin</button> / <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin888</button>
+            默认账户: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='123456'" class="text-sky-400 hover:underline">admin</button> / <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin888</button>
           </div>
 
           <!-- Quick bypass button for high fidelity UX -->

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { devices, areas, dataModels, addLog } from '../store';
+import { ref, computed, onMounted } from 'vue';
+import { devices, areas, dataModels, addLog, createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend, fetchAreasFromBackend, createAreaOnBackend, deleteAreaOnBackend } from '../store';
 import { 
   Cpu, 
   MapPin, 
@@ -50,17 +50,17 @@ const devPayloadTemplate = ref<string>('{\n  "dev": "{{code}}",\n  "var": "{{key
 const activeSection = ref<'list' | 'areas'>('list');
 
 // Trigger add area
-const handleAddArea = () => {
+const handleAddArea = async () => {
   if (!newAreaName.value.trim()) return;
-  const newId = `area-${Date.now()}`;
   
-  areas.value.push({
-    id: newId,
+  const createdArea = await createAreaOnBackend({
     name: newAreaName.value,
     description: newAreaDesc.value
   });
-
-  addLog('设备管理', `添加新工艺区域: [${newAreaName.value}]`, 'normal');
+  
+  if (createdArea) {
+    addLog('设备管理', `添加新工艺区域: [${newAreaName.value}]`, 'normal');
+  }
   
   newAreaName.value = '';
   newAreaDesc.value = '';
@@ -68,16 +68,23 @@ const handleAddArea = () => {
 };
 
 // Trigger delete area
-const handleDeleteArea = (id: string, name: string) => {
-  // Check if any devices are in this area
+const handleDeleteArea = async (id: string, name: string) => {
   const counts = devices.value.filter(d => d.areaId === id).length;
   if (counts > 0) {
     alert(`无法删除区域 [${name}]: 有 ${counts} 个处于连接中的工业设备已被部署在该区域内。`);
     return;
   }
-  areas.value = areas.value.filter(a => a.id !== id);
-  addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
+  
+  const success = await deleteAreaOnBackend(id);
+  if (success) {
+    addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
+  }
 };
+
+// 初始化时从后端获取区域数据
+onMounted(() => {
+  fetchAreasFromBackend();
+});
 
 // Open Device modal
 const openNewDeviceModal = () => {
@@ -156,7 +163,7 @@ const openEditDeviceModal = (device: Device) => {
   showDeviceModal.value = true;
 };
 
-const handleSaveDevice = () => {
+const handleSaveDevice = async () => {
   if (!devName.value.trim() || !devCode.value.trim()) return;
 
   const chosenModel = dataModels.value.find(m => m.id === devModel.value);
@@ -169,64 +176,55 @@ const handleSaveDevice = () => {
     });
   }
 
+  const deviceData = {
+    name: devName.value,
+    code: devCode.value,
+    areaId: devArea.value,
+    modelId: devModel.value,
+    type: devType.value,
+    ipAddress: devIP.value,
+    port: devPort.value,
+    topic: devTopic.value,
+    status: devStatus.value,
+    cpuType: devCpuType.value,
+    rack: Number(devRack.value),
+    slot: Number(devSlot.value),
+    mqttServer: devMqttServer.value,
+    publishTopic: devPublishTopic.value,
+    payloadTemplate: devPayloadTemplate.value
+  };
+
   if (isEditingDevice.value && editingDeviceId.value) {
     // Edit existing
-    const idx = devices.value.findIndex(d => d.id === editingDeviceId.value);
-    if (idx !== -1) {
-      devices.value[idx] = {
-        ...devices.value[idx],
-        name: devName.value,
-        code: devCode.value,
-        areaId: devArea.value,
-        modelId: devModel.value,
-        type: devType.value,
-        ipAddress: devIP.value,
-        port: devPort.value,
-        topic: devTopic.value,
-        status: devStatus.value,
-        cpuType: devCpuType.value,
-        rack: Number(devRack.value),
-        slot: Number(devSlot.value),
-        mqttServer: devMqttServer.value,
-        publishTopic: devPublishTopic.value,
-        payloadTemplate: devPayloadTemplate.value,
-        lastUpdated: '刚刚'
-      };
-      
+    const success = await updateDeviceOnBackend(editingDeviceId.value, deviceData);
+    if (success) {
       addLog('设备管理', `保存了工业设备配置 [${devName.value}]`, 'normal');
     }
   } else {
     // Add new
-    devices.value.push({
-      id: `dev-${Date.now()}`,
-      name: devName.value,
-      code: devCode.value,
-      areaId: devArea.value,
-      modelId: devModel.value,
-      type: devType.value,
-      ipAddress: devIP.value,
-      port: devPort.value,
-      topic: devTopic.value,
-      status: devStatus.value,
-      variables: initialVars,
-      cpuType: devCpuType.value,
-      rack: Number(devRack.value),
-      slot: Number(devSlot.value),
-      mqttServer: devMqttServer.value,
-      publishTopic: devPublishTopic.value,
-      payloadTemplate: devPayloadTemplate.value,
-      lastUpdated: devStatus.value === 'online' ? '刚刚' : '无'
-    });
-
-    addLog('设备管理', `添加新网关通道: [${devName.value}] (${devType.value})`, 'normal');
+    const createdDevice = await createDeviceOnBackend(deviceData);
+    if (createdDevice) {
+      // 如果后端创建成功但本地未自动同步，则手动添加
+      const exists = devices.value.find(d => d.id === createdDevice.id);
+      if (!exists) {
+        devices.value.push({
+          ...createdDevice,
+          variables: initialVars,
+          lastUpdated: devStatus.value === 'online' ? '刚刚' : '无'
+        });
+      }
+      addLog('设备管理', `添加新网关通道: [${devName.value}] (${devType.value})`, 'normal');
+    }
   }
 
   showDeviceModal.value = false;
 };
 
-const handleDeleteDevice = (id: string, name: string) => {
-  devices.value = devices.value.filter(d => d.id !== id);
-  addLog('设备管理', `删除了工业网络网关 [${name}]`, 'warning');
+const handleDeleteDevice = async (id: string, name: string) => {
+  const success = await deleteDeviceOnBackend(id);
+  if (success) {
+    addLog('设备管理', `删除了工业网络网关 [${name}]`, 'warning');
+  }
 };
 
 const toggleDeviceStateInGrid = (device: Device) => {
