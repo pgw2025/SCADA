@@ -6,7 +6,7 @@ import {
   systemScripts, 
   addLog, 
   dataModels 
-} from '../store';
+} from '../store/index';
 import { 
   Calendar, 
   Plus, 

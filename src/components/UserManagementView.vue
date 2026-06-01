@@ -7,7 +7,7 @@ import {
   createSystemUser, 
   updateSystemUser, 
   deleteSystemUser 
-} from '../store';
+} from '../store/index';
 import { SystemUser } from '../types';
 import { 
   Plus, 

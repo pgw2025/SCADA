@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { dataConversions, devices, checkCycleInConversions, addLog } from '../store';
+import { dataConversions, devices, checkCycleInConversions, addLog } from '../store/index';
 import { DataConversion } from '../types';
 import { 
   Plus, 

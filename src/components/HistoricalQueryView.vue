@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { historicalRecords, fetchHistoryFromBackend, systemConfig } from '../store';
+import { historicalRecords, fetchHistoryFromBackend, systemConfig } from '../store/index';
 import { 
   Search, 
   Download, 

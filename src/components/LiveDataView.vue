@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { devices, dataModels, setDeviceVariableValue, addLog } from '../store';
+import { devices, dataModels, setDeviceVariableValue, addLog } from '../store/index';
 import { 
   Database, 
   Search, 

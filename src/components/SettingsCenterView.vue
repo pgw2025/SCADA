@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { systemConfig, addLog, initializeRealtimeSignals, startBackendPolling } from '../store';
+import { systemConfig, addLog, initializeRealtimeSignals, startBackendPolling } from '../store/index';
 import { 
   Settings, 
   Save, 

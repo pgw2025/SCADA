@@ -11,7 +11,7 @@ import {
   setDeviceVariableValue,
   devices,
   addLog
-} from '../store';
+} from '../store/index';
 import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { logs, addLog } from '../store';
+import { logs, addLog } from '../store/index';
 import { 
   Terminal, 
   Search, 

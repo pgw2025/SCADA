@@ -1025,6 +1025,7 @@ export const deleteAreaOnBackend = async (id: string): Promise<boolean> => {
     return false;
   }
 };
+export { deleteAreaOnBackend };
 
 // POST /api/DataModel - 创建新数据模型
 export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>): Promise<DataModel | null> => {

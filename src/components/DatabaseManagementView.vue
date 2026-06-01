@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { databaseConfigs, addLog } from '../store';
+import { databaseConfigs, addLog } from '../store/index';
 import { 
   Database, 
   Settings2, 

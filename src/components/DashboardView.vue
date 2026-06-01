@@ -7,7 +7,7 @@ import {
   serverStatus, 
   logs,
   scadaProjects
-} from '../store';
+} from '../store/index';
 import { 
   Cpu, 
   Database, 

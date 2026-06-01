@@ -5,7 +5,7 @@ import {
   runScriptEngine, 
   addLog, 
   devices 
-} from '../store';
+} from '../store/index';
 import { 
   FileCode, 
   Plus, 

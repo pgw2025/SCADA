@@ -6,7 +6,7 @@ import {
   dataModels, 
   addLog, 
   getDeviceVariableValue 
-} from '../store';
+} from '../store/index';
 import { 
   Bell, 
   Trash2, 

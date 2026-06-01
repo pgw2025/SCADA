@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { mqttServers, devices, addLog } from '../store';
+import { mqttServers, devices, addLog } from '../store/index';
 import { MqttServer } from '../types';
 import { 
   Plus, 
