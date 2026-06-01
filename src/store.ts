@@ -161,12 +161,7 @@ export const addLog = (source: string, content: string, level: 'info' | 'warning
 };
 
 // === 4. AREAS STATE ===
-export const areas = ref<Area[]>([
-  { id: 'area-1', name: '1号低位蓄水罐区', description: '负责厂区入水口污水预存及杂质高倍度沉降排沙流程' },
-  { id: 'area-2', name: '2号高压除氧汽机房', description: '负责蒸汽包增压、余热冷凝循环及高参数水冷壁管防冻调节' },
-  { id: 'area-3', name: '3号变频配投包装线', description: '包含1-4号配给气缸、驱动电机变频调速及智能打包传动支路' },
-  { id: 'area-4', name: '4号中空余热交换区', description: '烟气阻隔闸门驱动及冷却塔逆流喷溅换热变压子站' },
-]);
+export const areas = ref<Area[]>([]);
 
 // === MQTT SERVERS STATE ===
 export const mqttServers = ref<MqttServer[]>([
@@ -315,119 +310,10 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
 };
 
 // === 5. MODULE DATA MODELS ===
-export const dataModels = ref<DataModel[]>([
-  {
-    id: 'model-wastewater',
-    name: 'OPC污水高倍沉降净化模型',
-    description: '适用于工业污水预处理、离心流速平衡与联动气动阀控制场景',
-    type: 'OPCUA',
-    variables: [
-      { key: 'tank_level', name: '污水储缸瞬时液位', type: 'analog', dataType: 'Float', unit: '%', min: 0, max: 100, address: 'ns=2;s=LiquidLevelRaw', description: '原水罐传感器电容探头绝对比率值' },
-      { key: 'purified_level', name: '净化水池实时水位', type: 'analog', dataType: 'Float', unit: '%', min: 0, max: 100, address: 'ns=2;s=PurifiedLevelFloat', description: '2号净化循环缓冲池水位传感器高度' },
-      { key: 'flow_rate', name: '干线超声波流量计值', type: 'analog', dataType: 'Float', unit: 'L/s', min: 0, max: 40, address: 'ns=2;s=MainPipeRateUltrasonic', description: '泵后高敏排量测算模块' },
-      { key: 'pump_state', name: '主水流泵开关反馈', type: 'digital', dataType: 'Boolean', unit: '', min: 0, max: 1, address: 'ns=2;s=CentrifugalPumpCoil', description: '配电柜1号继电器吸合反馈标志值' },
-      { key: 'valve_state', name: '管道切断电磁阀反馈', type: 'digital', dataType: 'Boolean', unit: '', min: 0, max: 1, address: 'ns=2;s=CutOffSolenoidValve', description: '管道电磁阀双位行程开关反馈物' },
-      { key: 'alarm_status', name: '全线高水位警报灯', type: 'digital', dataType: 'Boolean', unit: '', min: 0, max: 1, address: 'ns=2;s=WaterLevelCriticalLED', description: '系统超过95%阈值时强制硬锁红灯标志' }
-    ]
-  },
-  {
-    id: 'model-thermal',
-    name: 'Siemens S7锅炉热参数模型',
-    description: '西门子 S7 通讯格式，采集高炉炉温、容器负压以及上升管道干度',
-    type: 'S7',
-    variables: [
-      { key: 'boiler_temp', name: '反应器炉膛绝对温度', type: 'analog', dataType: 'REAL', unit: '℃', min: 20, max: 150, address: 'DB10.DBD12', description: '高精度K型热电偶采样温度' },
-      { key: 'boiler_press', name: '气包上升容腔工作压力', type: 'analog', dataType: 'REAL', unit: 'kPa', min: 0, max: 120, address: 'DB10.DBD16', description: '过热器联箱出口微变发送指示计' },
-      { key: 'pump_state', name: '引风机调速接触继电器', type: 'digital', dataType: 'BOOL', unit: '', min: 0, max: 1, address: 'DB10.DBX24.0', description: '用于排烟及进风强制空气回路' },
-      { key: 'alarm_status', name: '超温连锁报警触发线', type: 'digital', dataType: 'BOOL', unit: '', min: 0, max: 1, address: 'DB10.DBX24.1', description: '高于98度极限逻辑连锁触发切断燃料阀' }
-    ]
-  },
-  {
-    id: 'model-conveyor',
-    name: 'MQTT传动轮变频监控模型',
-    description: '采用轻量级数据总线通信模式，监控多速变频电机的RPM速度以及集料池瞬时重力',
-    type: 'MQTT',
-    variables: [
-      { key: 'conveyor_speed', name: '变频传动轮目标速度', type: 'analog', dataType: 'Float', unit: 'rpm', min: 0, max: 150, address: 'factory/conveyor/speed', description: '配电侧1号变频反馈变频转速' },
-      { key: 'tank_level', name: '集料罐落料总重监控', type: 'analog', dataType: 'Float', unit: 'kg', min: 0, max: 100, address: 'factory/conveyor/weight', description: '集料仓引引力传感器吨重换算值' }
-    ]
-  }
-]);
+export const dataModels = ref<DataModel[]>([]);
 
 // === 6. CONNECTED DEVICES REALTIME STATE ===
-export const devices = ref<Device[]>([
-  {
-    id: 'dev-1',
-    name: '1号污水净化备用循环变频站',
-    code: 'OPC-WWT-101',
-    areaId: 'area-1',
-    modelId: 'model-wastewater',
-    type: 'OPCUA',
-    ipAddress: '192.168.1.10',
-    port: '4840',
-    status: 'online',
-    variables: {
-      tank_level: 68.0,
-      purified_level: 32.0,
-      flow_rate: 18.5,
-      pump_state: true,
-      valve_state: true,
-      alarm_status: false,
-    },
-    lastUpdated: '刚刚'
-  },
-  {
-    id: 'dev-2',
-    name: '中温中压过热蒸汽汽水反应锅炉',
-    code: 'S7-BLR-202',
-    areaId: 'area-2',
-    modelId: 'model-thermal',
-    type: 'S7',
-    ipAddress: '192.168.2.14',
-    port: '102',
-    status: 'online',
-    variables: {
-      boiler_temp: 72.5,
-      boiler_press: 55.2,
-      pump_state: true,
-      alarm_status: false,
-    },
-    lastUpdated: '刚刚'
-  },
-  {
-    id: 'dev-3',
-    name: '2速变频食品级物流分拣传送线',
-    code: 'MQT-CY-303',
-    areaId: 'area-3',
-    modelId: 'model-conveyor',
-    type: 'MQTT',
-    topic: 'factory/conveyor/telemetry',
-    status: 'online',
-    variables: {
-      conveyor_speed: 120.0,
-      tank_level: 42.5,
-    },
-    lastUpdated: '刚刚'
-  },
-  {
-    id: 'dev-4',
-    name: '虚拟辅助应急注水补偿电磁泵组',
-    code: 'VR-PUMP-404',
-    areaId: 'area-4',
-    modelId: 'model-wastewater',
-    type: 'Virtual',
-    status: 'offline',
-    variables: {
-      tank_level: 0.0,
-      purified_level: 0.0,
-      flow_rate: 0.0,
-      pump_state: false,
-      valve_state: false,
-      alarm_status: false,
-    },
-    lastUpdated: '无'
-  }
-]);
+export const devices = ref<Device[]>([]);
 
 // Continuous simulation update background driver
 let simulationInterval: any = null;
