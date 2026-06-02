@@ -4,12 +4,12 @@ import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
 import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
 import { dataModels, addLog } from '../store/index';
-import { fetchDevicesFromBackend, createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
+import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync } from '../services/deviceService';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 
 onMounted(() => {
   syncAreas();
-  fetchDevicesFromBackend();
+  syncDevices();
   startBackendPolling();
 });
 
@@ -41,27 +41,24 @@ const areaFormErrorMessage = ref<string>('');
 // Device Form States
 const showDeviceModal = ref<boolean>(false);
 const isEditingDevice = ref<boolean>(false);
-const editingDeviceId = ref<string | null>(null);
+const editingDeviceId = ref<number | null>(null);
+const deviceFormErrors = ref<Record<string, string>>({});
+const deviceFormErrorMessage = ref<string>('');
 
 const devName = ref<string>('');
-const devCode = ref<string>('');
+const devKey = ref<string>('');
 const devArea = ref<number>(0);
 const devModel = ref<string>('');
 const devType = ref<DeviceType>('OPCUA');
 const devIP = ref<string>('');
 const devPort = ref<string>('');
-const devTopic = ref<string>('');
+
 const devStatus = ref<'online' | 'offline'>('online');
 
 // S7-specific connection details
 const devCpuType = ref<string>('S7-1205');
 const devRack = ref<number>(0);
 const devSlot = ref<number>(1);
-
-// MQTT-specific connection details
-const devMqttServer = ref<string>('mqtt://192.168.1.50:1883');
-const devPublishTopic = ref<string>('');
-const devPayloadTemplate = ref<string>('{\n  "dev": "{{code}}",\n  "var": "{{key}}",\n  "val": {{value}}\n}');
 
 // Active view
 const activeSection = ref<'list' | 'areas'>('list');
@@ -122,24 +119,18 @@ const openNewDeviceModal = () => {
   isEditingDevice.value = false;
   editingDeviceId.value = null;
   devName.value = '';
-  devCode.value = `PLC-DEV-${Date.now().toString().slice(-4)}`;
+  devKey.value = `PLC-DEV-${Date.now().toString().slice(-4)}`;
   devArea.value = areas.value[0]?.id || 0;
   devModel.value = dataModels.value[0]?.id || '';
   devType.value = dataModels.value[0]?.type || 'OPCUA';
   devIP.value = '192.168.1.100';
   devPort.value = '4840';
-  devTopic.value = 'factory/telemetry/tag';
   devStatus.value = 'online';
 
   // S7 init
   devCpuType.value = 'S7-1200';
   devRack.value = 0;
   devSlot.value = 1;
-
-  // MQTT init
-  devMqttServer.value = 'mqtt://192.168.1.50:1883';
-  devPublishTopic.value = 'factory/publish/tag';
-  devPayloadTemplate.value = '{\n  "dev": "{{code}}",\n  "var": "{{key}}",\n  "val": {{value}}\n}';
   
   showDeviceModal.value = true;
 };
@@ -159,10 +150,6 @@ const onModelChange = () => {
       devRack.value = 0;
       devSlot.value = 1;
     } else if (model.type === 'MQTT') {
-      devTopic.value = `factory/${model.id.replace('model-', '')}/telemetry`;
-      devMqttServer.value = 'mqtt://192.168.1.50:1883';
-      devPublishTopic.value = `factory/${model.id.replace('model-', '')}/command`;
-      devPayloadTemplate.value = '{\n  "dev": "{{code}}",\n  "var": "{{key}}",\n  "val": {{value}}\n}';
     }
   }
 };
@@ -172,31 +159,25 @@ const openEditDeviceModal = (device: Device) => {
   editingDeviceId.value = device.id;
   
   devName.value = device.name;
-  devCode.value = device.code;
+  devKey.value = device.key;
   devArea.value = Number(device.areaId);
   devModel.value = device.modelId;
   devType.value = device.type;
   devIP.value = device.ipAddress || '';
   devPort.value = device.port || '';
-  devTopic.value = device.topic || '';
-  devStatus.value = device.status;
+  devStatus.value = device.status === 1 ? 'online' : 'offline';
 
   // S7 connections
   devCpuType.value = device.cpuType || 'S7-1200';
   devRack.value = device.rack !== undefined ? device.rack : 0;
   devSlot.value = device.slot !== undefined ? device.slot : 1;
 
-  // MQTT connections
-  devMqttServer.value = device.mqttServer || 'mqtt://192.168.1.50:1883';
-  devPublishTopic.value = device.publishTopic || 'factory/publish/tag';
-  devPayloadTemplate.value = device.payloadTemplate || '{\n  "dev": "{{code}}",\n  "var": "{{key}}",\n  "val": {{value}}\n}';
-
   showDeviceModal.value = true;
 };
 
 const handleSaveDevice = async () => {
   addLog('调试', `开始保存设备: ${devName.value}`, 'normal');
-  if (!devName.value.trim() || !devCode.value.trim()) {
+  if (!devName.value.trim() || !devKey.value.trim()) {
     addLog('调试', '校验失败: 名称或编码为空', 'warning');
     return;
   }
@@ -214,56 +195,70 @@ const handleSaveDevice = async () => {
 
   const deviceData = {
     name: devName.value,
-    code: devCode.value,
+    key: devKey.value,
     areaId: devArea.value,
     modelId: devModel.value,
     type: devType.value,
     ipAddress: devIP.value,
     port: devPort.value,
-    topic: devTopic.value,
-    status: devStatus.value,
+    status: devStatus.value === 'online' ? 1 : 0,
     cpuType: devCpuType.value,
     rack: Number(devRack.value),
-    slot: Number(devSlot.value),
-    mqttServer: devMqttServer.value,
-    publishTopic: devPublishTopic.value,
-    payloadTemplate: devPayloadTemplate.value
+    slot: Number(devSlot.value)
   };
+
+  deviceFormErrors.value = {};
+  deviceFormErrorMessage.value = '';
+
+  if (!devName.value.trim()) {
+    deviceFormErrors.value = { Name: '设备名称不能为空' };
+    return;
+  }
+
+  if (!devKey.value.trim()) {
+    deviceFormErrors.value = { Key: '设备编号不能为空' };
+    return;
+  }
 
   if (isEditingDevice.value && editingDeviceId.value) {
     // Edit existing
-    const success = await updateDeviceOnBackend(editingDeviceId.value, deviceData);
-    if (success) {
+    const result = await updateDeviceAndSync(editingDeviceId.value, deviceData);
+    if (result.success) {
       addLog('设备管理', `保存了工业设备配置 [${devName.value}]`, 'normal');
+      showDeviceModal.value = false;
+    } else if (result.error) {
+      if (result.error.type === 'validation' && result.error.fieldErrors) {
+        deviceFormErrors.value = result.error.fieldErrors;
+      } else {
+        deviceFormErrorMessage.value = result.error.message;
+      }
     }
   } else {
     // Add new
-    addLog('调试', '调用 createDeviceOnBackend...', 'normal');
-    const createdDevice = await createDeviceOnBackend(deviceData);
-    addLog('调试', `API 返回 createdDevice: ${!!createdDevice}`, 'normal');
-    if (createdDevice) {
-      // 如果后端创建成功但本地未自动同步，则手动添加
-      const exists = devices.value.find(d => d.id === createdDevice.id);
-      addLog('调试', `本地是否存在: ${!!exists}`, 'normal');
-      if (!exists) {
-        devices.value.push({
-          ...createdDevice,
-          variables: initialVars,
-          lastUpdated: devStatus.value === 'online' ? '刚刚' : '无'
-        });
-      }
+    const result = await createDeviceAndSync(deviceData);
+    if (result.success) {
       addLog('设备管理', `添加新网关通道: [${devName.value}] (${devType.value})`, 'normal');
+      showDeviceModal.value = false;
+    } else if (result.error) {
+      if (result.error.type === 'validation' && result.error.fieldErrors) {
+        deviceFormErrors.value = result.error.fieldErrors;
+      } else {
+        deviceFormErrorMessage.value = result.error.message;
+      }
     }
   }
 
-  showDeviceModal.value = false;
-  addLog('调试', '模态框已关闭', 'normal');
+  if (!deviceFormErrorMessage.value && !Object.keys(deviceFormErrors.value).length) {
+    addLog('调试', '模态框已关闭', 'normal');
+  }
 };
 
-const handleDeleteDevice = async (id: string, name: string) => {
-  const success = await deleteDeviceOnBackend(id);
-  if (success) {
+const handleDeleteDevice = async (id: number, name: string) => {
+  const result = await deleteDeviceAndSync(id, name);
+  if (result.success) {
     addLog('设备管理', `删除了工业网络网关 [${name}]`, 'warning');
+  } else if (result.error) {
+    alert(result.error.message);
   }
 };
 
@@ -334,7 +329,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
           <!-- Accent strip based on status -->
           <div 
             class="absolute top-0 left-0 right-0 h-1.5"
-            :class="d.status === 'online' ? 'bg-emerald-500' : 'bg-slate-300'"
+            :class="d.status === 1 ? 'bg-emerald-500' : 'bg-slate-300'"
           />
 
           <div class="flex items-start justify-between gap-4 mt-1">
@@ -343,7 +338,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                 <span class="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase">
                   {{ d.type }}
                 </span>
-                <span class="text-xs text-slate-400 font-mono">CODE: {{ d.code }}</span>
+                <span class="text-xs text-slate-400 font-mono">KEY: {{ d.key }}</span>
               </div>
               <h4 class="font-bold text-sm text-slate-900 font-sans mt-1.5 leading-snug">
                 {{ d.name }}
@@ -354,10 +349,9 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <button 
               @click="toggleDeviceStateInGrid(d)"
               class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border transition-all cursor-pointer"
-              :class="d.status === 'online' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'"
-            >
-              <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
-              {{ d.status === 'online' ? '在线' : '离线' }}
+              :class="d.status === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'">
+              <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
+              {{ d.status === 1 ? '在线' : '离线' }}
             </button>
           </div>
 
@@ -389,11 +383,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
                 </template>
                 <template v-else-if="d.type === 'MQTT'">
                   <div class="text-xs text-slate-800 break-all">
-                    <span class="text-emerald-600 font-bold">MQTT Server:</span> {{ d.mqttServer || 'mqtt://127.0.0.1:1883' }}
-                  </div>
-                  <div class="text-[10px] text-slate-400 font-normal font-sans space-y-0.5 mt-1 border-t border-slate-100 pt-1">
-                    <div><b class="text-slate-500">Subscribe Topic:</b> {{ d.topic }}</div>
-                    <div><b class="text-slate-500">Publish Topic:</b> {{ d.publishTopic || 'factory/publish/tag' }}</div>
+                    <span class="text-emerald-600 font-bold">MQTT Device</span>
                   </div>
                 </template>
                 <template v-else>
@@ -545,10 +535,13 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <Cpu class="w-4 h-4 text-[#1890ff]" />
             <span>{{ isEditingDevice ? '编辑设备' : '添加设备' }}</span>
           </div>
-          <button @click="showDeviceModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+          <button @click="showDeviceModal = false; deviceFormErrors = {}; deviceFormErrorMessage = ''" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[450px]">
+          <div v-if="deviceFormErrorMessage" class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-600">
+            {{ deviceFormErrorMessage }}
+          </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-slate-500 font-bold block mb-1">设备名称</label>
@@ -556,17 +549,21 @@ const toggleDeviceStateInGrid = (device: Device) => {
                 v-model="devName"
                 type="text"
                 placeholder="例如: 3号二次鼓风风机"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff] text-xs font-sans font-semibold"
+                :class="deviceFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
+                class="w-full bg-slate-50 border rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none text-xs font-sans font-semibold"
               />
+              <span v-if="deviceFormErrors.Name" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Name }}</span>
             </div>
             <div>
               <label class="text-slate-500 font-bold block mb-1">设备编号</label>
               <input 
-                v-model="devCode"
+                v-model="devKey"
                 type="text"
                 placeholder="例如: S7-BLR-202"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff] text-xs font-mono font-bold uppercase"
+                :class="deviceFormErrors.Key ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
+                class="w-full bg-slate-50 border rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none text-xs font-mono font-bold uppercase"
               />
+              <span v-if="deviceFormErrors.Key" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Key }}</span>
             </div>
           </div>
 
@@ -688,47 +685,6 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <!-- MQTT Router Configuration -->
             <div v-if="devType === 'MQTT'" class="space-y-2.5">
               <div class="text-[10px] text-emerald-500 font-bold uppercase tracking-wider mb-1">MQTT 连接配置</div>
-
-              <div>
-                <label class="text-slate-400 font-bold block mb-0.5">Broker 地址</label>
-                <input 
-                  v-model="devMqttServer"
-                  type="text"
-                  placeholder="e.g. mqtt://192.168.1.50:1883"
-                  class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
-                />
-              </div>
-
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">订阅主题</label>
-                  <input 
-                    v-model="devTopic"
-                    type="text"
-                    placeholder="e.g. factory/telemetry"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">发布主题</label>
-                  <input 
-                    v-model="devPublishTopic"
-                    type="text"
-                    placeholder="e.g. factory/command"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono text-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="text-slate-400 font-bold block mb-0.5">JSON 载荷模板</label>
-                <textarea 
-                  v-model="devPayloadTemplate"
-                  rows="3"
-                  class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none text-[10px] font-mono leading-relaxed text-slate-700"
-                  placeholder='e.g. {"dev": "{{code}}", "val": {{value}}}'
-                />
-              </div>
             </div>
           </div>
 

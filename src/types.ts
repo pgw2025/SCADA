@@ -119,28 +119,21 @@ export interface DataModel {
 }
 
 export interface Device {
-  id: string;
+  id: number;
   name: string;
-  code: string;       // e.g. SCADA-PUMP-01
+  key: string;        // e.g. SCADA-PUMP-01
   areaId: number;
-  modelId: string;
+  modelId: number;
   type: DeviceType;
   ipAddress?: string; // S7/OPCUA specific
-  port?: string;      // Port, e.g. 502, 4840
-  topic?: string;     // MQTT specific
-  status: 'online' | 'offline';
-  variables: Record<string, number | boolean>;
-  lastUpdated: string;
-  
+  port?: number;      // Port, e.g. 502, 4840
+  status: number;     // 0: offline, 1: online
+  lastUpdated: string; // ISO 8601 datetime string
+
   // Advanced connection parameters
   cpuType?: string;         // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)
   rack?: number;            // S7 机架号
   slot?: number;            // S7 插槽号
-  mqttServer?: string;      // MQTT服务器地址
-  publishTopic?: string;    // MQTT发布主题
-  subscribeTopic?: string;  // MQTT订阅主题 (可以与 topic 映射)
-  payloadTemplate?: string;  // MQTT发布内容模板
-  variableTimestamps?: Record<string, string>; // 每个具体变量的更新时间 (键为变量Key, 值为时间)
 }
 
 export interface MqttServer {

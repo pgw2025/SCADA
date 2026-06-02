@@ -42,12 +42,12 @@ watch(
 
 // Stats Computations
 const totalDevices = computed(() => devices.value.length);
-const onlineDevices = computed(() => devices.value.filter(d => d.status === 'online').length);
-const offlineDevices = computed(() => devices.value.filter(d => d.status === 'offline').length);
+const onlineDevices = computed(() => devices.value.filter(d => d.status === 1).length);
+const offlineDevices = computed(() => devices.value.filter(d => d.status === 0).length);
 
 const totalVars = computed(() => {
-  return devices.value.reduce((acc, current) => {
-    return acc + Object.keys(current.variables).length;
+  return dataModels.value.reduce((acc, model) => {
+    return acc + (model.variables?.length || 0);
   }, 0);
 });
 

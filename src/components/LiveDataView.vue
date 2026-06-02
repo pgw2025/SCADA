@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue';
 import { devices } from '../store/deviceStore';
 import { dataModels } from '../store/index';
-import { setDeviceVariableValue } from '../services/dataOrchestration';
 import { addLog } from '../store/index';
 import { 
   Database, 
@@ -28,7 +27,7 @@ const selectedTypeFilter = ref<string>('ALL');
 const filteredDevices = computed(() => {
   return devices.value.filter((d) => {
     const matchesSearch = d.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || 
-                          d.code.toLowerCase().includes(searchQuery.value.toLowerCase());
+                          d.key.toLowerCase().includes(searchQuery.value.toLowerCase());
     const matchesType = selectedTypeFilter.value === 'ALL' || d.type === selectedTypeFilter.value;
     return matchesSearch && matchesType;
   });
@@ -36,7 +35,7 @@ const filteredDevices = computed(() => {
 
 // Currently selected device object
 const selectedDevice = computed(() => {
-  return devices.value.find(d => d.id === selectedDevId.value) || devices.value[0];
+  return devices.value.find(d => String(d.id) === selectedDevId.value) || devices.value[0];
 });
 
 // Variables dictionary detail from corresponding Data Model
@@ -45,30 +44,31 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => m.id === selectedDevice.value.modelId);
 });
 
+// Simulated variable values storage
+const simulatedValues = ref<Record<string, number | boolean>>({});
+
 // Compile active variables array with models mapping
 const renderedVariables = computed(() => {
-  if (!selectedDevice.value) return [];
+  if (!selectedDevice.value || !currentModel.value) return [];
   
-  const devVars = selectedDevice.value.variables;
-  const modelVars = currentModel.value?.variables || [];
-  const timestamps = selectedDevice.value.variableTimestamps || {};
+  const modelVars = currentModel.value.variables || [];
   
-  return Object.keys(devVars).map((key) => {
-    const value = devVars[key];
-    const modelMeta = modelVars.find(v => v.key === key);
+  return modelVars.map((v) => {
+    const storedValue = simulatedValues.value[v.key];
+    const value = storedValue !== undefined ? storedValue : (v.type === 'digital' ? false : v.min ?? 0);
     
     return {
-      key,
-      name: modelMeta?.name || '未定义系统点位',
-      address: modelMeta?.address || `REG_${key.toUpperCase()}`,
-      type: modelMeta?.type || (typeof value === 'boolean' ? 'digital' : 'analog'),
-      dataType: modelMeta?.dataType || '',
-      unit: modelMeta?.unit || '',
-      min: modelMeta?.min ?? 0,
-      max: modelMeta?.max ?? 100,
-      description: modelMeta?.description || '现场控制元件回写值',
+      key: v.key,
+      name: v.name || '未定义系统点位',
+      address: v.address || `REG_${v.key.toUpperCase()}`,
+      type: v.type || 'analog',
+      dataType: v.dataType || '',
+      unit: v.unit || '',
+      min: v.min ?? 0,
+      max: v.max ?? 100,
+      description: v.description || '现场控制元件回写值',
       value: value,
-      updatedAt: timestamps[key] || selectedDevice.value?.lastUpdated || new Date().toISOString().replace('T', ' ').slice(0, 19)
+      updatedAt: selectedDevice.value?.lastUpdated || new Date().toISOString().replace('T', ' ').slice(0, 19)
     };
   });
 });
@@ -109,14 +109,14 @@ const commitOverride = (varKey: string, type: 'analog' | 'digital') => {
     finalVal = isNaN(num) ? 0 : num;
   }
 
-  // Update in core device variables store
-  setDeviceVariableValue(selectedDevice.value.id, varKey, finalVal);
+  // Update simulated values
+  simulatedValues.value[varKey] = finalVal;
   
   // Submit trace logger
   const typeLabel = type === 'digital' ? 'Boolean' : 'Analog';
   addLog(
     '调试面板', 
-    `下发强制命令 [${selectedDevice.value.code}]: 强制点位 [${varKey}] 写入 (值为 ${finalVal}) [${typeLabel}]`, 
+    `下发强制命令 [${selectedDevice.value.key}]: 强制点位 [${varKey}] 写入 (值为 ${finalVal}) [${typeLabel}]`, 
     'info'
   );
 
