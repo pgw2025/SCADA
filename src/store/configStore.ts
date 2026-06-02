@@ -28,5 +28,5 @@ export const systemConfig = ref<SystemConfig>({
   alarmEmailAddress: 'ops_alerts@iota-factory.com',
   retentionPeriodDays: 90,
   isSimulationActive: false,
-  backendApiUrl: 'http://localhost:5000'
+  backendApiUrl: window.location.origin.replace(':3000', ':5000')
 });
