@@ -22,3 +22,10 @@ export const startBackendPolling = () => {
         }
     }, 100);
 };
+
+export const stopBackendPolling = () => {
+    if (backendPollInterval) {
+        clearInterval(backendPollInterval);
+        backendPollInterval = null;
+    }
+};

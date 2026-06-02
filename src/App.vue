@@ -10,7 +10,6 @@ import {
   initializeAuth
   } from './store';
 import { initializeRealtimeSignals } from './services/signalRService';
-import { startBackendPolling } from './services/pollService';
 import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
@@ -90,12 +89,11 @@ onMounted(async () => {
   initializeAuth();
   startClock();
   initializeRealtimeSignals();
-  startBackendPolling();
   
   await Promise.all([
     syncAreas(),
-    fetchDataModelsFromBackend(),
-    fetchDevicesFromBackend()
+    fetchDataModelsFromBackend()
+    // Removed fetchDevicesFromBackend() as it will be managed by DeviceManagementView
   ]);
 });
 

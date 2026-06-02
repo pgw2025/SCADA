@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
 import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
-import { dataModels } from '../store/index';
-import { addLog } from '../store/index';
-import { createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
+import { dataModels, addLog } from '../store/index';
+import { fetchDevicesFromBackend, createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
+import { startBackendPolling, stopBackendPolling } from '../services/pollService';
+
+onMounted(() => {
+  syncAreas();
+  fetchDevicesFromBackend();
+  startBackendPolling();
+});
+
+onUnmounted(() => {
+  stopBackendPolling();
+});
 import { 
   Cpu, 
   MapPin, 
