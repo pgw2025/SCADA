@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { devices } from '../store/deviceStore';
 import { areas, fetchAreasFromBackend, createAreaOnBackend, deleteAreaOnBackend } from '../store/areas';
-import { dataModels } from '../store/models';
+import { dataModels } from '../store/index';
 import { addLog } from '../store/index';
 import { createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
 import { 

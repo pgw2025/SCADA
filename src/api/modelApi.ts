@@ -1,9 +1,7 @@
-import { ref } from 'vue';
 import axios from 'axios';
 import { DataModel } from '../types';
-import { addLog, systemConfig } from './index';
-
-export const dataModels = ref<DataModel[]>([]);
+import { dataModels } from '../store/modelStore';
+import { addLog, systemConfig } from '../store/index';
 
 // POST /api/DataModel - 创建新数据模型
 export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>): Promise<DataModel | null> => {
