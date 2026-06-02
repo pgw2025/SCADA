@@ -20,7 +20,6 @@ export const devices = ref<Device[]>([]);
 export const historicalRecords = ref<HistoricalRecord[]>([]);
 export const mqttServers = ref<MqttServer[]>([]);
 export const dataConversions = ref<DataConversion[]>([]);
-export const scadaProjects = ref<ScadaScreenProject[]>([]);
 export const triggers = ref<VariableTrigger[]>([]);
 export const systemScripts = ref<SystemScript[]>([]);
 export const scheduledTasks = ref<ScheduledTask[]>([]);

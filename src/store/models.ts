@@ -24,7 +24,7 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
     addLog('数据模型', `已在后端创建模型: ${modelData.name}`, 'normal');
     return createdModel;
   } catch (err: any) {
-    addLog('数据模型', `创建模型失败: ${err.message}`, 'error');
+    addLog('数据模型', `创建模型失败: ${err.message}`, 'warning');
     return null;
   }
 };
@@ -69,7 +69,7 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
     addLog('数据模型', `已更新数据模型配置: ${modelData.name || modelId}`, 'normal');
     return true;
   } catch (err: any) {
-    addLog('数据模型', `更新模型失败 [${modelId}]: ${err.message}`, 'error');
+    addLog('数据模型', `更新模型失败 [${modelId}]: ${err.message}`, 'warning');
     return false;
   }
 };
@@ -88,7 +88,7 @@ export const deleteDataModelOnBackend = async (id: string): Promise<boolean> => 
     addLog('数据模型', `已删除数据模型 [${id}]`, 'warning');
     return true;
   } catch (err: any) {
-    addLog('数据模型', `删除模型失败 [${id}]: ${err.message}`, 'error');
+    addLog('数据模型', `删除模型失败 [${id}]: ${err.message}`, 'warning');
     return false;
   }
 };

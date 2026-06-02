@@ -5,8 +5,10 @@ import {
   selectedProjectId, 
   selectedPageId, 
   currentProject, 
-  currentPage,
-  updateCurrentPageComponents,
+  currentPage
+} from '../store/scadaStore';
+import { updateCurrentPageComponents } from '../services/scadaService';
+import { 
   getDeviceVariableValue,
   setDeviceVariableValue,
   devices,

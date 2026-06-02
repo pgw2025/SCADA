@@ -205,7 +205,7 @@ export const loadSystemUsers = async (): Promise<SystemUser[]> => {
     systemUsers.value = users;
     return users;
   } catch (error: any) {
-    addLog('用户管理', `加载用户列表失败: ${error.message}`, 'error');
+    addLog('用户管理', `加载用户列表失败: ${error.message}`, 'warning');
     throw error;
   }
 };

@@ -2,16 +2,16 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { 
   activeTab, 
-  startSystemResourceMonitoring,
   isAuthenticated,
   loginUser,
   performLogin,
   performLogout,
   systemConfig,
-  initializeRealtimeSignals,
-  startBackendPolling,
   initializeAuth
   } from './store';
+import { initializeRealtimeSignals } from './services/socketService';
+import { startBackendPolling } from './services/pollService';
+import { startSystemResourceMonitoring } from './services/systemService';
 
 // Core static views
 import DashboardView from './components/DashboardView.vue';
