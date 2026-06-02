@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend } from '../store/index';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable } from '../store/index';
 import { DataModel, ModelVariable, DeviceType } from '../types';
 
 onMounted(() => {
@@ -193,6 +193,7 @@ const handleSaveVariable = async () => {
   }
 
   const newVar: ModelVariable = {
+    modelId: Number(model.id),
     key: varKey.value,
     name: varName.value,
     type: varType.value,
@@ -203,25 +204,27 @@ const handleSaveVariable = async () => {
     address: varAddress.value || `${varKey.value.toUpperCase()}_ADDR`,
     description: varDesc.value,
     
-    // Set advanced protocol properties
-    dataArea: varDataArea.value,
-    accessLevel: varAccessLevel.value,
-    scaleExpr: varScaleExpr.value,
+    // Top-level properties required by DTO
     isStored: varIsStored.value,
     storeMode: varStoreMode.value,
-    nodeId: varNodeId.value,
-    updateMode: varUpdateMode.value,
-    pollIntervalSecs: Number(varPollIntervalSecs.value)
+    updateMode: varUpdateMode.value === 'subscription' ? 1 : 0, // Subscription=1, Polling=0
+    pollingIntervalMs: Number(varPollIntervalSecs.value) * 1000,
+    
+    extensionData: {
+      dataArea: varDataArea.value,
+      accessLevel: varAccessLevel.value,
+      scaleExpr: varScaleExpr.value,
+      nodeId: varNodeId.value
+    }
   };
 
-  model.variables.push(newVar);
-
-  // Persist to server
-  const success = await updateDataModelOnBackend(model.id, { variables: model.variables });
-  if (!success) {
-    // Revert local change if backend update fails
-    model.variables.pop();
-    alert('保存变量到服务器失败，请检查网络连接');
+  // Persist to server using new variable API
+  try {
+    await createVariable(newVar);
+    // Refresh model list to ensure consistency with backend
+    await fetchDataModelsFromBackend();
+  } catch (err: any) {
+    alert('保存变量到服务器失败: ' + err.message);
     return;
   }
 

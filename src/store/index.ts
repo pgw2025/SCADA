@@ -8,6 +8,7 @@ export * from './systemStatusStore';
 export * from './modelStore';
 export * from './areaStore';
 export * from '../api/modelApi';
+export * from '../api/variableApi';
 export * from '../services/logService';
 export * from '../api/authApi';
 export * from '../services/taskService';

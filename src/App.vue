@@ -104,6 +104,7 @@ const startClock = () => {
 
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
+import { fetchDevicesFromBackend } from './api/deviceApi';
 
 onMounted(async () => {
   // 初始化认证状态（检查 localStorage 中的 Token）
@@ -118,7 +119,8 @@ onMounted(async () => {
   // 初始化全局基础数据
   await Promise.all([
     syncAreas(),
-    fetchDataModelsFromBackend()
+    fetchDataModelsFromBackend(),
+    fetchDevicesFromBackend()
   ]);
 });
 

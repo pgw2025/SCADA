@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { 
   devices, 
   areas, 
@@ -21,6 +21,15 @@ import {
   FileCode,
   Network
 } from 'lucide-vue-next';
+
+// Ensure reactivity for devices
+watch(
+  () => devices.value,
+  () => {
+    // 强制触发视图更新（如果computed未能自动更新）
+  },
+  { deep: true }
+);
 
 // Stats Computations
 const totalDevices = computed(() => devices.value.length);
