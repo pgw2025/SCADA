@@ -81,9 +81,9 @@ export interface SimulationConfig {
 // === NEW BACKEND MANAGEMENT SYSTEM TYPES ===
 
 export interface Area {
-  id: string;
+  id?: number;
   name: string;
-  description: string;
+  description?: string;
 }
 
 export interface ModelVariable {
@@ -122,7 +122,7 @@ export interface Device {
   id: string;
   name: string;
   code: string;       // e.g. SCADA-PUMP-01
-  areaId: string;
+  areaId: number;
   modelId: string;
   type: DeviceType;
   ipAddress?: string; // S7/OPCUA specific

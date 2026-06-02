@@ -108,17 +108,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             }
           }
@@ -137,17 +137,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/Area"
+                "$ref": "#/components/schemas/AreaDto"
               }
             }
           }
@@ -603,17 +603,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/CreateDataModelDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/CreateDataModelDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/CreateDataModelDto"
               }
             }
           }
@@ -632,17 +632,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/DataModelDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/DataModelDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/DataModel"
+                "$ref": "#/components/schemas/DataModelDto"
               }
             }
           }
@@ -719,17 +719,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/CreateDeviceDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/CreateDeviceDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/CreateDeviceDto"
               }
             }
           }
@@ -748,17 +748,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/DeviceDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/DeviceDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/Device"
+                "$ref": "#/components/schemas/DeviceDto"
               }
             }
           }
@@ -1269,17 +1269,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             }
           }
@@ -1298,17 +1298,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelVariable"
+                "$ref": "#/components/schemas/ModelVariableDto"
               }
             }
           }
@@ -2001,6 +2001,35 @@
         }
       }
     },
+    "/api/System/status": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/SystemConfig": {
       "get": {
         "tags": [
@@ -2686,6 +2715,30 @@
         },
         "additionalProperties": false
       },
+      "AreaDto": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ConfigLog": {
         "type": "object",
         "properties": {
@@ -2708,6 +2761,103 @@
           "createTime": {
             "type": "string",
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDataModelDto": {
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "minLength": 1,
+            "pattern": "^(S7|OPCUA|MQTT|Virtual)$",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDeviceDto": {
+        "required": [
+          "code",
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "code": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "areaId": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "modelId": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "type": {
+            "minLength": 1,
+            "pattern": "^(S7|OPCUA|MQTT|Virtual)$",
+            "type": "string"
+          },
+          "ipAddress": {
+            "pattern": "^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$",
+            "type": "string",
+            "nullable": true
+          },
+          "port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "topic": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus"
+          },
+          "cpuType": {
+            "type": "string",
+            "nullable": true
+          },
+          "rack": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2790,6 +2940,43 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ModelVariable"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DataModelDto": {
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "minLength": 1,
+            "pattern": "^(S7|OPCUA|MQTT|Virtual)$",
+            "type": "string"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelVariableDto"
             },
             "nullable": true
           }
@@ -2915,6 +3102,93 @@
         },
         "additionalProperties": false
       },
+      "DeviceDto": {
+        "required": [
+          "code",
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "code": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "areaId": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "areaName": {
+            "type": "string",
+            "nullable": true
+          },
+          "modelId": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "modelName": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "minLength": 1,
+            "pattern": "^(S7|OPCUA|MQTT|Virtual)$",
+            "type": "string"
+          },
+          "ipAddress": {
+            "pattern": "^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$",
+            "type": "string",
+            "nullable": true
+          },
+          "port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "topic": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceStatus"
+          },
+          "cpuType": {
+            "type": "string",
+            "nullable": true
+          },
+          "rack": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "DeviceStatus": {
         "enum": [
           0,
@@ -2924,6 +3198,32 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "DiskInfoDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalSizeGb": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "usedSizeGb": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "usagePercentage": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
       },
       "ExposedInterface": {
         "type": "object",
@@ -3113,6 +3413,142 @@
           "pollingIntervalMs": {
             "type": "integer",
             "format": "int32"
+          },
+          "bitOffset": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "scaleSlope": {
+            "type": "number",
+            "format": "double"
+          },
+          "scaleOffset": {
+            "type": "number",
+            "format": "double"
+          },
+          "deadBand": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "isReadOnly": {
+            "type": "boolean"
+          },
+          "extensionData": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ModelVariableDto": {
+        "required": [
+          "address",
+          "dataType",
+          "key",
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "modelId": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "key": {
+            "maxLength": 50,
+            "minLength": 0,
+            "pattern": "^[a-zA-Z0-9_]+$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string"
+          },
+          "type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "dataType": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "min": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "max": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "address": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "isStored": {
+            "type": "boolean"
+          },
+          "storeMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "updateMode": {
+            "$ref": "#/components/schemas/UpdateMode"
+          },
+          "pollingIntervalMs": {
+            "maximum": 3600000,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32"
+          },
+          "bitOffset": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "scaleSlope": {
+            "type": "number",
+            "format": "double"
+          },
+          "scaleOffset": {
+            "type": "number",
+            "format": "double"
+          },
+          "deadBand": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "isReadOnly": {
+            "type": "boolean"
+          },
+          "extensionData": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3381,6 +3817,59 @@
           },
           "active": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SystemStatusDto": {
+        "type": "object",
+        "properties": {
+          "cpuUsage": {
+            "type": "number",
+            "format": "double"
+          },
+          "memUsage": {
+            "type": "number",
+            "format": "double"
+          },
+          "diskLoadPercentage": {
+            "type": "number",
+            "format": "double"
+          },
+          "networkIn": {
+            "type": "number",
+            "format": "double"
+          },
+          "networkOut": {
+            "type": "number",
+            "format": "double"
+          },
+          "uptimeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "uptimeHours": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "uptimeMins": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pollFreq": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalPollPackets": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "disks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiskInfoDto"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false

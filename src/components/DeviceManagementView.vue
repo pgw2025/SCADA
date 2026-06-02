@@ -43,7 +43,7 @@ const editingDeviceId = ref<string | null>(null);
 
 const devName = ref<string>('');
 const devCode = ref<string>('');
-const devArea = ref<string>('');
+const devArea = ref<number>(0);
 const devModel = ref<string>('');
 const devType = ref<DeviceType>('OPCUA');
 const devIP = ref<string>('');
@@ -83,7 +83,7 @@ const handleAddArea = async () => {
 };
 
 // Trigger delete area
-const handleDeleteArea = async (id: string, name: string) => {
+const handleDeleteArea = async (id: number, name: string) => {
   const counts = devices.value.filter(d => d.areaId === id).length;
   if (counts > 0) {
     alert(`无法删除区域 [${name}]: 有 ${counts} 个处于连接中的工业设备已被部署在该区域内。`);
@@ -107,7 +107,7 @@ const openNewDeviceModal = () => {
   editingDeviceId.value = null;
   devName.value = '';
   devCode.value = `PLC-DEV-${Date.now().toString().slice(-4)}`;
-  devArea.value = areas.value[0]?.id || '';
+  devArea.value = areas.value[0]?.id || 0;
   devModel.value = dataModels.value[0]?.id || '';
   devType.value = dataModels.value[0]?.type || 'OPCUA';
   devIP.value = '192.168.1.100';
@@ -157,7 +157,7 @@ const openEditDeviceModal = (device: Device) => {
   
   devName.value = device.name;
   devCode.value = device.code;
-  devArea.value = device.areaId;
+  devArea.value = Number(device.areaId);
   devModel.value = device.modelId;
   devType.value = device.type;
   devIP.value = device.ipAddress || '';

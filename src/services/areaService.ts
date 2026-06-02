@@ -37,7 +37,7 @@ export const createAreaAndSync = async (areaData: { name: string, description: s
   }
 };
 
-export const updateAreaAndSync = async (areaId: string, areaData: { name: string, description: string }) => {
+export const updateAreaAndSync = async (areaId: number, areaData: { name: string, description: string }) => {
   if (systemConfig.value.isSimulationActive) return true;
 
   try {
@@ -58,7 +58,7 @@ export const updateAreaAndSync = async (areaId: string, areaData: { name: string
   }
 };
 
-export const deleteAreaAndSync = async (id: string, name: string) => {
+export const deleteAreaAndSync = async (id: number, name: string) => {
   if (systemConfig.value.isSimulationActive) {
     store.setAreas(store.areas.value.filter(a => a.id !== id));
     return true;
@@ -73,5 +73,19 @@ export const deleteAreaAndSync = async (id: string, name: string) => {
   } catch (err: any) {
     addLog('区域管理', `删除区域失败 [${id}]: ${err.message}`, 'warning');
     return false;
+  }
+};
+
+export const getAreaById = async (id: number) => {
+  if (systemConfig.value.isSimulationActive) {
+    return store.areas.value.find(a => a.id === id) || null;
+  }
+
+  try {
+    const { data } = await api.getAreaById(id);
+    return data;
+  } catch (err: any) {
+    addLog('区域管理', `获取区域详情失败 [${id}]: ${err.message}`, 'warning');
+    return null;
   }
 };
