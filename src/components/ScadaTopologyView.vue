@@ -9,7 +9,7 @@ import {
 } from '../store/scadaStore';
 import { updateCurrentPageComponents } from '../services/scadaService';
 import { devices } from '../store/deviceStore';
-import { addLog } from '../store/system';
+import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';

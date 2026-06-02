@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Device } from '../types';
 import { devices } from '../store/deviceStore';
-import { addLog, systemConfig } from '../store/system';
+import { addLog, systemConfig } from '../store/index';
 
 // GET /api/Device - 获取所有设备列表
 export const fetchDevicesFromBackend = async (): Promise<void> => {

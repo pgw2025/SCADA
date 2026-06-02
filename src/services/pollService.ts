@@ -1,5 +1,5 @@
 import { HubConnectionState } from '@microsoft/signalr';
-import { systemConfig } from '../store/system';
+import { systemConfig } from '../store/index';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
 import { signalRConnection } from './socketService';
 

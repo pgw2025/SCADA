@@ -1,4 +1,4 @@
-import { systemConfig, serverStatus } from '../store/system';
+import { systemConfig, serverStatus } from '../store/index';
 
 let resourceInterval: any = null;
 

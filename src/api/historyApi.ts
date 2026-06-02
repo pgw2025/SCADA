@@ -1,5 +1,5 @@
 import { HistoricalRecord } from '../types';
-import { addLog, systemConfig } from '../store/system';
+import { addLog, systemConfig } from '../store/index';
 import { historicalRecords } from '../store/historyStore';
 
 export const fetchHistoryFromBackend = async (variableKey: string, limit: number = 80) => {

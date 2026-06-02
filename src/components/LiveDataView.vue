@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { devices } from '../store/deviceStore';
 import { dataModels } from '../store/models';
 import { setDeviceVariableValue } from '../services/dataOrchestration';
-import { addLog } from '../store/system';
+import { addLog } from '../store/index';
 import { 
   Database, 
   Search, 

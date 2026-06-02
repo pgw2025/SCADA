@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import axios from 'axios';
 import { Area } from '../types';
-import { addLog, systemConfig } from './system';
+import { addLog, systemConfig } from './index';
 
 export const areas = ref<Area[]>([]);
 

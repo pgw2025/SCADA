@@ -1,6 +1,6 @@
 import { devices } from '../store/deviceStore';
 import { dataConversions } from '../store/configStore';
-import { addLog, systemConfig } from '../store/system';
+import { addLog, systemConfig } from '../store/index';
 import { HubConnectionState } from '@microsoft/signalr';
 import { signalRConnection } from '../services/socketService';
 
