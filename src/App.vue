@@ -102,7 +102,10 @@ const startClock = () => {
   clockInterval = setInterval(update, 1000);
 };
 
-onMounted(() => {
+import { syncAreas } from './services/areaService';
+import { fetchDataModelsFromBackend } from './api/modelApi';
+
+onMounted(async () => {
   // 初始化认证状态（检查 localStorage 中的 Token）
   initializeAuth();
   
@@ -111,6 +114,12 @@ onMounted(() => {
   startSystemResourceMonitoring();
   initializeRealtimeSignals();
   startBackendPolling();
+  
+  // 初始化全局基础数据
+  await Promise.all([
+    syncAreas(),
+    fetchDataModelsFromBackend()
+  ]);
 });
 
 onUnmounted(() => {

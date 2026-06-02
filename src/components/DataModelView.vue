@@ -109,6 +109,10 @@ const handleDataTypeChange = () => {
   }
 };
 
+const totalVariableCount = computed(() => {
+  return currentModel.value ? currentModel.value.variables.length : 0;
+});
+
 // Advanced variables search state
 const varSearchQuery = ref<string>('');
 
@@ -177,7 +181,7 @@ const handleDeleteModel = async (id: string, name: string) => {
 };
 
 // Append tag to current selected model variables
-const handleSaveVariable = () => {
+const handleSaveVariable = async () => {
   if (!varKey.value.trim() || !varName.value.trim()) return;
   const model = currentModel.value;
   if (!model) return;
@@ -211,6 +215,15 @@ const handleSaveVariable = () => {
   };
 
   model.variables.push(newVar);
+
+  // Persist to server
+  const success = await updateDataModelOnBackend(model.id, { variables: model.variables });
+  if (!success) {
+    // Revert local change if backend update fails
+    model.variables.pop();
+    alert('保存变量到服务器失败，请检查网络连接');
+    return;
+  }
 
   // Synchronize new variable in all existing online devices relying on this model!
   devices.value.forEach((d) => {

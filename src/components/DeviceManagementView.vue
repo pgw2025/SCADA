@@ -169,9 +169,14 @@ const openEditDeviceModal = (device: Device) => {
 };
 
 const handleSaveDevice = async () => {
-  if (!devName.value.trim() || !devCode.value.trim()) return;
+  addLog('调试', `开始保存设备: ${devName.value}`, 'normal');
+  if (!devName.value.trim() || !devCode.value.trim()) {
+    addLog('调试', '校验失败: 名称或编码为空', 'warning');
+    return;
+  }
 
   const chosenModel = dataModels.value.find(m => m.id === devModel.value);
+  addLog('调试', `Chosen Model ID: ${devModel.value}, Found: ${!!chosenModel}`, 'normal');
   
   // Set default initial variables if adding new
   const initialVars: Record<string, any> = {};
@@ -207,10 +212,13 @@ const handleSaveDevice = async () => {
     }
   } else {
     // Add new
+    addLog('调试', '调用 createDeviceOnBackend...', 'normal');
     const createdDevice = await createDeviceOnBackend(deviceData);
+    addLog('调试', `API 返回 createdDevice: ${!!createdDevice}`, 'normal');
     if (createdDevice) {
       // 如果后端创建成功但本地未自动同步，则手动添加
       const exists = devices.value.find(d => d.id === createdDevice.id);
+      addLog('调试', `本地是否存在: ${!!exists}`, 'normal');
       if (!exists) {
         devices.value.push({
           ...createdDevice,
@@ -223,6 +231,7 @@ const handleSaveDevice = async () => {
   }
 
   showDeviceModal.value = false;
+  addLog('调试', '模态框已关闭', 'normal');
 };
 
 const handleDeleteDevice = async (id: string, name: string) => {
