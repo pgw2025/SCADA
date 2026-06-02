@@ -1,4 +1,3 @@
-export * from './areas';
 export * from './scadaStore';
 export * from './uiStore';
 export * from './deviceStore';
@@ -7,8 +6,10 @@ export * from './configStore';
 export * from './userStore';
 export * from './systemStatusStore';
 export * from './modelStore';
+export * from './areaStore';
 export * from '../api/modelApi';
 export * from '../services/logService';
 export * from '../api/authApi';
 export * from '../services/taskService';
 export * from '../services/scriptService';
+export * from '../services/areaService';

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { devices } from '../store/deviceStore';
-import { areas, fetchAreasFromBackend, createAreaOnBackend, deleteAreaOnBackend } from '../store/areas';
+import { areas } from '../store/areaStore';
+import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
 import { dataModels } from '../store/index';
 import { addLog } from '../store/index';
 import { createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
@@ -57,7 +58,7 @@ const activeSection = ref<'list' | 'areas'>('list');
 const handleAddArea = async () => {
   if (!newAreaName.value.trim()) return;
   
-  const createdArea = await createAreaOnBackend({
+  const createdArea = await createAreaAndSync({
     name: newAreaName.value,
     description: newAreaDesc.value
   });
@@ -79,7 +80,7 @@ const handleDeleteArea = async (id: string, name: string) => {
     return;
   }
   
-  const success = await deleteAreaOnBackend(id);
+  const success = await deleteAreaAndSync(id, name);
   if (success) {
     addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
   }
@@ -87,7 +88,7 @@ const handleDeleteArea = async (id: string, name: string) => {
 
 // 初始化时从后端获取区域数据
 onMounted(() => {
-  fetchAreasFromBackend();
+  syncAreas();
 });
 
 // Open Device modal
