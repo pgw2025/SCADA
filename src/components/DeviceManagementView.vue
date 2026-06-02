@@ -35,6 +35,8 @@ import { Device, Area, DeviceType } from '../types';
 const showAreaModal = ref<boolean>(false);
 const newAreaName = ref<string>('');
 const newAreaDesc = ref<string>('');
+const areaFormErrors = ref<Record<string, string>>({});
+const areaFormErrorMessage = ref<string>('');
 
 // Device Form States
 const showDeviceModal = ref<boolean>(false);
@@ -66,20 +68,32 @@ const activeSection = ref<'list' | 'areas'>('list');
 
 // Trigger add area
 const handleAddArea = async () => {
-  if (!newAreaName.value.trim()) return;
-  
-  const createdArea = await createAreaAndSync({
+  areaFormErrors.value = {};
+  areaFormErrorMessage.value = '';
+
+  if (!newAreaName.value.trim()) {
+    areaFormErrors.value = { Name: '区域名称不能为空' };
+    return;
+  }
+
+  const result = await createAreaAndSync({
     name: newAreaName.value,
     description: newAreaDesc.value
   });
-  
-  if (createdArea) {
+
+  if (result.success) {
     addLog('设备管理', `添加新工艺区域: [${newAreaName.value}]`, 'normal');
+    newAreaName.value = '';
+    newAreaDesc.value = '';
+    showAreaModal.value = false;
+    areaFormErrors.value = {};
+  } else if (result.error) {
+    if (result.error.type === 'validation' && result.error.fieldErrors) {
+      areaFormErrors.value = result.error.fieldErrors;
+    } else {
+      areaFormErrorMessage.value = result.error.message;
+    }
   }
-  
-  newAreaName.value = '';
-  newAreaDesc.value = '';
-  showAreaModal.value = false;
 };
 
 // Trigger delete area
@@ -89,10 +103,12 @@ const handleDeleteArea = async (id: number, name: string) => {
     alert(`无法删除区域 [${name}]: 有 ${counts} 个处于连接中的工业设备已被部署在该区域内。`);
     return;
   }
-  
-  const success = await deleteAreaAndSync(id, name);
-  if (success) {
+
+  const result = await deleteAreaAndSync(id, name);
+  if (result.success) {
     addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
+  } else if (result.error) {
+    alert(result.error.message);
   }
 };
 
@@ -477,18 +493,23 @@ const toggleDeviceStateInGrid = (device: Device) => {
         </div>
 
         <div class="p-5 space-y-4 text-xs">
+          <div v-if="areaFormErrorMessage" class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-600">
+            {{ areaFormErrorMessage }}
+          </div>
           <div>
             <label class="text-slate-500 font-bold block mb-1">区域名称</label>
-            <input 
+            <input
               v-model="newAreaName"
               type="text"
               placeholder="例如: 智能三级精细沉降池"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-sans focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+              :class="areaFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
+              class="w-full bg-slate-50 border rounded-lg p-2 font-sans focus:bg-white text-slate-900 focus:outline-none"
             />
+            <span v-if="areaFormErrors.Name" class="text-rose-500 text-[10px] mt-1 block">{{ areaFormErrors.Name }}</span>
           </div>
           <div>
             <label class="text-slate-500 font-bold block mb-1">描述</label>
-            <textarea 
+            <textarea
               v-model="newAreaDesc"
               rows="3"
               placeholder="阐述本区域所属流程及测温、变频流水分拣的具体物料方向..."
@@ -498,8 +519,8 @@ const toggleDeviceStateInGrid = (device: Device) => {
         </div>
 
         <div class="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
-          <button 
-            @click="showAreaModal = false"
+          <button
+            @click="showAreaModal = false; areaFormErrors = {}; areaFormErrorMessage = ''"
             class="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
           >
             取消
