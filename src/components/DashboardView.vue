@@ -154,106 +154,97 @@ const recentLogs = computed(() => logs.value.slice(0, 5));
       
       <!-- Server hardware stats (CPU/Memory gauges) -->
       <div class="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm space-y-4 lg:col-span-2">
-        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div class="flex items-center gap-2">
-            <Server class="w-4 h-4 text-[#1890ff]" />
-            <span class="font-bold text-sm tracking-tight">服务器资源监控</span>
-          </div>
-          <span class="text-xs font-mono text-slate-400">运行时间: {{ serverStatus.uptimeDays }}天 {{ serverStatus.uptimeHours }}时 {{ serverStatus.uptimeMins }}分</span>
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <Server class="w-4 h-4 text-[#1890ff]" />
+          <span class="font-bold text-sm tracking-tight">服务器资源监控</span>
         </div>
+        <span class="text-xs font-mono text-slate-400">运行时间: {{ serverStatus.uptimeDays }}天 {{ serverStatus.uptimeHours }}时 {{ serverStatus.uptimeMins }}分</span>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <!-- CPU Gauge element -->
-          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-            <div class="flex items-center justify-between text-xs">
-              <div class="flex items-center gap-1 font-bold text-slate-700">
-                <Cpu class="w-3.5 h-3.5 text-chrome" />
-                CPU 使用率
-              </div>
-              <span class="font-mono text-slate-900 font-bold">{{ serverStatus.cpuUsage }}%</span>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- CPU Gauge element -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-1 font-bold text-slate-700">
+              <Cpu class="w-3.5 h-3.5 text-chrome" />
+              CPU 使用率
             </div>
-            
-            <!-- Progress Bar -->
-            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
-              <div class="h-full rounded-full transition-all duration-500" :class="cpuColor" :style="{ width: `${serverStatus.cpuUsage}%` }" />
-            </div>
-            
-            <p class="text-[9px] text-slate-500 pt-0.5 leading-snug">
-              运行稳定
-            </p>
+            <span class="font-mono text-slate-900 font-bold">{{ serverStatus.cpuUsage }}%</span>
           </div>
 
-          <!-- Memory Gauge element -->
-          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-            <div class="flex items-center justify-between text-xs">
-              <div class="flex items-center gap-1 font-bold text-slate-700">
-                <Zap class="w-3.5 h-3.5 text-amber-500" />
-                内存使用率
-              </div>
-              <span class="font-mono text-slate-900 font-bold">{{ serverStatus.memUsage }}%</span>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
-              <div class="h-full rounded-full transition-all duration-500" :class="memColor" :style="{ width: `${serverStatus.memUsage}%` }" />
-            </div>
-            
-            <p class="text-[9px] text-slate-500 pt-0.5 leading-snug">
-              已用 7.71 GB / 共 16.00 GB
-            </p>
-          </div>
-
-          <!-- Disk Space element -->
-          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-            <div class="flex items-center justify-between text-xs">
-              <div class="flex items-center gap-1 font-bold text-slate-700">
-                <Database class="w-3.5 h-3.5 text-indigo-500" />
-                磁盘使用率
-              </div>
-              <span class="font-mono text-slate-900 font-bold">{{ serverStatus.diskUsage }}%</span>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
-              <div class="h-full rounded-full bg-indigo-500" :style="{ width: `${serverStatus.diskUsage}%` }" />
-            </div>
-            
-            <p class="text-[9px] text-slate-500 pt-0.5 leading-snug">
-              已用 310 GB / 共 2 TB
-            </p>
+          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
+            <div class="h-full rounded-full transition-all duration-500" :class="cpuColor" :style="{ width: `${serverStatus.cpuUsage}%` }" />
           </div>
         </div>
 
-        <!-- Network Rates & IO Statistics -->
-        <div class="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-300 font-mono text-[11px] leading-relaxed relative overflow-hidden">
-          <div class="absolute right-3 top-3 opacity-10">
-            <Network class="w-16 h-16 text-emerald-400" />
+        <!-- Memory Gauge element -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-1 font-bold text-slate-700">
+              <Zap class="w-3.5 h-3.5 text-amber-500" />
+              内存使用率
+            </div>
+            <span class="font-mono text-slate-900 font-bold">{{ serverStatus.memUsage }}%</span>
           </div>
-          <div class="flex items-center gap-1.5 text-emerald-400 border-b border-slate-800 pb-2 mb-2 font-bold uppercase tracking-wider">
-            <Network class="w-3.5 h-3.5" />
-            网络流量监控
-          </div>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div>
-              <span class="text-slate-500">接收流量:</span>
-              <span class="text-white ml-1 font-bold">{{ serverStatus.networkIn }} kbps</span>
-            </div>
-            <div>
-              <span class="text-slate-500">发送流量:</span>
-              <span class="text-white ml-1 font-bold">{{ serverStatus.networkOut }} kbps</span>
-            </div>
-            <div>
-              <span class="text-slate-500">轮询周期:</span>
-              <span class="text-sky-400 ml-1 font-bold">{{ serverStatus.pollFreq }} ms</span>
-            </div>
-            <div>
-              <span class="text-slate-500">数据包总数:</span>
-              <span class="text-amber-400 ml-1 font-bold">{{ serverStatus.totalPollPackets }}</span>
-            </div>
+
+          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
+            <div class="h-full rounded-full transition-all duration-500" :class="memColor" :style="{ width: `${serverStatus.memUsage}%` }" />
           </div>
         </div>
       </div>
 
+      <!-- Disks Section -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+        <div v-for="disk in serverStatus.disks" :key="disk.name" class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <div class="flex justify-between text-[10px] mb-2 font-bold">
+            <span class="text-slate-700">{{ disk.label }} ({{ disk.name }})</span>
+            <span :class="disk.usagePercentage > 85 ? 'text-rose-500' : 'text-slate-500'">
+              {{ disk.usagePercentage }}%
+            </span>
+          </div>
+          <div class="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+            <div 
+              class="h-full transition-all duration-500" 
+              :class="disk.usagePercentage > 85 ? 'bg-rose-500' : 'bg-sky-500'"
+              :style="{ width: `${disk.usagePercentage}%` }"
+            />
+          </div>
+          <div class="text-[9px] text-slate-400 mt-2 font-mono">
+            {{ disk.usedSizeGb }} GB / {{ disk.totalSizeGb }} GB
+          </div>
+        </div>
+      </div>
+
+      <!-- Network Rates & IO Statistics -->
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-900 text-slate-300 font-mono text-[11px] leading-relaxed relative overflow-hidden">
+        <div class="absolute right-3 top-3 opacity-10">
+          <Network class="w-16 h-16 text-emerald-400" />
+        </div>
+        <div class="flex items-center gap-1.5 text-emerald-400 border-b border-slate-800 pb-2 mb-2 font-bold uppercase tracking-wider">
+          <Network class="w-3.5 h-3.5" />
+          网络流量监控
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div>
+            <span class="text-slate-500">接收:</span>
+            <span class="text-white ml-1 font-bold">{{ serverStatus.networkIn }} kbps</span>
+          </div>
+          <div>
+            <span class="text-slate-500">发送:</span>
+            <span class="text-white ml-1 font-bold">{{ serverStatus.networkOut }} kbps</span>
+          </div>
+          <div>
+            <span class="text-slate-500">轮询周期:</span>
+            <span class="text-sky-400 ml-1 font-bold">{{ serverStatus.pollFreq }} ms</span>
+          </div>
+          <div>
+            <span class="text-slate-500">总包数:</span>
+            <span class="text-amber-400 ml-1 font-bold">{{ serverStatus.totalPollPackets }}</span>
+          </div>
+        </div>
+      </div>
+      </div>
       <!-- Mini log preview / Ledger -->
       <div class="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[250px]">
         <div class="border-b border-slate-100 pb-3 mb-2">

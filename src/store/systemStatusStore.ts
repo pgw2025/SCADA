@@ -1,14 +1,16 @@
 import { ref } from 'vue';
+import { ServerStatus } from '../types';
 
-export const serverStatus = ref({
-  cpuUsage: 14.5,
-  memUsage: 48.2,
-  diskUsage: 61.4,
-  networkIn: 88.4,
-  networkOut: 245.1,
-  uptimeDays: 14,
-  uptimeHours: 5,
-  uptimeMins: 32,
-  pollFreq: 1200,
-  totalPollPackets: 284145,
+export const serverStatus = ref<ServerStatus>({
+  cpuUsage: 0,
+  memUsage: 0,
+  diskLoadPercentage: 0,
+  networkIn: 0,
+  networkOut: 0,
+  uptimeDays: 0,
+  uptimeHours: 0,
+  uptimeMins: 0,
+  pollFreq: 0,
+  totalPollPackets: 0,
+  disks: [],
 });

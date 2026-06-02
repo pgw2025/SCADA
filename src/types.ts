@@ -213,6 +213,26 @@ export interface SystemLog {
   content: string;
 }
 
+export interface ServerStatus {
+  cpuUsage: number;
+  memUsage: number;
+  diskLoadPercentage: number;
+  networkIn: number;
+  networkOut: number;
+  uptimeDays: number;
+  uptimeHours: number;
+  uptimeMins: number;
+  pollFreq: number;
+  totalPollPackets: number;
+  disks: {
+    name: string;
+    label: string;
+    totalSizeGb: number;
+    usedSizeGb: number;
+    usagePercentage: number;
+  }[];
+}
+
 // === SCADA INDUSTRIAL PLUGINS & EXTENSIONS ===
 
 export interface VariableTrigger {
