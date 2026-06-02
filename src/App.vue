@@ -89,7 +89,6 @@ const startClock = () => {
 onMounted(async () => {
   initializeAuth();
   startClock();
-  startSystemResourceMonitoring();
   initializeRealtimeSignals();
   startBackendPolling();
   

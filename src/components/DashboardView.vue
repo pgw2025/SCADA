@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { 
   devices, 
   areas, 
@@ -8,6 +8,7 @@ import {
   logs,
   scadaProjects
 } from '../store/index';
+import { startSystemResourceMonitoring, stopSystemResourceMonitoring } from '../services/systemService';
 import { 
   Cpu, 
   Database, 
@@ -21,6 +22,14 @@ import {
   FileCode,
   Network
 } from 'lucide-vue-next';
+
+onMounted(() => {
+  startSystemResourceMonitoring();
+});
+
+onUnmounted(() => {
+  stopSystemResourceMonitoring();
+});
 
 // Ensure reactivity for devices
 watch(

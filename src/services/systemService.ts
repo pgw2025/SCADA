@@ -7,13 +7,25 @@ let resourceInterval: any = null;
 export const startSystemResourceMonitoring = () => {
     if (resourceInterval) return;
     
-    // 定时从后端获取真实数据
-    resourceInterval = setInterval(async () => {
-        try {
-            const { data } = await fetchSystemStatus();
-            serverStatus.value = data;
-        } catch (err: any) {
-            addLog('系统监控', `获取系统状态失败: ${err.message}`, 'warning');
-        }
-    }, 2000);
+    // 立即执行一次以避免等待间隔
+    fetchStatus();
+    
+    resourceInterval = setInterval(fetchStatus, 2000);
 };
+
+export const stopSystemResourceMonitoring = () => {
+    if (resourceInterval) {
+        clearInterval(resourceInterval);
+        resourceInterval = null;
+    }
+};
+
+async function fetchStatus() {
+    try {
+        const { data } = await fetchSystemStatus();
+        serverStatus.value = data;
+    } catch (err: any) {
+        // 避免在组件卸载时记录不必要的错误日志
+        console.warn('获取系统状态失败:', err.message);
+    }
+}
