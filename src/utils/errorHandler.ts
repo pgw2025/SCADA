@@ -42,16 +42,30 @@ export const parseApiError = (error: any): ErrorResult => {
 
   if (apiData.errors && Object.keys(apiData.errors).length > 0) {
     const fieldErrors: Record<string, string> = {};
+    
+    // 字段名称映射：后端字段名 -> 前端字段名
+    const fieldNameMap: Record<string, string> = {
+      'Code': 'Key',
+      'Name': 'Name',
+      'AreaId': 'AreaId',
+      'ModelId': 'ModelId',
+      'Rack': 'Rack',
+      'Slot': 'Slot'
+    };
+    
     try {
       Object.entries(apiData.errors).forEach(([field, messages]) => {
+        // 使用映射后的字段名
+        const mappedField = fieldNameMap[field] || field;
+        
         if (Array.isArray(messages)) {
-          fieldErrors[field] = messages.join('；');
+          fieldErrors[mappedField] = messages.join('；');
         } else if (typeof messages === 'string') {
-          fieldErrors[field] = messages;
+          fieldErrors[mappedField] = messages;
         } else if (messages && typeof messages === 'object' && messages.message) {
-          fieldErrors[field] = String(messages.message);
+          fieldErrors[mappedField] = String(messages.message);
         } else {
-          fieldErrors[field] = String(messages);
+          fieldErrors[mappedField] = String(messages);
         }
       });
     } catch (e) {

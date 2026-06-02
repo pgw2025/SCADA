@@ -59,8 +59,8 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
       ipAddress: deviceData.ipAddress?.trim() || null,
       port: typeof deviceData.port === 'string' ? parseInt(deviceData.port, 10) : deviceData.port || null,
       cpuType: deviceData.cpuType?.trim() || null,
-      rack: deviceData.rack || null,
-      slot: deviceData.slot || null
+      rack: deviceData.rack !== undefined && deviceData.rack !== null ? deviceData.rack : null,
+      slot: deviceData.slot !== undefined && deviceData.slot !== null ? deviceData.slot : null
     };
 
     const response = await api.createDeviceOnBackend(requestData);
@@ -97,8 +97,8 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
       ipAddress: deviceData.ipAddress?.trim() || null,
       port: typeof deviceData.port === 'string' ? parseInt(deviceData.port, 10) : deviceData.port || null,
       cpuType: deviceData.cpuType?.trim() || null,
-      rack: deviceData.rack || null,
-      slot: deviceData.slot || null
+      rack: deviceData.rack !== undefined && deviceData.rack !== null ? deviceData.rack : null,
+      slot: deviceData.slot !== undefined && deviceData.slot !== null ? deviceData.slot : null
     };
 
     await api.updateDeviceOnBackend(requestData);

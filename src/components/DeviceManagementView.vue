@@ -666,8 +666,10 @@ const toggleDeviceStateInGrid = (device: Device) => {
                     type="number"
                     min="0"
                     max="10"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850"
+                    :class="deviceFormErrors.Rack ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200'"
+                    class="w-full bg-white border rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850"
                   />
+                  <span v-if="deviceFormErrors.Rack" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Rack }}</span>
                 </div>
                 <div>
                   <label class="text-slate-400 font-bold block mb-0.5">插槽</label>
