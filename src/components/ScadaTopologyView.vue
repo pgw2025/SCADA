@@ -8,12 +8,9 @@ import {
   currentPage
 } from '../store/scadaStore';
 import { updateCurrentPageComponents } from '../services/scadaService';
-import { 
-  getDeviceVariableValue,
-  setDeviceVariableValue,
-  devices,
-  addLog
-} from '../store/index';
+import { devices } from '../store/deviceStore';
+import { addLog } from '../store/system';
+import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';

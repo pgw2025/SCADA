@@ -1,6 +1,6 @@
 import { HistoricalRecord } from '../types';
 import { addLog, systemConfig } from '../store/system';
-import { historicalRecords } from '../store/devices';
+import { historicalRecords } from '../store/historyStore';
 
 export const fetchHistoryFromBackend = async (variableKey: string, limit: number = 80) => {
     if (systemConfig.value.isSimulationActive) return;

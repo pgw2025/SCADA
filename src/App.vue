@@ -9,7 +9,7 @@ import {
   systemConfig,
   initializeAuth
   } from './store';
-import { initializeRealtimeSignals } from './services/socketService';
+import { initializeRealtimeSignals } from './services/signalRService';
 import { startBackendPolling } from './services/pollService';
 import { startSystemResourceMonitoring } from './services/systemService';
 

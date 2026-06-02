@@ -1,6 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr';
 import { systemConfig } from '../store/system';
-import { fetchDevicesFromBackend, signalRConnection } from '../store/devices';
+import { fetchDevicesFromBackend } from '../api/deviceApi';
+import { signalRConnection } from './socketService';
 
 let backendPollInterval: any = null;
 

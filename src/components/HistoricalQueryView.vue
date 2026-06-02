@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { historicalRecords } from '../store/devices';
+import { historicalRecords } from '../store/historyStore';
 import { systemConfig } from '../store/system';
 import { fetchHistoryFromBackend } from '../api/historyApi';
 import { 

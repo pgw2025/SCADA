@@ -22,7 +22,9 @@ import {
   UpdateUserDto
 } from '../types';
 import { TEMPLATES } from '../templates';
-import { getDeviceVariableValue, historicalRecords, scheduledTasks, setDeviceVariableValue, systemScripts } from './devices';
+import { historicalRecords } from './historyStore';
+import { scheduledTasks, systemScripts } from './configStore';
+import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 
 // === BACKEND CONFIGURATION ===
 const API_BASE_URL = window.location.origin.replace(':3000', ':5000');

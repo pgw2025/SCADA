@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { devices, dataModels, setDeviceVariableValue, addLog } from '../store/index';
+import { devices } from '../store/deviceStore';
+import { dataModels } from '../store/models';
+import { setDeviceVariableValue } from '../services/dataOrchestration';
+import { addLog } from '../store/system';
 import { 
   Database, 
   Search, 

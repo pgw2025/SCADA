@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { devices, areas, dataModels, addLog, createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend, fetchAreasFromBackend, createAreaOnBackend, deleteAreaOnBackend } from '../store/index';
+import { devices } from '../store/deviceStore';
+import { areas, fetchAreasFromBackend, createAreaOnBackend, deleteAreaOnBackend } from '../store/areas';
+import { dataModels } from '../store/models';
+import { addLog } from '../store/system';
+import { createDeviceOnBackend, updateDeviceOnBackend, deleteDeviceOnBackend } from '../api/deviceApi';
 import { 
   Cpu, 
   MapPin, 
