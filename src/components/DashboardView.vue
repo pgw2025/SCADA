@@ -78,6 +78,12 @@ const memColor = computed(() => {
 
 // Last 6 logs for mini ledger
 const recentLogs = computed(() => logs.value.slice(0, 5));
+
+// Get variable count for a device by looking up its associated model
+const getDeviceVariableCount = (device: typeof devices.value[0]) => {
+  const model = dataModels.value.find(m => parseInt(m.id) === device.modelId);
+  return model?.variables?.length || 0;
+};
 </script>
 
 <template>
@@ -322,7 +328,7 @@ const recentLogs = computed(() => logs.value.slice(0, 5));
           <!-- Absolute status point -->
           <span 
             class="absolute top-4 right-4 w-2 h-2 rounded-full" 
-            :class="dev.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-slate-300'"
+            :class="dev.status === 1 ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-slate-300'"
           />
           
           <div class="space-y-1 pr-6">
@@ -333,7 +339,7 @@ const recentLogs = computed(() => logs.value.slice(0, 5));
               {{ dev.name }}
             </h4>
             <p class="text-[9px] font-mono text-slate-500">
-              设备编码: {{ dev.code }}
+              设备编码: {{ dev.key }}
             </p>
           </div>
 
@@ -341,7 +347,7 @@ const recentLogs = computed(() => logs.value.slice(0, 5));
             <span class="text-slate-400">更新时间: <b class="font-mono text-slate-600">{{ dev.lastUpdated }}</b></span>
             <!-- Variables counts -->
             <span class="text-[#1890ff] bg-sky-50 font-mono px-1 rounded font-bold leading-none py-0.5">
-              {{ Object.keys(dev.variables).length }} 个变量 
+              {{ getDeviceVariableCount(dev) }} 个变量 
             </span>
           </div>
         </div>

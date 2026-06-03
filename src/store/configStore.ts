@@ -1,13 +1,13 @@
 import { ref } from 'vue';
-import { 
-    MqttServer, 
-    DataConversion, 
-    VariableTrigger, 
-    SystemScript, 
-    ScheduledTask, 
-    ExposedDataInterface, 
-    DatabaseConfig,
-    SystemConfig 
+import {
+  MqttServer,
+  DataConversion,
+  VariableTrigger,
+  SystemScript,
+  ScheduledTask,
+  ExposedDataInterface,
+  DatabaseConfig,
+  SystemConfig
 } from '../types';
 
 export const mqttServers = ref<MqttServer[]>([]);
@@ -28,5 +28,5 @@ export const systemConfig = ref<SystemConfig>({
   alarmEmailAddress: 'ops_alerts@iota-factory.com',
   retentionPeriodDays: 90,
   isSimulationActive: false,
-  backendApiUrl: window.location.origin.replace(':3333', ':5000')
+  backendApiUrl: window.location.origin.replace(':3333', ':5555')
 });
