@@ -86,26 +86,43 @@ export interface Area {
   description?: string;
 }
 
+// 变量类型枚举
+export type VariableType = 'analog' | 'digital';
+
+// 数据类型枚举
+export type DataTypeEnum = 
+  | 'Int8' | 'Int16' | 'Int32' | 'Int64'
+  | 'UInt8' | 'UInt16' | 'UInt32' | 'UInt64'
+  | 'Float' | 'Double'
+  | 'Boolean' | 'String';
+
+// 更新模式枚举
+export type UpdateMode = 'polling' | 'subscription';
+
 export interface ModelVariable {
+  id: number;
+  modelId: number;
   key: string;
   name: string;
-  type: 'analog' | 'digital';
-  dataType?: string; // S7: INT, REAL etc. OPCUA: Int32, Float etc.
-  unit: string;
-  min: number;
-  max: number;
-  address: string; // SLC/Modbus/DB Offset, e.g. "DB1.DBD4" or "40001" or "telemetry/temp"
-  description: string;
+  type: VariableType;
+  dataType: DataTypeEnum;
+  unit?: string;
+  min?: number;
+  max?: number;
+  address: string;
+  description?: string;
+  isStored: boolean;
+  storeMode: 'Change' | 'Cycle';
+  updateMode: UpdateMode;
+  pollingIntervalMs: number;
   
-  // Advanced parameters based on device type
-  dataArea?: string;            // S7 数据区域 (DB, I, Q, M)
-  accessLevel?: 'RO' | 'RW';    // 访问级别 (RO: 只读, RW: 读写)
-  scaleExpr?: string;           // 换算放缩表达式 (e.g. "x * 10" or "x / 1.5")
-  isStored?: boolean;           // 是否存储时序数据库
-  storeMode?: 'change' | 'interval'; // 存储方式 (change: 变化存储, interval: 定时存储)
-  nodeId?: string;              // OPCUA 节点 ID
-  updateMode?: 'subscription' | 'polling'; // OPCUA 更新方式 (订阅更新 / 轮询更新)
-  pollIntervalSecs?: number;     // 变量专用轮询周期 (秒)
+  // 工业级增强字段
+  bitOffset?: number;
+  scaleSlope: number;
+  scaleOffset: number;
+  deadBand?: number;
+  isReadOnly: boolean;
+  extensionData?: Record<string, string>;
 }
 
 export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual';

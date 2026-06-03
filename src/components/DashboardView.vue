@@ -6,9 +6,11 @@ import {
   dataModels, 
   serverStatus, 
   logs,
-  scadaProjects
+  scadaProjects,
+  setDevices
 } from '../store/index';
 import { startSystemResourceMonitoring, stopSystemResourceMonitoring } from '../services/systemService';
+import { fetchDevicesFromBackend } from '../api/deviceApi';
 import { 
   Cpu, 
   Database, 
@@ -23,8 +25,18 @@ import {
   Network
 } from 'lucide-vue-next';
 
-onMounted(() => {
+onMounted(async () => {
   startSystemResourceMonitoring();
+  
+  // 挂载时获取一次设备列表
+  try {
+    const response = await fetchDevicesFromBackend();
+    if (response.data && Array.isArray(response.data)) {
+      setDevices(response.data);
+    }
+  } catch (error: any) {
+    console.error('仪表盘加载设备列表失败:', error.message);
+  }
 });
 
 onUnmounted(() => {

@@ -117,18 +117,23 @@ const totalVariableCount = computed(() => {
 const varSearchQuery = ref<string>('');
 
 // S7 variables custom state properties
-const varDataArea = ref<string>('DB1');
 const varAccessLevel = ref<'RO' | 'RW'>('RW');
 const varScaleExpr = ref<string>('x * 1.0');
 const varIsStored = ref<boolean>(true);
-const varStoreMode = ref<'change' | 'interval'>('change');
+const varStoreMode = ref<'Change' | 'Cycle'>('Change');
 
 // OPCUA custom state properties
-const varNodeId = ref<string>('');
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 
 // Common polling timers (S7, OPCUA polling, MQTT variables)
 const varPollIntervalSecs = ref<number>(5);
+
+// 工业级增强字段
+const varBitOffset = ref<number | null>(null);
+const varScaleSlope = ref<number>(1.0);
+const varScaleOffset = ref<number>(0.0);
+const varDeadBand = ref<number | null>(null);
+const varIsReadOnly = ref<boolean>(true);
 
 // Filtered variables for search
 const filteredVariables = computed(() => {
@@ -197,24 +202,24 @@ const handleSaveVariable = async () => {
     key: varKey.value,
     name: varName.value,
     type: varType.value,
-    dataType: varDataType.value,
-    unit: varUnit.value,
-    min: varMin.value,
-    max: varMax.value,
+    dataType: varDataType.value as DataTypeEnum,
+    unit: varUnit.value || undefined,
+    min: varMin.value || undefined,
+    max: varMax.value || undefined,
     address: varAddress.value || `${varKey.value.toUpperCase()}_ADDR`,
-    description: varDesc.value,
-    
-    // Top-level properties required by DTO
+    description: varDesc.value || undefined,
     isStored: varIsStored.value,
     storeMode: varStoreMode.value,
-    updateMode: varUpdateMode.value === 'subscription' ? 1 : 0, // Subscription=1, Polling=0
+    updateMode: varUpdateMode.value,
     pollingIntervalMs: Number(varPollIntervalSecs.value) * 1000,
-    
+    bitOffset: varBitOffset.value,
+    scaleSlope: varScaleSlope.value,
+    scaleOffset: varScaleOffset.value,
+    deadBand: varDeadBand.value,
+    isReadOnly: varIsReadOnly.value,
     extensionData: {
-      dataArea: varDataArea.value,
       accessLevel: varAccessLevel.value,
-      scaleExpr: varScaleExpr.value,
-      nodeId: varNodeId.value
+      scaleExpr: varScaleExpr.value
     }
   };
 
@@ -247,14 +252,19 @@ const handleSaveVariable = async () => {
   varDesc.value = '';
   
   // Clear advanced connection details
-  varDataArea.value = 'DB1';
   varAccessLevel.value = 'RW';
   varScaleExpr.value = 'x * 1.0';
   varIsStored.value = true;
-  varStoreMode.value = 'change';
-  varNodeId.value = '';
+  varStoreMode.value = 'Change';
   varUpdateMode.value = 'subscription';
   varPollIntervalSecs.value = 5;
+  
+  // Clear industrial-grade fields
+  varBitOffset.value = null;
+  varScaleSlope.value = 1.0;
+  varScaleOffset.value = 0.0;
+  varDeadBand.value = null;
+  varIsReadOnly.value = true;
   
   showVarModal.value = false;
 };
@@ -409,23 +419,22 @@ const handleDeleteVariable = (key: string, name: string) => {
                     
                     <!-- Protocol advanced variable badges -->
                     <div v-if="currentModel.type === 'S7'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded" title="S7 数据区域">区域: {{ v.dataArea || 'DB1' }}</span>
-                      <span class="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded" title="读写特权">特权: {{ v.accessLevel || 'RW' }}</span>
-                      <span class="bg-violet-50 text-violet-700 border border-violet-100 px-1.5 py-0.5 rounded" title="放缩公式">放缩: {{ v.scaleExpr || 'x' }}</span>
+                      <span class="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded" title="读写特权">特权: {{ v.extensionData?.accessLevel || 'RW' }}</span>
+                      <span class="bg-violet-50 text-violet-700 border border-violet-100 px-1.5 py-0.5 rounded" title="放缩公式">放缩: {{ v.extensionData?.scaleExpr || 'x' }}</span>
                       <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded animate-pulse" title="时序库存储">
-                        {{ v.isStored !== false ? '写入TSDB' : '仅内存变量' }} · {{ v.storeMode === 'change' ? '变动存' : '定时存' }}
+                        {{ v.isStored !== false ? '写入TSDB' : '仅内存变量' }} · {{ v.storeMode === 'Change' ? '变动存' : '定时存' }}
                       </span>
                     </div>
 
                     <div v-else-if="currentModel.type === 'OPCUA'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-sky-50 text-sky-700 border border-sky-100 px-1.5 py-0.5 rounded font-mono">NodeId: {{ v.nodeId || v.address }}</span>
+                      <span class="bg-sky-50 text-sky-700 border border-sky-100 px-1.5 py-0.5 rounded font-mono">NodeId: {{ v.address }}</span>
                       <span class="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded">
-                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : `轮询 (${v.pollIntervalSecs || 5}s)` }}
+                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : `轮询 (${v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5}s)` }}
                       </span>
                     </div>
 
                     <div v-else-if="currentModel.type === 'MQTT'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-teal-50 text-teal-700 border border-teal-100 px-1.5 py-0.5 rounded font-mono">刷新周期: {{ v.pollIntervalSecs || 5 }}s (MQTT Polling)</span>
+                      <span class="bg-teal-50 text-teal-700 border border-teal-100 px-1.5 py-0.5 rounded font-mono">刷新周期: {{ v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5 }}s (MQTT Polling)</span>
                     </div>
                   </td>
                   <td class="px-4 py-4">
@@ -614,32 +623,22 @@ const handleDeleteVariable = (key: string, name: string) => {
             </div>
           </div>
 
-          <div>
-            <label class="text-slate-500 font-bold block mb-1">寄存器地址</label>
-            <input 
-              v-model="varAddress"
-              type="text"
-              placeholder="e.g. DB10.DBD12 | ns=2;s=Temperature"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono focus:bg-white text-slate-900 focus:outline-none"
-            />
-          </div>
-
           <!-- Siemens S7 Specific Variable Fields -->
           <div v-if="currentModel && currentModel.type === 'S7'" class="p-3 bg-indigo-50/50 rounded-xl space-y-3.5 border border-indigo-100/50 text-indigo-950">
             <div class="font-bold text-[10px] text-indigo-700 uppercase tracking-wider">S7 寄存器配置</div>
+            <div>
+              <label class="text-slate-500 font-bold block mb-0.5">寄存器地址</label>
+              <input
+                v-model="varAddress"
+                type="text"
+                placeholder="例如: DB10.DBD12, MB0, IW0"
+                class="w-full bg-white border border-indigo-200 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
+              />
+            </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-500 font-bold block mb-0.5">数据区域</label>
-                <input 
-                  v-model="varDataArea"
-                  type="text"
-                  placeholder="如: DB1, MB, IB, QB"
-                  class="w-full bg-white border border-indigo-200 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
-                />
-              </div>
-              <div>
                 <label class="text-slate-500 font-bold block mb-0.5">访问权限</label>
-                <select 
+                <select
                   v-model="varAccessLevel"
                   class="w-full bg-white border border-indigo-200 rounded p-1.5 focus:outline-none text-xs font-sans font-bold text-slate-800"
                 >
@@ -651,7 +650,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
             <div>
               <label class="text-slate-500 font-bold block mb-0.5">放缩公式</label>
-              <input 
+              <input
                 v-model="varScaleExpr"
                 type="text"
                 placeholder="例如: x * 0.1 | x * 1.5 - 20"
@@ -664,13 +663,13 @@ const handleDeleteVariable = (key: string, name: string) => {
                 <input type="checkbox" v-model="varIsStored" class="rounded text-indigo-600 focus:ring-0" />
                 历史存储
               </label>
-              <select 
+              <select
                 v-if="varIsStored"
                 v-model="varStoreMode"
                 class="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 focus:outline-none"
               >
-                <option value="change">变动存储</option>
-                <option value="interval">定时存储</option>
+                <option value="Change">变动存储</option>
+                <option value="Cycle">定时存储</option>
               </select>
             </div>
           </div>
@@ -679,9 +678,9 @@ const handleDeleteVariable = (key: string, name: string) => {
           <div v-if="currentModel && currentModel.type === 'OPCUA'" class="p-3 bg-sky-50/50 rounded-xl space-y-3 border border-sky-100/50">
             <div class="font-bold text-[10px] text-sky-700 uppercase tracking-wider">OPC UA 配置</div>
             <div>
-              <label class="text-slate-500 font-bold block mb-0.5">节点ID</label>
-              <input 
-                v-model="varNodeId"
+              <label class="text-slate-500 font-bold block mb-0.5">节点ID (地址)</label>
+              <input
+                v-model="varAddress"
                 type="text"
                 placeholder="例如: ns=2;s=Line1.Temperature"
                 class="w-full bg-white border border-sky-200 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
@@ -690,7 +689,7 @@ const handleDeleteVariable = (key: string, name: string) => {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-slate-500 font-bold block mb-0.5">更新模式</label>
-                <select 
+                <select
                   v-model="varUpdateMode"
                   class="w-full bg-white border border-sky-200 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800 font-medium"
                 >
@@ -700,7 +699,7 @@ const handleDeleteVariable = (key: string, name: string) => {
               </div>
               <div>
                 <label class="text-slate-500 font-bold block mb-0.5">采样周期 (秒)</label>
-                <input 
+                <input
                   v-model="varPollIntervalSecs"
                   type="number"
                   min="1"
@@ -715,14 +714,83 @@ const handleDeleteVariable = (key: string, name: string) => {
           <div v-if="currentModel && currentModel.type === 'MQTT'" class="p-3 bg-teal-50/50 rounded-xl space-y-3 border border-teal-100 text-teal-900">
             <div class="font-bold text-[10px] text-teal-800 uppercase tracking-wider">MQTT 配置</div>
             <div>
+              <label class="text-slate-500 font-bold block mb-0.5">主题地址</label>
+              <input
+                v-model="varAddress"
+                type="text"
+                placeholder="例如: factory/line1/temperature"
+                class="w-full bg-white border border-teal-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
+              />
+            </div>
+            <div>
               <label class="text-slate-500 font-bold block mb-0.5">刷新周期 (秒)</label>
-              <input 
+              <input
                 v-model="varPollIntervalSecs"
                 type="number"
                 min="1"
                 class="w-full bg-white border border-teal-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
               />
               <p class="text-[9px] text-slate-400 mt-1">设置变量在 MQTT 主题刷新消息提取解析的定时器速度 (秒)</p>
+            </div>
+          </div>
+
+          <!-- Industrial-grade Enhanced Fields -->
+          <div class="p-3 bg-orange-50/50 rounded-xl space-y-3 border border-orange-100">
+            <div class="font-bold text-[10px] text-orange-700 uppercase tracking-wider">工业级参数</div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-slate-500 font-bold block mb-0.5">位偏移</label>
+                <input 
+                  v-model="varBitOffset"
+                  type="number"
+                  min="0"
+                  max="15"
+                  placeholder="0-15"
+                  class="w-full bg-white border border-orange-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
+                />
+              </div>
+              <div>
+                <label class="text-slate-500 font-bold block mb-0.5">只读模式</label>
+                <select 
+                  v-model="varIsReadOnly"
+                  class="w-full bg-white border border-orange-200 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800"
+                >
+                  <option :value="true">只读</option>
+                  <option :value="false">可写</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-slate-500 font-bold block mb-0.5">缩放斜率</label>
+                <input 
+                  v-model="varScaleSlope"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.0"
+                  class="w-full bg-white border border-orange-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
+                />
+              </div>
+              <div>
+                <label class="text-slate-500 font-bold block mb-0.5">缩放偏移</label>
+                <input 
+                  v-model="varScaleOffset"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.0"
+                  class="w-full bg-white border border-orange-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
+                />
+              </div>
+            </div>
+            <div>
+              <label class="text-slate-500 font-bold block mb-0.5">死区阈值</label>
+              <input 
+                v-model="varDeadBand"
+                type="number"
+                step="0.001"
+                placeholder="变化超过此值才触发更新"
+                class="w-full bg-white border border-orange-200 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800"
+              />
             </div>
           </div>
 

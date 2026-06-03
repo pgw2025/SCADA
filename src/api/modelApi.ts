@@ -12,7 +12,7 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
     const createdModel = response.data;
     
     dataModels.value.push({
-      id: createdModel.id,
+      id: String(createdModel.id),
       name: createdModel.name,
       description: createdModel.description || '',
       type: createdModel.type,
@@ -20,7 +20,7 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
     });
     
     addLog('数据模型', `已在后端创建模型: ${modelData.name}`, 'normal');
-    return createdModel;
+    return dataModels.value[dataModels.value.length - 1];
   } catch (err: any) {
     addLog('数据模型', `创建模型失败: ${err.message}`, 'warning');
     return null;
@@ -36,13 +36,34 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
     const data = response.data;
     
     if (Array.isArray(data)) {
-      // 用服务器数据替换本地数据
       dataModels.value = data.map((m: any) => ({
-        id: m.id,
+        id: String(m.id),
         name: m.name,
         description: m.description || '',
         type: m.type,
-        variables: m.variables || []
+        variables: m.variables?.map((v: any) => ({
+          id: v.id,
+          modelId: v.modelId,
+          key: v.key,
+          name: v.name,
+          type: v.type?.toLowerCase() === 'digital' ? 'digital' : 'analog',
+          dataType: v.dataType || 'Int32',
+          unit: v.unit,
+          min: v.min,
+          max: v.max,
+          address: v.address,
+          description: v.description,
+          isStored: v.isStored || false,
+          storeMode: (v.storeMode === 'Cycle' ? 'Cycle' : 'Change') as 'Change' | 'Cycle',
+          updateMode: (v.updateMode === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
+          pollingIntervalMs: v.pollingIntervalMs || 1000,
+          bitOffset: v.bitOffset,
+          scaleSlope: v.scaleSlope || 1.0,
+          scaleOffset: v.scaleOffset || 0.0,
+          deadBand: v.deadBand,
+          isReadOnly: v.isReadOnly || true,
+          extensionData: v.extensionData
+        })) || []
       }));
       
       addLog('数据模型', `已从后端同步 ${data.length} 个模型`, 'normal');
@@ -61,7 +82,11 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
     
     const idx = dataModels.value.findIndex(m => m.id === modelId);
     if (idx !== -1) {
-      dataModels.value[idx] = { ...dataModels.value[idx], ...modelData };
+      dataModels.value[idx] = { 
+        ...dataModels.value[idx], 
+        ...modelData,
+        id: String(dataModels.value[idx].id)
+      };
     }
     
     addLog('数据模型', `已更新数据模型配置: ${modelData.name || modelId}`, 'normal');
