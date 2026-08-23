@@ -121,37 +121,37 @@ const handleDeleteUser = async (id: number, name: string) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] select-none p-4 sm:p-6 bg-slate-50/50">
+  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] dark:text-slate-100 select-none p-4 sm:p-6 bg-slate-50/50 dark:bg-transparent">
     
     <!-- Top headers -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-5 gap-4 text-left">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4 text-left transition-colors">
       <div>
-        <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight flex items-center gap-2">
-          <Users class="w-5 h-5 text-indigo-500" />
+        <h1 class="text-xl font-bold font-sans text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+          <Users class="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
           <span>用户权限管理</span>
         </h1>
-        <p class="text-xs text-slate-500 mt-1">
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
           管理系统用户账户，分配角色权限。支持超级管理员、管理员、操作员、观察员四种角色。
         </p>
       </div>
 
       <button 
         @click="openNewUserModal"
-        class="bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 shadow-sm"
+        class="bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 shadow-sm"
       >
-        <UserPlus class="w-4 h-4 text-sky-400" />
+        <UserPlus class="w-4 h-4 text-sky-400 dark:text-white" />
         新建用户
       </button>
     </div>
 
     <!-- Status Stats row & searching -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-left select-none">
-      <div class="flex items-center gap-5 text-xs font-sans font-semibold text-slate-500 shrink-0">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-left select-none transition-colors">
+      <div class="flex items-center gap-5 text-xs font-sans font-semibold text-slate-500 dark:text-slate-400 shrink-0">
         <span class="inline-flex items-center gap-1">
-          用户总数: <b class="text-indigo-600 text-sm font-mono">{{ systemUsers.length }}</b>
+          用户总数: <b class="text-indigo-600 dark:text-indigo-400 text-sm font-mono">{{ systemUsers.length }}</b>
         </span>
-        <span class="inline-flex items-center gap-1 border-l border-slate-200 pl-4">
-          已启用: <b class="text-emerald-600 text-sm font-mono">{{ systemUsers.filter(u => u.status==='active').length }}</b>
+        <span class="inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-4">
+          已启用: <b class="text-emerald-600 dark:text-emerald-400 text-sm font-mono">{{ systemUsers.filter(u => u.status==='active').length }}</b>
         </span>
       </div>
 
@@ -161,13 +161,13 @@ const handleDeleteUser = async (id: number, name: string) => {
           v-model="filterQuery"
           type="text"
           placeholder="搜索用户名或角色..."
-          class="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 focus:bg-white focus:outline-none focus:border-slate-800"
+          class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:border-slate-800 dark:focus:border-sky-500"
         />
-        <Search class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+        <Search class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
         <button 
           v-if="filterQuery" 
           @click="filterQuery = ''" 
-          class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 focus:outline-none"
+          class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none"
         >
           <X class="w-3.5 h-3.5" />
         </button>
@@ -175,10 +175,10 @@ const handleDeleteUser = async (id: number, name: string) => {
     </div>
 
     <!-- Users administration table layout -->
-    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm text-left">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm text-left transition-colors">
       <table class="w-full text-xs">
         <thead>
-          <tr class="bg-slate-50 text-[10px] text-slate-400 uppercase font-bold tracking-wider divide-x divide-slate-100">
+          <tr class="bg-slate-50 dark:bg-slate-950 text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider divide-x divide-slate-100 dark:divide-slate-800">
             <th class="px-6 py-4">ID</th>
             <th class="px-6 py-4">用户名</th>
             <th class="px-6 py-4">角色</th>
@@ -187,21 +187,21 @@ const handleDeleteUser = async (id: number, name: string) => {
             <th class="px-6 py-4 text-right">操作</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100 font-mono">
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
           <tr 
             v-for="u in filteredUsers" 
             :key="u.id"
-            class="hover:bg-slate-50/50 transition-colors"
+            class="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <!-- User ID -->
-            <td class="px-6 py-4 font-bold text-slate-500">{{ u.id }}</td>
+            <td class="px-6 py-4 font-bold text-slate-500 dark:text-slate-400">{{ u.id }}</td>
             
             <!-- User name username with icon -->
-            <td class="px-6 py-4 font-sans font-extrabold text-[13px] text-slate-800">
+            <td class="px-6 py-4 font-sans font-extrabold text-[13px] text-slate-800 dark:text-slate-100">
               <span class="flex items-center gap-1.5">
-                <UserCheck class="w-4 h-4 text-slate-400" />
+                <UserCheck class="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <span>{{ u.username }}</span>
-                <span v-if="u.username === 'admin'" class="text-[9px] font-bold font-mono bg-indigo-50 text-indigo-600 px-1 py-0.5 rounded uppercase font-normal scale-90">
+                <span v-if="u.username === 'admin'" class="text-[9px] font-bold font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60 px-1 py-0.5 rounded uppercase font-normal scale-90">
                   ROOT
                 </span>
               </span>
@@ -211,40 +211,40 @@ const handleDeleteUser = async (id: number, name: string) => {
             <td class="px-6 py-4 font-sans font-bold">
               <span 
                 v-if="u.role === '超级管理员'"
-                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100 uppercase"
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 uppercase"
               >
                 🛡️ 超级管理员
               </span>
               <span 
                 v-else-if="u.role === '管理员'"
-                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100 uppercase"
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 uppercase"
               >
                 🔐 管理员
               </span>
               <span 
                 v-else-if="u.role === '操作员'"
-                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100 uppercase"
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 uppercase"
               >
                 ⚡ 操作员
               </span>
               <span 
                 v-else
-                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 uppercase"
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 uppercase"
               >
                 👁️ 观察员
               </span>
             </td>
 
             <!-- Created At -->
-            <td class="px-6 py-4 text-slate-400 text-[11px] font-bold leading-none">--</td>
+            <td class="px-6 py-4 text-slate-400 dark:text-slate-500 text-[11px] font-bold leading-none">--</td>
 
             <!-- System status toggles -->
             <td class="px-6 py-4 text-left">
               <span 
                 class="font-sans font-bold text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
-                :class="u.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'"
+                :class="u.status === 'active' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500'"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="u.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'" />
+                <span class="w-1.5 h-1.5 rounded-full" :class="u.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'" />
                 {{ u.status === 'active' ? '已启用' : '已停用' }}
               </span>
             </td>
@@ -254,7 +254,7 @@ const handleDeleteUser = async (id: number, name: string) => {
               <div class="flex items-center justify-end gap-3 select-none text-[11px] font-sans">
                 <button 
                   @click="openEditUserModal(u)"
-                  class="text-[#1890ff] hover:text-sky-600 cursor-pointer font-bold inline-flex items-center gap-0.5"
+                  class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 dark:hover:text-sky-300 cursor-pointer font-bold inline-flex items-center gap-0.5"
                 >
                   <Edit3 class="w-3.5 h-3.5" />
                   编辑
@@ -262,13 +262,13 @@ const handleDeleteUser = async (id: number, name: string) => {
                 <button 
                   v-if="u.username !== 'admin'"
                   @click="handleDeleteUser(u.id, u.username)"
-                  class="text-rose-500 hover:text-rose-700 cursor-pointer font-bold inline-flex items-center gap-0.5 ml-1"
+                  class="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer font-bold inline-flex items-center gap-0.5 ml-1"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
                   删除
                 </button>
-                <span v-else class="text-slate-350 cursor-not-allowed inline-flex items-center gap-0.5 text-[10px]" title="系统默认管理员不可删除">
-                  <Lock class="w-3 h-3 text-slate-300" />
+                <span v-else class="text-slate-350 dark:text-slate-500 cursor-not-allowed inline-flex items-center gap-0.5 text-[10px]" title="系统默认管理员不可删除">
+                  <Lock class="w-3 h-3 text-slate-300 dark:text-slate-600" />
                   系统保护
                 </span>
               </div>
@@ -276,7 +276,7 @@ const handleDeleteUser = async (id: number, name: string) => {
           </tr>
 
           <tr v-if="filteredUsers.length === 0">
-            <td colspan="6" class="p-10 text-center text-slate-400 font-sans">
+            <td colspan="6" class="p-10 text-center text-slate-400 dark:text-slate-500 font-sans">
               暂无匹配的用户数据
             </td>
           </tr>
@@ -285,12 +285,12 @@ const handleDeleteUser = async (id: number, name: string) => {
     </div>
 
     <!-- MODAL: DEFINE NEW SYSTEM ACCOUNT / PRIVILEGES -->
-    <div v-if="showModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
-          <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
-            <ShieldCheck class="w-4 h-4 text-emerald-400" />
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
+          <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest text-emerald-400">
+            <ShieldCheck class="w-4 h-4" />
             <span>{{ isEditing ? '编辑用户' : '新建用户' }}</span>
           </div>
           <button @click="showModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
@@ -298,32 +298,32 @@ const handleDeleteUser = async (id: number, name: string) => {
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 font-bold block mb-1">用户名</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">用户名</label>
             <input 
               v-model="uName"
               type="text"
               placeholder="请输入用户名"
               :disabled="isEditing && uName === 'admin'"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-slate-800 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-sky-500 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
             />
           </div>
 
           <div v-if="!isEditing">
-            <label class="text-slate-500 font-bold block mb-1">密码</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">密码</label>
             <input 
               v-model="uPassword"
               type="password"
               placeholder="请输入密码"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-slate-800"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-sky-500"
             />
           </div>
 
           <div>
-            <label class="text-slate-500 font-bold block mb-1">角色</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">角色</label>
             <select 
               v-model="uRole"
               :disabled="isEditing && uName === 'admin'"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:bg-white text-slate-900 focus:outline-none focus:border-slate-800 font-sans font-semibold disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-sky-500 font-sans font-semibold disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
             >
               <option value="超级管理员">超级管理员 - 系统全部权限</option>
               <option value="管理员">管理员 - 设备控制与配置权限</option>
@@ -333,13 +333,13 @@ const handleDeleteUser = async (id: number, name: string) => {
           </div>
 
           <div v-if="uName !== 'admin'">
-            <label class="text-slate-500 font-bold block mb-1">状态</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">状态</label>
             <div class="flex items-center gap-4 py-1">
-              <label class="flex items-center gap-1.5 font-mono font-bold text-slate-700 cursor-pointer text-xs">
-                <input type="radio" value="active" v-model="uStatus" class="text-slate-800 focus:ring-0" />
+              <label class="flex items-center gap-1.5 font-mono font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
+                <input type="radio" value="active" v-model="uStatus" class="text-slate-800 dark:text-sky-500 focus:ring-0" />
                 启用
               </label>
-              <label class="flex items-center gap-1.5 font-mono font-bold text-slate-400 cursor-pointer text-xs">
+              <label class="flex items-center gap-1.5 font-mono font-bold text-slate-400 dark:text-slate-500 cursor-pointer text-xs">
                 <input type="radio" value="inactive" v-model="uStatus" class="text-rose-500 focus:ring-0" />
                 停用
               </label>
@@ -347,16 +347,16 @@ const handleDeleteUser = async (id: number, name: string) => {
           </div>
         </div>
 
-        <div class="bg-slate-50 p-4 flex justify-end gap-2 border-t border-slate-100 shrink-0">
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <button 
             @click="showModal = false"
-            class="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
             @click="handleSaveUser"
-            class="px-4 py-1.5 bg-slate-900 border border-slate-900 hover:bg-slate-800 font-bold text-xs text-white rounded-lg cursor-pointer"
+            class="px-4 py-1.5 bg-slate-900 dark:bg-sky-600 border border-slate-900 dark:border-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white rounded-lg cursor-pointer"
           >
             保存
           </button>

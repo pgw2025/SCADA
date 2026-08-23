@@ -212,16 +212,16 @@ syncInputLabel();
 </script>
 
 <template>
-  <div class="h-full flex flex-col text-[#1e293b] select-none bg-slate-50 overflow-y-auto">
+  <div class="h-full flex flex-col text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent overflow-y-auto">
     
     <!-- Top banner -->
-    <div class="bg-white p-5 border-b border-slate-200 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+    <div class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-colors">
       <div class="space-y-1">
-        <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
+        <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
           <Calendar class="w-5 h-5 text-[#1890ff]" />
           历史数据查询
         </h2>
-        <p class="text-xs text-slate-500 font-sans">
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
           查询历史时序数据，支持时间筛选和趋势图表展示。
         </p>
       </div>
@@ -237,11 +237,11 @@ syncInputLabel();
     </div>
 
     <!-- Query toolbar and autocomplete center -->
-    <div class="p-6 bg-slate-50 border-b border-slate-200/60 flex flex-col xl:flex-row items-stretch xl:items-center gap-4 text-left select-none relative z-30">
+    <div class="p-6 bg-slate-50 dark:bg-transparent border-b border-slate-200/60 dark:border-slate-800/60 flex flex-col xl:flex-row items-stretch xl:items-center gap-4 text-left select-none relative z-30">
       
       <!-- Fuzzy autocomplete variable -->
       <div class="w-full xl:w-[420px] relative">
-        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-sans">
+        <label class="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-sans">
           选择变量
         </label>
         
@@ -252,7 +252,7 @@ syncInputLabel();
             @blur="setTimeout(() => isInputFocused = false, 250)"
             type="text"
             placeholder="搜索变量..."
-            class="w-full bg-white border border-slate-200 rounded-lg p-2.5 pl-9 text-xs text-slate-800 font-bold focus:outline-none focus:border-[#1890ff] shadow-xs"
+            class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 pl-9 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-[#1890ff] shadow-xs"
           />
           <Search class="absolute left-3 top-3 w-4 h-4 text-slate-400" />
         </div>
@@ -260,19 +260,19 @@ syncInputLabel();
         <!-- Popover drop list -->
         <div 
           v-if="isInputFocused" 
-          class="absolute left-0 right-0 top-[58px] bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto z-40 p-1 divide-y divide-slate-50"
+          class="absolute left-0 right-0 top-[58px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl max-h-56 overflow-y-auto z-40 p-1 divide-y divide-slate-50 dark:divide-slate-800"
         >
           <div 
             v-for="item in filteredDropdownOptions" 
             :key="item.key"
             @mousedown="handleSelectVariableFromDropdown(item.key)"
-            class="p-2.5 hover:bg-sky-50 text-[11px] text-slate-700 font-bold cursor-pointer flex justify-between items-center transition-colors rounded-md"
+            class="p-2.5 hover:bg-sky-50 dark:hover:bg-slate-800 text-[11px] text-slate-700 dark:text-slate-200 font-bold cursor-pointer flex justify-between items-center transition-colors rounded-md"
           >
             <span>{{ item.label }}</span>
-            <span class="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-md font-mono">{{ item.key }}</span>
+            <span class="text-[9px] bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-md font-mono">{{ item.key }}</span>
           </div>
 
-          <div v-if="filteredDropdownOptions.length === 0" class="p-4 text-center text-slate-400 text-xs">
+          <div v-if="filteredDropdownOptions.length === 0" class="p-4 text-center text-slate-400 dark:text-slate-500 text-xs">
             暂无匹配寄存器项，您可以继续输入
           </div>
         </div>
@@ -281,42 +281,42 @@ syncInputLabel();
       <!-- Time range filter -->
       <div class="flex-1 flex flex-col md:flex-row gap-4 items-stretch md:items-end">
         <div class="flex-1">
-          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-sans">
+          <label class="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-sans">
             时间范围
           </label>
-          <div class="grid grid-cols-5 bg-white border border-slate-200 rounded-lg p-0.5 font-bold text-[11px] shadow-xs text-center">
+          <div class="grid grid-cols-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 font-bold text-[11px] shadow-xs text-center">
             <button 
               @click="selectedTimeframe = 'hour'; currentPageNum = 1"
               class="py-2 rounded-md transition-all cursor-pointer"
-              :class="selectedTimeframe === 'hour' ? 'bg-slate-900 text-white font-bold' : 'text-slate-500 hover:text-slate-800'"
+              :class="selectedTimeframe === 'hour' ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               最近1小时
             </button>
             <button 
               @click="selectedTimeframe = 'day'; currentPageNum = 1"
               class="py-2 rounded-md transition-all cursor-pointer"
-              :class="selectedTimeframe === 'day' ? 'bg-slate-900 text-white font-bold' : 'text-slate-500 hover:text-slate-800'"
+              :class="selectedTimeframe === 'day' ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               最近1天
             </button>
             <button 
               @click="selectedTimeframe = 'three_days'; currentPageNum = 1"
               class="py-2 rounded-md transition-all cursor-pointer"
-              :class="selectedTimeframe === 'three_days' ? 'bg-slate-900 text-white font-bold' : 'text-slate-500 hover:text-slate-800'"
+              :class="selectedTimeframe === 'three_days' ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               最近3天
             </button>
             <button 
               @click="selectedTimeframe = 'month'; currentPageNum = 1"
               class="py-2 rounded-md transition-all cursor-pointer"
-              :class="selectedTimeframe === 'month' ? 'bg-slate-900 text-white font-bold' : 'text-slate-500 hover:text-slate-800'"
+              :class="selectedTimeframe === 'month' ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               最近1月
             </button>
             <button 
               @click="selectedTimeframe = 'all'; currentPageNum = 1"
               class="py-2 rounded-md transition-all cursor-pointer"
-              :class="selectedTimeframe === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-500 hover:text-slate-800'"
+              :class="selectedTimeframe === 'all' ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               所有数据
             </button>
@@ -328,20 +328,20 @@ syncInputLabel();
 
     <!-- Live Graphic Chart plotting variables -->
     <div class="px-6 pb-6 shrink-0 text-left">
-      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-xs overflow-hidden">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs overflow-hidden transition-colors">
         
-        <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+        <div class="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div class="flex items-center gap-2">
             <TrendingUp class="w-4 h-4 text-emerald-500 animate-pulse" />
-            <span class="text-xs font-bold text-slate-800 uppercase tracking-tight">
-              趋势图：<span class="text-indigo-600 font-mono text-[11px] font-bold">{{ activeVariableKey }} ({{ variableUnit }})</span>
+            <span class="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-tight">
+              趋势图：<span class="text-indigo-600 dark:text-indigo-400 font-mono text-[11px] font-bold">{{ activeVariableKey }} ({{ variableUnit }})</span>
             </span>
           </div>
-          <span class="text-[10px] text-slate-400 font-mono font-medium">数据点：{{ chartDataPlotPoints.length }} 个</span>
+          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-medium">数据点：{{ chartDataPlotPoints.length }} 个</span>
         </div>
 
         <!-- Custom SVG line/area smooth path plotter -->
-        <div class="w-full relative bg-slate-50/50 rounded-xl border border-slate-100 p-2 overflow-x-auto">
+        <div class="w-full relative bg-slate-50/50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 p-2 overflow-x-auto">
           <svg 
             v-if="chartDataPlotPoints.length >= 2"
             :viewBox="`0 0 ${svgWidth} ${svgHeight}`" 
@@ -355,7 +355,8 @@ syncInputLabel();
               :y1="svgChartPathsAndLabels.getY(tick)" 
               :x2="svgWidth - paddingX" 
               :y2="svgChartPathsAndLabels.getY(tick)" 
-              stroke="#e2e8f0" 
+              stroke="#cbd5e1" 
+              stroke-opacity="0.5"
               stroke-width="1"
               stroke-dasharray="3,3"
             />
@@ -390,7 +391,7 @@ syncInputLabel();
             <path 
               :d="svgChartPathsAndLabels.linePath" 
               fill="none" 
-              stroke="#2563eb" 
+              stroke="#38bdf8" 
               stroke-width="2.2" 
               stroke-linecap="round"
             />
@@ -401,14 +402,14 @@ syncInputLabel();
                 :cx="pt.x" 
                 :cy="pt.y" 
                 r="3.5" 
-                fill="#ffffff" 
-                stroke="#2563eb" 
+                fill="#0f172a" 
+                stroke="#38bdf8" 
                 stroke-width="2" 
               />
               <text 
                 :x="pt.x" 
                 :y="pt.y - 8" 
-                fill="#1e293b" 
+                fill="#94a3b8" 
                 font-size="8.5" 
                 font-family="monospace"
                 font-weight="bold"
@@ -419,7 +420,7 @@ syncInputLabel();
               <text 
                 :x="pt.x" 
                 :y="svgHeight - paddingY + 12" 
-                fill="#94a3b8" 
+                fill="#64748b" 
                 font-size="8" 
                 font-family="monospace"
                 text-anchor="middle"
@@ -430,10 +431,10 @@ syncInputLabel();
           </svg>
 
           <!-- Standard empty state -->
-          <div v-else class="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-            <AlertCircle class="w-8 h-8 text-slate-300 animate-bounce" />
+          <div v-else class="py-16 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center justify-center gap-2">
+            <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600 animate-bounce" />
             <span class="text-xs">
-              在选定的时间框架下，未抓取到物理变量 <code class="bg-slate-100 p-0.5 rounded font-mono">{{ activeVariableKey }}</code> 的任何时序。
+              在选定的时间框架下，未抓取到物理变量 <code class="bg-slate-100 dark:bg-slate-800 p-0.5 rounded font-mono">{{ activeVariableKey }}</code> 的任何时序。
             </span>
           </div>
         </div>
@@ -443,10 +444,10 @@ syncInputLabel();
 
     <!-- Tabular detailed log lists with paginations -->
     <div class="px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex">
-      <div class="w-full bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between">
+      <div class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between transition-colors">
         <div class="overflow-x-auto flex-1">
           <table class="w-full text-left text-xs font-sans">
-            <thead class="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+            <thead class="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px]">
               <tr>
                 <th class="p-3.5 pl-5">采集项 ID</th>
                 <th class="p-3.5">变量键名 (Variable Key)</th>
@@ -455,19 +456,19 @@ syncInputLabel();
                 <th class="p-3.5 pr-5 text-right">时间戳 (采样时域)</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100 text-slate-700">
-              <tr v-for="rec in paginatedTableRecords" :key="rec.id" class="hover:bg-slate-50/40 transition-colors">
-                <td class="p-3.5 pl-5 font-mono font-medium text-slate-400">{{ rec.id }}</td>
-                <td class="p-3.5 font-bold font-mono text-slate-800">{{ rec.variableKey }}</td>
-                <td class="p-3.5 font-medium text-slate-500">{{ rec.variableName }}</td>
-                <td class="p-3.5 font-bold font-mono text-indigo-650">
-                  {{ rec.value }} <span class="text-[9px] font-sans text-slate-400">{{ variableUnit }}</span>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+              <tr v-for="rec in paginatedTableRecords" :key="rec.id" class="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="p-3.5 pl-5 font-mono font-medium text-slate-400 dark:text-slate-500">{{ rec.id }}</td>
+                <td class="p-3.5 font-bold font-mono text-slate-800 dark:text-slate-100">{{ rec.variableKey }}</td>
+                <td class="p-3.5 font-medium text-slate-500 dark:text-slate-400">{{ rec.variableName }}</td>
+                <td class="p-3.5 font-bold font-mono text-indigo-650 dark:text-indigo-400">
+                  {{ rec.value }} <span class="text-[9px] font-sans text-slate-400 dark:text-slate-500">{{ variableUnit }}</span>
                 </td>
-                <td class="p-3.5 pr-5 text-right font-mono text-slate-400">{{ rec.timestamp }}</td>
+                <td class="p-3.5 pr-5 text-right font-mono text-slate-400 dark:text-slate-500">{{ rec.timestamp }}</td>
               </tr>
 
               <tr v-if="filteredHistoricalRecords.length === 0">
-                <td colspan="5" class="text-center py-16 text-slate-400">
+                <td colspan="5" class="text-center py-16 text-slate-400 dark:text-slate-500">
                   没有符合检索过滤条件的物标时序块。
                 </td>
               </tr>
@@ -476,16 +477,16 @@ syncInputLabel();
         </div>
 
         <!-- Autopager controls -->
-        <div v-if="totalPagesCount > 1" class="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs font-medium shrink-0">
-          <span class="text-slate-400">
-            共计 <b class="text-slate-700 font-bold">{{ totalRecordsCount }}</b> 采样槽 · 分页 {{ currentPageNum }} / {{ totalPagesCount }}
+        <div v-if="totalPagesCount > 1" class="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 flex items-center justify-between text-xs font-medium shrink-0">
+          <span class="text-slate-400 dark:text-slate-500">
+            共计 <b class="text-slate-700 dark:text-slate-200 font-bold">{{ totalRecordsCount }}</b> 采样槽 · 分页 {{ currentPageNum }} / {{ totalPagesCount }}
           </span>
 
           <div class="flex items-center gap-1">
             <button 
               @click="currentPageNum = Math.max(1, currentPageNum - 1)"
               :disabled="currentPageNum === 1"
-              class="p-1 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed select-none active:scale-95 transition-all text-[11px]"
+              class="p-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed select-none active:scale-95 transition-all text-[11px]"
             >
               <ChevronLeft class="w-3.5 h-3.5" /> 上一页
             </button>
@@ -493,7 +494,7 @@ syncInputLabel();
             <button 
               @click="currentPageNum = Math.min(totalPagesCount, currentPageNum + 1)"
               :disabled="currentPageNum === totalPagesCount"
-              class="p-1 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed select-none active:scale-95 transition-all text-[11px]"
+              class="p-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed select-none active:scale-95 transition-all text-[11px]"
             >
               下一页 <ChevronRight class="w-3.5 h-3.5" />
             </button>

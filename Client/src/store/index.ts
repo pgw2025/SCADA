@@ -7,6 +7,7 @@ export * from './userStore';
 export * from './systemStatusStore';
 export * from './modelStore';
 export * from './areaStore';
+export * from './themeStore';
 export * from '../api/modelApi';
 export * from '../api/variableApi';
 export * from '../services/logService';

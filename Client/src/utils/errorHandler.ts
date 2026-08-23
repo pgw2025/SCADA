@@ -1,7 +1,8 @@
 export interface ApiErrorResponse {
   success?: boolean;
   message?: string;
-  errors?: Record<string, string[] | string | unknown>;
+  Message?: string;
+  errors?: Record<string, string[] | string | Record<string, any> | unknown>;
 }
 
 export interface ErrorResult {
@@ -62,8 +63,8 @@ export const parseApiError = (error: any): ErrorResult => {
           fieldErrors[mappedField] = messages.join('；');
         } else if (typeof messages === 'string') {
           fieldErrors[mappedField] = messages;
-        } else if (messages && typeof messages === 'object' && messages.message) {
-          fieldErrors[mappedField] = String(messages.message);
+        } else if (messages && typeof messages === 'object' && 'message' in (messages as any)) {
+          fieldErrors[mappedField] = String((messages as any).message);
         } else {
           fieldErrors[mappedField] = String(messages);
         }
@@ -82,7 +83,7 @@ export const parseApiError = (error: any): ErrorResult => {
   if (apiData.message || apiData.Message) {
     return {
       type: 'business',
-      message: apiData.message || apiData.Message
+      message: apiData.message || apiData.Message || '业务异常'
     };
   }
 

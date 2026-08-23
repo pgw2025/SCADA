@@ -63,16 +63,16 @@ const handleMockWarning = () => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col text-[#1e293b] select-none bg-slate-50">
+  <div class="h-full flex flex-col text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
     
     <!-- Header panel with query filters & action outputs -->
-    <div class="bg-white p-5 border-b border-slate-200 shadow-sm shrink-0 text-left flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 text-left flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
       <div class="space-y-1">
-        <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
-          <Terminal class="w-4 h-4 text-slate-600" />
+        <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+          <Terminal class="w-4 h-4 text-slate-600 dark:text-slate-300" />
           系统日志
         </h2>
-        <p class="text-xs text-slate-500 font-sans">
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
           记录系统运行状态、操作事件和诊断信息。
         </p>
       </div>
@@ -80,20 +80,20 @@ const handleMockWarning = () => {
       <div class="flex items-center gap-2 self-end md:self-center">
         <button 
           @click="handleMockWarning"
-          class="font-bold text-xs text-slate-600 border border-slate-200 hover:bg-slate-50 bg-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+          class="font-bold text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-colors"
         >
           生成测试事件
         </button>
         <button 
           @click="handleExportLogs"
-          class="font-bold text-xs text-indigo-600 border border-indigo-100 hover:bg-indigo-50 bg-indigo-50/50 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+          class="font-bold text-xs text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-colors"
         >
           <Download class="w-4 h-4" />
           导出日志
         </button>
         <button 
           @click="handleClearAllLogs"
-          class="font-bold text-xs text-rose-600 border border-rose-100 hover:bg-rose-50 bg-rose-50/50 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+          class="font-bold text-xs text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/40 bg-rose-50/50 dark:bg-rose-950/20 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-colors"
         >
           <Trash2 class="w-4 h-4" />
           清空日志
@@ -102,7 +102,7 @@ const handleMockWarning = () => {
     </div>
 
     <!-- Filter selectors -->
-    <div class="bg-white px-5 py-3 border-b border-slate-100 shadow-xs shrink-0 flex flex-col sm:flex-row gap-3">
+    <div class="bg-white dark:bg-slate-900 px-5 py-3 border-b border-slate-100 dark:border-slate-800 shadow-xs shrink-0 flex flex-col sm:flex-row gap-3 transition-colors">
       <!-- Fast text input search -->
       <div class="relative flex-1">
         <Search class="absolute left-2.5 top-2 ml-0.5 w-4 h-4 text-slate-400" />
@@ -110,20 +110,20 @@ const handleMockWarning = () => {
           v-model="searchQuery"
           type="text"
           placeholder="搜索日志内容或来源..."
-          class="w-full bg-slate-50 border border-slate-200 focus:bg-white text-xs pl-9 pr-3 py-1.5 rounded-lg outline-none text-slate-800 focus:border-[#1890ff]"
+          class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 text-xs pl-9 pr-3 py-1.5 rounded-lg outline-none text-slate-800 dark:text-white focus:border-[#1890ff]"
         />
       </div>
 
       <!-- Level tabs selection -->
       <div class="flex items-center gap-1.5 shrink-0">
-        <span class="text-xs text-slate-400 font-medium">日志等级:</span>
-        <div class="flex bg-slate-100 p-0.5 rounded-lg gap-0.5 text-[11px] font-bold">
+        <span class="text-xs text-slate-400 dark:text-slate-500 font-medium">日志等级:</span>
+        <div class="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg gap-0.5 text-[11px] font-bold">
           <button 
             v-for="lvl in ['ALL', 'info', 'normal', 'warning']" 
             :key="lvl"
             @click="levelFilter = lvl as any"
             class="px-2.5 py-1 rounded-md transition-all cursor-pointer font-sans"
-            :class="levelFilter === lvl ? 'bg-white shadow-xs text-slate-800' : 'text-slate-400 hover:text-slate-600'"
+            :class="levelFilter === lvl ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'"
           >
             {{ lvl === 'ALL' ? '全部' : lvl === 'info' ? '信息' : lvl === 'normal' ? '常规' : '告警' }}
           </button>
@@ -133,10 +133,10 @@ const handleMockWarning = () => {
 
     <!-- Active logs scrolling wrapper -->
     <div class="flex-1 p-5 overflow-y-auto">
-      <div class="bg-slate-950 rounded-xl border border-slate-900 overflow-hidden shadow-md flex flex-col h-full min-h-[300px]">
+      <div class="bg-slate-950 rounded-xl border border-slate-900 dark:border-slate-800 overflow-hidden shadow-md flex flex-col h-full min-h-[300px]">
         
         <!-- Terminal Header -->
-        <div class="bg-slate-900 px-4 py-2 flex items-center justify-between border-b border-slate-950 font-mono text-[10px] text-slate-400">
+        <div class="bg-slate-900 dark:bg-slate-950 px-4 py-2 flex items-center justify-between border-b border-slate-950 dark:border-slate-800 font-mono text-[10px] text-slate-400">
           <div class="flex items-center gap-1.5">
             <span class="w-2.5 h-2.5 rounded-full bg-rose-500" />
             <span class="w-2.5 h-2.5 rounded-full bg-amber-500" />

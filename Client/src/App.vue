@@ -7,7 +7,10 @@ import {
   performLogin,
   performLogout,
   systemConfig,
-  initializeAuth
+  initializeAuth,
+  currentTheme,
+  toggleTheme,
+  initTheme
   } from './store';
 import { initializeRealtimeSignals } from './services/signalRService';
 import { startSystemResourceMonitoring } from './services/systemService';
@@ -41,7 +44,9 @@ import {
   ChevronRight,
   Rss,
   Shuffle,
-  Users
+  Users,
+  Sun,
+  Moon
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -53,8 +58,8 @@ const isMobileSidebarOpen = ref(false);
 const isSidebarCollapsed = ref(false);
 
 // Login state bindings
-const loginUsernameInput = ref('admin');
-const loginPasswordInput = ref('admin888');
+const loginUsernameInput = ref('');
+const loginPasswordInput = ref('');
 const loginErrorMessage = ref('');
 
 const triggerFormLogin = async () => {
@@ -63,12 +68,6 @@ const triggerFormLogin = async () => {
   if (!result.success) {
     loginErrorMessage.value = result.errorMessage || '登录失败，请检查网络连接';
   }
-};
-
-const triggerBypassLogin = () => {
-  loginUsernameInput.value = 'admin';
-  loginPasswordInput.value = '123456';
-  triggerFormLogin();
 };
 
 // Human timestamp for the top control bar
@@ -86,6 +85,7 @@ const startClock = () => {
 };
 
 onMounted(async () => {
+  initTheme();
   initializeAuth();
   startClock();
   initializeRealtimeSignals();
@@ -112,54 +112,126 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
 </script>
 
 <template>
-  <div v-if="!isAuthenticated" class="h-screen w-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans select-none">
-    <div class="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-35" />
-    <div class="absolute w-96 h-96 rounded-full bg-indigo-650/10 blur-[120px] top-10 left-10 animate-pulse pointer-events-none" />
-    <div class="absolute w-96 h-96 rounded-full bg-sky-500/5 blur-[125px] bottom-10 right-10 pointer-events-none" />
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden relative z-10 text-left animate-in fade-in zoom-in-95 duration-200">
-      <div class="bg-slate-950 p-6 flex flex-col items-center justify-center border-b border-slate-800 text-center gap-3">
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-lg">
-            <Server class="w-6 h-6 text-white animate-pulse" />
-          </div>
-          <div>
-            <h1 class="text-sm font-black tracking-widest text-white uppercase">IOTA-SCADA 系统</h1>
-            <span class="text-[10px] text-slate-400 font-medium tracking-wide mt-1 block">工业控制与数据采集平台</span>
-          </div>
+  <div 
+    v-if="!isAuthenticated" 
+    :class="currentTheme === 'dark' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'" 
+    class="h-screen w-screen flex items-center justify-center p-4 relative overflow-hidden font-sans select-none transition-colors duration-200"
+  >
+    <!-- Top Right Theme Switcher on Login Page -->
+    <div class="absolute top-5 right-5 z-30">
+      <button 
+        type="button" 
+        @click="toggleTheme" 
+        class="flex items-center gap-2 px-3.5 py-1.5 rounded-full border shadow-sm text-xs font-semibold cursor-pointer transition-all duration-200"
+        :class="currentTheme === 'dark' ? 'bg-slate-900 border-slate-700 text-amber-400 hover:bg-slate-800' : 'bg-white/90 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300 shadow-slate-200/50'"
+        :title="currentTheme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+      >
+        <Sun v-if="currentTheme === 'dark'" class="w-3.5 h-3.5 text-amber-400" />
+        <Moon v-else class="w-3.5 h-3.5 text-sky-600" />
+        <span>{{ currentTheme === 'dark' ? '深色模式' : '浅色模式' }}</span>
+      </button>
+    </div>
+
+    <!-- Bright, Clean Industrial Tech Aesthetic Background Elements -->
+    <div 
+      v-if="currentTheme === 'dark'" 
+      class="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:28px_28px] opacity-40 pointer-events-none" 
+    />
+    <div 
+      v-else 
+      class="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:24px_24px] opacity-60 pointer-events-none" 
+    />
+
+    <!-- Ambient Glowing Tech Blurs (Bright & Clean) -->
+    <template v-if="currentTheme === 'dark'">
+      <div class="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-sky-500/15 blur-[120px] pointer-events-none" />
+      <div class="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-indigo-500/15 blur-[120px] pointer-events-none" />
+    </template>
+    <template v-else>
+      <div class="absolute -top-24 -left-24 w-[500px] h-[500px] rounded-full bg-sky-200/50 blur-[100px] pointer-events-none" />
+      <div class="absolute -bottom-24 -right-24 w-[500px] h-[500px] rounded-full bg-indigo-200/40 blur-[100px] pointer-events-none" />
+    </template>
+    
+    <!-- Login Card -->
+    <div 
+      class="rounded-2xl w-full max-w-md overflow-hidden relative z-10 text-left animate-in fade-in zoom-in-95 duration-200 transition-colors"
+      :class="currentTheme === 'dark' ? 'bg-slate-900/95 border border-slate-800 text-white shadow-2xl shadow-black/50' : 'bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-xl shadow-slate-200/70 text-slate-800'"
+    >
+      <!-- Header Banner -->
+      <div 
+        class="p-6 flex flex-col items-center justify-center border-b text-center gap-3 transition-colors"
+        :class="currentTheme === 'dark' ? 'bg-slate-950/80 border-slate-800' : 'bg-gradient-to-b from-sky-50/70 via-slate-50/40 to-white border-slate-100'"
+      >
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/25">
+          <Server class="w-6 h-6 text-white" />
         </div>
+        <div>
+          <h1 class="text-base font-extrabold tracking-wider uppercase" :class="currentTheme === 'dark' ? 'text-white' : 'text-slate-900'">IOTA-SCADA 系统</h1>
+          <span class="text-xs font-medium tracking-wide mt-1 block" :class="currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'">工业控制与数据采集平台</span>
+        </div>
+      </div>
+
+      <!-- Login Form -->
       <form @submit.prevent="triggerFormLogin" class="p-6 space-y-4">
-        <div v-if="loginErrorMessage" class="p-3 rounded-lg bg-rose-950/40 border border-rose-800 text-rose-300 text-xs font-medium leading-relaxed font-sans text-center">
+        <div 
+          v-if="loginErrorMessage" 
+          class="p-3 rounded-lg border text-xs font-medium leading-relaxed font-sans text-center"
+          :class="currentTheme === 'dark' ? 'bg-rose-950/50 border-rose-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-600'"
+        >
           {{ loginErrorMessage }}
         </div>
+        
         <div>
-          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">用户名</label>
-          <input v-model="loginUsernameInput" type="text" required class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs font-bold text-white outline-none focus:border-sky-500 transition-colors" placeholder="用户名" />
+          <label class="block text-[11px] font-bold uppercase tracking-wider mb-1.5 font-mono" :class="currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-600'">用户名</label>
+          <input 
+            v-model="loginUsernameInput" 
+            type="text" 
+            required 
+            class="w-full rounded-lg p-2.5 text-xs font-bold outline-none transition-all" 
+            :class="currentTheme === 'dark' ? 'bg-slate-950 border border-slate-800 text-white focus:border-sky-500 placeholder:text-slate-600' : 'bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-slate-800 placeholder:text-slate-400'"
+            placeholder="请输入用户名" 
+          />
         </div>
+        
         <div>
-          <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-mono">密码</label>
+          <label class="block text-[11px] font-bold uppercase tracking-wider mb-1.5 font-mono" :class="currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-600'">密码</label>
           <div class="relative">
-            <input v-model="loginPasswordInput" type="password" required class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 pl-9 text-xs font-mono font-bold text-white outline-none focus:border-sky-500 transition-colors" placeholder="••••••••" />
-            <Lock class="absolute left-3 top-3 w-4.5 h-4.5 text-slate-500" />
+            <input 
+              v-model="loginPasswordInput" 
+              type="password" 
+              required 
+              class="w-full rounded-lg p-2.5 pl-9 text-xs font-mono font-bold outline-none transition-all" 
+              :class="currentTheme === 'dark' ? 'bg-slate-950 border border-slate-800 text-white focus:border-sky-500 placeholder:text-slate-600' : 'bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-slate-800 placeholder:text-slate-400'"
+              placeholder="请输入密码" 
+            />
+            <Lock class="absolute left-3 top-3 w-4 h-4" :class="currentTheme === 'dark' ? 'text-slate-500' : 'text-slate-400'" />
           </div>
         </div>
-        <button type="submit" class="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg transition-transform active:scale-95 cursor-pointer mt-2">
+
+        <button 
+          type="submit" 
+          class="w-full py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-sky-600/20 active:scale-[0.98] cursor-pointer mt-2"
+        >
           登录
         </button>
-        <div class="border-t border-slate-800 pt-4 mt-2 grid grid-cols-1 gap-2.5 text-center">
-          <div class="text-[10px] text-slate-500 font-sans leading-relaxed">
-            默认账户: <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='123456'" class="text-sky-400 hover:underline">admin</button> / <button type="button" @click="loginUsernameInput='admin'; loginPasswordInput='admin888'" class="text-sky-400 hover:underline">admin888</button>
+
+        <!-- Static Account Info Tip -->
+        <div class="border-t pt-4 mt-3 text-center" :class="currentTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'">
+          <div class="text-xs font-sans leading-relaxed flex items-center justify-center gap-1.5 flex-wrap" :class="currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'">
+            <span>默认账户:</span>
+            <span class="font-bold" :class="currentTheme === 'dark' ? 'text-slate-200' : 'text-slate-700'">admin</span>
+            <span :class="currentTheme === 'dark' ? 'text-slate-600' : 'text-slate-300'">|</span>
+            <span>密码:</span>
+            <span class="font-mono font-bold" :class="currentTheme === 'dark' ? 'text-slate-200' : 'text-slate-700'">123456</span>
           </div>
-          <button type="button" @click="triggerBypassLogin" class="py-1.5 border border-slate-800 hover:bg-slate-805/30 bg-slate-850/10 text-slate-350 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
-            <UserCheck class="w-3.5 h-3.5" />
-            快速登录
-          </button>
         </div>
       </form>
     </div>
   </div>
-  <div v-else class="h-screen w-screen flex flex-col font-sans text-slate-800 bg-slate-150 overflow-hidden select-none">
-    <header class="h-14 bg-[#0b0f19] text-white border-b border-slate-950 px-4 flex items-center justify-between shrink-0 shadow-lg relative z-30">
+  <div v-else class="h-screen w-screen flex flex-col font-sans text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-[#070b12] overflow-hidden select-none">
+    <header class="h-14 bg-slate-900 dark:bg-[#070b12] text-white border-b border-slate-800 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-sm relative z-30 transition-colors">
       <div class="flex items-center gap-3">
-        <button @click="isMobileSidebarOpen = !isMobileSidebarOpen" class="lg:hidden p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:bg-slate-900 active:scale-95 transition-all outline-none cursor-pointer">
+        <button @click="isMobileSidebarOpen = !isMobileSidebarOpen" class="lg:hidden p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:bg-slate-800 active:scale-95 transition-all outline-none cursor-pointer">
           <Menu v-if="!isMobileSidebarOpen" class="w-4.5 h-4.5" />
           <X v-else class="w-4.5 h-4.5" />
         </button>
@@ -169,26 +241,38 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
         <div class="text-left">
           <h1 class="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2 leading-none text-slate-50">
             {{ systemConfig.systemTitle }}
-            <span class="text-[9px] bg-slate-900 text-[#1890ff] font-bold px-1.5 py-0.5 rounded border border-slate-800 select-none font-mono hidden sm:inline-block">V6.0</span>
+            <span class="text-[9px] bg-slate-800 text-[#38bdf8] font-bold px-1.5 py-0.5 rounded border border-slate-700 select-none font-mono hidden sm:inline-block">V6.0</span>
           </h1>
           <span class="text-[9px] sm:text-[10px] text-slate-400 leading-none mt-1 inline-block select-all">SCADA 控制中心</span>
         </div>
       </div>
-      <div class="flex items-center gap-3 text-[10px] sm:text-xs font-mono">
-        <div class="hidden md:flex items-center gap-1.5 text-slate-300 bg-[#111827] border border-slate-850 px-3 py-1 rounded-lg">
+      <div class="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs font-mono">
+        <!-- Theme Toggle Button -->
+        <button 
+          @click="toggleTheme" 
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none active:scale-95"
+          :class="currentTheme === 'dark' ? 'bg-slate-800/90 border-slate-700 text-amber-400 hover:bg-slate-800 hover:text-amber-300' : 'bg-slate-800 border-slate-700 text-sky-300 hover:bg-slate-700 hover:text-white'"
+          :title="currentTheme === 'dark' ? '当前：深色模式 (点击切换为浅色)' : '当前：浅色模式 (点击切换为深色)'"
+        >
+          <Sun v-if="currentTheme === 'dark'" class="w-3.5 h-3.5 text-amber-400" />
+          <Moon v-else class="w-3.5 h-3.5 text-sky-400" />
+          <span class="font-sans font-bold text-[11px] hidden sm:inline">{{ currentTheme === 'dark' ? '深色模式' : '浅色模式' }}</span>
+        </button>
+
+        <div class="hidden md:flex items-center gap-1.5 text-slate-300 bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-lg">
           <Clock class="w-3.5 h-3.5 text-slate-400" />
           <span>{{ currentLocalTime || '正在同步时钟...' }}</span>
         </div>
-        <div class="flex items-center gap-1.5 bg-[#10b981]/10 text-emerald-400 border border-[#10b981]/25 px-2 py-0.5 sm:py-1 rounded-lg">
+        <div class="flex items-center gap-1.5 bg-[#10b981]/15 text-emerald-400 border border-[#10b981]/30 px-2 py-0.5 sm:py-1 rounded-lg">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
           <span class="font-bold uppercase tracking-wider text-[8px] sm:text-[9px]">系统运行中</span>
         </div>
       </div>
     </header>
     <div class="flex-1 flex overflow-hidden relative">
-      <aside class="hidden lg:flex bg-[#0f172a] text-slate-350 border-r border-[#090d16] flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300" :class="isSidebarCollapsed ? 'w-16' : 'w-64'">
+      <aside class="hidden lg:flex bg-[#0f172a] dark:bg-[#070b12] text-slate-350 border-r border-slate-800 dark:border-slate-900 flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300" :class="isSidebarCollapsed ? 'w-16' : 'w-64'">
         <div class="px-2 py-2 border-b border-slate-800/40 flex items-center justify-center shrink-0">
-          <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="w-full py-1.5 hover:bg-slate-800 bg-slate-900 border border-slate-800/60 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95" :title="isSidebarCollapsed ? '展开导航' : '收起导航'">
+          <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="w-full py-1.5 hover:bg-slate-800 bg-slate-900/60 border border-slate-800/60 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95" :title="isSidebarCollapsed ? '展开导航' : '收起导航'">
             <ChevronRight v-if="isSidebarCollapsed" class="w-4 h-4 text-slate-400" />
             <template v-else>
               <ChevronLeft class="w-4 h-4 text-slate-400" />
@@ -388,7 +472,7 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
           <button @click="performLogout(); isMobileSidebarOpen = false;" class="text-rose-500 text-xs">退出</button>
         </div>
       </aside>
-      <main class="flex-1 flex flex-col min-w-0 bg-slate-100 overflow-hidden relative">
+      <main class="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#070b12] overflow-hidden relative">
         <router-view />
       </main>
     </div>
@@ -407,8 +491,14 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
   background: #cbd5e1;
   border-radius: 99px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 @keyframes ring {
   0% { transform: scale(1); opacity: 0.8; }

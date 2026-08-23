@@ -182,12 +182,12 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto md:overflow-y-hidden flex flex-col md:flex-row text-[#1e293b] select-none bg-slate-50">
+  <div class="h-full overflow-y-auto md:overflow-y-hidden flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
     
     <!-- LEFT LIST: Broker channels -->
-    <div class="w-full md:w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 flex-1 md:flex-none">
-      <div class="p-4 border-b border-slate-100 flex items-center justify-between">
-        <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900">
+    <div class="w-full md:w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 flex-1 md:flex-none transition-colors">
+      <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900 dark:text-white">
           <Rss class="w-4 h-4 text-sky-500" />
           <span>MQTT 服务器管理</span>
         </div>
@@ -200,63 +200,63 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-[220px] md:max-h-none text-left">
+      <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[220px] md:max-h-none text-left">
         <div 
           v-for="s in mqttServers" 
           :key="s.id"
           @click="selectedServerId = s.id"
-          class="p-4 cursor-pointer hover:bg-slate-50/50 transition-all space-y-2 relative"
-          :class="selectedServerId === s.id ? 'bg-sky-50/40 border-r-4 border-r-[#1890ff]' : ''"
+          class="p-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-2 relative"
+          :class="selectedServerId === s.id ? 'bg-sky-50/40 dark:bg-sky-950/40 border-r-4 border-r-[#1890ff]' : ''"
         >
           <div class="flex items-center justify-between">
-            <span class="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+            <span class="text-[9px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded">
               PORT: {{ s.port }}
             </span>
             <button 
               @click.stop="toggleServerConnection(s)"
               class="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 border"
-              :class="s.status === 'connected' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'"
+              :class="s.status === 'connected' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'"
             >
               <span class="w-1.5 h-1.5 rounded-full" :class="s.status === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
               {{ s.status === 'connected' ? '已连接' : '断开' }}
             </button>
           </div>
           <div>
-            <h4 class="font-bold text-xs text-slate-800 leading-snug">{{ s.name }}</h4>
-            <p class="text-[10px] text-slate-400 font-mono mt-0.5 truncate">{{ s.brokerUrl }}</p>
+            <h4 class="font-bold text-xs text-slate-800 dark:text-slate-100 leading-snug">{{ s.name }}</h4>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 truncate">{{ s.brokerUrl }}</p>
           </div>
-          <div class="flex justify-between items-center text-[9px] font-mono text-slate-400">
+          <div class="flex justify-between items-center text-[9px] font-mono text-slate-400 dark:text-slate-500">
             <span>Client ID: {{ s.clientId }}</span>
-            <span class="text-sky-600 font-sans font-bold">{{ s.associatedVariables.length }} 个变量</span>
+            <span class="text-sky-600 dark:text-sky-400 font-sans font-bold">{{ s.associatedVariables.length }} 个变量</span>
           </div>
         </div>
       </div>
     </div>
 
     <!-- RIGHT PANEL: Detail, mappings list and search -->
-    <div class="flex-1 flex flex-col bg-slate-50/50 text-left min-w-0">
+    <div class="flex-1 flex flex-col bg-slate-50/50 dark:bg-transparent text-left min-w-0">
       
-      <div v-if="activeServer" class="bg-white p-5 border-b border-slate-200 shadow-sm space-y-4">
+      <div v-if="activeServer" class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm space-y-4 transition-colors">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div class="space-y-1">
             <div class="flex items-center gap-2">
-              <h2 class="font-bold text-base text-slate-900 font-sans tracking-tight">{{ activeServer.name }}</h2>
+              <h2 class="font-bold text-base text-slate-900 dark:text-white font-sans tracking-tight">{{ activeServer.name }}</h2>
               <span 
                 class="text-[9px] px-1.5 py-0.5 rounded font-bold border"
-                :class="activeServer.status === 'connected' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'"
+                :class="activeServer.status === 'connected' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'"
               >
                 {{ activeServer.status === 'connected' ? '运行中' : '已停用' }}
               </span>
             </div>
-            <p class="text-xs text-slate-500 font-mono truncate max-w-lg">
-              地址 Endpoint: <b class="text-slate-700">{{ activeServer.brokerUrl }}:{{ activeServer.port }}</b>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-lg">
+              地址 Endpoint: <b class="text-slate-700 dark:text-slate-200">{{ activeServer.brokerUrl }}:{{ activeServer.port }}</b>
             </p>
           </div>
 
           <div class="flex items-center gap-2 shrink-0">
             <button 
               @click="openEditServerModal(activeServer)"
-              class="border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-600 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all"
+              class="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all"
             >
               <Edit3 class="w-4 h-4 text-slate-400" />
               编辑配置
@@ -270,7 +270,7 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
             </button>
             <button 
               @click="handleDeleteServer(activeServer.id, activeServer.name)"
-              class="text-rose-600 hover:text-rose-800 border border-rose-100 font-bold text-xs p-1.5 rounded-lg bg-rose-50 cursor-pointer"
+              class="text-rose-600 dark:text-rose-400 hover:text-rose-800 border border-rose-100 dark:border-rose-900/40 font-bold text-xs p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 cursor-pointer"
             >
               <Trash2 class="w-4 h-4" />
             </button>
@@ -278,22 +278,22 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
         </div>
 
         <!-- Connection Details strip -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3.5 bg-slate-50 rounded-xl border border-slate-150 text-[11px] font-mono text-slate-600">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-150 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300">
           <div>
-            <span class="text-slate-400">客户端ID:</span>
-            <span class="block font-bold text-slate-800 truncate">{{ activeServer.clientId }}</span>
+            <span class="text-slate-400 dark:text-slate-500">客户端ID:</span>
+            <span class="block font-bold text-slate-800 dark:text-slate-200 truncate">{{ activeServer.clientId }}</span>
           </div>
           <div>
-            <span class="text-slate-400">用户名:</span>
-            <span class="block font-bold text-slate-800 truncate">{{ activeServer.username || '匿名' }}</span>
+            <span class="text-slate-400 dark:text-slate-500">用户名:</span>
+            <span class="block font-bold text-slate-800 dark:text-slate-200 truncate">{{ activeServer.username || '匿名' }}</span>
           </div>
           <div>
-            <span class="text-slate-400">主题前缀:</span>
-            <span class="block font-bold text-[#1890ff] truncate">{{ activeServer.topicPrefix || '无' }}</span>
+            <span class="text-slate-400 dark:text-slate-500">主题前缀:</span>
+            <span class="block font-bold text-[#1890ff] dark:text-sky-400 truncate">{{ activeServer.topicPrefix || '无' }}</span>
           </div>
           <div>
-            <span class="text-slate-400">状态:</span>
-            <span class="block font-bold" :class="activeServer.status === 'connected' ? 'text-emerald-500' : 'text-slate-400'">
+            <span class="text-slate-400 dark:text-slate-500">状态:</span>
+            <span class="block font-bold" :class="activeServer.status === 'connected' ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400'">
               {{ activeServer.status === 'connected' ? '传输中' : '等待连接' }}
             </span>
           </div>
@@ -304,7 +304,7 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
       <div class="flex-1 p-5 md:overflow-y-auto overflow-y-visible space-y-4">
         <div v-if="activeServer" class="space-y-3">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1.5">
-            <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 inline-flex items-center gap-1">
+            <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
             <Grid class="w-4 h-4 text-[#1890ff]" />
             <span>关联变量 ({{ filteredAssociatedVariables.length }})</span>
           </h3>
@@ -315,13 +315,13 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
                 v-model="varSearchQuery"
                 type="text"
                 placeholder="搜索变量..."
-                class="w-full bg-white border border-slate-200 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 focus:outline-none focus:border-[#1890ff] focus:ring-1 focus:ring-[#1890ff]"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               />
               <Search class="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
               <button 
                 v-if="varSearchQuery" 
                 @click="varSearchQuery = ''" 
-                class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none"
               >
                 <X class="w-3.5 h-3.5" />
               </button>
@@ -333,34 +333,34 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
             <div 
               v-for="av in filteredAssociatedVariables" 
               :key="`${av.deviceId}:${av.variableKey}`"
-              class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between hover:shadow-md transition-all text-left relative overflow-hidden"
+              class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:shadow-md transition-all text-left relative overflow-hidden"
             >
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between text-[10px]">
-                  <span class="text-slate-400 font-bold font-mono">
+                  <span class="text-slate-400 dark:text-slate-500 font-bold font-mono">
                     {{ devices.find(d => d.id === av.deviceId)?.name || '未知设备' }}
                   </span>
-                  <span class="text-[9px] font-mono text-slate-400 font-bold bg-slate-50 px-1.5 py-0.5 rounded">
+                  <span class="text-[9px] font-mono text-slate-400 dark:text-slate-500 font-bold bg-slate-50 dark:bg-slate-950 px-1.5 py-0.5 rounded">
                     设备ID: {{ av.deviceId }}
                   </span>
                 </div>
                 <div>
-                  <h4 class="font-mono font-bold text-xs text-sky-600 truncate">{{ av.variableKey }}</h4>
-                  <p class="text-[10px] text-slate-400 mt-0.5">
-                    实时值: <span class="text-slate-800 font-mono font-bold">
+                  <h4 class="font-mono font-bold text-xs text-sky-600 dark:text-sky-400 truncate">{{ av.variableKey }}</h4>
+                  <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                    实时值: <span class="text-slate-800 dark:text-slate-200 font-mono font-bold">
                       {{ devices.find(d => d.id === av.deviceId)?.variables[av.variableKey] }}
                     </span>
                   </p>
                 </div>
               </div>
 
-              <div class="border-t border-slate-100 pt-3.5 mt-3.5 flex items-center justify-between">
-                <span class="text-[9px] text-slate-400 font-mono">
+              <div class="border-t border-slate-100 dark:border-slate-800 pt-3.5 mt-3.5 flex items-center justify-between">
+                <span class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
                   推送路径: {{ activeServer.topicPrefix || 'raw' }}/{{ av.variableKey }}
                 </span>
                 <button 
               @click="disassociateVariable(av.deviceId, av.variableKey)"
-              class="text-rose-500 hover:text-rose-700 text-[10px] font-sans font-semibold inline-flex items-center gap-0.5 cursor-pointer"
+              class="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 text-[10px] font-sans font-semibold inline-flex items-center gap-0.5 cursor-pointer"
               title="取消关联"
             >
               <Unlink class="w-3.5 h-3.5" />
@@ -371,28 +371,28 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
 
             <div 
               v-if="filteredAssociatedVariables.length === 0" 
-              class="col-span-full py-16 bg-white border border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 text-center space-y-2"
+              class="col-span-full py-16 bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 text-center space-y-2 transition-colors"
             >
-              <Rss class="w-8 h-8 text-slate-350" />
+              <Rss class="w-8 h-8 text-slate-350 dark:text-slate-600" />
               <div class="text-xs">
-                <p class="font-bold text-slate-500">暂无关联变量</p>
-                <p class="text-slate-400 text-[11px] mt-1">点击右上角 "关联变量" 添加变量</p>
+                <p class="font-bold text-slate-500 dark:text-slate-400">暂无关联变量</p>
+                <p class="text-slate-400 dark:text-slate-500 text-[11px] mt-1">点击右上角 "关联变量" 添加变量</p>
               </div>
             </div>
           </div>
         </div>
 
-        <div v-else class="h-64 flex flex-col items-center justify-center text-slate-400">
-          <Rss class="w-8 h-8 text-slate-300 mb-2 animate-pulse" />
-          <p class="text-xs font-bold text-slate-500">请添加或选择一个有效的 MQTT 云转发通道</p>
+        <div v-else class="h-64 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+          <Rss class="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2 animate-pulse" />
+          <p class="text-xs font-bold text-slate-500 dark:text-slate-400">请添加或选择一个有效的 MQTT 云转发通道</p>
         </div>
       </div>
     </div>
 
     <!-- MODAL: ADD / EDIT DIRECT LINK CHANNEL -->
-    <div v-if="showServerModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+    <div v-if="showServerModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Settings class="w-4 h-4 text-sky-400 animate-spin" />
             <span>{{ isEditing ? '编辑MQTT服务器' : '新建MQTT服务器' }}</span>
@@ -402,64 +402,64 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 font-bold block mb-1">服务器名称</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">服务器名称</label>
             <input 
               v-model="sName"
               type="text"
               placeholder="如: 阿里云MQTT"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-sans focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
             />
           </div>
 
           <div class="grid grid-cols-3 gap-2">
             <div class="col-span-2">
-              <label class="text-slate-500 font-bold block mb-1">Broker地址</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">Broker地址</label>
               <input 
                 v-model="sUrl"
                 type="text"
                 placeholder="e.g. mqtt://broker.emqx.io"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-[11px] focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-[11px] focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               />
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">端口</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">端口</label>
               <input 
                 v-model="sPort"
                 type="number"
                 placeholder="1883"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-[11px] focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-[11px] focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               />
             </div>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">客户端ID</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">客户端ID</label>
               <input 
                 v-model="sClientId"
                 type="text"
                 placeholder="scada_edge"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               />
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">主题前缀</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">主题前缀</label>
               <input 
                 v-model="sPrefix"
                 type="text"
                 placeholder="factory/telemetry"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               />
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+          <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800">
             <div>
               <label class="text-slate-400 font-bold block mb-1">用户名 (选填)</label>
               <input 
                 v-model="sUsername"
                 type="text"
-                class="w-full bg-white border border-slate-200 rounded p-1.5 font-mono focus:outline-none text-[11px]"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 font-mono text-slate-900 dark:text-white focus:outline-none text-[11px]"
               />
             </div>
             <div>
@@ -467,16 +467,16 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
               <input 
                 v-model="sPassword"
                 type="password"
-                class="w-full bg-white border border-slate-200 rounded p-1.5 font-mono focus:outline-none text-[11px]"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 font-mono text-slate-900 dark:text-white focus:outline-none text-[11px]"
               />
             </div>
           </div>
         </div>
 
-        <div class="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
+        <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
           <button 
             @click="showServerModal = false"
-            class="px-3.5 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs rounded-lg text-slate-600 cursor-pointer"
+            class="px-3.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
@@ -491,9 +491,9 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
     </div>
 
     <!-- MODAL: ASSOCIATE VARIABLES -->
-    <div v-if="showAssociateModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[500px]">
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+    <div v-if="showAssociateModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[500px]">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between shrink-0 border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Rss class="w-4 h-4 text-[#1890ff]" />
             <span>关联变量</span>
@@ -502,19 +502,19 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
         </div>
 
         <!-- Search bar inside variables injection list -->
-        <div class="p-3 bg-slate-50 border-b border-slate-200 shrink-0 select-none">
+        <div class="p-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0 select-none">
           <div class="relative">
             <input 
               v-model="addVarSearchQuery"
               type="text"
               placeholder="搜索变量..."
-              class="w-full bg-white border border-slate-200 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 focus:outline-none focus:border-[#1890ff]"
+              class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
             />
             <Search class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
             <button 
               v-if="addVarSearchQuery" 
               @click="addVarSearchQuery = ''" 
-              class="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+              class="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none"
             >
               <X class="w-3.5 h-3.5" />
             </button>
@@ -525,14 +525,14 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
           <div 
             v-for="v in unassociatedVariables" 
             :key="`${v.deviceId}:${v.variableKey}`"
-            class="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50/50 flex items-center justify-between text-xs text-left"
+            class="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50/50 dark:hover:bg-slate-800/50 flex items-center justify-between text-xs text-left"
           >
             <div>
               <div class="flex items-center gap-2">
-                <span class="font-mono font-bold text-slate-700 text-xs">{{ v.variableKey }}</span>
-                <span class="text-[9px] bg-slate-100 text-slate-500 px-1 rounded uppercase font-mono">{{ v.deviceName }}</span>
+                <span class="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">{{ v.variableKey }}</span>
+                <span class="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1 rounded uppercase font-mono">{{ v.deviceName }}</span>
               </div>
-              <p class="text-[10px] text-slate-400 font-sans mt-0.5">
+              <p class="text-[10px] text-slate-400 dark:text-slate-500 font-sans mt-0.5">
                 端网寻址: ID: {{ v.deviceId }} · 默认转发: {{ activeServer.topicPrefix || 'factory' }}/{{ v.variableKey }}
               </p>
             </div>
@@ -546,17 +546,17 @@ const disassociateVariable = (deviceId: string, variableKey: string) => {
             </button>
           </div>
 
-          <div v-if="unassociatedVariables.length === 0" class="py-12 text-center text-slate-400">
+          <div v-if="unassociatedVariables.length === 0" class="py-12 text-center text-slate-400 dark:text-slate-500">
             <Check class="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-            <p class="text-xs font-bold text-slate-500">无可关联变量</p>
-            <p class="text-[10px] text-slate-400 mt-1">所有变量已关联到该服务器</p>
+            <p class="text-xs font-bold text-slate-500 dark:text-slate-400">无可关联变量</p>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">所有变量已关联到该服务器</p>
           </div>
         </div>
 
-        <div class="bg-slate-50 p-3 flex justify-end border-t border-slate-100 shrink-0">
+        <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end border-t border-slate-100 dark:border-slate-800 shrink-0">
           <button 
             @click="showAssociateModal = false"
-            class="px-5 py-1.5 rounded-lg bg-slate-900 border border-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer shadow-sm"
+            class="px-5 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 border border-slate-900 dark:border-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 text-white font-bold text-xs cursor-pointer shadow-sm"
           >
             完成
           </button>

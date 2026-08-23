@@ -103,23 +103,23 @@ const handleUpdateCode = (evt: Event) => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col text-[#1e293b] select-none bg-slate-50">
+  <div class="h-full flex flex-col text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
     
     <!-- Header banner -->
-    <div class="bg-white p-5 border-b border-slate-200 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+    <div class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-colors">
       <div class="space-y-1">
-        <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
-          <FileCode class="w-5 h-5 text-indigo-600" />
+        <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+          <FileCode class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
           系统脚本管理
         </h2>
-        <p class="text-xs text-slate-500 font-sans">
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
           编写和管理自动化控制脚本，支持定时执行和手动触发。
         </p>
       </div>
 
       <button 
         @click="showAddModal = true"
-        class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
+        class="font-bold text-xs bg-slate-900 dark:bg-sky-600 text-white hover:bg-slate-800 dark:hover:bg-sky-500 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Plus class="w-4 h-4" />
         新建脚本
@@ -130,18 +130,18 @@ const handleUpdateCode = (evt: Event) => {
     <div class="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
       
       <!-- Left sidebar selector -->
-      <div class="w-full lg:w-72 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div class="p-4 border-b border-slate-100 font-bold text-[10px] text-slate-400 uppercase tracking-widest text-left">
+      <div class="w-full lg:w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-colors">
+        <div class="p-4 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest text-left">
           脚本列表 ({{ systemScripts.length }})
         </div>
 
-        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 text-left">
+        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-left">
           <div 
             v-for="scr in systemScripts" 
             :key="scr.id"
             @click="selectedScriptId = scr.id"
-            class="p-4 cursor-pointer hover:bg-slate-50/50 transition-all space-y-2 relative"
-            :class="selectedScriptId === scr.id ? 'bg-indigo-50/20 text-indigo-600 border-r-4 border-r-indigo-600' : 'text-slate-700'"
+            class="p-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-2 relative"
+            :class="selectedScriptId === scr.id ? 'bg-indigo-50/20 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-r-4 border-r-indigo-600 dark:border-r-indigo-400' : 'text-slate-700 dark:text-slate-300'"
           >
             <div class="flex items-start justify-between gap-1">
               <span class="font-bold text-xs leading-snug tracking-tight block max-w-[180px] break-words">
@@ -150,7 +150,7 @@ const handleUpdateCode = (evt: Event) => {
 
               <button 
                 @click.stop="handleDeleteScript(scr.id, scr.name)"
-                class="text-slate-400 hover:text-rose-600 p-0.5"
+                class="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 p-0.5"
                 title="删除脚本"
               >
                 <Trash2 class="w-3.5 h-3.5" />
@@ -159,13 +159,13 @@ const handleUpdateCode = (evt: Event) => {
 
             <div class="flex items-center gap-2">
               <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border"
-                :class="scr.triggerType === 'auto' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-150'"
+                :class="scr.triggerType === 'auto' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-150 dark:border-slate-700'"
               >
                 {{ scr.triggerType === 'auto' ? '定时执行 (' + scr.intervalSeconds + 's)' : '手动触发' }}
               </span>
 
               <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border"
-                :class="scr.executionStatus === 'success' ? 'bg-emerald-500 text-white border-emerald-500' : scr.executionStatus === 'error' ? 'bg-rose-500 text-white border-rose-500' : scr.executionStatus === 'running' ? 'bg-indigo-500 text-white border-indigo-500 animate-pulse' : 'bg-slate-100 text-slate-400 border-slate-200'"
+                :class="scr.executionStatus === 'success' ? 'bg-emerald-500 text-white border-emerald-500' : scr.executionStatus === 'error' ? 'bg-rose-500 text-white border-rose-500' : scr.executionStatus === 'running' ? 'bg-indigo-500 text-white border-indigo-500 animate-pulse' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'"
               >
                 {{ scr.executionStatus === 'success' ? '执行成功' : scr.executionStatus === 'error' ? '执行失败' : scr.executionStatus === 'running' ? '执行中' : '空闲' }}
               </span>
@@ -175,10 +175,10 @@ const handleUpdateCode = (evt: Event) => {
       </div>
 
       <!-- Right Side: Live code workspace and Terminal -->
-      <div v-if="currentScriptObj" class="flex-1 flex flex-col min-w-0 bg-slate-900 border-l border-slate-950 relative">
+      <div v-if="currentScriptObj" class="flex-1 flex flex-col min-w-0 bg-slate-900 dark:bg-slate-950 border-l border-slate-950 dark:border-slate-800 relative">
         
         <!-- Editor Top Header status actions -->
-        <div class="bg-slate-950/80 px-5 py-3 border-b border-slate-950 flex items-center justify-between text-white text-xs">
+        <div class="bg-slate-950/80 px-5 py-3 border-b border-slate-950 dark:border-slate-800 flex items-center justify-between text-white text-xs">
           <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-rose-500" />
             <b class="font-sans text-slate-300">当前脚本:</b>
@@ -219,8 +219,8 @@ const handleUpdateCode = (evt: Event) => {
           </div>
 
           <!-- Console log output -->
-          <div class="h-48 border-t border-slate-950 bg-slate-950 flex flex-col min-h-[140px] shrink-0 text-left">
-            <div class="bg-slate-900 border-b border-slate-950 px-4 py-1.5 flex items-center justify-between text-slate-400 font-mono text-[10px] select-none">
+          <div class="h-48 border-t border-slate-950 dark:border-slate-800 bg-slate-950 flex flex-col min-h-[140px] shrink-0 text-left">
+            <div class="bg-slate-900 dark:bg-slate-950 border-b border-slate-950 dark:border-slate-800 px-4 py-1.5 flex items-center justify-between text-slate-400 font-mono text-[10px] select-none">
             <div class="flex items-center gap-1 text-[#1890ff] font-bold">
               <Terminal class="w-3.5 h-3.5" />
               <span>控制台输出</span>
@@ -253,17 +253,17 @@ const handleUpdateCode = (evt: Event) => {
 
       </div>
 
-      <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 py-16 gap-3">
-        <FileCode class="w-10 h-10 text-slate-300 animate-pulse" />
+      <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-16 gap-3">
+        <FileCode class="w-10 h-10 text-slate-300 dark:text-slate-600 animate-pulse" />
         <span>暂无脚本。点击右上角按钮创建新脚本。</span>
       </div>
 
     </div>
 
     <!-- ADD SCRIPT POPUP WINDOW -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-indigo-400">
             <Zap class="w-4 h-4" />
             <span>新建脚本</span>
@@ -274,21 +274,21 @@ const handleUpdateCode = (evt: Event) => {
         <div class="p-5 space-y-4 text-xs font-sans">
           
           <div>
-            <label class="font-bold text-slate-500 block mb-1">脚本名称</label>
+            <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">脚本名称</label>
             <input 
               v-model="newScriptName"
               type="text"
               placeholder="如: 温度保护脚本"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white outline-none focus:border-[#1890ff]"
             />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">触发方式</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">触发方式</label>
               <select 
                 v-model="newScriptTriggerType"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-bold"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white focus:outline-none font-bold"
               >
                 <option value="manual">手动触发</option>
                 <option value="auto">定时执行</option>
@@ -296,28 +296,28 @@ const handleUpdateCode = (evt: Event) => {
             </div>
 
             <div v-if="newScriptTriggerType === 'auto'">
-              <label class="font-bold text-slate-500 block mb-1">执行间隔 (秒)</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">执行间隔 (秒)</label>
               <input 
                 v-model.number="newScriptInterval"
                 type="number"
                 min="1"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus:bg-white text-slate-800 font-mono outline-none font-bold"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white font-mono outline-none font-bold"
               />
             </div>
           </div>
 
         </div>
 
-        <div class="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
+        <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
           <button 
             @click="showAddModal = false"
-            class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
             @click="handleCreateScript"
-            class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
+            class="px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white cursor-pointer"
           >
             创建脚本
           </button>

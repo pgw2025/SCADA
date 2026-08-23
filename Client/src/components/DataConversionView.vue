@@ -187,16 +187,16 @@ const toggleLinkStatus = (c: DataConversion) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] select-none p-4 sm:p-6 bg-slate-50/50">
+  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] dark:text-slate-100 select-none p-4 sm:p-6 bg-slate-50/50 dark:bg-transparent">
     
     <!-- Top banner -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-5 gap-4 text-left">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4 text-left">
       <div>
-        <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight flex items-center gap-2">
+        <h1 class="text-xl font-bold font-sans text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
           <Shuffle class="w-5 h-5 text-indigo-500" />
           <span>数据转换</span>
         </h1>
-        <p class="text-xs text-slate-500 mt-1">
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
           配置设备间的数据映射和值跟随规则。
         </p>
       </div>
@@ -211,15 +211,15 @@ const toggleLinkStatus = (c: DataConversion) => {
     </div>
 
     <!-- Middle bar with search & status stats -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-left">
-      <div class="flex items-center gap-4 text-xs font-sans font-semibold text-slate-500 shrink-0">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-left transition-colors">
+      <div class="flex items-center gap-4 text-xs font-sans font-semibold text-slate-500 dark:text-slate-400 shrink-0">
         <span class="inline-flex items-center gap-1">
-          规则总计: <b class="text-indigo-600 text-sm font-mono">{{ dataConversions.length }}</b> 条
+          规则总计: <b class="text-indigo-600 dark:text-indigo-400 text-sm font-mono">{{ dataConversions.length }}</b> 条
         </span>
-        <span class="inline-flex items-center gap-1 border-l border-slate-200 pl-4">
-          已启用: <b class="text-emerald-600 text-sm font-mono">{{ dataConversions.filter(c => c.active).length }}</b> 条
+        <span class="inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-4">
+          已启用: <b class="text-emerald-600 dark:text-emerald-400 text-sm font-mono">{{ dataConversions.filter(c => c.active).length }}</b> 条
         </span>
-        <span class="inline-flex items-center gap-1 border-l border-slate-200 pl-4 text-[10px] text-slate-400 font-mono">
+        <span class="inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-4 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
           🛡️ 环路保护: 已启用
         </span>
       </div>
@@ -230,13 +230,13 @@ const toggleLinkStatus = (c: DataConversion) => {
           v-model="filterQuery"
           type="text"
           placeholder="检索规则名称、变量 Key、对应设备名..."
-          class="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 focus:bg-white focus:outline-none focus:border-[#1890ff]"
+          class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-xs placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:border-[#1890ff]"
         />
         <Search class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
         <button 
           v-if="filterQuery" 
           @click="filterQuery = ''" 
-          class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 focus:outline-none"
+          class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none"
         >
           <X class="w-3.5 h-3.5" />
         </button>
@@ -248,15 +248,15 @@ const toggleLinkStatus = (c: DataConversion) => {
       <div 
         v-for="c in filteredConversions" 
         :key="c.id"
-        class="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-        :class="c.active ? 'border-slate-200' : 'border-slate-200/50 opacity-75'"
+        class="bg-white dark:bg-slate-900 border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+        :class="c.active ? 'border-slate-200 dark:border-slate-800' : 'border-slate-200/50 dark:border-slate-800/50 opacity-75'"
       >
         <!-- Top bar details -->
         <div class="p-4 sm:p-5 space-y-3 flex-1">
           <div class="flex items-start justify-between gap-4">
             <div class="space-y-1">
-              <h4 class="font-bold text-sm text-slate-900 leading-snug">{{ c.name }}</h4>
-              <span class="text-[9px] text-slate-400 font-mono">转换通道 ID: {{ c.id }}</span>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100 leading-snug">{{ c.name }}</h4>
+              <span class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">转换通道 ID: {{ c.id }}</span>
             </div>
 
             <!-- Active / Inactive switch -->
@@ -266,54 +266,54 @@ const toggleLinkStatus = (c: DataConversion) => {
               :title="c.active ? '点击停用联动桥' : '点击启用联动桥'"
             >
               <ToggleRight v-if="c.active" class="w-8 h-8 text-emerald-500" />
-              <ToggleLeft v-else class="w-8 h-8 text-slate-300" />
+              <ToggleLeft v-else class="w-8 h-8 text-slate-300 dark:text-slate-600" />
             </button>
           </div>
 
           <!-- Mapping layout diagram -->
-          <div class="grid grid-cols-5 gap-2 items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+          <div class="grid grid-cols-5 gap-2 items-center p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800/80">
             <!-- Source Node -->
             <div class="col-span-2 space-y-1 text-left select-text">
-              <span class="text-[9px] font-bold text-indigo-500 uppercase font-mono">源</span>
-              <h5 class="text-xs font-bold text-slate-800 truncate">
+              <span class="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase font-mono">源</span>
+              <h5 class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                 {{ devices.find(d => d.id === c.sourceDeviceId)?.name || '未知源设备' }}
               </h5>
-              <div class="font-mono text-[10px] text-slate-500 font-bold bg-[#1890ff]/5 px-2 py-0.5 rounded truncate inline-block border border-[#1890ff]/10">
+              <div class="font-mono text-[10px] text-slate-600 dark:text-slate-300 font-bold bg-[#1890ff]/10 dark:bg-sky-950/60 px-2 py-0.5 rounded truncate inline-block border border-[#1890ff]/20 dark:border-sky-800">
                 {{ c.sourceVariableKey }}
               </div>
-              <p class="text-[10px] text-slate-400 font-mono">
-                当前值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.sourceDeviceId)?.variables[c.sourceVariableKey] }}</span>
+              <p class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                当前值: <span class="text-slate-700 dark:text-slate-300 font-bold font-mono">{{ devices.find(d => d.id === c.sourceDeviceId)?.variables[c.sourceVariableKey] }}</span>
               </p>
             </div>
 
             <!-- Connection icon arrow -->
             <div class="flex flex-col items-center justify-center space-y-1">
-              <span class="text-[8px] font-extrabold text-slate-400 tracking-wider">映射</span>
-              <ArrowRight class="w-4 h-4 text-slate-400" />
+              <span class="text-[8px] font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">映射</span>
+              <ArrowRight class="w-4 h-4 text-slate-400 dark:text-slate-500" />
             </div>
 
             <!-- Target Node -->
             <div class="col-span-2 space-y-1 text-left select-text">
-              <span class="text-[9px] font-bold text-emerald-600 uppercase font-mono">目标</span>
-              <h5 class="text-xs font-bold text-slate-800 truncate">
+              <span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase font-mono">目标</span>
+              <h5 class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                 {{ devices.find(d => d.id === c.targetDeviceId)?.name || '未知目标设备' }}
               </h5>
-              <div class="font-mono text-[10px] text-slate-500 font-bold bg-emerald-50 px-2 py-0.5 rounded truncate inline-block border border-emerald-100">
+              <div class="font-mono text-[10px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded truncate inline-block border border-emerald-100 dark:border-emerald-800">
                 {{ c.targetVariableKey }}
               </div>
-              <p class="text-[10px] text-slate-400 font-mono">
-                当前值: <span class="text-slate-700 font-bold font-mono">{{ devices.find(d => d.id === c.targetDeviceId)?.variables[c.targetVariableKey] }}</span>
+              <p class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                当前值: <span class="text-slate-700 dark:text-slate-300 font-bold font-mono">{{ devices.find(d => d.id === c.targetDeviceId)?.variables[c.targetVariableKey] }}</span>
               </p>
             </div>
           </div>
         </div>
 
         <!-- Footer actions -->
-        <div class="bg-slate-50/70 p-3 flex justify-between items-center text-[10px] text-slate-400 border-t border-slate-100 shrink-0 font-mono">
+        <div class="bg-slate-50/70 dark:bg-slate-950/40 p-3 flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 shrink-0 font-mono">
           <span>🛡️ 环路检查已通过</span>
           <button 
             @click="handleDeleteLinkage(c.id, c.name)"
-            class="text-rose-500 hover:text-rose-700 font-bold inline-flex items-center gap-0.5 cursor-pointer font-sans"
+            class="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 font-bold inline-flex items-center gap-0.5 cursor-pointer font-sans"
           >
             <Trash2 class="w-3.5 h-3.5" />
             删除规则
@@ -323,21 +323,21 @@ const toggleLinkStatus = (c: DataConversion) => {
 
       <div 
         v-if="filteredConversions.length === 0" 
-        class="col-span-full py-16 bg-white border border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 text-center space-y-2"
+        class="col-span-full py-16 bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 text-center space-y-2 transition-colors"
       >
-        <Shuffle class="w-8 h-8 text-indigo-300 animate-pulse" />
+        <Shuffle class="w-8 h-8 text-indigo-300 dark:text-indigo-600 animate-pulse" />
         <div class="text-xs">
-          <p class="font-bold text-slate-500">暂无转换规则</p>
-          <p class="text-[11px] text-slate-400 mt-1">点击右上角按钮新建规则</p>
+          <p class="font-bold text-slate-500 dark:text-slate-400">暂无转换规则</p>
+          <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">点击右上角按钮新建规则</p>
         </div>
       </div>
     </div>
 
     <!-- MODAL: DEFINE NEW CASCADE DATA LINKAGE -->
-    <div v-if="showModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         
-        <div class="bg-[#1e1b4b] text-white p-4 flex items-center justify-between">
+        <div class="bg-[#1e1b4b] dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Shuffle class="w-4 h-4 text-indigo-400" />
             <span>配置转换规则</span>
@@ -347,105 +347,105 @@ const toggleLinkStatus = (c: DataConversion) => {
 
         <div class="p-5 space-y-4 text-xs">
           <div>
-            <label class="text-slate-500 block mb-1 font-bold">规则名称</label>
+            <label class="text-slate-500 dark:text-slate-400 block mb-1 font-bold">规则名称</label>
             <input 
               v-model="linkageName"
               type="text"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-sans focus:bg-white focus:outline-none focus:border-[#1890ff] text-xs font-semibold"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] text-xs font-semibold"
             />
           </div>
 
           <!-- Source dropdown selection box -->
-          <div class="p-3 bg-slate-50/50 rounded-xl border border-slate-100 space-y-2.5">
-            <span class="text-[9px] font-bold text-indigo-500 font-mono tracking-wider block">源</span>
+          <div class="p-3 bg-slate-50/50 dark:bg-slate-950/50 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+            <span class="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 font-mono tracking-wider block">源</span>
             
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">源设备</label>
+                <label class="text-slate-400 dark:text-slate-400 block mb-0.5 text-[10px]">源设备</label>
                 <select 
                   v-model="sourceDevId"
                   @change="onSourceDeviceChange"
-                  class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-bold"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-bold text-slate-900 dark:text-white"
                 >
                   <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
                 </select>
               </div>
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">源变量</label>
+                <label class="text-slate-400 dark:text-slate-400 block mb-0.5 text-[10px]">源变量</label>
                 <select 
                   v-model="sourceVarKey"
-                  class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-mono text-[11px]"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-mono text-[11px] text-slate-900 dark:text-white"
                 >
                   <option v-for="k in sourceVariables" :key="k" :value="k">{{ k }}</option>
                 </select>
               </div>
             </div>
             
-            <p v-if="sourceVarKey" class="text-[10px] text-slate-400 text-left font-mono leading-none">
-              当前值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === sourceDevId)?.variables[sourceVarKey] }}</b>
+            <p v-if="sourceVarKey" class="text-[10px] text-slate-400 dark:text-slate-500 text-left font-mono leading-none">
+              当前值: <b class="text-slate-600 dark:text-slate-300 font-bold">{{ devices.find(d => d.id === sourceDevId)?.variables[sourceVarKey] }}</b>
             </p>
           </div>
 
           <!-- Icon Separator -->
-          <div class="flex justify-center select-none text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+          <div class="flex justify-center select-none text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest font-bold">
             ▼ 值跟随传导 ▼
           </div>
 
           <!-- Target dropdown selection box -->
-          <div class="p-3 bg-slate-50/50 rounded-xl border border-slate-100 space-y-2.5">
-            <span class="text-[9px] font-bold text-emerald-600 font-mono tracking-wider block">目标</span>
+          <div class="p-3 bg-slate-50/50 dark:bg-slate-950/50 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+            <span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 font-mono tracking-wider block">目标</span>
             
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">目标设备</label>
+                <label class="text-slate-400 dark:text-slate-400 block mb-0.5 text-[10px]">目标设备</label>
                 <select 
                   v-model="targetDevId"
                   @change="onTargetDeviceChange"
-                  class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-bold"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-bold text-slate-900 dark:text-white"
                 >
                   <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
                 </select>
               </div>
               <div>
-                <label class="text-slate-400 block mb-0.5 text-[10px]">目标变量</label>
+                <label class="text-slate-400 dark:text-slate-400 block mb-0.5 text-[10px]">目标变量</label>
                 <select 
                   v-model="targetVarKey"
-                  class="w-full bg-white border border-slate-200 rounded p-1.5 focus:outline-none font-mono text-[11px]"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-mono text-[11px] text-slate-900 dark:text-white"
                 >
                   <option v-for="k in targetVariables" :key="k" :value="k">{{ k }}</option>
                 </select>
               </div>
             </div>
 
-            <p v-if="targetVarKey" class="text-[10px] text-slate-400 text-left font-mono leading-none">
-              当前值: <b class="text-slate-600 font-bold">{{ devices.find(d => d.id === targetDevId)?.variables[targetVarKey] }}</b>
+            <p v-if="targetVarKey" class="text-[10px] text-slate-400 dark:text-slate-500 text-left font-mono leading-none">
+              当前值: <b class="text-slate-600 dark:text-slate-300 font-bold">{{ devices.find(d => d.id === targetDevId)?.variables[targetVarKey] }}</b>
             </p>
           </div>
 
           <!-- Enable state toggle on save -->
           <div class="flex items-center justify-between py-1">
-            <span class="text-slate-500 font-bold">保存并启用</span>
+            <span class="text-slate-500 dark:text-slate-400 font-bold">保存并启用</span>
             <button 
               @click="isActiveState = !isActiveState"
               class="rounded-full cursor-pointer transition-colors"
             >
               <ToggleRight v-if="isActiveState" class="w-8 h-8 text-indigo-500" />
-              <ToggleLeft v-else class="w-8 h-8 text-slate-300" />
+              <ToggleLeft v-else class="w-8 h-8 text-slate-300 dark:text-slate-600" />
             </button>
           </div>
         </div>
 
         <!-- Submit actions -->
-        <div class="bg-slate-50 p-4 flex justify-end gap-2 border-t border-slate-100 shrink-0">
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <button 
             @click="showModal = false"
-            class="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
             @click="handleSaveLinkage"
-            class="px-4 py-1.5 bg-indigo-650 rounded-lg bg-indigo-650 bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white cursor-pointer"
+            class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white cursor-pointer rounded-lg"
           >
             保存规则
           </button>

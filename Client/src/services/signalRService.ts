@@ -27,7 +27,7 @@ export const initializeRealtimeSignals = () => {
         connection.on("ReceiveVariableUpdate", (variableKey: string, newValue: any) => {
             let updated = false;
             devices.value.forEach(dev => {
-                if (dev.variables[variableKey] !== undefined) {
+                if (dev.variables && dev.variables[variableKey] !== undefined) {
                     dev.variables[variableKey] = newValue;
                     if (!dev.variableTimestamps) dev.variableTimestamps = {};
                     const pad2 = (n: number) => n.toString().padStart(2, '0');

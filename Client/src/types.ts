@@ -139,18 +139,28 @@ export interface Device {
   id: number;
   name: string;
   key: string;        // e.g. SCADA-PUMP-01
+  code?: string;
   areaId: number;
+  areaName?: string;
   modelId: number;
+  modelName?: string;
   type: DeviceType;
   ipAddress?: string; // S7/OPCUA specific
-  port?: number;      // Port, e.g. 502, 4840
-  status: number;     // 0: offline, 1: online
+  port?: number | string;      // Port, e.g. 502, 4840
+  status: number | string;     // 0: offline, 1: online or 'online' | 'offline'
   lastUpdated: string; // ISO 8601 datetime string
+  variables?: Record<string, any>;
+  variableTimestamps?: Record<string, string>;
 
   // Advanced connection parameters
   cpuType?: string;         // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)
   rack?: number;            // S7 机架号
   slot?: number;            // S7 插槽号
+  topic?: string;
+  mqttServer?: string;
+  publishTopic?: string;
+  subscribeTopic?: string;
+  payloadTemplate?: string;
 }
 
 export interface MqttServer {

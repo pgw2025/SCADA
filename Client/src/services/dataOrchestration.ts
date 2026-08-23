@@ -7,7 +7,7 @@ import { signalRConnection } from '../services/socketService';
 export const setDeviceVariableValue = (variableKey: string, newValue: number | boolean) => {
   // Seek and update across all online devices that have this key
   devices.value.forEach((dev) => {
-    if (dev.status === 'online' && dev.variables[variableKey] !== undefined) {
+    if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
       dev.variables[variableKey] = newValue;
 
       if (!dev.variableTimestamps) {
@@ -18,7 +18,7 @@ export const setDeviceVariableValue = (variableKey: string, newValue: number | b
       dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 
       // Propagate linkages
-      propagateDataLinkages(dev.id, variableKey, newValue);
+      propagateDataLinkages(String(dev.id), variableKey, newValue);
 
       // Post log
       addLog('核心控制器', `写变量 [${variableKey}] -> ${newValue} (${typeof newValue === 'boolean' ? (newValue ? 'ON/合闸' : 'OFF/开路') : newValue})`, 'info');
@@ -52,8 +52,8 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
       if (!visited.has(dstKey)) {
         visited.add(dstKey);
 
-        const targetDev = devices.value.find(d => d.id === conv.targetDeviceId);
-        if (targetDev) {
+        const targetDev = devices.value.find(d => String(d.id) === String(conv.targetDeviceId));
+        if (targetDev && targetDev.variables) {
           targetDev.variables[conv.targetVariableKey] = current.value;
 
           if (!targetDev.variableTimestamps) {
@@ -93,7 +93,7 @@ export const writeVariableToBackend = async (variableKey: string, value: any) =>
 export const getDeviceVariableValue = (variableKey: string): number | boolean => {
   // Seek the first online device that hosts this variable key
   for (const dev of devices.value) {
-    if (dev.status === 'online' && dev.variables[variableKey] !== undefined) {
+    if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
       return dev.variables[variableKey];
     }
   }

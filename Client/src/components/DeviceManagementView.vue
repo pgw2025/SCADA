@@ -310,13 +310,13 @@ const toggleDeviceStateInGrid = (device: Device) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] select-none p-4 sm:p-6 bg-slate-50/50">
+  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] dark:text-slate-100 select-none p-4 sm:p-6 bg-slate-50/50 dark:bg-transparent">
     
     <!-- Header panel with tab switches -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-5 gap-4 text-left">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4 text-left">
       <div>
-        <h1 class="text-xl font-bold font-sans text-slate-900 tracking-tight">设备管理</h1>
-        <p class="text-xs text-slate-500 mt-1">
+        <h1 class="text-xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">设备管理</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
           管理设备、区域及通信配置
         </p>
       </div>
@@ -325,15 +325,15 @@ const toggleDeviceStateInGrid = (device: Device) => {
       <div class="flex items-center gap-2">
         <button 
           @click="activeSection = 'list'"
-          class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none"
-          :class="activeSection === 'list' ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'"
+          class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none transition-all"
+          :class="activeSection === 'list' ? 'bg-slate-900 dark:bg-sky-600 text-white border-slate-900 dark:border-sky-600 shadow-sm' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'"
         >
           设备列表
         </button>
         <button 
           @click="activeSection = 'areas'"
-          class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none"
-          :class="activeSection === 'areas' ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'"
+          class="px-4 py-1.5 rounded-lg text-xs font-bold border cursor-pointer select-none transition-all"
+          :class="activeSection === 'areas' ? 'bg-slate-900 dark:bg-sky-600 text-white border-slate-900 dark:border-sky-600 shadow-sm' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'"
         >
           区域管理 ({{ areas.length }})
         </button>
@@ -344,19 +344,19 @@ const toggleDeviceStateInGrid = (device: Device) => {
     <div v-if="activeSection === 'list'" class="space-y-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500">
+          <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
             分组设备 ({{ devices.length }} 台)
           </h3>
           <div class="flex items-center gap-1">
             <button 
               @click="expandAllAreas"
-              class="text-[10px] text-slate-400 hover:text-slate-600 font-bold px-2 py-0.5 rounded border border-slate-200 hover:border-slate-300 transition-all"
+              class="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer"
             >
               全部展开
             </button>
             <button 
               @click="collapseAllAreas"
-              class="text-[10px] text-slate-400 hover:text-slate-600 font-bold px-2 py-0.5 rounded border border-slate-200 hover:border-slate-300 transition-all"
+              class="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer"
             >
               全部折叠
             </button>
@@ -374,25 +374,25 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
       <!-- Devices grouped by area with collapsible panels -->
       <div class="space-y-3">
-        <div v-for="area in areas" :key="area.id" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div v-for="area in areas" :key="area.id" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm transition-colors">
           <!-- Area header (clickable to expand/collapse) -->
           <div 
             @click="toggleArea(area.id)"
-            class="flex items-center justify-between px-4 py-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-all border-b border-slate-100"
+            class="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-950/60 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all border-b border-slate-100 dark:border-slate-800"
           >
             <div class="flex items-center gap-3">
               <div 
                 class="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all"
-                :class="isAreaExpanded(area.id) ? 'bg-[#1890ff] text-white rotate-90' : 'bg-slate-300 text-white'"
+                :class="isAreaExpanded(area.id) ? 'bg-[#1890ff] text-white rotate-90' : 'bg-slate-300 dark:bg-slate-700 text-white'"
               >
                 ▶
               </div>
-              <span class="text-[11px] font-bold text-slate-600 uppercase tracking-wider">{{ area.name }}</span>
-              <span class="bg-sky-100 text-[#1890ff] font-bold px-2 py-0.5 rounded-full text-[10px]">
+              <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">{{ area.name }}</span>
+              <span class="bg-sky-100 dark:bg-sky-950/60 text-[#1890ff] dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
                 {{ devicesByArea[area.id]?.length || 0 }} 台
               </span>
             </div>
-            <div class="flex items-center gap-4 text-[10px] text-slate-400">
+            <div class="flex items-center gap-4 text-[10px] text-slate-400 dark:text-slate-500">
               <span v-if="devicesByArea[area.id]?.length === 0" class="italic">暂无设备</span>
               <span class="font-mono">ID: {{ area.id }}</span>
             </div>
@@ -400,7 +400,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
           
           <!-- Device cards (shown when expanded) -->
           <div v-if="isAreaExpanded(area.id)" class="p-4">
-            <div v-if="devicesByArea[area.id]?.length === 0" class="text-center py-8 text-slate-400 text-xs">
+            <div v-if="devicesByArea[area.id]?.length === 0" class="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">
               <Cpu class="w-8 h-8 mx-auto mb-2 opacity-30" />
               <span>该区域暂无设备，请点击"添加设备"创建</span>
             </div>
@@ -408,23 +408,23 @@ const toggleDeviceStateInGrid = (device: Device) => {
               <div 
                 v-for="d in devicesByArea[area.id]" 
                 :key="d.id"
-                class="bg-white border border-slate-100 rounded-lg p-4 text-left flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden"
+                class="bg-white dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 rounded-lg p-4 text-left flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden"
               >
                 <!-- Status indicator -->
                 <div 
                   class="absolute top-0 left-0 right-0 h-1"
-                  :class="d.status === 1 ? 'bg-emerald-500' : 'bg-slate-300'"
+                  :class="d.status === 1 ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
                 />
 
           <div class="flex items-start justify-between gap-4 mt-1">
             <div class="space-y-1">
               <div class="flex items-center gap-1.5">
-                <span class="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase">
+                <span class="text-[9px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded uppercase">
                   {{ d.type }}
                 </span>
-                <span class="text-xs text-slate-400 font-mono">KEY: {{ d.key }}</span>
+                <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">KEY: {{ d.key }}</span>
               </div>
-              <h4 class="font-bold text-sm text-slate-900 font-sans mt-1.5 leading-snug">
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white font-sans mt-1.5 leading-snug">
                 {{ d.name }}
               </h4>
             </div>
@@ -433,41 +433,41 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <button 
               @click="toggleDeviceStateInGrid(d)"
               class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border transition-all cursor-pointer"
-              :class="d.status === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'">
+              :class="d.status === 1 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
               <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
               {{ d.status === 1 ? '在线' : '离线' }}
             </button>
           </div>
 
           <!-- Mid: Address properties -->
-          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 py-3 border-t border-b border-slate-100/80 mt-4 text-[11px] font-mono">
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 py-3 border-t border-b border-slate-100/80 dark:border-slate-800/80 mt-4 text-[11px] font-mono">
             <div>
-              <span class="text-slate-400">所属区域:</span>
-              <span class="text-slate-800 font-sans font-medium block">
+              <span class="text-slate-400 dark:text-slate-500">所属区域:</span>
+              <span class="text-slate-800 dark:text-slate-200 font-sans font-medium block">
                 {{ areas.find(a => a.id === d.areaId)?.name || '未选择' }}
               </span>
             </div>
             <div>
-              <span class="text-slate-400">数据模型:</span>
-              <span class="text-[#1890ff] font-sans font-medium block">
+              <span class="text-slate-400 dark:text-slate-500">数据模型:</span>
+              <span class="text-[#1890ff] dark:text-sky-400 font-sans font-medium block">
                 {{ dataModels.find(m => m.id === d.modelId)?.name || '未配置' }}
               </span>
             </div>
             <div class="col-span-2 space-y-1">
-              <span class="text-slate-400">连接地址:</span>
-              <div class="text-slate-700 font-bold block truncate leading-relaxed">
+              <span class="text-slate-400 dark:text-slate-500">连接地址:</span>
+              <div class="text-slate-700 dark:text-slate-300 font-bold block truncate leading-relaxed">
                 <template v-if="d.type === 'OPCUA'">
-                  <span class="text-sky-600 font-bold">OPCUA:</span> opc.tcp://{{ d.ipAddress || '127.0.0.1' }}:{{ d.port || '4840' }}
+                  <span class="text-sky-600 dark:text-sky-400 font-bold">OPCUA:</span> opc.tcp://{{ d.ipAddress || '127.0.0.1' }}:{{ d.port || '4840' }}
                 </template>
                 <template v-else-if="d.type === 'S7'">
-                  <span class="text-indigo-600 font-bold">S7 Link:</span> {{ d.ipAddress || '192.168.1.12' }}:{{ d.port || '102' }} 
-                  <span class="bg-indigo-50 text-indigo-700 border border-indigo-150 px-1 rounded text-[10px] font-normal font-sans ml-1.5">
+                  <span class="text-indigo-600 dark:text-indigo-400 font-bold">S7 Link:</span> {{ d.ipAddress || '192.168.1.12' }}:{{ d.port || '102' }} 
+                  <span class="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-800 px-1 rounded text-[10px] font-normal font-sans ml-1.5">
                     {{ d.cpuType || 'S7-1200' }} (R{{ d.rack || 0 }}/S{{ d.slot || 1 }})
                   </span>
                 </template>
                 <template v-else-if="d.type === 'MQTT'">
-                  <div class="text-xs text-slate-800 break-all">
-                    <span class="text-emerald-600 font-bold">MQTT Device</span>
+                  <div class="text-xs text-slate-800 dark:text-slate-200 break-all">
+                    <span class="text-emerald-600 dark:text-emerald-400 font-bold">MQTT Device</span>
                   </div>
                 </template>
                 <template v-else>
@@ -479,12 +479,12 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
           <!-- Bottom: action edits -->
           <div class="flex items-center justify-between mt-3 text-[11px]">
-            <span class="text-slate-400">最后更新: <b class="font-mono text-slate-600">{{ d.lastUpdated }}</b></span>
+            <span class="text-slate-400 dark:text-slate-500">最后更新: <b class="font-mono text-slate-600 dark:text-slate-300">{{ d.lastUpdated }}</b></span>
             
             <div class="flex items-center gap-2">
               <button 
                 @click="openEditDeviceModal(d)"
-                class="text-[#1890ff] hover:text-sky-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
+                class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
               >
                 <Edit3 class="w-3.5 h-3.5" />
                 编辑
@@ -508,13 +508,13 @@ const toggleDeviceStateInGrid = (device: Device) => {
     <!-- 2. SECTION: AREAS CONFIGURATION LIST -->
     <div v-else-if="activeSection === 'areas'" class="space-y-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500">
+        <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
           所有区域
         </h3>
         
         <button 
           @click="showAreaModal = true"
-          class="bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all text-center"
+          class="bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all text-center"
         >
           <Plus class="w-4 h-4" />
           添加区域
@@ -522,10 +522,10 @@ const toggleDeviceStateInGrid = (device: Device) => {
       </div>
 
       <!-- Area table card -->
-      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm text-left">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm text-left transition-colors">
         <table class="w-full text-xs hover:border-collapse">
           <thead>
-            <tr class="bg-slate-50 ring-1 ring-slate-100 uppercase text-[10px] text-slate-400 font-bold tracking-wider">
+            <tr class="bg-slate-50 dark:bg-slate-950/60 ring-1 ring-slate-100 dark:ring-slate-800 uppercase text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider">
               <th class="px-6 py-4">区域ID</th>
               <th class="px-6 py-4">区域名称</th>
               <th class="px-6 py-4">描述</th>
@@ -533,13 +533,13 @@ const toggleDeviceStateInGrid = (device: Device) => {
               <th class="px-6 py-4 text-right">操作</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 font-mono">
-            <tr v-for="a in areas" :key="a.id" class="hover:bg-slate-50/50 transition-all">
-              <td class="px-6 py-4 font-bold text-slate-500">{{ a.id }}</td>
-              <td class="px-6 py-4 font-sans font-bold text-slate-800 text-[13px]">{{ a.name }}</td>
-              <td class="px-6 py-4 font-sans text-slate-500 text-[11px] leading-relaxed max-w-sm">{{ a.description }}</td>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+            <tr v-for="a in areas" :key="a.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
+              <td class="px-6 py-4 font-bold text-slate-500 dark:text-slate-400">{{ a.id }}</td>
+              <td class="px-6 py-4 font-sans font-bold text-slate-800 dark:text-white text-[13px]">{{ a.name }}</td>
+              <td class="px-6 py-4 font-sans text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed max-w-sm">{{ a.description }}</td>
               <td class="px-6 py-4 text-center">
-                <span class="bg-sky-50 font-sans text-[#1890ff] font-bold px-2 py-0.5 rounded-full text-[10px]">
+                <span class="bg-sky-50 dark:bg-sky-950/60 font-sans text-[#1890ff] dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
                   {{ devices.filter(d => d.areaId === a.id).length }} 台
                 </span>
               </td>
@@ -559,9 +559,9 @@ const toggleDeviceStateInGrid = (device: Device) => {
     </div>
 
     <!-- MODAL: CREATE WORKSPACE AREA -->
-    <div v-if="showAreaModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+    <div v-if="showAreaModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <MapPin class="w-4 h-4 text-sky-400" />
             <span>添加区域</span>
@@ -570,41 +570,41 @@ const toggleDeviceStateInGrid = (device: Device) => {
         </div>
 
         <div class="p-5 space-y-4 text-xs">
-          <div v-if="areaFormErrorMessage" class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-600">
+          <div v-if="areaFormErrorMessage" class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3 text-rose-600 dark:text-rose-400">
             {{ areaFormErrorMessage }}
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">区域名称</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">区域名称</label>
             <input
               v-model="newAreaName"
               type="text"
               placeholder="例如: 智能三级精细沉降池"
-              :class="areaFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
-              class="w-full bg-slate-50 border rounded-lg p-2 font-sans focus:bg-white text-slate-900 focus:outline-none"
+              :class="areaFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#1890ff]'"
+              class="w-full bg-slate-50 dark:bg-slate-950 border rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
             />
             <span v-if="areaFormErrors.Name" class="text-rose-500 text-[10px] mt-1 block">{{ areaFormErrors.Name }}</span>
           </div>
           <div>
-            <label class="text-slate-500 font-bold block mb-1">描述</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">描述</label>
             <textarea
               v-model="newAreaDesc"
               rows="3"
               placeholder="阐述本区域所属流程及测温、变频流水分拣的具体物料方向..."
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-sans focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff] leading-relaxed"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] leading-relaxed"
             />
           </div>
         </div>
 
-        <div class="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
+        <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
           <button
             @click="showAreaModal = false; areaFormErrors = {}; areaFormErrorMessage = ''"
-            class="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
             @click="handleAddArea"
-            class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
+            class="px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white cursor-pointer"
           >
             保存
           </button>
@@ -613,11 +613,11 @@ const toggleDeviceStateInGrid = (device: Device) => {
     </div>
 
     <!-- MODAL: ADD / EDIT DEVICE COMM LINK -->
-    <div v-if="showDeviceModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showDeviceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         
         <!-- Header banner -->
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Cpu class="w-4 h-4 text-[#1890ff]" />
             <span>{{ isEditingDevice ? '编辑设备' : '添加设备' }}</span>
@@ -626,29 +626,29 @@ const toggleDeviceStateInGrid = (device: Device) => {
         </div>
 
         <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[450px]">
-          <div v-if="deviceFormErrorMessage" class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-600">
+          <div v-if="deviceFormErrorMessage" class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3 text-rose-600 dark:text-rose-400">
             {{ deviceFormErrorMessage }}
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">设备名称</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">设备名称</label>
               <input 
                 v-model="devName"
                 type="text"
                 placeholder="例如: 3号二次鼓风风机"
-                :class="deviceFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
-                class="w-full bg-slate-50 border rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none text-xs font-sans font-semibold"
+                :class="deviceFormErrors.Name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#1890ff]'"
+                class="w-full bg-slate-50 dark:bg-slate-950 border rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-xs font-sans font-semibold"
               />
               <span v-if="deviceFormErrors.Name" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Name }}</span>
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">设备编号</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">设备编号</label>
               <input 
                 v-model="devKey"
                 type="text"
                 placeholder="例如: S7-BLR-202"
-                :class="deviceFormErrors.Key ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 focus:border-[#1890ff]'"
-                class="w-full bg-slate-50 border rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none text-xs font-mono font-bold uppercase"
+                :class="deviceFormErrors.Key ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#1890ff]'"
+                class="w-full bg-slate-50 dark:bg-slate-950 border rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-xs font-mono font-bold uppercase"
               />
               <span v-if="deviceFormErrors.Key" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Key }}</span>
             </div>
@@ -656,20 +656,20 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-slate-500 font-bold block mb-1">所属区域</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">所属区域</label>
               <select 
                 v-model="devArea"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               >
                 <option v-for="a in areas" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
             </div>
             <div>
-              <label class="text-slate-500 font-bold block mb-1">数据模型</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">数据模型</label>
               <select 
                 v-model="devModel"
                 @change="onModelChange"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-900 focus:outline-none text-[#1890ff] font-bold"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-[#1890ff] dark:text-sky-400 font-bold"
               >
                 <option v-for="m in dataModels" :key="m.id" :value="m.id">{{ m.name }}</option>
               </select>
@@ -677,32 +677,32 @@ const toggleDeviceStateInGrid = (device: Device) => {
           </div>
 
           <!-- Dynamic settings based on Protocol -->
-          <div class="p-3 bg-slate-50 rounded-xl space-y-3 border border-slate-100">
-            <div class="flex items-center gap-1.5 text-slate-400 font-mono scale-95 origin-left">
+          <div class="p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl space-y-3 border border-slate-100 dark:border-slate-800">
+            <div class="flex items-center gap-1.5 text-slate-400 dark:text-slate-400 font-mono scale-95 origin-left">
               <Info class="w-3.5 h-3.5" />
               <span>协议类型: {{ devType }}</span>
             </div>
 
             <!-- OPCUA / Virtual Connection Setup -->
             <div v-if="devType === 'OPCUA' || devType === 'Virtual'" class="space-y-2">
-              <div class="text-[10px] text-[#1890ff] font-bold uppercase tracking-wider mb-1">OPC UA 连接配置</div>
+              <div class="text-[10px] text-[#1890ff] dark:text-sky-400 font-bold uppercase tracking-wider mb-1">OPC UA 连接配置</div>
               <div class="grid grid-cols-3 gap-2">
                 <div class="col-span-2">
-                  <label class="text-slate-400 font-bold block mb-0.5">IP 地址</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">IP 地址</label>
                   <input 
                     v-model="devIP"
                     type="text"
                     placeholder="e.g. 192.168.1.100"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">端口</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">端口</label>
                   <input 
                     v-model="devPort"
                     type="text"
                     placeholder="e.g. 4840"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
                 </div>
               </div>
@@ -710,35 +710,35 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
             <!-- Siemens S7 Connection Setup -->
             <div v-if="devType === 'S7'" class="space-y-3">
-              <div class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mb-1">S7 连接配置</div>
+              <div class="text-[10px] text-indigo-500 dark:text-indigo-400 font-bold uppercase tracking-wider mb-1">S7 连接配置</div>
               
               <div class="grid grid-cols-3 gap-2">
                 <div class="col-span-2">
-                  <label class="text-slate-400 font-bold block mb-0.5">IP 地址</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">IP 地址</label>
                   <input 
                     v-model="devIP"
                     type="text"
                     placeholder="e.g. 192.168.1.12"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">端口</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">端口</label>
                   <input 
                     v-model="devPort"
                     type="text"
                     placeholder="e.g. 102"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
                 </div>
               </div>
 
               <div class="grid grid-cols-3 gap-2">
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">CPU 型号</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">CPU 型号</label>
                   <select 
                     v-model="devCpuType"
-                    class="w-full bg-white border border-slate-200 rounded px-1.5 py-1.5 focus:outline-none text-[11px] font-bold text-slate-700"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1.5 focus:outline-none text-[11px] font-bold text-slate-700 dark:text-slate-200"
                   >
                     <option value="S7-1200">S7-1200</option>
                     <option value="S7-1500">S7-1500</option>
@@ -747,25 +747,25 @@ const toggleDeviceStateInGrid = (device: Device) => {
                   </select>
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">机架</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">机架</label>
                   <input 
                     v-model="devRack"
                     type="number"
                     min="0"
                     max="10"
-                    :class="deviceFormErrors.Rack ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200'"
-                    class="w-full bg-white border rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850"
+                    :class="deviceFormErrors.Rack ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700'"
+                    class="w-full bg-white dark:bg-slate-900 border rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850 dark:text-white"
                   />
                   <span v-if="deviceFormErrors.Rack" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Rack }}</span>
                 </div>
                 <div>
-                  <label class="text-slate-400 font-bold block mb-0.5">插槽</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">插槽</label>
                   <input 
                     v-model="devSlot"
                     type="number"
                     min="0"
                     max="10"
-                    class="w-full bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-850 dark:text-white"
                   />
                 </div>
               </div>
@@ -773,19 +773,19 @@ const toggleDeviceStateInGrid = (device: Device) => {
 
             <!-- MQTT Router Configuration -->
             <div v-if="devType === 'MQTT'" class="space-y-2.5">
-              <div class="text-[10px] text-emerald-500 font-bold uppercase tracking-wider mb-1">MQTT 连接配置</div>
+              <div class="text-[10px] text-emerald-500 dark:text-emerald-400 font-bold uppercase tracking-wider mb-1">MQTT 连接配置</div>
             </div>
           </div>
 
           <!-- Device state radio selection -->
           <div>
-            <label class="text-slate-500 font-bold block mb-1">连接状态</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">连接状态</label>
             <div class="flex items-center gap-4 py-1">
-              <label class="flex items-center gap-1.5 font-bold text-slate-700 cursor-pointer text-xs">
+              <label class="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
                 <input type="radio" value="online" v-model="devStatus" class="text-emerald-500 focus:ring-0" />
                 在线
               </label>
-              <label class="flex items-center gap-1.5 font-bold text-slate-400 cursor-pointer text-xs">
+              <label class="flex items-center gap-1.5 font-bold text-slate-400 dark:text-slate-500 cursor-pointer text-xs">
                 <input type="radio" value="offline" v-model="devStatus" class="text-rose-500 focus:ring-0" />
                 离线
               </label>
@@ -793,10 +793,10 @@ const toggleDeviceStateInGrid = (device: Device) => {
           </div>
         </div>
 
-        <div class="bg-slate-50 p-4 border-t border-slate-100 flex justify-end gap-2">
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
           <button 
             @click="showDeviceModal = false"
-            class="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>

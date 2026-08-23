@@ -157,23 +157,23 @@ const handleCopyUrl = (url: string) => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col text-[#1e293b] select-none bg-slate-50">
+  <div class="h-full flex flex-col text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
     
     <!-- Title Section -->
-    <div class="bg-white p-5 border-b border-slate-200 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+    <div class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-colors">
       <div class="space-y-1">
-        <h2 class="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
+        <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
           <Network class="w-5 h-5 text-sky-500 animate-pulse" />
           数据接口管理
         </h2>
-        <p class="text-xs text-slate-500 font-sans">
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
           将设备数据转换为标准 RESTful API，供外部系统调用。
         </p>
       </div>
 
       <button 
         @click="showAddModal = true; if(uniqueVariableKeys.length) targetVarKey = uniqueVariableKeys[0].key; if(devices.length) targetDeviceId = devices[0].id;"
-        class="font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
+        class="font-bold text-xs bg-slate-900 dark:bg-sky-600 text-white hover:bg-slate-800 dark:hover:bg-sky-500 px-4 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer self-end md:self-center transition-all shadow-sm active:translate-y-0.5"
       >
         <Plus class="w-4 h-4" />
         新建接口
@@ -184,36 +184,36 @@ const handleCopyUrl = (url: string) => {
     <div class="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
       
       <!-- Left side: List of active routes -->
-      <div class="w-full lg:w-96 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div class="p-4 border-b border-slate-100 font-bold text-[10px] text-slate-400 uppercase tracking-widest text-left">
+      <div class="w-full lg:w-96 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-colors">
+        <div class="p-4 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest text-left">
           API 接口列表 ({{ exposedApis.length }})
         </div>
 
-        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 text-left">
+        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-left">
           <div 
             v-for="api in exposedApis" 
             :key="api.id"
             @click="selectedApiId = api.id"
-            class="p-4 cursor-pointer hover:bg-slate-50/50 transition-all space-y-2 relative"
-            :class="selectedApiId === api.id ? 'bg-sky-50/20 text-sky-600 border-r-4 border-r-sky-550' : 'text-slate-700'"
+            class="p-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all space-y-2 relative"
+            :class="selectedApiId === api.id ? 'bg-sky-50/30 dark:bg-sky-950/30 text-sky-600 dark:text-sky-400 border-r-4 border-r-sky-500' : 'text-slate-700 dark:text-slate-300'"
           >
             <div class="flex items-start justify-between gap-1">
               <div>
-                <span class="font-bold text-xs leading-snug tracking-tight block max-w-[240px] break-words text-slate-900">
+                <span class="font-bold text-xs leading-snug tracking-tight block max-w-[240px] break-words text-slate-900 dark:text-slate-100">
                   {{ api.name }}
                 </span>
                 
                 <!-- URL endpoint display -->
-                <div class="flex items-center gap-1.5 mt-1.5 font-mono text-[10px] bg-slate-150 p-1 px-2 rounded-md border border-slate-200 w-fit">
+                <div class="flex items-center gap-1.5 mt-1.5 font-mono text-[10px] bg-slate-100 dark:bg-slate-800 p-1 px-2 rounded-md border border-slate-200 dark:border-slate-700 w-fit">
                   <span class="font-bold text-[#1890ff] uppercase text-[9px]">{{ api.requestMethod }}</span>
-                  <span class="text-slate-500 font-bold truncate block max-w-[190px]">{{ api.routeUrl }}</span>
+                  <span class="text-slate-500 dark:text-slate-400 font-bold truncate block max-w-[190px]">{{ api.routeUrl }}</span>
                 </div>
               </div>
 
               <!-- Delete api -->
               <button 
                 @click.stop="handleDeleteApi(api.id, api.name)"
-                class="text-slate-400 hover:text-rose-600 p-0.5"
+                class="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-0.5 transition-colors cursor-pointer"
                 title="注销此接口"
               >
                 <Trash2 class="w-3.5 h-3.5" />
@@ -221,7 +221,7 @@ const handleCopyUrl = (url: string) => {
             </div>
 
             <div class="flex items-center gap-2">
-              <span class="text-[9px] bg-sky-50 text-[#1890ff] font-bold px-1.5 py-0.5 rounded border border-sky-100">
+              <span class="text-[9px] bg-sky-50 dark:bg-sky-950/60 text-[#1890ff] dark:text-sky-400 font-bold px-1.5 py-0.5 rounded border border-sky-100 dark:border-sky-800">
                 变量: {{ api.exposedKey }}
               </span>
             </div>
@@ -230,12 +230,12 @@ const handleCopyUrl = (url: string) => {
       </div>
 
       <!-- Right side: REST Client Mock Sandbox -->
-      <div v-if="currentApiObj" class="flex-1 flex flex-col min-w-0 bg-[#0f172a] border-l border-slate-950 relative text-slate-300">
+      <div v-if="currentApiObj" class="flex-1 flex flex-col min-w-0 bg-[#0f172a] dark:bg-slate-950 border-l border-slate-950 dark:border-slate-800 relative text-slate-300">
         
         <!-- REST client top panel bar -->
-        <div class="bg-indigo-950/40 p-4 border-b border-indigo-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+        <div class="bg-indigo-950/40 dark:bg-slate-900/60 p-4 border-b border-indigo-950 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
           <div class="space-y-1">
-            <span class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest font-mono">API TESTER</span>
+            <span class="text-[9px] font-bold text-indigo-400 dark:text-sky-400 uppercase tracking-widest font-mono">API TESTER</span>
             <h3 class="font-bold text-sm text-white flex items-center gap-1">
               <Server class="w-4 h-4 text-sky-400" />
               接口测试
@@ -257,7 +257,7 @@ const handleCopyUrl = (url: string) => {
           <!-- Raw URL -->
           <div class="flex flex-col sm:flex-row sm:items-center gap-2">
             <span class="text-amber-500 font-bold uppercase w-14">HTTP URL:</span>
-            <div class="flex-1 bg-slate-900 border border-slate-800 p-2 rounded-lg flex items-center justify-between overflow-hidden">
+            <div class="flex-1 bg-slate-900 dark:bg-slate-900/80 border border-slate-800 p-2 rounded-lg flex items-center justify-between overflow-hidden">
               <span class="text-slate-400 select-all truncate">
                 http://127.0.0.1:3000<span class="text-emerald-400 font-bold">{{ currentApiObj.routeUrl }}</span>
               </span>
@@ -344,18 +344,18 @@ const handleCopyUrl = (url: string) => {
 
       </div>
 
-      <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 py-16 gap-3">
-        <Network class="w-10 h-10 text-slate-300 animate-pulse" />
+      <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-16 gap-3">
+        <Network class="w-10 h-10 text-slate-300 dark:text-slate-600 animate-pulse" />
         <span>暂无接口。点击右上角按钮创建第一个接口。</span>
       </div>
 
     </div>
 
     <!-- PUBLISH NEW ENDPOINT DIALOG MODAL -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl border border-slate-100 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         <!-- Title -->
-        <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-[#1890ff]">
             <Globe class="w-4 h-4" />
             <span>新建数据接口</span>
@@ -366,22 +366,22 @@ const handleCopyUrl = (url: string) => {
         <div class="p-5 space-y-4 text-xs font-sans">
           
           <div>
-            <label class="font-bold text-slate-500 block mb-1">接口名称</label>
+            <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">接口名称</label>
             <input 
               v-model="newApiName"
               type="text"
               placeholder="如: 储水罐液位接口"
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none focus:border-[#1890ff]"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white outline-none focus:border-[#1890ff]"
             />
           </div>
 
           <!-- Route Path & Method -->
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">请求方法</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">请求方法</label>
               <select 
                 v-model="apiMethod"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 focus:outline-none font-bold"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white focus:outline-none font-bold"
               >
                 <option value="GET">GET</option>
                 <option value="POST">POST</option>
@@ -389,23 +389,23 @@ const handleCopyUrl = (url: string) => {
             </div>
 
             <div class="col-span-2">
-              <label class="font-bold text-slate-500 block mb-1">路由路径</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">路由路径</label>
               <input 
                 v-model="routePathInput"
                 type="text"
                 placeholder="/api/v1/factory/levels"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white text-slate-800 outline-none font-mono focus:border-[#1890ff]"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white outline-none font-mono focus:border-[#1890ff]"
               />
             </div>
           </div>
 
           <!-- Variable choices -->
-          <div class="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+          <div class="grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
             <div>
-              <label class="font-bold text-slate-500 block mb-1">源设备</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">源设备</label>
               <select 
                 v-model="targetDeviceId"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus:bg-white text-slate-800 font-bold focus:outline-none"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white font-bold focus:outline-none"
               >
                 <option v-for="d in devices" :key="d.id" :value="d.id">
                   {{ d.name }}
@@ -414,10 +414,10 @@ const handleCopyUrl = (url: string) => {
             </div>
 
             <div>
-              <label class="font-bold text-slate-500 block mb-1">映射变量</label>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">映射变量</label>
               <select 
                 v-model="targetVarKey"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus:bg-white text-slate-800 font-mono font-bold focus:outline-none"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white font-mono font-bold focus:outline-none"
               >
                 <option v-for="v in uniqueVariableKeys" :key="v.key" :value="v.key">
                   {{ v.name }}
@@ -429,17 +429,16 @@ const handleCopyUrl = (url: string) => {
         </div>
 
         <!-- Footer -->
-        <div class="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
+        <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
           <button 
             @click="showAddModal = false"
-            class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-xs text-slate-600 cursor-pointer"
+            class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
-            @click="handleCreateValueApi"
-            @click.stop="handleCreateApi"
-            class="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 font-bold text-xs text-white cursor-pointer"
+            @click="handleCreateApi"
+            class="px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white cursor-pointer"
           >
             保存接口
           </button>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { 
   devices, 
   areas, 
@@ -25,6 +26,8 @@ import {
   Network
 } from 'lucide-vue-next';
 
+const router = useRouter();
+
 onMounted(async () => {
   startSystemResourceMonitoring();
   
@@ -47,7 +50,7 @@ onUnmounted(() => {
 watch(
   () => devices.value,
   () => {
-    // 强制触发视图更新（如果computed未能自动更新）
+    // 强制触发视图更新
   },
   { deep: true }
 );
@@ -99,87 +102,87 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] select-none p-4 sm:p-6 bg-slate-50/50">
+  <div class="h-full overflow-y-auto space-y-6 text-[#1e293b] dark:text-slate-100 select-none p-4 sm:p-6 bg-slate-50/50 dark:bg-transparent">
     <!-- Screen Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
       <div>
-        <h1 class="text-xl font-bold font-sans tracking-tight text-[#0f172a]">系统概览</h1>
-        <p class="text-xs text-slate-500 mt-1">
+        <h1 class="text-xl font-bold font-sans tracking-tight text-[#0f172a] dark:text-white">系统概览</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
           实时监控系统运行状态，包括设备、变量、服务器资源等关键指标。
         </p>
       </div>
-      <div class="flex items-center gap-2 text-xs font-mono bg-slate-900 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 shadow-sm">
+      <div class="flex items-center gap-2 text-xs font-mono bg-slate-900 dark:bg-slate-950 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 shadow-sm">
         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-        <span class="text-emerald-400">系统运行正常</span>
+        <span class="text-emerald-400 font-bold">系统运行正常</span>
       </div>
     </div>
 
     <!-- Quick stats grid -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <!-- Stat 1 -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[96px]">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[96px] transition-colors">
         <div class="flex items-center justify-between">
           <span class="text-[11px] text-slate-400 font-bold uppercase tracking-wider">设备总数</span>
-          <div class="p-1 px-1.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-bold flex items-center gap-1">
+          <div class="p-1 px-1.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center gap-1">
             <CheckCircle class="w-3 h-3" />
             {{ onlineRate }}% 在线
           </div>
         </div>
         <div class="mt-2 flex items-baseline gap-1.5">
-          <span class="text-3xl font-bold font-sans text-slate-900 tracking-tight">{{ totalDevices }}</span>
-          <span class="text-xs text-slate-500">台</span>
+          <span class="text-3xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">{{ totalDevices }}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">台</span>
         </div>
-        <div class="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-mono">
-          <span class="text-emerald-600">{{ onlineDevices }} 台在线</span>
+        <div class="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 font-mono">
+          <span class="text-emerald-600 dark:text-emerald-400 font-bold">{{ onlineDevices }} 台在线</span>
           <span>/</span>
-          <span class="text-rose-600">{{ offlineDevices }} 台离线</span>
+          <span class="text-rose-600 dark:text-rose-400 font-bold">{{ offlineDevices }} 台离线</span>
         </div>
       </div>
 
       <!-- Stat 2 -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px]">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px] transition-colors">
         <div class="flex items-center justify-between">
           <span class="text-[11px] text-slate-400 font-bold uppercase tracking-wider">变量总数</span>
           <Database class="w-4 h-4 text-sky-500" />
         </div>
         <div class="mt-2 flex items-baseline gap-1.5">
-          <span class="text-3xl font-bold font-sans text-slate-900 tracking-tight">{{ totalVars }}</span>
-          <span class="text-xs text-slate-500">个</span>
+          <span class="text-3xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">{{ totalVars }}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">个</span>
         </div>
-        <p class="text-[10px] text-slate-500 mt-1 leading-none font-mono">
+        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-none font-mono">
           轮询周期 200ms
         </p>
       </div>
 
       <!-- Stat 3 -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px]">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px] transition-colors">
         <div class="flex items-center justify-between">
           <span class="text-[11px] text-slate-400 font-bold uppercase tracking-wider">区域与模型</span>
           <Layers class="w-4 h-4 text-violet-500" />
         </div>
         <div class="mt-2 flex lg:items-baseline flex-wrap gap-x-2">
-          <span class="text-2xl font-bold font-sans text-slate-900 tracking-tight">{{ totalAreas }}</span>
-          <span class="text-xs text-slate-500">个区域</span>
-          <span class="text-xs text-slate-300">/</span>
-          <span class="text-2xl font-bold font-sans text-slate-900 tracking-tight">{{ totalModels }}</span>
-          <span class="text-xs text-slate-500">个模型</span>
+          <span class="text-2xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">{{ totalAreas }}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">个区域</span>
+          <span class="text-xs text-slate-300 dark:text-slate-600">/</span>
+          <span class="text-2xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">{{ totalModels }}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">个模型</span>
         </div>
-        <p class="text-[10px] text-slate-500 mt-1 leading-none font-mono">
+        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-none font-mono">
           支持 S7/OPC-UA/MQTT 协议
         </p>
       </div>
 
       <!-- Stat 4 -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px]">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col justify-between min-h-[96px] transition-colors">
         <div class="flex items-center justify-between">
           <span class="text-[11px] text-slate-400 font-bold uppercase tracking-wider">组态画面</span>
           <FileCode class="w-4 h-4 text-amber-500" />
         </div>
         <div class="mt-2 flex items-baseline gap-1.5">
-          <span class="text-3xl font-bold font-sans text-slate-900 tracking-tight">{{ totalScreens }}</span>
-          <span class="text-xs text-slate-500">个</span>
+          <span class="text-3xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">{{ totalScreens }}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">个</span>
         </div>
-        <p class="text-[10px] text-slate-500 mt-1 leading-none font-mono">
+        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-none font-mono">
           支持多工艺场景
         </p>
       </div>
@@ -189,42 +192,42 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Server hardware stats (CPU/Memory gauges) -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm space-y-4 lg:col-span-2">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-5 shadow-sm space-y-4 lg:col-span-2 transition-colors">
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
         <div class="flex items-center gap-2">
           <Server class="w-4 h-4 text-[#1890ff]" />
-          <span class="font-bold text-sm tracking-tight">服务器资源监控</span>
+          <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-white">服务器资源监控</span>
         </div>
         <span class="text-xs font-mono text-slate-400">运行时间: {{ serverStatus.uptimeDays }}天 {{ serverStatus.uptimeHours }}时 {{ serverStatus.uptimeMins }}分</span>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- CPU Gauge element -->
-        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+        <div class="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-2">
           <div class="flex items-center justify-between text-xs">
-            <div class="flex items-center gap-1 font-bold text-slate-700">
-              <Cpu class="w-3.5 h-3.5 text-chrome" />
+            <div class="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
+              <Cpu class="w-3.5 h-3.5 text-sky-500" />
               CPU 使用率
             </div>
-            <span class="font-mono text-slate-900 font-bold">{{ serverStatus.cpuUsage }}%</span>
+            <span class="font-mono text-slate-900 dark:text-white font-bold">{{ serverStatus.cpuUsage }}%</span>
           </div>
 
-          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
+          <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden shadow-inner">
             <div class="h-full rounded-full transition-all duration-500" :class="cpuColor" :style="{ width: `${serverStatus.cpuUsage}%` }" />
           </div>
         </div>
 
         <!-- Memory Gauge element -->
-        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+        <div class="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-2">
           <div class="flex items-center justify-between text-xs">
-            <div class="flex items-center gap-1 font-bold text-slate-700">
+            <div class="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
               <Zap class="w-3.5 h-3.5 text-amber-500" />
               内存使用率
             </div>
-            <span class="font-mono text-slate-900 font-bold">{{ serverStatus.memUsage }}%</span>
+            <span class="font-mono text-slate-900 dark:text-white font-bold">{{ serverStatus.memUsage }}%</span>
           </div>
 
-          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
+          <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden shadow-inner">
             <div class="h-full rounded-full transition-all duration-500" :class="memColor" :style="{ width: `${serverStatus.memUsage}%` }" />
           </div>
         </div>
@@ -232,14 +235,14 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
 
       <!-- Disks Section -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-        <div v-for="disk in serverStatus.disks" :key="disk.name" class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+        <div v-for="disk in serverStatus.disks" :key="disk.name" class="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80">
           <div class="flex justify-between text-[10px] mb-2 font-bold">
-            <span class="text-slate-700">{{ disk.label }} ({{ disk.name }})</span>
-            <span :class="disk.usagePercentage > 85 ? 'text-rose-500' : 'text-slate-500'">
+            <span class="text-slate-700 dark:text-slate-300">{{ disk.label }} ({{ disk.name }})</span>
+            <span :class="disk.usagePercentage > 85 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'">
               {{ disk.usagePercentage }}%
             </span>
           </div>
-          <div class="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
             <div 
               class="h-full transition-all duration-500" 
               :class="disk.usagePercentage > 85 ? 'bg-rose-500' : 'bg-sky-500'"
@@ -281,15 +284,16 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
         </div>
       </div>
       </div>
+
       <!-- Mini log preview / Ledger -->
-      <div class="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[250px]">
-        <div class="border-b border-slate-100 pb-3 mb-2">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[250px] transition-colors">
+        <div class="border-b border-slate-100 dark:border-slate-800 pb-3 mb-2">
           <div class="flex items-center justify-between">
-            <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900">
+            <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900 dark:text-white">
               <Activity class="w-4 h-4 text-emerald-500" />
               <span>系统日志</span>
             </div>
-            <span class="text-[9px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded leading-none">实时</span>
+            <span class="text-[9px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded leading-none">实时</span>
           </div>
         </div>
 
@@ -298,23 +302,23 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
           <div 
             v-for="log in recentLogs" 
             :key="log.id" 
-            class="flex items-start gap-1 p-1 bg-slate-50 rounded border-l-2 border-slate-300 font-mono"
+            class="flex items-start gap-1 p-1.5 bg-slate-50 dark:bg-slate-950/60 rounded border-l-2 border-slate-300 dark:border-slate-700 font-mono"
             :class="{
-              'border-l-rose-500 bg-rose-50/40 text-rose-800': log.level === 'warning',
-              'border-l-sky-500 bg-sky-50/40 text-sky-800': log.level === 'info',
-              'border-l-slate-400': log.level === 'normal'
+              'border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300': log.level === 'warning',
+              'border-l-sky-500 bg-sky-50/40 dark:bg-sky-950/30 text-sky-800 dark:text-sky-300': log.level === 'info',
+              'border-l-slate-400 dark:border-l-slate-600 text-slate-700 dark:text-slate-300': log.level === 'normal'
             }"
           >
             <div class="shrink-0 font-bold opacity-60 text-[8px] mt-0.5">{{ log.timestamp.split(' ').pop() }}</div>
-            <div class="shrink-0 bg-slate-200 px-1 rounded text-[8px] font-bold">{{ log.source }}</div>
+            <div class="shrink-0 bg-slate-200 dark:bg-slate-800 px-1 rounded text-[8px] font-bold text-slate-700 dark:text-slate-300">{{ log.source }}</div>
             <div class="truncate flex-1 font-sans">{{ log.content }}</div>
           </div>
         </div>
 
-        <div class="pt-3 border-t border-slate-50 flex items-center justify-end">
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
           <button 
-            @click="activeTab = 'system-logs'"
-            class="text-[10px] text-[#1890ff] hover:underline font-bold"
+            @click="router.push('/system-logs')"
+            class="text-[10px] text-[#1890ff] hover:underline font-bold cursor-pointer"
           >
             查看全部日志 &rarr;
           </button>
@@ -325,7 +329,7 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
     <!-- Active devices summary cards -->
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+        <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
           <Radio class="w-3.5 h-3.5 text-sky-500 animate-pulse" />
           设备连接状态 ({{ onlineDevices }}/{{ totalDevices }} 在线)
         </h3>
@@ -335,30 +339,30 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
         <div 
           v-for="dev in devices" 
           :key="dev.id" 
-          class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm relative hover:border-slate-300 transition-all flex flex-col justify-between"
+          class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-sm relative hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between"
         >
           <!-- Absolute status point -->
           <span 
             class="absolute top-4 right-4 w-2 h-2 rounded-full" 
-            :class="dev.status === 1 ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-slate-300'"
+            :class="dev.status === 1 ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-slate-300 dark:bg-slate-700'"
           />
           
           <div class="space-y-1 pr-6">
-            <span class="text-[8px] text-slate-400 font-mono bg-slate-100 px-1 rounded leading-none uppercase">
+            <span class="text-[8px] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded leading-none uppercase">
               {{ dev.type }}
             </span>
-            <h4 class="font-bold text-xs font-sans text-slate-800 line-clamp-1 mt-1 leading-snug">
+            <h4 class="font-bold text-xs font-sans text-slate-800 dark:text-white line-clamp-1 mt-1 leading-snug">
               {{ dev.name }}
             </h4>
-            <p class="text-[9px] font-mono text-slate-500">
+            <p class="text-[9px] font-mono text-slate-500 dark:text-slate-400">
               设备编码: {{ dev.key }}
             </p>
           </div>
 
-          <div class="border-t border-slate-100 mt-3 pt-2 flex items-center justify-between text-[10px]">
-            <span class="text-slate-400">更新时间: <b class="font-mono text-slate-600">{{ dev.lastUpdated }}</b></span>
+          <div class="border-t border-slate-100 dark:border-slate-800 mt-3 pt-2 flex items-center justify-between text-[10px]">
+            <span class="text-slate-400">更新时间: <b class="font-mono text-slate-600 dark:text-slate-300">{{ dev.lastUpdated }}</b></span>
             <!-- Variables counts -->
-            <span class="text-[#1890ff] bg-sky-50 font-mono px-1 rounded font-bold leading-none py-0.5">
+            <span class="text-[#1890ff] bg-sky-50 dark:bg-sky-950/50 font-mono px-1 rounded font-bold leading-none py-0.5">
               {{ getDeviceVariableCount(dev) }} 个变量 
             </span>
           </div>
