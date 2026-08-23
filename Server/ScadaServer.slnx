@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ScadaServer.Application/ScadaServer.Application.csproj" />
+  <Project Path="ScadaServer.Domain/ScadaServer.Domain.csproj" />
+  <Project Path="ScadaServer.Infrastructure/ScadaServer.Infrastructure.csproj" />
+  <Project Path="ScadaServer.WebApi/ScadaServer.WebApi.csproj" />
+</Solution>
