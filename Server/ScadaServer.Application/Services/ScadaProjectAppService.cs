@@ -55,8 +55,7 @@ namespace ScadaServer.Application.Services
 
         public async Task DeleteAsync(int id)
         {
-            await using var transaction = await _uow.BeginTransactionAsync();
-            try
+            await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 // 获取工程下所有页面
                 var pages = await _pageRepository.GetListAsync();
@@ -75,13 +74,8 @@ namespace ScadaServer.Application.Services
                 var entity = await _repository.GetByIdAsync(id);
                 if (entity != null) await _repository.DeleteAsync(entity);
 
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                return true;
+            });
         }
     }
 }

@@ -136,14 +136,14 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"无法删除模型 '{entity.Name}'，因为已有设备正在使用此模型。请先删除相关设备。");
             }
 
-            // 2. 利用 IAsyncDisposable 的自动回滚机制
-            await using var transaction = await _uow.BeginTransactionAsync();
+            // 2. 在重试策略内执行事务，避免 MySqlRetryingExecutionStrategy 冲突
+            await _uow.ExecuteInTransactionAsync(async transaction =>
+            {
+                // 删除模型本身
+                await _repository.DeleteAsync(entity);
 
-            // 删除模型本身
-            await _repository.DeleteAsync(entity);
-
-            // 显式提交
-            await transaction.CommitAsync();
+                return true;
+            });
         }
     }
 }

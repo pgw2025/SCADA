@@ -191,8 +191,7 @@ namespace ScadaServer.Application.Services
                 }
             }
 
-            await using var transaction = await _uow.BeginTransactionAsync();
-            try
+            return await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 var entity = new Device
                 {
@@ -213,21 +212,15 @@ namespace ScadaServer.Application.Services
                 var config = new DeviceConfig
                 {
                     DeviceId = entity.Id,
-                    JsonConfig = dto.ConfigJson,
+                    JsonConfig = string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson,
                     Version = 1,
                     UpdatedAt = DateTime.Now
                 };
                 await _configRepository.InsertAsync(config);
 
-                await transaction.CommitAsync();
                 return await GetByIdAsync(entity.Id)
                     ?? throw new BusinessException($"创建设备后无法读取 ID 为 {entity.Id} 的设备记录");
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            });
         }
 
         public async Task<DeviceDto> UpdateAsync(DeviceDto dto)
@@ -264,8 +257,7 @@ namespace ScadaServer.Application.Services
                 ValidateConfigJson(dto.Type, dto.ConfigJson);
             }
 
-            await using var transaction = await _uow.BeginTransactionAsync();
-            try
+            return await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 entity.Name = dto.Name;
                 entity.Key = dto.Key;
@@ -287,15 +279,9 @@ namespace ScadaServer.Application.Services
                     await _configRepository.UpdateAsync(entity.Config);
                 }
 
-                await transaction.CommitAsync();
                 return await GetByIdAsync(dto.Id)
                     ?? throw new BusinessException($"更新设备后无法读取 ID 为 {dto.Id} 的设备记录");
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            });
         }
 
         public async Task DeleteAsync(int id)
@@ -310,8 +296,7 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"无法删除设备 '{entity.Name}'，因为它已被配置到 {interfaces.Count} 个对外数据接口中。请先解除绑定。");
             }
 
-            await using var transaction = await _uow.BeginTransactionAsync();
-            try
+            await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 // 删除级联数据
                 await _sensorRepository.DeleteRangeAsync(s => s.DeviceId == id);
@@ -322,13 +307,8 @@ namespace ScadaServer.Application.Services
                 // 删除设备
                 await _repository.DeleteAsync(entity);
 
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                return true;
+            });
         }
 
         public async Task UpdateDeviceConfigTxAsync(int deviceId, string newAddress) { }

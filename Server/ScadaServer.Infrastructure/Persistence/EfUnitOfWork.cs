@@ -47,6 +47,30 @@ namespace ScadaServer.Infrastructure.Persistence
         }
 
         /// <inheritdoc/>
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<ITransactionScope, Task<TResult>> action)
+        {
+            // 关键：DbContext 配置了 EnableRetryOnFailure（MySqlRetryingExecutionStrategy）。
+            // 该策略不允许在策略外手动开启事务，因此必须把「开事务 + 业务 + 提交」整体包进策略内部。
+            var strategy = _db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _db.Database.BeginTransactionAsync();
+                var scope = new EfTransactionScope(transaction);
+                try
+                {
+                    var result = await action(scope);
+                    await scope.CommitAsync();
+                    return result;
+                }
+                catch
+                {
+                    await scope.RollbackAsync();
+                    throw;
+                }
+            });
+        }
+
+        /// <inheritdoc/>
         public void Dispose()
         {
             // 由 DI 容器管理生命周期，此处无需手动释放
