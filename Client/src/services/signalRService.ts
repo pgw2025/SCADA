@@ -3,6 +3,7 @@ import { addLog, systemConfig } from '../store/index';
 import { devices } from '../store/deviceStore';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
 import { isBackendConnected, signalRConnection } from './socketService';
+import { mapRuntimeStatusToStatus } from '../utils/deviceStatus';
 
 export const initializeRealtimeSignals = () => {
     if (systemConfig.value.isSimulationActive) {
@@ -40,6 +41,18 @@ export const initializeRealtimeSignals = () => {
 
         connection.on("ReceiveSystemAlarm", (message: string) => {
             addLog('后端发布警报', message, 'warning');
+        });
+
+        // 设备运行时状态实时推送：按设备 ID 定位写入 status，实时覆盖轮询值。
+        connection.on("ReceiveDeviceStatus", (deviceId: number, status: string) => {
+            const dev = devices.value.find(d => d.id === deviceId);
+            if (!dev) return;
+
+            const next = mapRuntimeStatusToStatus(status);
+            if (dev.status !== next) {
+                dev.status = next;
+                addLog('SignalR 接收', `设备#${deviceId} 状态变更: ${status}`, 'info');
+            }
         });
 
         connection.start()

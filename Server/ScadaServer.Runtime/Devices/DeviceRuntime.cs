@@ -24,7 +24,24 @@ public class DeviceRuntime
         = new();
 
     // 通信状态
-    public DeviceConnectionState ConnectionState { get; set; }
+    private DeviceConnectionState _connectionState;
+    public DeviceConnectionState ConnectionState
+    {
+        get => _connectionState;
+        set
+        {
+            if (_connectionState == value) return;
+            _connectionState = value;
+            // 状态变更时通知运行时管理器，用于实时推送与持久化
+            ConnectionStateChanged?.Invoke(Device.Id, value);
+        }
+    }
+
+    /// <summary>
+    /// 连接状态变更事件，由 RuntimeManager 订阅以驱动状态推送与落库。
+    /// 参数为 (设备ID, 新的连接状态)。
+    /// </summary>
+    public event Action<int, DeviceConnectionState>? ConnectionStateChanged;
 
     // 是否正在运行
     public bool IsRunning { get; set; }

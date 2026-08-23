@@ -34,6 +34,16 @@ namespace ScadaServer.Runtime
         private DeviceScheduler? _scheduler;
 
         /// <summary>
+        /// 各设备上一次对外推送/持久化的状态，用于去重，避免重复触发 StatusChanged。
+        /// </summary>
+        private readonly ConcurrentDictionary<int, DeviceStatus> _lastPushedStatus = new();
+
+        /// <summary>
+        /// 设备运行时状态变更事件（仅在对外状态值变化时触发）。
+        /// </summary>
+        public event EventHandler<DeviceStatusChangedEventArgs>? StatusChanged;
+
+        /// <summary>
         /// 初始化运行时管理器
         /// </summary>
         public RuntimeManager(
@@ -56,6 +66,34 @@ namespace ScadaServer.Runtime
         public void RegisterDevice(Devices.DeviceRuntime runtime)
         {
             DeviceRuntimes[runtime.Device.Id] = runtime;
+            runtime.ConnectionStateChanged += OnDeviceConnectionStateChanged;
+
+            // 初始化首轮状态，确保订阅者能拿到初始态（如初始化失败导致的 Offline）。
+            var initial = MapConnectionStateToStatus(runtime);
+            _lastPushedStatus[runtime.Device.Id] = initial;
+        }
+
+        private void OnDeviceConnectionStateChanged(int deviceId, DeviceConnectionState state)
+        {
+            if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+            {
+                return;
+            }
+
+            var status = MapConnectionStateToStatus(runtime);
+
+            // 仅在对外状态值变化时触发，抑制抖动（连接态频繁来回切换但对外语义不变）。
+            if (_lastPushedStatus.TryGetValue(deviceId, out var previous) && previous == status)
+            {
+                return;
+            }
+
+            _lastPushedStatus[deviceId] = status;
+            StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
+            {
+                DeviceId = deviceId,
+                Status = status
+            });
         }
 
         /// <inheritdoc/>

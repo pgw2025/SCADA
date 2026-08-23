@@ -63,7 +63,7 @@ namespace ScadaServer.Application.Services
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
                 ConfigJson = entity.Config?.JsonConfig,
-                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled)
+                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus)
             };
         }
 
@@ -84,24 +84,31 @@ namespace ScadaServer.Application.Services
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
                 ConfigJson = entity.Config?.JsonConfig,
-                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled)
+                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus)
             }).ToList();
         }
 
         /// <summary>
-        /// 解析设备运行时状态。设备未注册到运行时（已禁用 / 初始化失败 / 进程刚启动尚未加载）
-        /// 或已禁用时一律回退为 Offline，避免前端出现未定义状态。
+        /// 解析设备运行时状态。优先级：
+        /// 1) 设备已禁用 → Offline；
+        /// 2) 运行时内存态（实时）→ 直接采用；
+        /// 3) 运行时未加载（重启瞬间 / 初始化失败）→ 优先采用数据库持久化的 LastKnownStatus，
+        ///    使重启后仍能展示设备最后已知状态，而非一律 Offline；
+        /// 4) 既无内存态也无持久态 → Offline。
         /// </summary>
-        private DeviceStatus ResolveRuntimeStatus(int deviceId, bool isEnabled)
+        private DeviceStatus ResolveRuntimeStatus(int deviceId, bool isEnabled, DeviceStatus? lastKnownStatus)
         {
             if (!isEnabled)
             {
                 return DeviceStatus.Offline;
             }
 
-            return _runtimeStatusProvider.TryGetRuntimeStatus(deviceId, out var status)
-                ? status
-                : DeviceStatus.Offline;
+            if (_runtimeStatusProvider.TryGetRuntimeStatus(deviceId, out var status))
+            {
+                return status;
+            }
+
+            return lastKnownStatus ?? DeviceStatus.Offline;
         }
 
         /// <summary>

@@ -43,6 +43,9 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();
 
+            // 设备状态持久化订阅者（构造时订阅运行时状态变更事件，Singleton 常驻）
+            services.AddSingleton<DeviceStatusPersistenceSubscriber>();
+
             return services;
         }
     }

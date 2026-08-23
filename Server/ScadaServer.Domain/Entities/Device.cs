@@ -75,6 +75,14 @@ namespace ScadaServer.Domain.Entities
         public DateTime? LastCommunicationTime { get; set; }
 
         /// <summary>
+        /// 最近一次已知的运行时状态（持久化）。
+        /// 由运行时在状态变更时回写，用于进程重启后仍有最后状态可读，
+        /// 避免重启瞬间所有设备显示为未定义的默认状态。
+        /// 实时状态仍以运行时内存态（RuntimeStatus）为准。
+        /// </summary>
+        public DeviceStatus? LastKnownStatus { get; set; }
+
+        /// <summary>
         /// 协议配置（一对一）
         /// </summary>
         public DeviceConfig? Config { get; set; }
