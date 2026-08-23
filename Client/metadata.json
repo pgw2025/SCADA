@@ -1,0 +1,6 @@
+{
+  "name": "Industrial HMI Editor",
+  "description": "An interactive, state-of-the-art drag-and-drop industrial HMI and SCADA configuration editor with live simulated PLC data-bindings, responsive gauges, and automated layout templates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
