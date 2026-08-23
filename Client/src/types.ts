@@ -148,6 +148,7 @@ export interface Device {
   ipAddress?: string; // S7/OPCUA specific
   port?: number | string;      // Port, e.g. 502, 4840
   status: number | string;     // 0: offline, 1: online or 'online' | 'offline'
+  runtimeStatus?: string;       // 后端运行时状态枚举名: Online | Offline | Fault | Connecting
   lastUpdated: string; // ISO 8601 datetime string
   variables?: Record<string, any>;
   variableTimestamps?: Record<string, string>;

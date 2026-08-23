@@ -1,27 +1,13 @@
 using ScadaServer.Domain.Enums;
 
-namespace ScadaServer.Runtime.Interface;
+namespace ScadaServer.Application.Interfaces;
 
 /// <summary>
-/// 运行时管理器接口
+/// 运行时设备状态提供器。
+/// 由 WebApi 层用 RuntimeManager 适配实现，避免 Application 层反向依赖 Runtime 程序集。
 /// </summary>
-public interface IRuntimeManager
+public interface IRuntimeStatusProvider
 {
-    /// <summary>
-    /// 初始化运行时
-    /// </summary>
-    Task InitializeAsync();
-
-    /// <summary>
-    /// 启动运行时调度
-    /// </summary>
-    Task StartAsync(CancellationToken token, int maxConcurrentWorkers = 10);
-
-    /// <summary>
-    /// 停止运行时调度，优雅退出所有设备工作线程
-    /// </summary>
-    Task StopAsync();
-
     /// <summary>
     /// 尝试获取设备运行时状态。
     /// 设备未注册到运行时（如已禁用、初始化失败或进程刚启动尚未加载）时返回 false，

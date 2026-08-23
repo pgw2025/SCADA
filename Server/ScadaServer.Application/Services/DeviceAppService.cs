@@ -18,6 +18,7 @@ namespace ScadaServer.Application.Services
         private readonly IDataModelRepository _modelRepository;
         private readonly IRepository<DeviceConfig, int> _configRepository;
         private readonly IUnitOfWork _uow;
+        private readonly IRuntimeStatusProvider _runtimeStatusProvider;
 
         public DeviceAppService(
             IDeviceRepository repository,
@@ -28,7 +29,8 @@ namespace ScadaServer.Application.Services
             IAreaRepository areaRepository,
             IDataModelRepository modelRepository,
             IRepository<DeviceConfig, int> configRepository,
-            IUnitOfWork uow)
+            IUnitOfWork uow,
+            IRuntimeStatusProvider runtimeStatusProvider)
         {
             _repository = repository;
             _sensorRepository = sensorRepository;
@@ -39,6 +41,7 @@ namespace ScadaServer.Application.Services
             _modelRepository = modelRepository;
             _configRepository = configRepository;
             _uow = uow;
+            _runtimeStatusProvider = runtimeStatusProvider;
         }
 
         public async Task<DeviceDto?> GetByIdAsync(int id)
@@ -59,7 +62,8 @@ namespace ScadaServer.Application.Services
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
-                ConfigJson = entity.Config?.JsonConfig
+                ConfigJson = entity.Config?.JsonConfig,
+                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled)
             };
         }
 
@@ -79,8 +83,25 @@ namespace ScadaServer.Application.Services
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
-                ConfigJson = entity.Config?.JsonConfig
+                ConfigJson = entity.Config?.JsonConfig,
+                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled)
             }).ToList();
+        }
+
+        /// <summary>
+        /// 解析设备运行时状态。设备未注册到运行时（已禁用 / 初始化失败 / 进程刚启动尚未加载）
+        /// 或已禁用时一律回退为 Offline，避免前端出现未定义状态。
+        /// </summary>
+        private DeviceStatus ResolveRuntimeStatus(int deviceId, bool isEnabled)
+        {
+            if (!isEnabled)
+            {
+                return DeviceStatus.Offline;
+            }
+
+            return _runtimeStatusProvider.TryGetRuntimeStatus(deviceId, out var status)
+                ? status
+                : DeviceStatus.Offline;
         }
 
         /// <summary>

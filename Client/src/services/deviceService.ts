@@ -3,6 +3,7 @@ import * as store from '../store/deviceStore';
 import { addLog, systemConfig } from '../store/index';
 import { Device } from '../types';
 import { parseApiError, ErrorResult } from '../utils/errorHandler';
+import { normalizeDevices } from '../utils/deviceStatus';
 
 export interface DeviceOperationResult<T = any> {
   success: boolean;
@@ -15,8 +16,9 @@ export const syncDevices = async () => {
 
   try {
     const { data } = await api.fetchDevicesFromBackend();
-    store.setDevices(data);
-    addLog('设备管理', `已从后端同步 ${data.length} 个设备`, 'normal');
+    const normalized = normalizeDevices(data);
+    store.setDevices(normalized);
+    addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
   } catch (err: any) {
     addLog('设备管理', `无法同步设备列表: ${err.message}`, 'warning');
   }

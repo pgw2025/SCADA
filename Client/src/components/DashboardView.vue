@@ -12,6 +12,7 @@ import {
 } from '../store/index';
 import { startSystemResourceMonitoring, stopSystemResourceMonitoring } from '../services/systemService';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
+import { normalizeDevices } from '../utils/deviceStatus';
 import { 
   Cpu, 
   Database, 
@@ -35,7 +36,7 @@ onMounted(async () => {
   try {
     const response = await fetchDevicesFromBackend();
     if (response.data && Array.isArray(response.data)) {
-      setDevices(response.data);
+      setDevices(normalizeDevices(response.data));
     }
   } catch (error: any) {
     console.error('仪表盘加载设备列表失败:', error.message);

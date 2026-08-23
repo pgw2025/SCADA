@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Infrastructure.Communication;
@@ -146,6 +147,40 @@ namespace ScadaServer.Runtime
             _scheduler = null;
 
             await scheduler.StopAsync();
+        }
+
+        /// <inheritdoc/>
+        public bool TryGetRuntimeStatus(int deviceId, out DeviceStatus status)
+        {
+            if (DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+            {
+                status = MapConnectionStateToStatus(runtime);
+                return true;
+            }
+
+            status = DeviceStatus.Offline;
+            return false;
+        }
+
+        /// <summary>
+        /// 将设备运行时的连接态与运行态映射为对外设备状态枚举。
+        /// 注意：此处仅依据运行时内存态，不依赖数据库持久字段。
+        /// </summary>
+        private static DeviceStatus MapConnectionStateToStatus(Devices.DeviceRuntime runtime)
+        {
+            if (!runtime.Device.IsEnabled)
+            {
+                return DeviceStatus.Offline;
+            }
+
+            return runtime.ConnectionState switch
+            {
+                DeviceConnectionState.Connected => DeviceStatus.Online,
+                DeviceConnectionState.Connecting or DeviceConnectionState.Initializing => DeviceStatus.Connecting,
+                DeviceConnectionState.Error => DeviceStatus.Fault,
+                DeviceConnectionState.Disconnected or DeviceConnectionState.Unknown => DeviceStatus.Offline,
+                _ => DeviceStatus.Offline
+            };
         }
     }
 }
