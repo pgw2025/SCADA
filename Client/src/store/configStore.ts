@@ -28,5 +28,7 @@ export const systemConfig = ref<SystemConfig>({
   alarmEmailAddress: 'ops_alerts@iota-factory.com',
   retentionPeriodDays: 90,
   isSimulationActive: false,
-  backendApiUrl: window.location.origin.replace(':3333', ':5555')
+  // 空字符串=相对路径，由 Vite dev proxy 转发到 :5555（开发）或反向代理（生产）
+  // 如需指向独立后端，可在「设置中心」手动填写完整 URL 覆盖
+  backendApiUrl: ''
 });

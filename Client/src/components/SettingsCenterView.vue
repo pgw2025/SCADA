@@ -137,13 +137,13 @@ const handleSaveSettings = () => {
                     v-model="systemConfig.backendApiUrl"
                     type="text"
                     :disabled="systemConfig.isSimulationActive"
-                    placeholder="e.g. http://localhost:5000"
+                    placeholder="留空走代理，或填 http://localhost:5555"
                     class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 pl-8 text-slate-800 font-bold font-mono outline-none text-xs focus:bg-white focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <Code class="absolute left-2.5 top-3.5 w-4 h-4 text-slate-400" />
                 </div>
                 <div class="bg-indigo-50 px-3 py-2.5 rounded-lg border border-indigo-150 text-indigo-700 text-xs font-mono font-bold select-none whitespace-nowrap">
-                  PORT: 5000
+                  PORT: 5555
                 </div>
               </div>
             </div>
