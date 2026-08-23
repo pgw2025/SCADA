@@ -23,9 +23,11 @@ namespace ScadaServer.Domain.Entities
         public string? Description { get; set; }
 
         /// <summary>
-        /// 设备类型（决定驱动类型）
+        /// 厂商/型号描述（如 "Siemens S7-1500"、"罗克韦尔 1756"）。
+        /// 仅作描述性信息，不再承担"协议类型"职责——协议真相源统一为 Device.Type。
         /// </summary>
-        public DeviceType Type { get; set; }
+        [MaxLength(100)]
+        public string? VendorModel { get; set; }
 
         /// <summary>
         /// 创建时间

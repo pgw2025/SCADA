@@ -56,7 +56,6 @@ namespace ScadaServer.Application.Services
                 Type = entity.Type,
                 IsEnabled = entity.IsEnabled,
                 PollingInterval = entity.PollingInterval,
-                DriverName = entity.DriverName,
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
@@ -77,7 +76,6 @@ namespace ScadaServer.Application.Services
                 Type = entity.Type,
                 IsEnabled = entity.IsEnabled,
                 PollingInterval = entity.PollingInterval,
-                DriverName = entity.DriverName,
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
@@ -120,19 +118,6 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"协议配置 JSON 格式无效: {ex.Message}");
             }
         }
-
-        /// <summary>
-        /// 获取默认驱动名称
-        /// </summary>
-        private static string GetDefaultDriverName(DeviceType type) => type switch
-        {
-            DeviceType.S7 => "S7Driver",
-            DeviceType.ModbusTcp => "ModbusTcpDriver",
-            DeviceType.OpcUa => "OpcUaDriver",
-            DeviceType.Mqtt => "MqttDriver",
-            DeviceType.Virtual => "VirtualDriver",
-            _ => $"{type}Driver"
-        };
 
         /// <summary>
         /// 按区域编码自动生成设备标识：{AreaCode}-{序号:000}。
@@ -189,13 +174,7 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
-            // 2. 协议一致性检查：设备协议类型必须与模型定义的协议类型一致
-            if (model.Type != dto.Type)
-            {
-                throw new BusinessException($"协议类型冲突。所选模型 '{model.Name}' 的类型为 {model.Type}，而当前设备配置的类型为 {dto.Type}。");
-            }
-
-            // 3. 验证协议配置 JSON 格式
+            // 2. 验证协议配置 JSON 格式（协议真相源统一为 Device.Type，模型不再约束协议）
             ValidateConfigJson(dto.Type, dto.ConfigJson);
 
             // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
@@ -212,11 +191,6 @@ namespace ScadaServer.Application.Services
                 }
             }
 
-            // 5. 设置默认驱动名称
-            var driverName = string.IsNullOrEmpty(dto.DriverName)
-                ? GetDefaultDriverName(dto.Type)
-                : dto.DriverName;
-
             await using var transaction = await _uow.BeginTransactionAsync();
             try
             {
@@ -229,7 +203,6 @@ namespace ScadaServer.Application.Services
                     Type = dto.Type,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
-                    DriverName = driverName,
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now
                 };
@@ -285,13 +258,7 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
-            // 3. 协议一致性检查
-            if (model.Type != dto.Type)
-            {
-                throw new BusinessException($"协议类型冲突。所选模型 '{model.Name}' 的类型为 {model.Type}，而当前设备配置的类型为 {dto.Type}。");
-            }
-
-            // 4. 验证协议配置 JSON 格式
+            // 3. 验证协议配置 JSON 格式（协议真相源统一为 Device.Type，模型不再约束协议）
             if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
                 ValidateConfigJson(dto.Type, dto.ConfigJson);
@@ -307,7 +274,6 @@ namespace ScadaServer.Application.Services
                 entity.Type = dto.Type;
                 entity.IsEnabled = dto.IsEnabled;
                 entity.PollingInterval = dto.PollingInterval;
-                entity.DriverName = dto.DriverName;
                 entity.UpdatedAt = DateTime.Now;
 
                 await _repository.UpdateAsync(entity);

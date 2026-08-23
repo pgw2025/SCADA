@@ -37,7 +37,8 @@ public class ModelVariableDto
 
     public string? Description { get; set; }
     public bool IsStored { get; set; }
-    public string StoreMode { get; set; } = "Change"; // Change/Cycle
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public StoreModeEnum StoreMode { get; set; } = StoreModeEnum.Change;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public UpdateMode UpdateMode { get; set; }

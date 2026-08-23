@@ -13,9 +13,9 @@ namespace ScadaServer.Application.DTOs
         public string? Description { get; set; }
 
         /// <summary>
-        /// 设备类型（枚举）
+        /// 厂商/型号描述（如 "Siemens S7-1500"），仅供展示，不决定协议
         /// </summary>
-        [Required(ErrorMessage = "模型类型不能为空")]
-        public DeviceType Type { get; set; }
+        [StringLength(100, ErrorMessage = "厂商型号不能超过100个字符")]
+        public string? VendorModel { get; set; }
     }
 }

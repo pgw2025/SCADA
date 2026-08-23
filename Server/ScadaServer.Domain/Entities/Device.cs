@@ -59,12 +59,6 @@ namespace ScadaServer.Domain.Entities
         public int PollingInterval { get; set; } = 1000;
 
         /// <summary>
-        /// 驱动名称（用于驱动工厂创建实例）
-        /// </summary>
-        [MaxLength(100)]
-        public string? DriverName { get; set; }
-
-        /// <summary>
         /// 创建时间
         /// </summary>
         public DateTime CreatedAt { get; set; } = DateTime.Now;

@@ -39,11 +39,6 @@ namespace ScadaServer.Application.DTOs
         [Range(10, 3600000, ErrorMessage = "采集周期必须在10ms到1小时之间")]
         public int PollingInterval { get; set; } = 1000;
 
-        /// <summary>
-        /// 驱动名称
-        /// </summary>
-        public string? DriverName { get; set; }
-
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public DateTime? LastCommunicationTime { get; set; }

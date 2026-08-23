@@ -51,8 +51,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的数据模型不存在");
             }
 
-            // 2. 深度业务校验
-            ValidateVariableLogic(dto, model.Type);
+            // 2. 深度业务校验（协议真相源在 Device.Type，此处不再按协议校验地址格式）
+            ValidateVariableLogic(dto);
 
             // 3. 业务校验：在同一个模型下 Key 和 Address 必须唯一
             var keyExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Key == dto.Key);
@@ -94,8 +94,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的数据模型不存在");
             }
 
-            // 2. 深度业务校验
-            ValidateVariableLogic(dto, model.Type);
+            // 2. 深度业务校验（协议真相源在 Device.Type，此处不再按协议校验地址格式）
+            ValidateVariableLogic(dto);
 
             // 3. 依赖检查：如果 Key 发生了变化，检查是否有触发器依赖旧 Key
             if (entity.Key != dto.Key)
@@ -141,54 +141,27 @@ namespace ScadaServer.Application.Services
             await _repository.DeleteAsync(entity);
         }
 
-        private void ValidateVariableLogic(ModelVariableDto dto, DeviceType protocolType)
+        private void ValidateVariableLogic(ModelVariableDto dto)
         {
-            // A. 类型匹配校验
-            if (dto.Type == VariableType.Digital && dto.DataType != DataTypeEnum.BOOL && dto.DataType != DataTypeEnum.BIT)
+            // A. 类型匹配校验（信号类型由 DataType 推导，此处直接校验 DataType 合法性）
+            var signalType = (dto.DataType == DataTypeEnum.BIT || dto.DataType == DataTypeEnum.BOOL)
+                ? VariableType.Digital
+                : VariableType.Analog;
+            if (signalType == VariableType.Digital && dto.DataType != DataTypeEnum.BOOL && dto.DataType != DataTypeEnum.BIT)
             {
                 throw new BusinessException("数字量性质的变量，数据类型必须为 BOOL 或 BIT");
             }
 
-            // B. 地址格式校验
+            // B. 地址格式校验（协议相关格式校验已下放到运行时驱动；此处仅保证非空）
             if (string.IsNullOrWhiteSpace(dto.Address))
             {
                 throw new BusinessException("变量地址不能为空");
             }
 
-            if (protocolType == DeviceType.S7)
-            {
-                // 西门子 S7 地址正则校验：支持 DB块(DB1.DBX0.0) 或 寄存器区(I0.0, Q1.2, M10.5, MW100, MD100等)
-                var s7Regex = @"^(?:DB\d+\.DB[XWDB]\d+(\.\d+)?)|([IQM](?:B|W|D)?\d+(\.\d+)?)$";
-                if (!Regex.IsMatch(dto.Address, s7Regex, RegexOptions.IgnoreCase))
-                {
-                    throw new BusinessException($"西门子 S7 地址 '{dto.Address}' 格式不正确。示例：DB1.DBX0.0, I0.0, Q1.2, M10.5, MW100");
-                }
-            }
-            else if (protocolType == DeviceType.OpcUa)
-            {
-                // OPC UA 节点 ID 通常包含 ns= 或 i=
-                if (!dto.Address.Contains("ns=") && !dto.Address.Contains("i="))
-                {
-                    throw new BusinessException($"OPC UA 节点 ID '{dto.Address}' 格式不正确。通常应包含 'ns=' 或 'i='。");
-                }
-            }
-            else if (protocolType == DeviceType.Virtual)
-            {
-                // Virtual 类型不校验具体地址格式，允许任意字符串
-            }
-            else if (protocolType == DeviceType.Mqtt)
-            {
-                // MQTT 类型，地址为 Topic
-            }
-            else
-            {
-                throw new BusinessException($"不支持的协议类型: {protocolType}");
-            }
-
             // C. 历史存储检查
-            if (dto.IsStored && string.IsNullOrEmpty(dto.StoreMode))
+            if (dto.StoreMode == StoreModeEnum.None && dto.IsStored)
             {
-                throw new BusinessException("开启历史存储时，必须指定存储模式（Change:变化存储 / Cycle:周期存储）");
+                throw new BusinessException("已勾选\"存储历史\"但存储模式为 None，请选择 Change/Cycle 等具体模式");
             }
         }
 
@@ -223,14 +196,12 @@ namespace ScadaServer.Application.Services
             entity.ModelId = dto.ModelId;
             entity.Key = dto.Key;
             entity.Name = dto.Name;
-            entity.Type = dto.Type;
             entity.DataType = dto.DataType;
             entity.Unit = dto.Unit;
             entity.Min = dto.Min;
             entity.Max = dto.Max;
             entity.Address = dto.Address;
             entity.Description = dto.Description;
-            entity.IsStored = dto.IsStored;
             entity.StoreMode = dto.StoreMode;
             entity.UpdateMode = dto.UpdateMode;
             entity.PollingIntervalMs = dto.PollingIntervalMs;

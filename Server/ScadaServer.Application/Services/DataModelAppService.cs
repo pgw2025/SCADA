@@ -46,7 +46,7 @@ namespace ScadaServer.Application.Services
                 Id = entity.Id,
                 Name = entity.Name,
                 Description = entity.Description,
-                Type = entity.Type,
+                VendorModel = entity.VendorModel,
                 Variables = entity.Variables?.Select(v => new ModelVariableDto
                 {
                     Id = v.Id,
@@ -85,7 +85,7 @@ namespace ScadaServer.Application.Services
             {
                 Name = dto.Name,
                 Description = dto.Description?.Trim(),
-                Type = dto.Type,
+                VendorModel = dto.VendorModel?.Trim(),
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             };
@@ -105,18 +105,7 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.Id} 的数据模型不存在");
             }
 
-            // 1. 协议类型锁定保护
-            if (entity.Type != dto.Type)
-            {
-                // 如果模型类型发生变化，检查是否有设备正在使用此模型
-                var hasDevices = await _deviceRepository.AnyAsync(d => d.ModelId == dto.Id);
-                if (hasDevices)
-                {
-                    throw new BusinessException($"无法修改模型类型。已有设备关联此模型，请先删除相关设备或解除绑定。");
-                }
-            }
-
-            // 2. 业务校验：名称不能与其他模型重复
+            // 1. 业务校验：名称不能与其他模型重复
             var existing = await _repository.GetListAsync(m => m.Name == dto.Name && m.Id != dto.Id);
             if (existing.Any())
             {
@@ -125,7 +114,7 @@ namespace ScadaServer.Application.Services
 
             entity.Name = dto.Name;
             entity.Description = dto.Description?.Trim();
-            entity.Type = dto.Type;
+            entity.VendorModel = dto.VendorModel?.Trim();
             entity.UpdatedAt = DateTime.Now;
             await _repository.UpdateAsync(entity);
 

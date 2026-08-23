@@ -40,11 +40,6 @@ namespace ScadaServer.Application.DTOs
         public int PollingInterval { get; set; } = 1000;
 
         /// <summary>
-        /// 驱动名称（可选，默认根据 Type 自动选择）
-        /// </summary>
-        public string? DriverName { get; set; }
-
-        /// <summary>
         /// 协议配置（JSON 格式）
         /// S7: {"IpAddress":"192.168.1.10","Port":102,"Rack":0,"Slot":1,"CpuType":"S71500"}
         /// ModbusTcp: {"IpAddress":"192.168.1.20","Port":502,"UnitId":1}
