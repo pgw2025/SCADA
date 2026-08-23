@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable } from '../store/index';
-import { DataModel, ModelVariable, DeviceType } from '../types';
+import { DataModel, ModelVariable, DeviceType, DataTypeEnum } from '../types';
 
 onMounted(() => {
   fetchDataModelsFromBackend();
@@ -27,6 +27,20 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => m.id === selectedModelId.value) || dataModels.value[0];
 });
 
+// 当前模型的协议类型：后端 DataModel 已不再携带 Type（协议真相源迁移至 Device.Type），
+// 故从"绑定到该模型的设备"反查协议；若尚未挂载任何设备，回退 Virtual。
+const currentModelProtocol = computed<DeviceType>(() => {
+  if (!currentModel.value) return 'Virtual';
+  const dev = devices.value.find(d => d.modelId === Number(currentModel.value!.id));
+  return dev?.type ?? 'Virtual';
+});
+
+// 列表项按模型反查协议（复用于左侧模型目录徽章）
+const protocolOf = (model: { id: string }) => {
+  const dev = devices.value.find(d => d.modelId === Number(model.id));
+  return dev?.type ?? 'Virtual';
+};
+
 // Create model form state
 const showModelModal = ref<boolean>(false);
 const modelName = ref<string>('');
@@ -50,7 +64,7 @@ const varDesc = ref<string>('');
 // 由后端 DataTypeEnumJsonConverter 做别名容错，避免前后端命名不一致导致 400。
 const dataTypeOptions = computed(() => {
   if (!currentModel.value) return [];
-  const protocol = currentModel.value.type;
+  const protocol = currentModelProtocol.value;
   if (protocol === 'S7') {
     return [
       { label: 'BOOL (布尔点位)', value: 'BOOL', type: 'digital' },
@@ -201,7 +215,7 @@ const handleSaveVariable = async () => {
   // 地址必填策略: 虚拟设备不发起网络通信,无需物理地址,允许为空;
   // 其余协议(OPCUA/S7/MQTT)必须填写寄存器/节点地址,前端先行拦截。
   const trimmedAddress = varAddress.value.trim();
-  if (model.type !== 'Virtual' && !trimmedAddress) {
+  if (currentModelProtocol.value !== 'Virtual' && !trimmedAddress) {
     alert('当前协议类型需要填写寄存器/节点地址');
     return;
   }
@@ -336,7 +350,7 @@ const handleDeleteVariable = (key: string, name: string) => {
         >
           <div class="flex items-center justify-between">
             <span class="text-[9px] font-mono font-bold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded uppercase">
-              {{ model.type }} 协议
+              {{ protocolOf(model) }} 协议
             </span>
             <span class="text-[9px] font-mono text-slate-400 dark:text-slate-500">ID: {{ model.id }}</span>
           </div>
@@ -360,7 +374,7 @@ const handleDeleteVariable = (key: string, name: string) => {
               {{ currentModel.name }}
             </h2>
             <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-800 text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded leading-none">
-              {{ currentModel.type }} 架构
+              {{ currentModelProtocol }} 架构
             </span>
           </div>
           <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
@@ -436,7 +450,7 @@ const handleDeleteVariable = (key: string, name: string) => {
                     <span class="block text-[10px] font-mono text-slate-400 dark:text-slate-500 font-normal leading-relaxed mt-0.5">{{ v.description }}</span>
                     
                     <!-- Protocol advanced variable badges -->
-                    <div v-if="currentModel.type === 'S7'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
+                    <div v-if="currentModelProtocol === 'S7'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
                       <span class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded" title="读写特权">特权: {{ v.extensionData?.accessLevel || 'RW' }}</span>
                       <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1.5 py-0.5 rounded" title="放缩公式">放缩: {{ v.extensionData?.scaleExpr || 'x' }}</span>
                       <span class="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800 px-1.5 py-0.5 rounded animate-pulse" title="时序库存储">
@@ -444,14 +458,14 @@ const handleDeleteVariable = (key: string, name: string) => {
                       </span>
                     </div>
 
-                    <div v-else-if="currentModel.type === 'OPCUA'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
+                    <div v-else-if="currentModelProtocol === 'OPCUA'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
                       <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800 px-1.5 py-0.5 rounded font-mono">NodeId: {{ v.address }}</span>
                       <span class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded">
                         更新: {{ v.updateMode === 'subscription' ? '协议订阅' : `轮询 (${v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5}s)` }}
                       </span>
                     </div>
 
-                    <div v-else-if="currentModel.type === 'MQTT'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
+                    <div v-else-if="currentModelProtocol === 'MQTT'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
                       <span class="bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-800 px-1.5 py-0.5 rounded font-mono">刷新周期: {{ v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5 }}s (MQTT Polling)</span>
                     </div>
                   </td>
@@ -460,8 +474,8 @@ const handleDeleteVariable = (key: string, name: string) => {
                       v-if="v.dataType"
                       class="px-2 py-0.5 rounded text-[10.5px] font-bold font-mono border shadow-3xs tracking-wider uppercase"
                       :class="v.type === 'digital' ? 
-                        (currentModel.type === 'S7' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800') : 
-                        (currentModel.type === 'S7' ? 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800')"
+                        (currentModelProtocol === 'S7' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800') : 
+                        (currentModelProtocol === 'S7' ? 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800')"
                     >
                       {{ v.dataType }}
                     </span>
@@ -642,7 +656,7 @@ const handleDeleteVariable = (key: string, name: string) => {
           </div>
 
           <!-- Siemens S7 Specific Variable Fields -->
-          <div v-if="currentModel && currentModel.type === 'S7'" class="p-3 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl space-y-3.5 border border-indigo-100/50 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200">
+          <div v-if="currentModel && currentModelProtocol === 'S7'" class="p-3 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl space-y-3.5 border border-indigo-100/50 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200">
             <div class="font-bold text-[10px] text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">S7 寄存器配置</div>
             <div>
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">寄存器地址</label>
@@ -693,7 +707,7 @@ const handleDeleteVariable = (key: string, name: string) => {
           </div>
 
           <!-- OPCUA Specific Variable Fields -->
-          <div v-if="currentModel && currentModel.type === 'OPCUA'" class="p-3 bg-sky-50/50 dark:bg-sky-950/40 rounded-xl space-y-3 border border-sky-100/50 dark:border-sky-800">
+          <div v-if="currentModel && currentModelProtocol === 'OPCUA'" class="p-3 bg-sky-50/50 dark:bg-sky-950/40 rounded-xl space-y-3 border border-sky-100/50 dark:border-sky-800">
             <div class="font-bold text-[10px] text-sky-700 dark:text-sky-400 uppercase tracking-wider">OPC UA 配置</div>
             <div>
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">节点ID (地址)</label>
@@ -729,7 +743,7 @@ const handleDeleteVariable = (key: string, name: string) => {
           </div>
 
           <!-- MQTT Specific Variable Fields -->
-          <div v-if="currentModel && currentModel.type === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl space-y-3 border border-teal-100 dark:border-teal-800 text-teal-900 dark:text-teal-200">
+          <div v-if="currentModel && currentModelProtocol === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl space-y-3 border border-teal-100 dark:border-teal-800 text-teal-900 dark:text-teal-200">
             <div class="font-bold text-[10px] text-teal-800 dark:text-teal-400 uppercase tracking-wider">MQTT 配置</div>
             <div>
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">主题地址</label>
