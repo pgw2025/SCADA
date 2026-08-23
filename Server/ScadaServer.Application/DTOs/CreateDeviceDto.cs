@@ -23,12 +23,6 @@ namespace ScadaServer.Application.DTOs
         public int ModelId { get; set; }
 
         /// <summary>
-        /// 设备类型
-        /// </summary>
-        [Required(ErrorMessage = "设备类型不能为空")]
-        public DeviceType Type { get; set; }
-
-        /// <summary>
         /// 是否启用采集
         /// </summary>
         public bool IsEnabled { get; set; } = true;

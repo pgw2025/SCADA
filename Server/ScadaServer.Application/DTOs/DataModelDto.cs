@@ -21,6 +21,11 @@ namespace ScadaServer.Application.DTOs
         public string? VendorModel { get; set; }
 
         /// <summary>
+        /// 协议类型（枚举）——数据模型的协议真相源
+        /// </summary>
+        public DeviceType Type { get; set; }
+
+        /// <summary>
         /// 模型下的变量列表
         /// </summary>
         public List<ModelVariableDto>? Variables { get; set; }

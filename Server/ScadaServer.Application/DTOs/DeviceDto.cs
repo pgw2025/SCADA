@@ -24,9 +24,9 @@ namespace ScadaServer.Application.DTOs
         public string? ModelName { get; set; }
 
         /// <summary>
-        /// 设备类型（枚举）
+        /// 协议类型（枚举）——由所绑定的数据模型推导，仅查询时返回，创建设备不接收此字段
         /// </summary>
-        public DeviceType Type { get; set; }
+        public DeviceType ModelType { get; set; }
 
         /// <summary>
         /// 是否启用采集

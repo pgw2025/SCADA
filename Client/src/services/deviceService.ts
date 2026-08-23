@@ -58,7 +58,7 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
       key: deviceData.key?.trim(),
       areaId: deviceData.areaId,
       modelId: deviceData.modelId,
-      type: deviceData.type,
+      // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: true,
       pollingInterval: 1000,
       configJson: deviceData.configJson ?? '{}',
@@ -99,7 +99,7 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
       key: deviceData.key?.trim(),
       areaId: deviceData.areaId,
       modelId: deviceData.modelId,
-      type: deviceData.type,
+      // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: true,
       pollingInterval: 1000,
       configJson: deviceData.configJson ?? '{}',

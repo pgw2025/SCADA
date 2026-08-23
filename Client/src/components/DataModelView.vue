@@ -27,18 +27,16 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => m.id === selectedModelId.value) || dataModels.value[0];
 });
 
-// 当前模型的协议类型：后端 DataModel 已不再携带 Type（协议真相源迁移至 Device.Type），
-// 故从"绑定到该模型的设备"反查协议；若尚未挂载任何设备，回退 Virtual。
+// 当前模型的协议类型：协议真相源在 DataModel.Type（模型自建时即定协议），
+// 新建模型即使未绑定任何设备也有明确协议，不再臆造 Virtual。
 const currentModelProtocol = computed<DeviceType>(() => {
-  if (!currentModel.value) return 'Virtual';
-  const dev = devices.value.find(d => d.modelId === Number(currentModel.value!.id));
-  return dev?.type ?? 'Virtual';
+  return currentModel.value?.type ?? 'Virtual';
 });
 
-// 列表项按模型反查协议（复用于左侧模型目录徽章）
-const protocolOf = (model: { id: string }) => {
-  const dev = devices.value.find(d => d.modelId === Number(model.id));
-  return dev?.type ?? 'Virtual';
+// 列表项协议徽章：直接读模型自带协议
+const protocolOf = (model: { id: string; type?: DeviceType }) => {
+  const m = dataModels.value.find(x => x.id === model.id);
+  return m?.type ?? 'Virtual';
 };
 
 // Create model form state

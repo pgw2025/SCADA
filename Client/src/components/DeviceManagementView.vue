@@ -301,15 +301,15 @@ const handleSaveDevice = async () => {
     key: devKey.value.trim(),
     areaId: devArea.value,
     modelId: devModel.value,
-    type: devType.value,
+    // 协议由后端从 modelId 推导,前端不再提交 type
     ipAddress: devIP.value,
     port: devPort.value,
     status: devStatus.value === 'online' ? 1 : 0,
     cpuType: devCpuType.value,
     rack: Number(devRack.value),
     slot: Number(devSlot.value),
-    // 按设备类型构造后端 ConfigJson(对应后端 ValidateConfigJson 的各协议配置类)
-    configJson: buildConfigJson(devType.value)
+    // 按模型协议构造后端 ConfigJson(对应后端 ValidateConfigJson 的各协议配置类)
+    configJson: buildConfigJson(chosenModel?.type ?? devType.value)
   };
 
   deviceFormErrors.value = {};

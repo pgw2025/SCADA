@@ -56,7 +56,7 @@ namespace ScadaServer.Application.Services
                 Key = entity.Key,
                 AreaId = entity.AreaId,
                 ModelId = entity.ModelId,
-                Type = entity.Type,
+                ModelType = entity.Model?.Type ?? default,
                 IsEnabled = entity.IsEnabled,
                 PollingInterval = entity.PollingInterval,
                 CreatedAt = entity.CreatedAt,
@@ -77,7 +77,7 @@ namespace ScadaServer.Application.Services
                 Key = entity.Key,
                 AreaId = entity.AreaId,
                 ModelId = entity.ModelId,
-                Type = entity.Type,
+                ModelType = entity.Model?.Type ?? default,
                 IsEnabled = entity.IsEnabled,
                 PollingInterval = entity.PollingInterval,
                 CreatedAt = entity.CreatedAt,
@@ -204,13 +204,14 @@ namespace ScadaServer.Application.Services
 
             // 协议驱动前置校验：未实现驱动的协议在运行时初始化阶段才会失败，
             // 提前在此拦截并返回友好错误，避免设备被创建后无法进入运行时。
-            if (!dto.Type.IsDriverImplemented())
+            // 协议真相源为所绑定数据模型的 Type，设备不再单独持有协议字段。
+            if (!model.Type.IsDriverImplemented())
             {
-                throw new BusinessException($"协议 {dto.Type} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
+                throw new BusinessException($"协议 {model.Type} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
             }
 
-            // 2. 验证协议配置 JSON 格式（协议真相源统一为 Device.Type，模型不再约束协议）
-            ValidateConfigJson(dto.Type, dto.ConfigJson);
+            // 2. 验证协议配置 JSON 格式（协议真相源为 model.Type，设备不再单独约束协议）
+            ValidateConfigJson(model.Type, dto.ConfigJson);
 
             // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
             if (string.IsNullOrWhiteSpace(dto.Key))
@@ -234,7 +235,6 @@ namespace ScadaServer.Application.Services
                     Key = dto.Key!,
                     AreaId = dto.AreaId,
                     ModelId = dto.ModelId,
-                    Type = dto.Type,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
                     CreatedAt = DateTime.Now,
@@ -286,10 +286,10 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
-            // 3. 验证协议配置 JSON 格式（协议真相源统一为 Device.Type，模型不再约束协议）
+            // 3. 验证协议配置 JSON 格式（协议真相源为 model.Type；允许改绑定模型，协议随模型推导）
             if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
-                ValidateConfigJson(dto.Type, dto.ConfigJson);
+                ValidateConfigJson(model.Type, dto.ConfigJson);
             }
 
             return await _uow.ExecuteInTransactionAsync(async transaction =>
@@ -298,7 +298,6 @@ namespace ScadaServer.Application.Services
                 entity.Key = dto.Key;
                 entity.AreaId = dto.AreaId;
                 entity.ModelId = dto.ModelId;
-                entity.Type = dto.Type;
                 entity.IsEnabled = dto.IsEnabled;
                 entity.PollingInterval = dto.PollingInterval;
                 entity.UpdatedAt = DateTime.Now;

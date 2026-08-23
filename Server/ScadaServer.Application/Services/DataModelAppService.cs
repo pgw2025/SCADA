@@ -47,6 +47,7 @@ namespace ScadaServer.Application.Services
                 Name = entity.Name,
                 Description = entity.Description,
                 VendorModel = entity.VendorModel,
+                Type = entity.Type,
                 Variables = entity.Variables?.Select(v => new ModelVariableDto
                 {
                     Id = v.Id,
@@ -86,6 +87,7 @@ namespace ScadaServer.Application.Services
                 Name = dto.Name,
                 Description = dto.Description?.Trim(),
                 VendorModel = dto.VendorModel?.Trim(),
+                Type = dto.Type,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             };
@@ -115,6 +117,7 @@ namespace ScadaServer.Application.Services
             entity.Name = dto.Name;
             entity.Description = dto.Description?.Trim();
             entity.VendorModel = dto.VendorModel?.Trim();
+            entity.Type = dto.Type;
             entity.UpdatedAt = DateTime.Now;
             await _repository.UpdateAsync(entity);
 

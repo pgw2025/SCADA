@@ -1,4 +1,4 @@
-import { Device } from '../types';
+import { Device, DeviceType } from '../types';
 
 /**
  * 将后端运行时状态枚举名映射为前端统一的 status 数值。
@@ -25,6 +25,9 @@ export const mapRuntimeStatusToStatus = (runtimeStatus?: string): number => {
 export const normalizeDevices = (raw: Device[]): Device[] =>
   (raw ?? []).map((d) => ({
     ...d,
+    // 后端 DeviceDto 返回 ModelType(从模型推导的协议)；旧字段 Type 已删除。
+    // 用它兜底填充派生只读的 type，确保所有 device.type 引用有值。
+    type: (d.type ?? d.modelType ?? 'Virtual') as DeviceType,
     runtimeStatus: d.runtimeStatus,
     status: mapRuntimeStatusToStatus(d.runtimeStatus)
   }));

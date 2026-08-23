@@ -15,8 +15,8 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
       id: String(createdModel.id),
       name: createdModel.name,
       description: createdModel.description || '',
-      // 后端不带 Type，占位兜底；真实协议由前端从绑定设备反查
-      type: 'Virtual' as any,
+      // 协议真相源在 DataModel.Type（后端返回）
+      type: (createdModel.type as DataModel['type']) ?? (modelData.type || 'Virtual'),
       variables: createdModel.variables || []
     });
     
@@ -41,9 +41,8 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
         id: String(m.id),
         name: m.name,
         description: m.description || '',
-        // 后端 DataModel 已不再携带 Type（协议真相源在 Device.Type），
-        // 此处仅作为接口占位兜底，真实协议由 DataModelView 从绑定设备反查。
-        type: 'Virtual' as any,
+        // 协议真相源在 DataModel.Type（后端返回真实协议）
+        type: (m.type as DataModel['type']) || 'Virtual',
         variables: m.variables?.map((v: any) => ({
           id: v.id,
           modelId: v.modelId,

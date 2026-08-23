@@ -118,16 +118,17 @@ namespace ScadaServer.Runtime
             {
                 try
                 {
-                    var driver = _driverFactory.CreateDriver(device.Type);
-
                     var config = await configRepo.GetByIdAsync(device.Id);
                     var model = await modelRepo.GetByIdAsync(device.ModelId);
                     var variables = await variableRepo.GetListAsync(v => v.ModelId == device.ModelId);
 
+                    // 协议真相源为所绑定数据模型的 Type，设备不再单独持有协议字段
+                    var driver = _driverFactory.CreateDriver(model.Type);
+
                     var connected = await driver.ConnectAsync(device, config?.JsonConfig ?? "{}");
                     if (!connected)
                     {
-                        _logger.LogWarning("设备 {Key} ({Type}) 连接失败，已跳过。", device.Key, device.Type);
+                        _logger.LogWarning("设备 {Key} ({Type}) 连接失败，已跳过。", device.Key, model.Type);
                         await driver.DisposeAsync();
                         continue;
                     }
@@ -149,11 +150,11 @@ namespace ScadaServer.Runtime
 
                     _logger.LogInformation(
                         "设备 {Key} ({Type}) 初始化完成，共 {VarCount} 个变量。",
-                        device.Key, device.Type, variables.Count);
+                        device.Key, model.Type, variables.Count);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "设备 {Key} ({Type}) 初始化失败。", device.Key, device.Type);
+                    _logger.LogError(ex, "设备 {Key} 初始化失败。", device.Key);
                 }
             }
         }

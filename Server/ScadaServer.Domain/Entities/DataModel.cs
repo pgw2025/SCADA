@@ -24,10 +24,17 @@ namespace ScadaServer.Domain.Entities
 
         /// <summary>
         /// 厂商/型号描述（如 "Siemens S7-1500"、"罗克韦尔 1756"）。
-        /// 仅作描述性信息，不再承担"协议类型"职责——协议真相源统一为 Device.Type。
+        /// 仅作描述性信息，不决定协议——协议真相源统一为 <see cref="Type"/>。
         /// </summary>
         [MaxLength(100)]
         public string? VendorModel { get; set; }
+
+        /// <summary>
+        /// 协议类型（枚举）——数据模型的协议真相源。
+        /// 一台设备通过 ModelId 绑定本模型，其驱动协议由本字段推导，
+        /// 因此"未绑定任何设备的数据模型"也拥有明确协议，无需反查或回退。
+        /// </summary>
+        public DeviceType Type { get; set; }
 
         /// <summary>
         /// 创建时间

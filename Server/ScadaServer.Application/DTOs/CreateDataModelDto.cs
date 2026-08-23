@@ -17,5 +17,10 @@ namespace ScadaServer.Application.DTOs
         /// </summary>
         [StringLength(100, ErrorMessage = "厂商型号不能超过100个字符")]
         public string? VendorModel { get; set; }
+
+        /// <summary>
+        /// 协议类型（枚举）——数据模型的协议真相源，创建模型时必填
+        /// </summary>
+        public DeviceType Type { get; set; }
     }
 }

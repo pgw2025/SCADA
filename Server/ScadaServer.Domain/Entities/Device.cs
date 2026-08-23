@@ -43,11 +43,6 @@ namespace ScadaServer.Domain.Entities
         public DataModel? Model { get; set; }
 
         /// <summary>
-        /// 设备类型（枚举）
-        /// </summary>
-        public DeviceType Type { get; set; }
-
-        /// <summary>
         /// 是否启用采集
         /// </summary>
         public bool IsEnabled { get; set; } = true;

@@ -142,7 +142,7 @@ export interface DataModel {
   id: string;
   name: string;
   description: string;
-  type: DeviceType;
+  type: DeviceType;   // 协议真相源（后端 DataModel.Type），模型自建时即定协议
   variables: ModelVariable[];
 }
 
@@ -155,7 +155,8 @@ export interface Device {
   areaName?: string;
   modelId: number;
   modelName?: string;
-  type: DeviceType;
+  type: DeviceType;   // 派生只读：由 modelId 反查 dataModels 得到，设备本身不再存储协议
+  modelType?: DeviceType;  // 后端返回的模型协议（DeviceDto.ModelType），作为 type 派生兜底来源
   ipAddress?: string; // S7/OPCUA specific
   port?: number | string;      // Port, e.g. 502, 4840
   status: number | string;     // 0: offline, 1: online or 'online' | 'offline'
