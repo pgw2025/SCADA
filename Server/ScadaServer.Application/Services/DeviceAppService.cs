@@ -133,16 +133,49 @@ namespace ScadaServer.Application.Services
             _ => $"{type}Driver"
         };
 
+        /// <summary>
+        /// 按区域编码自动生成设备标识：{AreaCode}-{序号:000}。
+        /// 区域未配置 Code 时回退为 A{AreaId}。
+        /// </summary>
+        private async Task<string> GenerateDeviceCodeAsync(Area area)
+        {
+            var baseCode = !string.IsNullOrWhiteSpace(area.Code) ? area.Code! : $"A{area.Id}";
+            var prefix = baseCode + "-";
+            var siblings = await _repository.GetListAsync(d => d.Key.StartsWith(prefix));
+            var maxSeq = 0;
+            foreach (var s in siblings)
+            {
+                var parts = s.Key.Split('-');
+                if (parts.Length >= 2 && int.TryParse(parts[^1], out var n))
+                {
+                    maxSeq = Math.Max(maxSeq, n);
+                }
+            }
+            return $"{baseCode}-{maxSeq + 1:000}";
+        }
+
+        /// <summary>
+        /// 为自动生成的设备标识确保全局唯一：若冲突则重新取最大序号+1 重试。
+        /// 数据库唯一索引为最终保障。
+        /// </summary>
+        private async Task<string> EnsureUniqueGeneratedKeyAsync(string candidate, Area area)
+        {
+            var key = candidate;
+            for (var i = 0; i < 50; i++)
+            {
+                var existing = await _repository.GetListAsync(d => d.Key == key);
+                if (!existing.Any())
+                {
+                    return key;
+                }
+                key = await GenerateDeviceCodeAsync(area);
+            }
+            throw new BusinessException("生成设备标识失败：唯一键冲突过多，请手动指定标识或稍后重试。");
+        }
+
         public async Task<DeviceDto> CreateAsync(CreateDeviceDto dto)
         {
-            // 1. 业务校验：Key 唯一性
-            var existing = await _repository.GetListAsync(d => d.Key == dto.Key);
-            if (existing.Any())
-            {
-                throw new BusinessException($"设备标识 '{dto.Key}' 已存在");
-            }
-
-            // 2. 存在性检查：校验区域和模型是否存在
+            // 1. 存在性检查：校验区域和模型是否存在
             var area = await _areaRepository.GetByIdAsync(dto.AreaId);
             if (area == null)
             {
@@ -155,14 +188,28 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
-            // 3. 协议一致性检查：设备协议类型必须与模型定义的协议类型一致
+            // 2. 协议一致性检查：设备协议类型必须与模型定义的协议类型一致
             if (model.Type != dto.Type)
             {
                 throw new BusinessException($"协议类型冲突。所选模型 '{model.Name}' 的类型为 {model.Type}，而当前设备配置的类型为 {dto.Type}。");
             }
 
-            // 4. 验证协议配置 JSON 格式
+            // 3. 验证协议配置 JSON 格式
             ValidateConfigJson(dto.Type, dto.ConfigJson);
+
+            // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
+            if (string.IsNullOrWhiteSpace(dto.Key))
+            {
+                dto.Key = await EnsureUniqueGeneratedKeyAsync(await GenerateDeviceCodeAsync(area), area);
+            }
+            else
+            {
+                var existing = await _repository.GetListAsync(d => d.Key == dto.Key);
+                if (existing.Any())
+                {
+                    throw new BusinessException($"设备标识 '{dto.Key}' 已存在");
+                }
+            }
 
             // 5. 设置默认驱动名称
             var driverName = string.IsNullOrEmpty(dto.DriverName)
@@ -175,7 +222,7 @@ namespace ScadaServer.Application.Services
                 var entity = new Device
                 {
                     Name = dto.Name,
-                    Key = dto.Key,
+                    Key = dto.Key!,
                     AreaId = dto.AreaId,
                     ModelId = dto.ModelId,
                     Type = dto.Type,

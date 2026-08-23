@@ -214,8 +214,8 @@ const openEditDeviceModal = (device: Device) => {
 
 const handleSaveDevice = async () => {
   addLog('调试', `开始保存设备: ${devName.value}`, 'normal');
-  if (!devName.value.trim() || !devKey.value.trim()) {
-    addLog('调试', '校验失败: 名称或编码为空', 'warning');
+  if (!devName.value.trim()) {
+    addLog('调试', '校验失败: 名称为空', 'warning');
     return;
   }
 
@@ -232,7 +232,7 @@ const handleSaveDevice = async () => {
 
   const deviceData = {
     name: devName.value,
-    key: devKey.value,
+    key: devKey.value.trim(),
     areaId: devArea.value,
     modelId: devModel.value,
     type: devType.value,
@@ -249,11 +249,6 @@ const handleSaveDevice = async () => {
 
   if (!devName.value.trim()) {
     deviceFormErrors.value = { Name: '设备名称不能为空' };
-    return;
-  }
-
-  if (!devKey.value.trim()) {
-    deviceFormErrors.value = { Key: '设备编号不能为空' };
     return;
   }
 

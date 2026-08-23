@@ -72,7 +72,7 @@ const triggerRows = computed(() => {
     return {
       ...trig,
       deviceName: dev ? dev.name : '未知设备',
-      deviceCode: dev ? dev.code : 'UNKNOWN',
+      deviceCode: dev ? dev.key : 'UNKNOWN',
       currentValue: curVal
     };
   });

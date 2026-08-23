@@ -7,6 +7,7 @@ namespace ScadaServer.Domain.Entities
     /// 设备表 - 物理设备的实例
     /// </summary>
     [SugarTable("Devices")]
+    [SugarIndex("ix_device_key", nameof(Key), OrderByType.Asc, true)]
     public class Device : EntityBase
     {
         /// <summary>
@@ -16,7 +17,7 @@ namespace ScadaServer.Domain.Entities
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
-        /// 唯一键（用于运行时快速查找）
+        /// 唯一键（用于运行时快速查找）。现由后台按区域自动生成，全局唯一。
         /// </summary>
         [SugarColumn(Length = 100, IsNullable = false)]
         public string Key { get; set; } = string.Empty;

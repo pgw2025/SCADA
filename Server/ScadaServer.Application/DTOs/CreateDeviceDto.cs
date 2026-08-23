@@ -9,9 +9,12 @@ namespace ScadaServer.Application.DTOs
         [StringLength(100, ErrorMessage = "设备名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "设备标识不能为空")]
+        /// <summary>
+        /// 设备标识（可选）。留空时由后台根据所属区域自动生成（如 BLR-001）。
+        /// 若指定则使用指定值，且必须全局唯一。
+        /// </summary>
         [StringLength(100, ErrorMessage = "设备标识不能超过100个字符")]
-        public string Key { get; set; } = string.Empty;
+        public string? Key { get; set; }
 
         [Range(1, int.MaxValue, ErrorMessage = "请选择所属区域")]
         public int AreaId { get; set; }

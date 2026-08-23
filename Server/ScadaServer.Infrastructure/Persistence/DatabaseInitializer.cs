@@ -73,6 +73,10 @@ public class DatabaseInitializer
 
             _db.CodeFirst.InitTables(entityTypes);
 
+            // 补齐可能缺失的唯一索引 / 列（针对已存在的存量表）：
+            // CodeFirst.InitTables 对老表不会追加新索引，故显式确保 Devices.Key 唯一索引存在。
+            EnsureDeviceKeyUniqueIndex();
+
             _logger.LogInformation(
                 "数据表创建完成，共发现 {Count} 个实体",
                 entityTypes.Length);
@@ -81,6 +85,27 @@ public class DatabaseInitializer
         {
             _logger.LogError(ex, "创建数据表失败");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 确保 Devices.Key 的唯一索引存在（针对存量库：CodeFirst.InitTables 不会给已存在表追加新索引）。
+    /// </summary>
+    private void EnsureDeviceKeyUniqueIndex()
+    {
+        try
+        {
+            const string indexName = "ix_device_key";
+            if (!_db.DbMaintenance.IsAnyIndex(indexName))
+            {
+                _db.DbMaintenance.CreateIndex("Devices", new[] { "Key" }, indexName, true);
+                _logger.LogInformation("已为 Devices.Key 创建唯一索引 {IndexName}", indexName);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 索引创建失败不应阻塞启动；记录后继续，后续仍可由应用层唯一性校验兜底。
+            _logger.LogWarning(ex, "确保 Devices.Key 唯一索引失败，已跳过（不影响启动）");
         }
     }
 
