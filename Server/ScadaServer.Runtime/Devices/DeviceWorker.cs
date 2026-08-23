@@ -72,6 +72,14 @@ namespace ScadaServer.Runtime.Devices
                             // 通过驱动读取变量当前值
                             var newValue = await _runtime.Driver.ReadAsync(variable.Variable);
 
+                            // 驱动可能返回 null（例如虚拟设备未连接、订阅型驱动暂无数据）。
+                            // 视为本次读取无效：跳过值更新,避免 null 被当作变化值推送到前端。
+                            if (newValue == null)
+                            {
+                                variable.Quality = VariableQuality.CommunicationError;
+                                continue;
+                            }
+
                             // 更新变量值和状态
                             variable.PreviousValue = variable.Value;
                             variable.Value = newValue;

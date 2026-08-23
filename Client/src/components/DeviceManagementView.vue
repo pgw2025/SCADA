@@ -60,6 +60,10 @@ const devCpuType = ref<string>('S7-1205');
 const devRack = ref<number>(0);
 const devSlot = ref<number>(1);
 
+// Virtual-specific config (matches backend VirtualConfig)
+const devVirtualIntervalMs = ref<number>(1000);
+const devVirtualRandomValues = ref<boolean>(true);
+
 // Active view
 const activeSection = ref<'list' | 'areas'>('list');
 
@@ -168,6 +172,10 @@ const openNewDeviceModal = () => {
   devCpuType.value = 'S7-1200';
   devRack.value = 0;
   devSlot.value = 1;
+
+  // Virtual init
+  devVirtualIntervalMs.value = 1000;
+  devVirtualRandomValues.value = true;
   
   showDeviceModal.value = true;
 };
@@ -187,6 +195,9 @@ const onModelChange = () => {
       devRack.value = 0;
       devSlot.value = 1;
     } else if (model.type === 'MQTT') {
+    } else if (model.type === 'Virtual') {
+      devVirtualIntervalMs.value = 1000;
+      devVirtualRandomValues.value = true;
     }
   }
 };
@@ -209,7 +220,55 @@ const openEditDeviceModal = (device: Device) => {
   devRack.value = device.rack !== undefined ? device.rack : 0;
   devSlot.value = device.slot !== undefined ? device.slot : 1;
 
+  // Virtual config: 从 configJson 回填表单
+  devVirtualIntervalMs.value = 1000;
+  devVirtualRandomValues.value = true;
+  const rawConfig = (device as any).configJson;
+  if (typeof rawConfig === 'string' && rawConfig.trim()) {
+    try {
+      const parsed = JSON.parse(rawConfig);
+      if (typeof parsed.IntervalMs === 'number') devVirtualIntervalMs.value = parsed.IntervalMs;
+      if (typeof parsed.RandomValues === 'boolean') devVirtualRandomValues.value = parsed.RandomValues;
+    } catch {
+      // 旧配置格式不兼容,保留默认值
+    }
+  }
+
   showDeviceModal.value = true;
+};
+
+// 按设备类型构造后端 ConfigJson,字段命名与后端 *Config DTO 保持一致。
+// 后端 DeviceAppService.ValidateConfigJson 会反序列化校验,字段缺失或类型不符会拒绝。
+const buildConfigJson = (type: DeviceType): string => {
+  switch (type) {
+    case 'OPCUA':
+      return JSON.stringify({
+        EndpointUrl: `opc.tcp://${devIP.value || '127.0.0.1'}:${devPort.value || '4840'}`,
+        SecurityPolicy: 'None'
+      });
+    case 'S7':
+      return JSON.stringify({
+        IpAddress: devIP.value || '127.0.0.1',
+        Port: Number(devPort.value) || 102,
+        Rack: Number(devRack.value) || 0,
+        Slot: Number(devSlot.value) || 1,
+        CpuType: devCpuType.value || 'S71500'
+      });
+    case 'MQTT':
+      return JSON.stringify({
+        Broker: devIP.value || '127.0.0.1',
+        Port: Number(devPort.value) || 1883,
+        Topic: '',
+        ClientId: `scada-${Date.now()}`
+      });
+    case 'Virtual':
+      return JSON.stringify({
+        IntervalMs: Number(devVirtualIntervalMs.value) || 1000,
+        RandomValues: devVirtualRandomValues.value
+      });
+    default:
+      return '{}';
+  }
 };
 
 const handleSaveDevice = async () => {
@@ -241,7 +300,9 @@ const handleSaveDevice = async () => {
     status: devStatus.value === 'online' ? 1 : 0,
     cpuType: devCpuType.value,
     rack: Number(devRack.value),
-    slot: Number(devSlot.value)
+    slot: Number(devSlot.value),
+    // 按设备类型构造后端 ConfigJson(对应后端 ValidateConfigJson 的各协议配置类)
+    configJson: buildConfigJson(devType.value)
   };
 
   deviceFormErrors.value = {};
@@ -678,8 +739,8 @@ const toggleDeviceStateInGrid = (device: Device) => {
               <span>协议类型: {{ devType }}</span>
             </div>
 
-            <!-- OPCUA / Virtual Connection Setup -->
-            <div v-if="devType === 'OPCUA' || devType === 'Virtual'" class="space-y-2">
+            <!-- OPCUA Connection Setup -->
+            <div v-if="devType === 'OPCUA'" class="space-y-2">
               <div class="text-[10px] text-[#1890ff] dark:text-sky-400 font-bold uppercase tracking-wider mb-1">OPC UA 连接配置</div>
               <div class="grid grid-cols-3 gap-2">
                 <div class="col-span-2">
@@ -699,6 +760,38 @@ const toggleDeviceStateInGrid = (device: Device) => {
                     placeholder="e.g. 4840"
                     class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
+                </div>
+              </div>
+            </div>
+
+            <!-- Virtual Device Setup -->
+            <div v-if="devType === 'Virtual'" class="space-y-2">
+              <div class="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider mb-1">虚拟设备配置</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                虚拟设备不发起网络通信,根据变量 Min/Max 范围生成随机模拟值,用于无硬件环境下的联调测试。
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">生成间隔 (ms)</label>
+                  <input 
+                    v-model.number="devVirtualIntervalMs"
+                    type="number"
+                    min="10"
+                    step="100"
+                    placeholder="e.g. 1000"
+                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">随机模式</label>
+                  <label class="flex items-center gap-1.5 h-[30px] text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      v-model="devVirtualRandomValues"
+                      class="text-amber-500 focus:ring-0"
+                    />
+                    启用随机值
+                  </label>
                 </div>
               </div>
             </div>

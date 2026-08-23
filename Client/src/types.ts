@@ -161,6 +161,9 @@ export interface Device {
   publishTopic?: string;
   subscribeTopic?: string;
   payloadTemplate?: string;
+
+  // 后端协议配置 JSON(对应 CreateDeviceDto.ConfigJson)
+  configJson?: string;
 }
 
 export interface MqttServer {

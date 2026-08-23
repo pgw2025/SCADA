@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
@@ -15,20 +16,37 @@ namespace ScadaServer.Infrastructure.Communication
         private readonly Random _random = new();
         private readonly object _randLock = new();
 
+        /// <summary>
+        /// 解析后的虚拟设备配置。ConnectAsync 时填充。
+        /// IntervalMs 当前作为建议轮询间隔保留(实际轮询周期仍由 Device.PollingInterval 决定),
+        /// RandomValues 控制是否启用随机生成(为 false 时固定返回区间中点)。
+        /// </summary>
+        private VirtualConfig _config = new();
+
         public async Task<bool> ConnectAsync(Device device, string configJson)
         {
-            // 虚拟设备不需要真实连接，仅校验配置 JSON 格式。
+            // 虚拟设备不需要真实连接，但需真正解析 VirtualConfig，使前端表单字段被消费。
             if (!string.IsNullOrWhiteSpace(configJson))
             {
                 try
                 {
-                    JsonDocument.Parse(configJson);
+                    // 优先按 VirtualConfig 反序列化，字段缺失时保留默认值。
+                    _config = JsonSerializer.Deserialize<VirtualConfig>(configJson,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                        ?? new VirtualConfig();
                 }
                 catch (JsonException ex)
                 {
                     throw new ArgumentException($"虚拟设备配置 JSON 格式无效: {ex.Message}");
                 }
             }
+            else
+            {
+                _config = new VirtualConfig();
+            }
+
+            // 区间合法性兜底，避免后续 GenerateValue 除零或负区间。
+            if (_config.IntervalMs < 10) _config.IntervalMs = 10;
 
             _connected = true;
             await Task.Delay(10);
@@ -84,9 +102,17 @@ namespace ScadaServer.Infrastructure.Communication
             if (max <= min) max = min + 100;
 
             double sample;
-            lock (_randLock)
+            if (_config.RandomValues)
             {
-                sample = min + _random.NextDouble() * (max - min);
+                lock (_randLock)
+                {
+                    sample = min + _random.NextDouble() * (max - min);
+                }
+            }
+            else
+            {
+                // 关闭随机模式时固定返回区间中点，便于稳定回归测试。
+                sample = (min + max) / 2;
             }
 
             return variable.DataType switch
