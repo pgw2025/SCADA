@@ -24,20 +24,17 @@ export const initializeRealtimeSignals = () => {
             .withAutomaticReconnect()
             .build();
 
-        connection.on("ReceiveVariableUpdate", (variableKey: string, newValue: any) => {
-            let updated = false;
-            devices.value.forEach(dev => {
-                if (dev.variables && dev.variables[variableKey] !== undefined) {
-                    dev.variables[variableKey] = newValue;
-                    if (!dev.variableTimestamps) dev.variableTimestamps = {};
-                    const pad2 = (n: number) => n.toString().padStart(2, '0');
-                    const d = new Date();
-                    dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-                    updated = true;
-                }
-            });
-            if (updated) {
-                addLog('SignalR 接收', `网络遥测更新: [${variableKey}] -> ${newValue}`, 'info');
+        connection.on("ReceiveVariableUpdate", (deviceId: number, variableKey: string, newValue: any) => {
+            const dev = devices.value.find(d => d.id === deviceId);
+            if (!dev) return;
+
+            if (dev.variables && dev.variables[variableKey] !== undefined) {
+                dev.variables[variableKey] = newValue;
+                if (!dev.variableTimestamps) dev.variableTimestamps = {};
+                const pad2 = (n: number) => n.toString().padStart(2, '0');
+                const d = new Date();
+                dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+                addLog('SignalR 接收', `网络遥测更新: 设备#${deviceId} [${variableKey}] -> ${newValue}`, 'info');
             }
         });
 

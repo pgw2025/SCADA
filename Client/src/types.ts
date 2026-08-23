@@ -125,7 +125,18 @@ export interface ModelVariable {
   extensionData?: Record<string, string>;
 }
 
-export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual';
+export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BACnet' | 'DNP3';
+
+/** 设备类型下拉/筛选选项（label 与后端 DeviceTypeJsonConverter.SerializeMap 对齐） */
+export const DEVICE_TYPES: { value: DeviceType; label: string; implemented: boolean }[] = [
+  { value: 'OPCUA', label: 'OPC UA', implemented: true },
+  { value: 'S7', label: '西门子 S7', implemented: true },
+  { value: 'MQTT', label: 'MQTT', implemented: false },
+  { value: 'Virtual', label: '虚拟设备', implemented: true },
+  { value: 'ModbusTcp', label: 'Modbus TCP', implemented: false },
+  { value: 'BACnet', label: 'BACnet', implemented: false },
+  { value: 'DNP3', label: 'DNP3', implemented: false }
+];
 
 export interface DataModel {
   id: string;

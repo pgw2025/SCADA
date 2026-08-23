@@ -3,7 +3,8 @@ import { ref, computed } from 'vue';
 import { devices } from '../store/deviceStore';
 import { dataModels } from '../store/index';
 import { addLog } from '../store/index';
-import { 
+import { DEVICE_TYPES } from '../types';
+import {
   Database, 
   Search, 
   Settings, 
@@ -154,13 +155,24 @@ const cancelOverride = () => {
         <!-- System driver select tags -->
         <div class="flex flex-wrap gap-1">
           <button 
-            v-for="opt in ['ALL', 'OPCUA', 'S7', 'MQTT', 'Virtual']" 
-            :key="opt"
-            @click="selectedTypeFilter = opt"
+            @click="selectedTypeFilter = 'ALL'"
             class="text-[9px] font-bold px-2 py-0.5 rounded transition-all cursor-pointer"
-            :class="selectedTypeFilter === opt ? 'bg-slate-900 dark:bg-sky-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'"
+            :class="selectedTypeFilter === 'ALL' ? 'bg-slate-900 dark:bg-sky-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'"
           >
-            {{ opt }}
+            全部
+          </button>
+          <button 
+            v-for="opt in DEVICE_TYPES" 
+            :key="opt.value"
+            @click="selectedTypeFilter = opt.value"
+            :title="opt.implemented ? opt.label : `${opt.label}（驱动尚未实现）`"
+            class="text-[9px] font-bold px-2 py-0.5 rounded transition-all cursor-pointer"
+            :class="[
+              selectedTypeFilter === opt.value ? 'bg-slate-900 dark:bg-sky-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700',
+              !opt.implemented ? 'opacity-60 line-through' : ''
+            ]"
+          >
+            {{ opt.label }}
           </button>
         </div>
       </div>

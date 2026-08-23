@@ -195,6 +195,13 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
+            // 协议驱动前置校验：未实现驱动的协议在运行时初始化阶段才会失败，
+            // 提前在此拦截并返回友好错误，避免设备被创建后无法进入运行时。
+            if (!dto.Type.IsDriverImplemented())
+            {
+                throw new BusinessException($"协议 {dto.Type} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
+            }
+
             // 2. 验证协议配置 JSON 格式（协议真相源统一为 Device.Type，模型不再约束协议）
             ValidateConfigJson(dto.Type, dto.ConfigJson);
 
