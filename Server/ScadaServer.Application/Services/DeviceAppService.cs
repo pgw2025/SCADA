@@ -33,6 +33,7 @@ namespace ScadaServer.Application.Services
             _repository = repository;
             _sensorRepository = sensorRepository;
             _triggerRepository = triggerRepository;
+            _interfaceRepository = interfaceRepository;
 
             _areaRepository = areaRepository;
             _modelRepository = modelRepository;
