@@ -24,7 +24,7 @@ namespace ScadaServer.Application.Services
             _triggerRepository = triggerRepository;
         }
 
-        public async Task<ModelVariableDto> GetByIdAsync(int id)
+        public async Task<ModelVariableDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

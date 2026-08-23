@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IScheduledTaskRepository _repository;
         public ScheduledTaskAppService(IScheduledTaskRepository repository) { _repository = repository; }
 
-        public async Task<ScheduledTaskDto> GetByIdAsync(int id)
+        public async Task<ScheduledTaskDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

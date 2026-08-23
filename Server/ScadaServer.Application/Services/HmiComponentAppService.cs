@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IHmiComponentRepository _repository;
         public HmiComponentAppService(IHmiComponentRepository repository) { _repository = repository; }
 
-        public async Task<HmiComponentDto> GetByIdAsync(int id)
+        public async Task<HmiComponentDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

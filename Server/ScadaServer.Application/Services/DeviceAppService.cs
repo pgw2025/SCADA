@@ -41,7 +41,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
-        public async Task<DeviceDto> GetByIdAsync(int id)
+        public async Task<DeviceDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
@@ -247,7 +247,8 @@ namespace ScadaServer.Application.Services
                 await _configRepository.InsertAsync(config);
 
                 await transaction.CommitAsync();
-                return await GetByIdAsync(entity.Id);
+                return await GetByIdAsync(entity.Id)
+                    ?? throw new BusinessException($"创建设备后无法读取 ID 为 {entity.Id} 的设备记录");
             }
             catch
             {
@@ -321,7 +322,8 @@ namespace ScadaServer.Application.Services
                 }
 
                 await transaction.CommitAsync();
-                return await GetByIdAsync(dto.Id);
+                return await GetByIdAsync(dto.Id)
+                    ?? throw new BusinessException($"更新设备后无法读取 ID 为 {dto.Id} 的设备记录");
             }
             catch
             {

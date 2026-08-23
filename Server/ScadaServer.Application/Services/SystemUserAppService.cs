@@ -65,7 +65,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
-        public async Task<SystemUserDto> GetByIdAsync(int id)
+        public async Task<SystemUserDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

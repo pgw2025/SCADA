@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IDataConversionRepository _repository;
         public DataConversionAppService(IDataConversionRepository repository) { _repository = repository; }
 
-        public async Task<DataConversionDto> GetByIdAsync(int id)
+        public async Task<DataConversionDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

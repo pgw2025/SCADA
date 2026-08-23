@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly ISystemScriptRepository _repository;
         public SystemScriptAppService(ISystemScriptRepository repository) { _repository = repository; }
 
-        public async Task<SystemScriptDto> GetByIdAsync(int id)
+        public async Task<SystemScriptDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

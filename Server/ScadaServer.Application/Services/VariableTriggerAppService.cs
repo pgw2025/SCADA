@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IVariableTriggerRepository _repository;
         public VariableTriggerAppService(IVariableTriggerRepository repository) { _repository = repository; }
 
-        public async Task<VariableTriggerDto> GetByIdAsync(int id)
+        public async Task<VariableTriggerDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IMqttServerRepository _repository;
         public MqttServerAppService(IMqttServerRepository repository) { _repository = repository; }
 
-        public async Task<MqttServerDto> GetByIdAsync(int id)
+        public async Task<MqttServerDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

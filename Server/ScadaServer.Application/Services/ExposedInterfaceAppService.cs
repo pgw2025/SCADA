@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IExposedInterfaceRepository _repository;
         public ExposedInterfaceAppService(IExposedInterfaceRepository repository) { _repository = repository; }
 
-        public async Task<ExposedInterfaceDto> GetByIdAsync(int id)
+        public async Task<ExposedInterfaceDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

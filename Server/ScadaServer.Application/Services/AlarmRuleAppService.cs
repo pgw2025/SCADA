@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IAlarmRuleRepository _repository;
         public AlarmRuleAppService(IAlarmRuleRepository repository) { _repository = repository; }
 
-        public async Task<AlarmRuleDto> GetByIdAsync(int id)
+        public async Task<AlarmRuleDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

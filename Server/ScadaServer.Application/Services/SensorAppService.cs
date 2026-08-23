@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly ISensorRepository _repository;
         public SensorAppService(ISensorRepository repository) { _repository = repository; }
 
-        public async Task<SensorDto> GetByIdAsync(int id)
+        public async Task<SensorDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

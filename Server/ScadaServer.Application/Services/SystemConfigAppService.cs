@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly ISystemConfigRepository _repository;
         public SystemConfigAppService(ISystemConfigRepository repository) { _repository = repository; }
 
-        public async Task<SystemConfigDto> GetByIdAsync(int id)
+        public async Task<SystemConfigDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

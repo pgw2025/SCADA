@@ -23,7 +23,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
-        public async Task<ScadaProjectDto> GetByIdAsync(int id)
+        public async Task<ScadaProjectDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

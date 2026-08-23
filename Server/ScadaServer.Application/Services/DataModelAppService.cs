@@ -26,7 +26,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
-        public async Task<DataModelDto> GetByIdAsync(int id)
+        public async Task<DataModelDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;

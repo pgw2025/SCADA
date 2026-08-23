@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
         private readonly IConfigLogRepository _repository;
         public ConfigLogAppService(IConfigLogRepository repository) { _repository = repository; }
 
-        public async Task<ConfigLogDto> GetByIdAsync(int id)
+        public async Task<ConfigLogDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
