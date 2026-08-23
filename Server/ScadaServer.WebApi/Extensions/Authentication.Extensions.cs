@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Application.Converters;
 using ScadaServer.Application.Options;
 using System.Text;
 
@@ -20,6 +21,11 @@ namespace ScadaServer.WebApi.Extensions
         {
             // Configure API behavior options
             services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // 前后端设备类型枚举命名不一致（OpcUa ↔ "OPCUA"），统一转换
+                    options.JsonSerializerOptions.Converters.Add(new DeviceTypeJsonConverter());
+                })
                 .ConfigureApiBehaviorOptions(options =>
                 {
                     options.InvalidModelStateResponseFactory = context =>

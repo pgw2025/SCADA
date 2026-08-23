@@ -34,7 +34,7 @@ public class RuntimeHostedService : BackgroundService
         {
             await _runtimeManager.InitializeAsync();
 
-            // await _runtimeManager.StartAsync(stoppingToken);
+            await _runtimeManager.StartAsync(stoppingToken);
 
             _logger.LogInformation("SCADA Runtime Started");
         }

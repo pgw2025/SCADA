@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 
@@ -21,17 +23,20 @@ namespace ScadaServer.Runtime.Devices
     {
         private readonly DeviceRuntime _runtime;
         private readonly ILogger<DeviceWorker> _logger;
+        private readonly IScadaNotificationService _notificationService;
 
         /// <summary>
         /// 初始化设备工作器
         /// </summary>
         /// <param name="runtime">设备运行时，包含设备配置、驱动实例和变量集合</param>
         /// <param name="logger">日志记录器</param>
+        /// <param name="notificationService">变量更新通知服务（SignalR / MQTT）</param>
         /// <exception cref="ArgumentNullException">runtime 或 logger 为 null 时抛出</exception>
-        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger)
+        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         }
 
         /// <summary>
@@ -59,6 +64,7 @@ namespace ScadaServer.Runtime.Devices
                 try
                 {
                     // 遍历读取该设备下所有变量
+                    var changed = new List<(string Key, object Value)>();
                     foreach (var variable in _runtime.Variables.Values)
                     {
                         try
@@ -74,12 +80,29 @@ namespace ScadaServer.Runtime.Devices
 
                             // 检测值是否发生变化
                             variable.IsChanged = !Equals(variable.Value, variable.PreviousValue);
+                            if (variable.IsChanged && variable.Value != null)
+                            {
+                                changed.Add((variable.Variable.Key, variable.Value));
+                            }
                         }
                         catch (Exception ex)
                         {
                             // 单个变量读取失败，标记通信错误但不中断其他变量
                             variable.Quality = VariableQuality.CommunicationError;
                             _logger.LogError(ex, "Read variable {VariableName} failed.", variable.Variable.Name);
+                        }
+                    }
+
+                    // 将发生变化的变量推送到 SignalR / MQTT
+                    foreach (var (key, value) in changed)
+                    {
+                        try
+                        {
+                            await _notificationService.NotifyVariableUpdateAsync(_runtime.Device.Id, key, value);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "通知变量 {Key} 更新失败。", key);
                         }
                     }
 

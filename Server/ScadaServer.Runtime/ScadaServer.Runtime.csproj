@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ScadaServer.Application\ScadaServer.Application.csproj" />
+    <ProjectReference Include="..\ScadaServer.Infrastructure\ScadaServer.Infrastructure.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

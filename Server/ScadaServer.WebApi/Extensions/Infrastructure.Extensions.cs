@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using ScadaServer.Application.Interfaces;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Configuration;
 using ScadaServer.Infrastructure.Services;
@@ -26,6 +27,9 @@ namespace ScadaServer.WebApi.Extensions
             // Runtime 运行时服务
             services.AddSingleton<RuntimeManager>();
             services.AddHostedService<ScadaServer.WebApi.HostedServices.RuntimeHostedService>();
+
+            // MQTT 服务（MqttHandler 当前为占位实现）
+            services.AddSingleton<IMqttService, MqttHandler>();
 
             return services;
         }

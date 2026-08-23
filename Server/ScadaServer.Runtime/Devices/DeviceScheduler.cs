@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Application.Interfaces;
 
 namespace ScadaServer.Runtime.Devices
 {
@@ -20,6 +21,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly SemaphoreSlim _workerLimiter;
         private readonly ILogger<DeviceScheduler> _logger;
         private readonly ILogger<DeviceWorker> _workerLogger;
+        private readonly IScadaNotificationService _notificationService;
 
         /// <summary>
         /// 初始化设备调度器
@@ -27,12 +29,13 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="runtimeManager">运行时管理器，提供设备运行时列表</param>
         /// <param name="maxConcurrentWorkers">最大并发工作线程数，限制同时执行的设备任务数量</param>
         /// <param name="logger">日志记录器</param>
-        public DeviceScheduler(RuntimeManager runtimeManager, int maxConcurrentWorkers, ILogger<DeviceScheduler> logger, ILogger<DeviceWorker> workerLogger)
+        public DeviceScheduler(RuntimeManager runtimeManager, int maxConcurrentWorkers, ILogger<DeviceScheduler> logger, ILogger<DeviceWorker> workerLogger, IScadaNotificationService notificationService)
         {
             _runtimeManager = runtimeManager;
             _workerLimiter = new SemaphoreSlim(maxConcurrentWorkers);
             _logger = logger;
             _workerLogger = workerLogger;
+            _notificationService = notificationService;
         }
 
         /// <summary>
@@ -62,7 +65,7 @@ namespace ScadaServer.Runtime.Devices
                     {
                         try
                         {
-                            var worker = new DeviceWorker(runtime, _workerLogger);
+                            var worker = new DeviceWorker(runtime, _workerLogger, _notificationService);
                             await worker.WorkerAsync(token);
                         }
                         catch (Exception ex)

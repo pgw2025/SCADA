@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Enums;
+using ScadaServer.Runtime;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -8,17 +10,40 @@ namespace ScadaServer.WebApi.Controllers
     public class TelemetryDataController : ControllerBase
     {
         private readonly IMqttService _mqttService;
+        private readonly RuntimeManager _runtimeManager;
 
-        public TelemetryDataController(IMqttService mqttService)
+        public TelemetryDataController(IMqttService mqttService, RuntimeManager runtimeManager)
         {
             _mqttService = mqttService;
+            _runtimeManager = runtimeManager;
         }
 
         [HttpGet("{deviceId}/realtime")]
         public IActionResult GetRealtime(int deviceId)
         {
-            // In real app, this might pull from Redis or a memory cache updated by DeviceWorker
-            return Ok(new { DeviceId = deviceId, Value = 88.5, Unit = "°C", Timestamp = DateTime.Now });
+            if (!_runtimeManager.DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+            {
+                return NotFound(new { DeviceId = deviceId, Message = "设备未运行或未启用" });
+            }
+
+            var variables = runtime.Variables.Values
+                .Select(v => new
+                {
+                    Key = v.Variable.Key,
+                    Name = v.Variable.Name,
+                    Value = v.Value,
+                    Quality = v.Quality.ToString(),
+                    UpdateTime = v.UpdateTime
+                })
+                .ToList();
+
+            return Ok(new
+            {
+                DeviceId = deviceId,
+                DeviceKey = runtime.Device.Key,
+                Variables = variables,
+                Timestamp = DateTime.Now
+            });
         }
 
         [HttpPost("publish-manual")]
