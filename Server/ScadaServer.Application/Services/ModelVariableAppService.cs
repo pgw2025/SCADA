@@ -61,10 +61,14 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
             }
 
-            var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address);
-            if (addrExists)
+            // 地址唯一性仅在地址非空时校验(虚拟设备允许空地址,不参与唯一性约束)
+            if (!string.IsNullOrWhiteSpace(dto.Address))
             {
-                throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
+                var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address);
+                if (addrExists)
+                {
+                    throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
+                }
             }
 
             var entity = MapToEntity(dto);
@@ -114,10 +118,14 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
             }
 
-            var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address && v.Id != dto.Id);
-            if (addrExists)
+            // 地址唯一性仅在地址非空时校验(虚拟设备允许空地址,不参与唯一性约束)
+            if (!string.IsNullOrWhiteSpace(dto.Address))
             {
-                throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
+                var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address && v.Id != dto.Id);
+                if (addrExists)
+                {
+                    throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
+                }
             }
 
             MapToEntity(dto, entity);
@@ -152,11 +160,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException("数字量性质的变量，数据类型必须为 BOOL 或 BIT");
             }
 
-            // B. 地址格式校验（协议相关格式校验已下放到运行时驱动；此处仅保证非空）
-            if (string.IsNullOrWhiteSpace(dto.Address))
-            {
-                throw new BusinessException("变量地址不能为空");
-            }
+            // B. 地址格式校验已下放到前端按协议拦截 + 运行时驱动；此处不再强制非空。
+            //    虚拟/计算类变量本就无物理地址,允许空地址;地址唯一性由调用方在地址非空时校验。
 
             // C. 历史存储检查
             if (dto.StoreMode == StoreModeEnum.None && dto.IsStored)

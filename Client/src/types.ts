@@ -89,12 +89,12 @@ export interface Area {
 // 变量类型枚举
 export type VariableType = 'analog' | 'digital';
 
-// 数据类型枚举
+// 数据类型枚举（与后端 ScadaServer.Domain.Enums.DataTypeEnum 对齐）
 export type DataTypeEnum = 
-  | 'Int8' | 'Int16' | 'Int32' | 'Int64'
-  | 'UInt8' | 'UInt16' | 'UInt32' | 'UInt64'
-  | 'Float' | 'Double'
-  | 'Boolean' | 'String';
+  | 'INT' | 'REAL' | 'BOOL' | 'DINT' | 'BYTE' | 'BIT'
+  | 'FLOAT' | 'DOUBLE' | 'STRING'
+  | 'UINT16' | 'UINT32' | 'INT64' | 'UINT64'
+  | 'WORD' | 'CHAR';
 
 // 更新模式枚举
 export type UpdateMode = 'polling' | 'subscription';
@@ -104,7 +104,7 @@ export interface ModelVariable {
   modelId: number;
   key: string;
   name: string;
-  type: VariableType;
+  type?: VariableType;
   dataType: DataTypeEnum;
   unit?: string;
   min?: number;
@@ -112,7 +112,7 @@ export interface ModelVariable {
   address: string;
   description?: string;
   isStored: boolean;
-  storeMode: 'Change' | 'Cycle';
+  storeMode: 'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated';
   updateMode: UpdateMode;
   pollingIntervalMs: number;
   

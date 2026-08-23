@@ -25,6 +25,8 @@ namespace ScadaServer.WebApi.Extensions
                 {
                     // 前后端设备类型枚举命名不一致（OpcUa ↔ "OPCUA"），统一转换
                     options.JsonSerializerOptions.Converters.Add(new DeviceTypeJsonConverter());
+                    // 前后端数据类型枚举命名不一致（Boolean ↔ BOOL / Float ↔ FLOAT 等），统一转换
+                    options.JsonSerializerOptions.Converters.Add(new DataTypeEnumJsonConverter());
                 })
                 .ConfigureApiBehaviorOptions(options =>
                 {

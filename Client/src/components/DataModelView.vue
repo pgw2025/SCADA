@@ -46,6 +46,8 @@ const varAddress = ref<string>('');
 const varDesc = ref<string>('');
 
 // Allowed dataType options dependent on active device format
+// value 统一使用后端 DataTypeEnum 真实枚举名(INT/REAL/BOOL/...)，
+// 由后端 DataTypeEnumJsonConverter 做别名容错，避免前后端命名不一致导致 400。
 const dataTypeOptions = computed(() => {
   if (!currentModel.value) return [];
   const protocol = currentModel.value.type;
@@ -62,29 +64,28 @@ const dataTypeOptions = computed(() => {
     ];
   } else if (protocol === 'OPCUA') {
     return [
-      { label: 'Boolean (布尔触发类)', value: 'Boolean', type: 'digital' },
-      { label: 'Int16 (双字节带符号整型)', value: 'Int16', type: 'analog' },
-      { label: 'Int32 (四字节带符号整型)', value: 'Int32', type: 'analog' },
-      { label: 'UInt16 (16位无符号整型)', value: 'UInt16', type: 'analog' },
-      { label: 'UInt32 (32位无符号整型)', value: 'UInt32', type: 'analog' },
-      { label: 'Float (单精度浮点数)', value: 'Float', type: 'analog' },
-      { label: 'Double (双精度高精密浮点数)', value: 'Double', type: 'analog' },
-      { label: 'String (通信文本字符串)', value: 'String', type: 'analog' },
-      { label: 'DateTime (工业时间戳常数)', value: 'DateTime', type: 'analog' }
+      { label: 'BOOL (布尔触发类)', value: 'BOOL', type: 'digital' },
+      { label: 'INT (16位带符号整型)', value: 'INT', type: 'analog' },
+      { label: 'DINT (32位带符号整型)', value: 'DINT', type: 'analog' },
+      { label: 'UINT16 (16位无符号整型)', value: 'UINT16', type: 'analog' },
+      { label: 'UINT32 (32位无符号整型)', value: 'UINT32', type: 'analog' },
+      { label: 'FLOAT (单精度浮点数)', value: 'FLOAT', type: 'analog' },
+      { label: 'DOUBLE (双精度高精密浮点数)', value: 'DOUBLE', type: 'analog' },
+      { label: 'STRING (通信文本字符串)', value: 'STRING', type: 'analog' }
     ];
   } else if (protocol === 'MQTT') {
     return [
-      { label: 'Boolean (消息布尔值)', value: 'Boolean', type: 'digital' },
-      { label: 'Integer (32位消息整型)', value: 'Integer', type: 'analog' },
-      { label: 'Float (高精密消息浮点数)', value: 'Float', type: 'analog' },
-      { label: 'String (常规JSON通信文本)', value: 'String', type: 'analog' }
+      { label: 'BOOL (消息布尔值)', value: 'BOOL', type: 'digital' },
+      { label: 'DINT (32位消息整型)', value: 'DINT', type: 'analog' },
+      { label: 'FLOAT (高精密消息浮点数)', value: 'FLOAT', type: 'analog' },
+      { label: 'STRING (常规JSON通信文本)', value: 'STRING', type: 'analog' }
     ];
   } else {
     return [
-      { label: 'Boolean (虚拟布尔)', value: 'Boolean', type: 'digital' },
-      { label: 'Integer (虚拟整型数)', value: 'Integer', type: 'analog' },
-      { label: 'Float (虚拟浮点数值)', value: 'Float', type: 'analog' },
-      { label: 'String (虚拟文本字段)', value: 'String', type: 'analog' }
+      { label: 'BOOL (虚拟布尔)', value: 'BOOL', type: 'digital' },
+      { label: 'INT (虚拟整型数)', value: 'INT', type: 'analog' },
+      { label: 'FLOAT (虚拟浮点数值)', value: 'FLOAT', type: 'analog' },
+      { label: 'STRING (虚拟文本字段)', value: 'STRING', type: 'analog' }
     ];
   }
 });
@@ -120,7 +121,7 @@ const varSearchQuery = ref<string>('');
 const varAccessLevel = ref<'RO' | 'RW'>('RW');
 const varScaleExpr = ref<string>('x * 1.0');
 const varIsStored = ref<boolean>(true);
-const varStoreMode = ref<'Change' | 'Cycle'>('Change');
+const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated'>('Change');
 
 // OPCUA custom state properties
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
@@ -197,19 +198,29 @@ const handleSaveVariable = async () => {
     return;
   }
 
+  // 地址必填策略: 虚拟设备不发起网络通信,无需物理地址,允许为空;
+  // 其余协议(OPCUA/S7/MQTT)必须填写寄存器/节点地址,前端先行拦截。
+  const trimmedAddress = varAddress.value.trim();
+  if (model.type !== 'Virtual' && !trimmedAddress) {
+    alert('当前协议类型需要填写寄存器/节点地址');
+    return;
+  }
+
   const newVar: ModelVariable = {
     modelId: Number(model.id),
     key: varKey.value,
     name: varName.value,
-    type: varType.value,
+    // type 由后端按 DataType 派生,前端不冗余传递(后端 Type 为 IsIgnore 派生字段)
     dataType: varDataType.value as DataTypeEnum,
     unit: varUnit.value || undefined,
     min: varMin.value || undefined,
     max: varMax.value || undefined,
-    address: varAddress.value || `${varKey.value.toUpperCase()}_ADDR`,
+    // 地址已按协议在上方处理:虚拟设备允许为空,其余协议已拦截非空
+    address: trimmedAddress,
     description: varDesc.value || undefined,
     isStored: varIsStored.value,
-    storeMode: varStoreMode.value,
+    // 未勾选"存储历史"时显式发 None,后端据此派生 IsStored=false,不写时序库
+    storeMode: varIsStored.value ? varStoreMode.value : 'None',
     updateMode: varUpdateMode.value,
     pollingIntervalMs: Number(varPollIntervalSecs.value) * 1000,
     bitOffset: varBitOffset.value,
@@ -225,9 +236,16 @@ const handleSaveVariable = async () => {
 
   // Persist to server using new variable API
   try {
-    await createVariable(newVar);
-    // Refresh model list to ensure consistency with backend
-    await fetchDataModelsFromBackend();
+    const created = await createVariable(newVar);
+    // 增量并入当前模型,避免无脑全量重拉(fetchDataModelsFromBackend)导致
+    // 视图跳回第一个模型、选中态丢失以及大量模型时的卡顿。
+    if (created && currentModel.value) {
+      currentModel.value.variables.push({
+        ...created,
+        // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
+        type: String(created.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
+      } as ModelVariable);
+    }
   } catch (err: any) {
     alert('保存变量到服务器失败: ' + err.message);
     return;
@@ -732,6 +750,32 @@ const handleDeleteVariable = (key: string, name: string) => {
               />
               <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-1">设置变量在 MQTT 主题刷新消息提取解析的定时器速度 (秒)</p>
             </div>
+          </div>
+
+          <!-- 历史存储配置 -->
+          <div class="p-3 bg-emerald-50/50 dark:bg-emerald-950/40 rounded-xl space-y-3 border border-emerald-100 dark:border-emerald-800">
+            <div class="font-bold text-[10px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">历史存储</div>
+            <div class="flex items-center justify-between py-1">
+              <label class="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
+                <input
+                  type="checkbox"
+                  v-model="varIsStored"
+                  class="rounded text-emerald-600 focus:ring-0"
+                />
+                存储历史数据
+              </label>
+              <select
+                v-if="varIsStored"
+                v-model="varStoreMode"
+                class="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 focus:outline-none"
+              >
+                <option value="Change">变动存储</option>
+                <option value="Cycle">定时存储</option>
+                <option value="Compressed">压缩存储</option>
+                <option value="Aggregated">聚合存储</option>
+              </select>
+            </div>
+            <p v-if="!varIsStored" class="text-[9px] text-slate-400 dark:text-slate-500">不勾选则变量仅驻留内存,不写入时序数据库 (StoreMode=None)。</p>
           </div>
 
           <!-- Industrial-grade Enhanced Fields -->

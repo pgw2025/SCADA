@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using ScadaServer.Application.Converters;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.DTOs;
@@ -20,19 +21,20 @@ public class ModelVariableDto
     [StringLength(50, ErrorMessage = "名称不能超过50个字符")]
     public string Name { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "变量类型不能为空")]
+    // 信号类型由 DataType 派生(实体端 IsIgnore),此处仅作输出,不强制前端传入
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public VariableType Type { get; set; }
 
     [Required(ErrorMessage = "数据类型不能为空")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(DataTypeEnumJsonConverter))]
     public DataTypeEnum DataType { get; set; }
 
     public string? Unit { get; set; }
     public double? Min { get; set; }
     public double? Max { get; set; }
 
-    [Required(ErrorMessage = "寄存器地址不能为空")]
+    // 地址非空校验下放到 AppService.ValidateVariableLogic,按协议区分:
+    // 虚拟设备无需物理地址,允许为空;其余协议仍要求非空。
     public string Address { get; set; } = string.Empty;
 
     public string? Description { get; set; }

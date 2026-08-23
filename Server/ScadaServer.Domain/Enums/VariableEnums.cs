@@ -46,9 +46,54 @@ namespace ScadaServer.Domain.Enums
         /// </summary>
         BYTE,
 
-        /// <summary>
-        /// 位（bit）
-        /// </summary>
-        BIT
-    }
+    /// <summary>
+    /// 位（bit）
+    /// </summary>
+    BIT,
+
+    /// <summary>
+    /// 单精度浮点数（对应前端 "Float"）
+    /// </summary>
+    FLOAT,
+
+    /// <summary>
+    /// 双精度浮点数（对应前端 "Double"）
+    /// </summary>
+    DOUBLE,
+
+    /// <summary>
+    /// 变长字符串（对应前端 "String"）
+    /// </summary>
+    STRING,
+
+    /// <summary>
+    /// 16位无符号整型（对应前端 "UInt16"）
+    /// </summary>
+    UINT16,
+
+    /// <summary>
+    /// 32位无符号整型（对应前端 "UInt32"）
+    /// </summary>
+    UINT32,
+
+    /// <summary>
+    /// 64位有符号整型（对应前端 "Int64"）
+    /// </summary>
+    INT64,
+
+    /// <summary>
+    /// 64位无符号整型（对应前端 "UInt64"）
+    /// </summary>
+    UINT64,
+
+    /// <summary>
+    /// 16位无符号字类型（对应前端 "Word"）
+    /// </summary>
+    WORD,
+
+    /// <summary>
+    /// 单字符字段（对应前端 "Char"）
+    /// </summary>
+    CHAR
+}
 }

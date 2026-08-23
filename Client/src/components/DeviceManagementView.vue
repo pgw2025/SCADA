@@ -162,8 +162,11 @@ const openNewDeviceModal = () => {
   devName.value = '';
   devKey.value = `PLC-DEV-${Date.now().toString().slice(-4)}`;
   devArea.value = areas.value[0]?.id || 0;
-  devModel.value = dataModels.value[0]?.id || '';
-  devType.value = dataModels.value[0]?.type || 'OPCUA';
+  // 优先使用当前在下拉框中选中的数据模型,而不是列表中的第一个,
+  // 否则当第一个模型为 OPCUA 类型时,即使选中虚拟设备也会错误显示 OPC UA 地址。
+  const initialModel = dataModels.value.find(m => m.id === devModel.value) || dataModels.value[0];
+  devModel.value = initialModel?.id || '';
+  devType.value = initialModel?.type || 'OPCUA';
   devIP.value = '192.168.1.100';
   devPort.value = '4840';
   devStatus.value = 'online';
@@ -176,7 +179,11 @@ const openNewDeviceModal = () => {
   // Virtual init
   devVirtualIntervalMs.value = 1000;
   devVirtualRandomValues.value = true;
-  
+
+  // 依据当前选中模型类型,统一刷新协议相关默认值(IP/端口/虚拟参数等),
+  // 避免上一个设备的残留值(如 OPC UA 的 4840 端口)污染本次初始化。
+  onModelChange();
+
   showDeviceModal.value = true;
 };
 
