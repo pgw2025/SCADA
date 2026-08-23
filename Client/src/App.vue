@@ -229,9 +229,10 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
     </div>
   </div>
   <div v-else class="h-screen w-screen flex flex-col font-sans text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-[#070b12] overflow-hidden select-none">
-    <header class="h-14 bg-slate-900 dark:bg-[#070b12] text-white border-b border-slate-800 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-sm relative z-30 transition-colors">
+    <!-- Top Header Bar: Light in light mode, dark in dark mode -->
+    <header class="h-14 bg-white dark:bg-[#070b12] text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-xs relative z-30 transition-colors">
       <div class="flex items-center gap-3">
-        <button @click="isMobileSidebarOpen = !isMobileSidebarOpen" class="lg:hidden p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:bg-slate-800 active:scale-95 transition-all outline-none cursor-pointer">
+        <button @click="isMobileSidebarOpen = !isMobileSidebarOpen" class="lg:hidden p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all outline-none cursor-pointer">
           <Menu v-if="!isMobileSidebarOpen" class="w-4.5 h-4.5" />
           <X v-else class="w-4.5 h-4.5" />
         </button>
@@ -239,40 +240,49 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
           <Server class="w-5 h-5 text-white animate-pulse" />
         </div>
         <div class="text-left">
-          <h1 class="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2 leading-none text-slate-50">
+          <h1 class="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2 leading-none text-slate-900 dark:text-slate-50">
             {{ systemConfig.systemTitle }}
-            <span class="text-[9px] bg-slate-800 text-[#38bdf8] font-bold px-1.5 py-0.5 rounded border border-slate-700 select-none font-mono hidden sm:inline-block">V6.0</span>
+            <span class="text-[9px] bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-[#38bdf8] font-bold px-1.5 py-0.5 rounded border border-sky-200 dark:border-slate-700 select-none font-mono hidden sm:inline-block">V6.0</span>
           </h1>
-          <span class="text-[9px] sm:text-[10px] text-slate-400 leading-none mt-1 inline-block select-all">SCADA 控制中心</span>
+          <span class="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 leading-none mt-1 inline-block select-all">SCADA 控制中心</span>
         </div>
       </div>
       <div class="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs font-mono">
         <!-- Theme Toggle Button -->
         <button 
           @click="toggleTheme" 
-          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none active:scale-95"
-          :class="currentTheme === 'dark' ? 'bg-slate-800/90 border-slate-700 text-amber-400 hover:bg-slate-800 hover:text-amber-300' : 'bg-slate-800 border-slate-700 text-sky-300 hover:bg-slate-700 hover:text-white'"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none active:scale-95 shadow-xs"
+          :class="currentTheme === 'dark' ? 'bg-slate-800/90 border-slate-700 text-amber-400 hover:bg-slate-800 hover:text-amber-300' : 'bg-slate-100/90 border-slate-200 text-slate-700 hover:bg-slate-200/80 hover:text-slate-900'"
           :title="currentTheme === 'dark' ? '当前：深色模式 (点击切换为浅色)' : '当前：浅色模式 (点击切换为深色)'"
         >
           <Sun v-if="currentTheme === 'dark'" class="w-3.5 h-3.5 text-amber-400" />
-          <Moon v-else class="w-3.5 h-3.5 text-sky-400" />
+          <Moon v-else class="w-3.5 h-3.5 text-sky-600" />
           <span class="font-sans font-bold text-[11px] hidden sm:inline">{{ currentTheme === 'dark' ? '深色模式' : '浅色模式' }}</span>
         </button>
 
-        <div class="hidden md:flex items-center gap-1.5 text-slate-300 bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-lg">
-          <Clock class="w-3.5 h-3.5 text-slate-400" />
+        <div class="hidden md:flex items-center gap-1.5 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-lg">
+          <Clock class="w-3.5 h-3.5 text-slate-400 dark:text-slate-400" />
           <span>{{ currentLocalTime || '正在同步时钟...' }}</span>
         </div>
-        <div class="flex items-center gap-1.5 bg-[#10b981]/15 text-emerald-400 border border-[#10b981]/30 px-2 py-0.5 sm:py-1 rounded-lg">
+        <div class="flex items-center gap-1.5 bg-emerald-50 dark:bg-[#10b981]/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-[#10b981]/30 px-2 py-0.5 sm:py-1 rounded-lg">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
           <span class="font-bold uppercase tracking-wider text-[8px] sm:text-[9px]">系统运行中</span>
         </div>
       </div>
     </header>
+
     <div class="flex-1 flex overflow-hidden relative">
-      <aside class="hidden lg:flex bg-[#0f172a] dark:bg-[#070b12] text-slate-350 border-r border-slate-800 dark:border-slate-900 flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300" :class="isSidebarCollapsed ? 'w-16' : 'w-64'">
-        <div class="px-2 py-2 border-b border-slate-800/40 flex items-center justify-center shrink-0">
-          <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="w-full py-1.5 hover:bg-slate-800 bg-slate-900/60 border border-slate-800/60 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95" :title="isSidebarCollapsed ? '展开导航' : '收起导航'">
+      <!-- Desktop Sidebar: Light in light mode, dark in dark mode -->
+      <aside 
+        class="hidden lg:flex bg-white dark:bg-[#070b12] text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-900 flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300" 
+        :class="isSidebarCollapsed ? 'w-16' : 'w-64'"
+      >
+        <div class="px-2 py-2 border-b border-slate-100 dark:border-slate-800/40 flex items-center justify-center shrink-0">
+          <button 
+            @click="isSidebarCollapsed = !isSidebarCollapsed" 
+            class="w-full py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/60 rounded-lg text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95" 
+            :title="isSidebarCollapsed ? '展开导航' : '收起导航'"
+          >
             <ChevronRight v-if="isSidebarCollapsed" class="w-4 h-4 text-slate-400" />
             <template v-else>
               <ChevronLeft class="w-4 h-4 text-slate-400" />
@@ -280,196 +290,427 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
             </template>
           </button>
         </div>
+
         <div class="flex-1 flex flex-col pt-3 overflow-y-auto space-y-2.5 pb-4">
           <div>
-            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">监控中心</span>
-            <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
+            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">监控中心</span>
+            <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
-              <button @click="navigate('/dashboard')" :class="[isActive('/dashboard') ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/dashboard') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left cursor-pointer group w-full">
-                <LayoutDashboard class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+              <button 
+                @click="navigate('/dashboard')" 
+                :class="[
+                  isActive('/dashboard') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left cursor-pointer group w-full"
+              >
+                <LayoutDashboard class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/dashboard') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">仪表盘</span>
               </button>
-              <button @click="navigate('/live-data')" :class="[isActive('/live-data') ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/live-data') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left cursor-pointer group w-full">
-                <Database class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/live-data')" 
+                :class="[
+                  isActive('/live-data') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left cursor-pointer group w-full"
+              >
+                <Database class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/live-data') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">实时监控</span>
               </button>
-              <button @click="navigate('/device-management')" :class="[isActive('/device-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/device-management') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Cpu class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/device-management')" 
+                :class="[
+                  isActive('/device-management') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Cpu class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/device-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">设备管理</span>
               </button>
-              <button @click="navigate('/data-models')" :class="[isActive('/data-models') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/data-models') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Layers class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/data-models')" 
+                :class="[
+                  isActive('/data-models') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Layers class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/data-models') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">数据模型</span>
               </button>
-              <button @click="navigate('/scada-editor')" :class="[isActive('/scada-editor') ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/scada-editor') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <MonitorPlay class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/scada-editor')" 
+                :class="[
+                  isActive('/scada-editor') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <MonitorPlay class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/scada-editor') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">组态设计</span>
               </button>
-              <button @click="navigate('/system-logs')" :class="[isActive('/system-logs') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/system-logs') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Terminal class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/system-logs')" 
+                :class="[
+                  isActive('/system-logs') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Terminal class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/system-logs') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">系统日志</span>
               </button>
             </nav>
           </div>
+
           <div>
-            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">自动化</span>
-            <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
+            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">自动化</span>
+            <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
-              <button @click="navigate('/trigger-management')" :class="[isActive('/trigger-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/trigger-management') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <ShieldAlert class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+              <button 
+                @click="navigate('/trigger-management')" 
+                :class="[
+                  isActive('/trigger-management') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <ShieldAlert class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/trigger-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">告警管理</span>
               </button>
-              <button @click="navigate('/task-management')" :class="[isActive('/task-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/task-management') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Calendar class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/task-management')" 
+                :class="[
+                  isActive('/task-management') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Calendar class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/task-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">任务调度</span>
               </button>
-              <button @click="navigate('/system-scripts')" :class="[isActive('/system-scripts') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/system-scripts') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <FileCode class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/system-scripts')" 
+                :class="[
+                  isActive('/system-scripts') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <FileCode class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/system-scripts') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">脚本引擎</span>
               </button>
-              <button @click="navigate('/data-interfaces')" :class="[isActive('/data-interfaces') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/data-interfaces') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Network class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/data-interfaces')" 
+                :class="[
+                  isActive('/data-interfaces') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Network class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/data-interfaces') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">接口管理</span>
               </button>
-              <button @click="navigate('/historical-query')" :class="[isActive('/historical-query') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/historical-query') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <History class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/historical-query')" 
+                :class="[
+                  isActive('/historical-query') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <History class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/historical-query') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">历史数据</span>
               </button>
-              <button @click="navigate('/mqtt-servers')" :class="[isActive('/mqtt-servers') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/mqtt-servers') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Rss class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/mqtt-servers')" 
+                :class="[
+                  isActive('/mqtt-servers') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Rss class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/mqtt-servers') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">MQTT代理</span>
               </button>
-              <button @click="navigate('/data-conversion')" :class="[isActive('/data-conversion') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/data-conversion') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Shuffle class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/data-conversion')" 
+                :class="[
+                  isActive('/data-conversion') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Shuffle class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/data-conversion') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">数据转换</span>
               </button>
             </nav>
           </div>
+
           <div>
-            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">系统设置</span>
-            <div v-else class="h-px bg-slate-800/40 mx-2 my-1" />
+            <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">系统设置</span>
+            <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
-              <button @click="navigate('/database-management')" :class="[isActive('/database-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/database-management') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <HardDrive class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+              <button 
+                @click="navigate('/database-management')" 
+                :class="[
+                  isActive('/database-management') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <HardDrive class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/database-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">数据库管理</span>
               </button>
-              <button @click="navigate('/user-management')" :class="[isActive('/user-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/user-management') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Users class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/user-management')" 
+                :class="[
+                  isActive('/user-management') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Users class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/user-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">用户管理</span>
               </button>
-              <button @click="navigate('/settings-center')" :class="[isActive('/settings-center') ? 'bg-slate-800 text-white' : 'hover:bg-slate-800 text-slate-400 hover:text-white', isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4 border-transparent', !isSidebarCollapsed && isActive('/settings-center') ? 'border-l-[#1890ff]' : '']" class="flex items-center rounded-lg text-xs font-bold transition-all text-left group cursor-pointer w-full">
-                <Settings class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
+
+              <button 
+                @click="navigate('/settings-center')" 
+                :class="[
+                  isActive('/settings-center') 
+                    ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]' 
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent', 
+                  isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+                ]" 
+                class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full"
+              >
+                <Settings class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/settings-center') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">系统配置</span>
               </button>
             </nav>
           </div>
         </div>
-        <div class="p-3 bg-slate-950 border-t border-slate-900 flex shrink-0 justify-between items-center select-none">
+
+        <!-- Sidebar footer: user profile -->
+        <div class="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-900 flex shrink-0 justify-between items-center select-none transition-colors">
           <div v-if="!isSidebarCollapsed" class="flex items-center gap-2 font-sans overflow-hidden">
-            <div class="w-7.5 h-7.5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center relative shrink-0">
-              <UserCheck class="w-3.5 h-3.5 text-sky-450 text-sky-400" />
-              <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-slate-950"></span>
+            <div class="w-7.5 h-7.5 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center relative shrink-0">
+              <UserCheck class="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-950"></span>
             </div>
             <div class="text-left overflow-hidden w-28 shrink-0">
-              <h4 class="text-[11px] font-bold text-white truncate">{{ loginUser?.username || 'admin' }}</h4>
-              <span class="text-[9px] text-slate-400 block truncate">{{ loginUser?.role || '管理员' }}</span>
+              <h4 class="text-[11px] font-bold text-slate-800 dark:text-white truncate">{{ loginUser?.username || 'admin' }}</h4>
+              <span class="text-[9px] text-slate-500 dark:text-slate-400 block truncate">{{ loginUser?.role || '管理员' }}</span>
             </div>
           </div>
-          <button v-if="!isSidebarCollapsed" @click="performLogout" class="p-1.5 hover:bg-rose-900/30 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer" title="退出">
+          <button v-if="!isSidebarCollapsed" @click="performLogout" class="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer" title="退出">
             <LogOut class="w-4 h-4" />
           </button>
           <div v-else class="flex flex-col items-center gap-3.5 py-1 w-full shrink-0">
-            <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center relative shrink-0" :title="(loginUser?.username || 'admin') + ' · ' + (loginUser?.role || '管理员')">
-              <UserCheck class="w-4 h-4 text-sky-450 text-sky-400" />
-              <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-slate-950"></span>
+            <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center relative shrink-0" :title="(loginUser?.username || 'admin') + ' · ' + (loginUser?.role || '管理员')">
+              <UserCheck class="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-950"></span>
             </div>
-            <button @click="performLogout" class="p-1.5 hover:bg-rose-900/20 rounded-lg text-slate-550 hover:text-[#ef4444] transition-colors cursor-pointer" title="退出">
+            <button @click="performLogout" class="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/20 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-[#ef4444] transition-colors cursor-pointer" title="退出">
               <LogOut class="w-4 h-4" />
             </button>
           </div>
         </div>
       </aside>
+
+      <!-- Mobile drawer sidebar -->
       <div v-if="isMobileSidebarOpen" @click="isMobileSidebarOpen = false" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden" />
-      <aside class="fixed inset-y-0 left-0 w-64 bg-[#0f172a] text-slate-300 z-50 flex flex-col justify-between transition-transform duration-300 lg:hidden select-none" :class="isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'">
+      <aside 
+        class="fixed inset-y-0 left-0 w-64 bg-white dark:bg-[#0f172a] text-slate-700 dark:text-slate-300 z-50 flex flex-col justify-between transition-transform duration-300 lg:hidden select-none border-r border-slate-200 dark:border-slate-800" 
+        :class="isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+      >
         <div class="flex-1 flex flex-col pt-4 overflow-y-auto space-y-2 pb-4">
           <div class="flex items-center justify-between px-4 mb-2 shrink-0">
-            <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-left block">导航</span>
-            <button @click="isMobileSidebarOpen = false" class="text-slate-400 hover:text-white p-1 cursor-pointer">
+            <span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-left block">导航</span>
+            <button @click="isMobileSidebarOpen = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 cursor-pointer">
               <X class="w-4.5 h-4.5" />
             </button>
           </div>
           <nav class="space-y-0.5 px-2">
-            <button @click="navigate('/dashboard'); isMobileSidebarOpen = false;" :class="[isActive('/dashboard') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/dashboard'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/dashboard') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <LayoutDashboard class="w-4 h-4" />
               <span>仪表盘</span>
             </button>
-            <button @click="navigate('/live-data'); isMobileSidebarOpen = false;" :class="[isActive('/live-data') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/live-data'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/live-data') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Database class="w-4 h-4" />
               <span>实时监控</span>
             </button>
-            <button @click="navigate('/device-management'); isMobileSidebarOpen = false;" :class="[isActive('/device-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/device-management'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/device-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Cpu class="w-4 h-4" />
               <span>设备管理</span>
             </button>
-            <button @click="navigate('/data-models'); isMobileSidebarOpen = false;" :class="[isActive('/data-models') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/data-models'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/data-models') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Layers class="w-4 h-4" />
               <span>数据模型</span>
             </button>
-            <button @click="navigate('/scada-editor'); isMobileSidebarOpen = false;" :class="[isActive('/scada-editor') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/scada-editor'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/scada-editor') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <MonitorPlay class="w-4 h-4" />
               <span>组态设计</span>
             </button>
-            <button @click="navigate('/system-logs'); isMobileSidebarOpen = false;" :class="[isActive('/system-logs') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/system-logs'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/system-logs') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Terminal class="w-4 h-4" />
               <span>系统日志</span>
             </button>
-            <button @click="navigate('/trigger-management'); isMobileSidebarOpen = false;" :class="[isActive('/trigger-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/trigger-management'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/trigger-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <ShieldAlert class="w-4 h-4" />
               <span>告警管理</span>
             </button>
-            <button @click="navigate('/task-management'); isMobileSidebarOpen = false;" :class="[isActive('/task-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/task-management'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/task-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Calendar class="w-4 h-4" />
               <span>任务调度</span>
             </button>
-            <button @click="navigate('/system-scripts'); isMobileSidebarOpen = false;" :class="[isActive('/system-scripts') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/system-scripts'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/system-scripts') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <FileCode class="w-4 h-4" />
               <span>脚本引擎</span>
             </button>
-            <button @click="navigate('/data-interfaces'); isMobileSidebarOpen = false;" :class="[isActive('/data-interfaces') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/data-interfaces'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/data-interfaces') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Network class="w-4 h-4" />
               <span>接口管理</span>
             </button>
-            <button @click="navigate('/historical-query'); isMobileSidebarOpen = false;" :class="[isActive('/historical-query') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/historical-query'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/historical-query') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <History class="w-4 h-4" />
               <span>历史数据</span>
             </button>
-            <button @click="navigate('/mqtt-servers'); isMobileSidebarOpen = false;" :class="[isActive('/mqtt-servers') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/mqtt-servers'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/mqtt-servers') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Rss class="w-4 h-4 text-slate-400" />
               <span>MQTT代理</span>
             </button>
-            <button @click="navigate('/data-conversion'); isMobileSidebarOpen = false;" :class="[isActive('/data-conversion') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/data-conversion'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/data-conversion') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Shuffle class="w-4 h-4" />
               <span>数据转换</span>
             </button>
-            <button @click="navigate('/database-management'); isMobileSidebarOpen = false;" :class="[isActive('/database-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/database-management'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/database-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <HardDrive class="w-4 h-4" />
               <span>数据库管理</span>
             </button>
-            <button @click="navigate('/user-management'); isMobileSidebarOpen = false;" :class="[isActive('/user-management') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/user-management'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/user-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Users class="w-4 h-4" />
               <span>用户管理</span>
             </button>
-            <button @click="navigate('/settings-center'); isMobileSidebarOpen = false;" :class="[isActive('/settings-center') ? 'bg-slate-800 text-white' : 'hover:bg-slate-850 text-slate-400']" class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+            <button 
+              @click="navigate('/settings-center'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/settings-center') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
               <Settings class="w-4 h-4" />
               <span>系统配置</span>
             </button>
           </nav>
         </div>
-        <div class="p-3 bg-slate-950 border-t border-slate-900 flex shrink-0 justify-between items-center">
+        <div class="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-900 flex shrink-0 justify-between items-center transition-colors">
           <div class="flex items-center gap-2 text-xs">
-            <span class="font-bold text-white">{{ loginUser?.username || 'admin' }}</span>
+            <span class="font-bold text-slate-800 dark:text-white">{{ loginUser?.username || 'admin' }}</span>
           </div>
-          <button @click="performLogout(); isMobileSidebarOpen = false;" class="text-rose-500 text-xs">退出</button>
+          <button @click="performLogout(); isMobileSidebarOpen = false;" class="text-rose-500 text-xs font-bold">退出</button>
         </div>
       </aside>
       <main class="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#070b12] overflow-hidden relative">
