@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// SCADA页面实体
     /// </summary>
-    [SugarTable("ScadaPages")]
+    [Table("ScadaPages")]
     public class ScadaPage : EntityBase
     {
         /// <summary>
@@ -16,7 +17,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的项目
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(ProjectId))]
         public ScadaProject Project { get; set; }
 
         /// <summary>
@@ -32,7 +32,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 页面包含的HMI组件列表
         /// </summary>
-        [SugarColumn(IsIgnore = true)]
+        [NotMapped]
         public List<HmiComponent> Components { get; set; }
     }
 }

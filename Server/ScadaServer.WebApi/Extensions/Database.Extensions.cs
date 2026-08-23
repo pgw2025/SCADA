@@ -1,12 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.Options;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Infrastructure.Repositories;
-using SqlSugar;
 
 namespace ScadaServer.WebApi.Extensions
 {
@@ -16,24 +17,31 @@ namespace ScadaServer.WebApi.Extensions
     public static partial class ServiceCollectionExtensions
     {
         /// <summary>
-        /// 添加数据库服务（SqlSugar + UnitOfWork + Repositories）
+        /// 添加数据库服务（EF Core + UnitOfWork + Repositories）
         /// </summary>
         public static IServiceCollection AddDatabaseServices(this IServiceCollection services)
         {
-            // 1. Register SqlSugar (Scoped)
-            services.AddScoped<ISqlSugarClient>(s =>
+            // 1. Register EF Core DbContext (Scoped)
+            services.AddDbContext<ScadaDbContext>((serviceProvider, options) =>
             {
-                var options = s.GetRequiredService<IOptions<SystemDbOptions>>().Value;
-                return new SqlSugarScope(new ConnectionConfig()
-                {
-                    ConnectionString = options.GetConnectionString(),
-                    DbType = DbType.MySql,
-                    IsAutoCloseConnection = true
-                });
+                var dbOptions = serviceProvider
+                    .GetRequiredService<IOptions<SystemDbOptions>>().Value;
+
+                var connectionString = dbOptions.GetConnectionString();
+                options.UseMySql(
+                    connectionString,
+                    ServerVersion.AutoDetect(connectionString),
+                    mySqlOptions =>
+                    {
+                        mySqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(5),
+                            errorNumbersToAdd: null);
+                    });
             });
 
             // 2. Register Unit of Work
-            services.AddScoped<IUnitOfWork, SqlSugarUnitOfWork>();
+            services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 
             // 3. Register Repositories
             services.AddScoped<IAlarmRuleRepository, AlarmRuleRepository>();

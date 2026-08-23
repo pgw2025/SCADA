@@ -1,4 +1,4 @@
-using SqlSugar;
+using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 
@@ -6,7 +6,7 @@ namespace ScadaServer.Infrastructure.Repositories
 {
     public class ScheduledTaskRepository : RepositoryBase<ScheduledTask, int>, IScheduledTaskRepository
     {
-        public ScheduledTaskRepository(ISqlSugarClient db) : base(db)
+        public ScheduledTaskRepository(ScadaDbContext db) : base(db)
         {
         }
     }

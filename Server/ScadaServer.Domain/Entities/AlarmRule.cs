@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 报警规则实体
     /// </summary>
-    [SugarTable("AlarmRules")]
+    [Table("AlarmRules")]
     public class AlarmRule : EntityBase
     {
         /// <summary>

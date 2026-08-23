@@ -38,9 +38,16 @@ public class RuntimeHostedService : BackgroundService
 
             _logger.LogInformation("SCADA Runtime Started");
         }
+        catch (OperationCanceledException)
+        {
+            // 应用正在关闭时触发的取消：属于正常的生命周期结束，不视为启动失败。
+            _logger.LogInformation("SCADA Runtime 在启动过程中被取消（应用正在关闭）。");
+        }
         catch (Exception ex)
         {
+            // 仅当初始化/启动阶段发生非取消类异常时才记为失败。
             _logger.LogError(ex, "Runtime Start Failed");
+            throw;
         }
     }
 
@@ -50,7 +57,14 @@ public class RuntimeHostedService : BackgroundService
     {
         _logger.LogInformation("SCADA Runtime Stopping...");
 
-        // await _runtimeManager.StopAsync();
+        try
+        {
+            await _runtimeManager.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SCADA Runtime 停止时发生异常（已忽略）。");
+        }
 
         await base.StopAsync(cancellationToken);
     }

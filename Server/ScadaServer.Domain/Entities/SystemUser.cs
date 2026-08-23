@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 系统用户实体
     /// </summary>
-    [SugarTable("SystemUsers")]
+    [Table("SystemUsers")]
     public class SystemUser : EntityBase
     {
         /// <summary>

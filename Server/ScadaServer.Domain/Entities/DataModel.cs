@@ -1,4 +1,5 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
@@ -6,19 +7,19 @@ namespace ScadaServer.Domain.Entities
     /// <summary>
     /// 数据模型实体
     /// </summary>
-    [SugarTable("DataModels")]
+    [Table("DataModels")]
     public class DataModel : EntityBase
     {
         /// <summary>
         /// 模型名称
         /// </summary>
-        [SugarColumn(Length = 100, IsNullable = false)]
+        [MaxLength(100)]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 模型描述
         /// </summary>
-        [SugarColumn(Length = 500)]
+        [MaxLength(500)]
         public string? Description { get; set; }
 
         /// <summary>
@@ -39,7 +40,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 模型包含的变量列表
         /// </summary>
-        [SugarColumn(IsIgnore = true)]
+        [NotMapped]
         public List<ModelVariable>? Variables { get; set; }
     }
 }

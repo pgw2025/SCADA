@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 区域实体（用于设备分组管理）
     /// </summary>
-    [SugarTable("Areas")]
+    [Table("Areas")]
     public class Area : EntityBase
     {
         /// <summary>
@@ -16,7 +17,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 区域编码（稳定短码，如 BLR）。用于设备编号自动生成的前缀；留空时回退为 A{Id}
         /// </summary>
-        [SugarColumn(Length = 50, IsNullable = true)]
+        
         public string? Code { get; set; }
 
         /// <summary>

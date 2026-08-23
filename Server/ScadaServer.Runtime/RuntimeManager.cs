@@ -133,5 +133,19 @@ namespace ScadaServer.Runtime
 
             await _scheduler.StartAsync(token);
         }
+
+        /// <inheritdoc/>
+        public async Task StopAsync()
+        {
+            if (_scheduler == null)
+            {
+                return;
+            }
+
+            var scheduler = _scheduler;
+            _scheduler = null;
+
+            await scheduler.StopAsync();
+        }
     }
 }

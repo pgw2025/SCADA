@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 配置日志实体（记录设备配置变更）
     /// </summary>
-    [SugarTable("ConfigLog")]
+    [Table("ConfigLog")]
     public class ConfigLog : EntityBase
     {
         /// <summary>

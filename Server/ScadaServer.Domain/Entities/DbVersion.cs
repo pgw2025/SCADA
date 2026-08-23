@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 数据库版本实体（用于数据库迁移跟踪）
     /// </summary>
-    [SugarTable("DbVersion")]
+    [Table("DbVersion")]
     public class DbVersion : EntityBase
     {
         /// <summary>

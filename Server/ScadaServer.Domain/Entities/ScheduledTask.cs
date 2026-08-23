@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 定时任务实体
     /// </summary>
-    [SugarTable("ScheduledTasks")]
+    [Table("ScheduledTasks")]
     public class ScheduledTask : EntityBase
     {
         /// <summary>
@@ -26,7 +27,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 任务参数（JSON格式）
         /// </summary>
-        [SugarColumn(ColumnDataType = "text")]
+        [Column(TypeName = "text")]
         public string ParamsJson { get; set; }
 
         /// <summary>

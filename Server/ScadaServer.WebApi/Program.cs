@@ -13,7 +13,7 @@ builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(Sys
 // 添加认证服务（JWT + CORS + Swagger + Controllers）
 builder.Services.AddAuthenticationServices(builder.Configuration);
 
-// 添加数据库服务（SqlSugar + UnitOfWork + Repositories）
+// 添加数据库服务（EF Core + UnitOfWork + Repositories）
 builder.Services.AddDatabaseServices();
 
 // 添加应用层服务

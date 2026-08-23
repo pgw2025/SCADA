@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 系统日志实体
     /// </summary>
-    [SugarTable("SystemLogs")]
+    [Table("SystemLogs")]
     public class SystemLog : EntityBase
     {
         /// <summary>

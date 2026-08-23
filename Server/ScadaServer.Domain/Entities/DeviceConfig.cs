@@ -1,23 +1,24 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 设备配置实体（存储设备的协议配置）
     /// </summary>
-    [SugarTable("DeviceConfigs")]
+    [Table("DeviceConfigs")]
     public class DeviceConfig
     {
         /// <summary>
         /// 关联的设备ID（主键）
         /// </summary>
-        [SugarColumn(IsPrimaryKey = true)]
+        [Key]
         public int DeviceId { get; set; }
 
         /// <summary>
         /// JSON格式的配置内容
         /// </summary>
-        [SugarColumn(ColumnDataType = "nvarchar(max)")]
+        [Column(TypeName = "longtext")]
         public string JsonConfig { get; set; } = string.Empty;
 
         /// <summary>

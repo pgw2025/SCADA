@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// MQTT服务器实体
     /// </summary>
-    [SugarTable("MqttServers")]
+    [Table("MqttServers")]
     public class MqttServer : EntityBase
     {
         /// <summary>

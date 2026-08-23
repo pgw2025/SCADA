@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 系统脚本实体
     /// </summary>
-    [SugarTable("SystemScripts")]
+    [Table("SystemScripts")]
     public class SystemScript : EntityBase
     {
         /// <summary>
@@ -16,7 +17,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 脚本代码内容
         /// </summary>
-        [SugarColumn(ColumnDataType = "text")]
+        [Column(TypeName = "text")]
         public string Code { get; set; }
 
         /// <summary>

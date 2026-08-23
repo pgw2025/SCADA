@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// SCADA项目实体
     /// </summary>
-    [SugarTable("ScadaProjects")]
+    [Table("ScadaProjects")]
     public class ScadaProject : EntityBase
     {
         /// <summary>
@@ -26,7 +27,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 项目包含的页面列表
         /// </summary>
-        [SugarColumn(IsIgnore = true)]
+        [NotMapped]
         public List<ScadaPage> Pages { get; set; }
     }
 }

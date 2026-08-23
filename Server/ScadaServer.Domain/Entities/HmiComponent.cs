@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// HMI组件实体
     /// </summary>
-    [SugarTable("HmiComponents")]
+    [Table("HmiComponents")]
     public class HmiComponent : EntityBase
     {
         /// <summary>
@@ -56,7 +57,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 组件属性（JSON格式）
         /// </summary>
-        [SugarColumn(ColumnDataType = "text")]
+        [Column(TypeName = "text")]
         public string PropsJson { get; set; }
     }
 }

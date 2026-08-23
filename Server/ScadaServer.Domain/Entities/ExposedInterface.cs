@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 暴露接口实体
     /// </summary>
-    [SugarTable("ExposedInterfaces")]
+    [Table("ExposedInterfaces")]
     public class ExposedInterface : EntityBase
     {
         /// <summary>
@@ -31,7 +32,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的设备
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(DeviceId))]
         public Device Device { get; set; }
 
         /// <summary>

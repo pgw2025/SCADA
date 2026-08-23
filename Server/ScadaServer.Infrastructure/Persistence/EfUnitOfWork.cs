@@ -1,20 +1,22 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using ScadaServer.Application.Interfaces;
-using SqlSugar;
+using ScadaServer.Infrastructure.Persistence;
 
 namespace ScadaServer.Infrastructure.Persistence
 {
     /// <summary>
-    /// SqlSugar 工作单元实现
+    /// EF Core 工作单元实现
     /// </summary>
-    public class SqlSugarUnitOfWork : IUnitOfWork
+    public class EfUnitOfWork : IUnitOfWork
     {
-        private readonly ISqlSugarClient _db;
+        private readonly ScadaDbContext _db;
 
         /// <summary>
         /// 初始化工作单元
         /// </summary>
-        /// <param name="db">SqlSugar数据库客户端</param>
-        public SqlSugarUnitOfWork(ISqlSugarClient db)
+        /// <param name="db">EF Core 数据库上下文</param>
+        public EfUnitOfWork(ScadaDbContext db)
         {
             _db = db;
         }
@@ -22,26 +24,26 @@ namespace ScadaServer.Infrastructure.Persistence
         /// <inheritdoc/>
         public void BeginTran()
         {
-            _db.AsTenant().BeginTran();
+            _db.Database.BeginTransaction();
         }
 
         /// <inheritdoc/>
         public async Task CommitTranAsync()
         {
-            await _db.AsTenant().CommitTranAsync();
+            await _db.Database.CommitTransactionAsync();
         }
 
         /// <inheritdoc/>
         public async Task RollbackTranAsync()
         {
-            await _db.AsTenant().RollbackTranAsync();
+            await _db.Database.RollbackTransactionAsync();
         }
 
         /// <inheritdoc/>
         public async Task<ITransactionScope> BeginTransactionAsync()
         {
-            await _db.AsTenant().BeginTranAsync();
-            return new TransactionScope(_db);
+            var transaction = await _db.Database.BeginTransactionAsync();
+            return new EfTransactionScope(transaction);
         }
 
         /// <inheritdoc/>
@@ -53,27 +55,27 @@ namespace ScadaServer.Infrastructure.Persistence
         /// <summary>
         /// 事务范围实现类
         /// </summary>
-        private class TransactionScope : ITransactionScope
+        private class EfTransactionScope : ITransactionScope
         {
-            private readonly ISqlSugarClient _db;
+            private readonly IDbContextTransaction _transaction;
             private bool _isCompleted = false;
 
-            public TransactionScope(ISqlSugarClient db)
+            public EfTransactionScope(IDbContextTransaction transaction)
             {
-                _db = db;
+                _transaction = transaction;
             }
 
             /// <inheritdoc/>
             public async Task CommitAsync()
             {
-                await _db.AsTenant().CommitTranAsync();
+                await _transaction.CommitAsync();
                 _isCompleted = true;
             }
 
             /// <inheritdoc/>
             public async Task RollbackAsync()
             {
-                await _db.AsTenant().RollbackTranAsync();
+                await _transaction.RollbackAsync();
                 _isCompleted = true;
             }
 
@@ -84,7 +86,7 @@ namespace ScadaServer.Infrastructure.Persistence
                 {
                     try
                     {
-                        await _db.AsTenant().RollbackTranAsync();
+                        await _transaction.RollbackAsync();
                     }
                     catch (Exception ex)
                     {
@@ -95,6 +97,8 @@ namespace ScadaServer.Infrastructure.Persistence
                         _isCompleted = true;
                     }
                 }
+
+                await _transaction.DisposeAsync();
             }
         }
     }

@@ -1,4 +1,5 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
@@ -6,20 +7,19 @@ namespace ScadaServer.Domain.Entities
     /// <summary>
     /// 设备表 - 物理设备的实例
     /// </summary>
-    [SugarTable("Devices")]
-    [SugarIndex("ix_device_key", nameof(Key), OrderByType.Asc, true)]
+    [Table("Devices")]
     public class Device : EntityBase
     {
         /// <summary>
         /// 设备名称
         /// </summary>
-        [SugarColumn(Length = 100, IsNullable = false)]
+        [MaxLength(100)]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 唯一键（用于运行时快速查找）。现由后台按区域自动生成，全局唯一。
         /// </summary>
-        [SugarColumn(Length = 100, IsNullable = false)]
+        [MaxLength(100)]
         public string Key { get; set; } = string.Empty;
 
         /// <summary>
@@ -30,7 +30,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联区域
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(AreaId))]
         public Area? Area { get; set; }
 
         /// <summary>
@@ -41,7 +40,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联变量模型
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(ModelId))]
         public DataModel? Model { get; set; }
 
         /// <summary>
@@ -63,7 +61,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 驱动名称（用于驱动工厂创建实例）
         /// </summary>
-        [SugarColumn(Length = 100)]
+        [MaxLength(100)]
         public string? DriverName { get; set; }
 
         /// <summary>
@@ -79,19 +77,17 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 最后一次通信时间（仅记录，不用于运行时状态）
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public DateTime? LastCommunicationTime { get; set; }
 
         /// <summary>
         /// 协议配置（一对一）
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(Id), nameof(DeviceConfig.DeviceId))]
         public DeviceConfig? Config { get; set; }
 
         /// <summary>
         /// 该设备下的触发器
         /// </summary>
-        [Navigate(NavigateType.OneToMany, nameof(VariableTrigger.DeviceId))]
         public List<VariableTrigger>? Triggers { get; set; }
     }
 }

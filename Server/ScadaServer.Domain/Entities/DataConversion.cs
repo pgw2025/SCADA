@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 数据转换实体（用于变量间的数据转发）
     /// </summary>
-    [SugarTable("DataConversions")]
+    [Table("DataConversions")]
     public class DataConversion : EntityBase
     {
         /// <summary>

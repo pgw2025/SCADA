@@ -1,6 +1,7 @@
-using SqlSugar;
+using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
 using ScadaServer.Domain.Interfaces.Repositories;
+using ScadaServer.Infrastructure.Persistence;
 
 namespace ScadaServer.Infrastructure.Repositories
 {
@@ -8,14 +9,13 @@ namespace ScadaServer.Infrastructure.Repositories
     /// 通用仓储基类，支持 Entity -> Domain 映射
     /// </summary>
     /// <typeparam name="TEntity">数据库实体</typeparam>
-    /// <typeparam name="TDomain">领域实体/模型</typeparam>
     /// <typeparam name="TKey">主键类型</typeparam>
     public abstract class RepositoryBase<TEntity, TKey> : IRepository<TEntity, TKey>
         where TEntity : class, new()
     {
-        protected readonly ISqlSugarClient Db;
+        protected readonly ScadaDbContext Db;
 
-        protected RepositoryBase(ISqlSugarClient db)
+        protected RepositoryBase(ScadaDbContext db)
         {
             Db = db;
         }
@@ -25,17 +25,17 @@ namespace ScadaServer.Infrastructure.Repositories
 
         public virtual async Task<TEntity?> GetByIdAsync(TKey id)
         {
-            return await Db.Queryable<TEntity>().InSingleAsync(id);
+            return await Db.Set<TEntity>().FindAsync(id);
         }
 
         public virtual async Task<List<TEntity>> GetListAsync()
         {
-            return await Db.Queryable<TEntity>().ToListAsync();
+            return await Db.Set<TEntity>().ToListAsync();
         }
 
         public virtual async Task<List<TEntity>> GetListAsync(Expression<Func<TEntity, bool>> predicate)
         {
-            return await Db.Queryable<TEntity>().Where(predicate).ToListAsync();
+            return await Db.Set<TEntity>().Where(predicate).ToListAsync();
         }
 
         public virtual async Task<List<TEntity>> GetPagedListAsync(
@@ -43,25 +43,29 @@ namespace ScadaServer.Infrastructure.Repositories
             int pageSize,
             Expression<Func<TEntity, bool>>? predicate = null)
         {
-            var query = Db.Queryable<TEntity>();
+            var query = Db.Set<TEntity>().AsQueryable();
             if (predicate != null) query = query.Where(predicate);
 
-            return await query.ToPageListAsync(pageIndex, pageSize);
+            return await query
+                .OrderBy(e => EF.Property<int>(e, "Id"))
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
         }
 
         public virtual async Task<int> CountAsync()
         {
-            return await Db.Queryable<TEntity>().CountAsync();
+            return await Db.Set<TEntity>().CountAsync();
         }
 
         public virtual async Task<int> CountAsync(Expression<Func<TEntity, bool>> predicate)
         {
-            return await Db.Queryable<TEntity>().Where(predicate).CountAsync();
+            return await Db.Set<TEntity>().Where(predicate).CountAsync();
         }
 
         public virtual async Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate)
         {
-            return await Db.Queryable<TEntity>().Where(predicate).AnyAsync();
+            return await Db.Set<TEntity>().Where(predicate).AnyAsync();
         }
 
         #endregion
@@ -70,12 +74,14 @@ namespace ScadaServer.Infrastructure.Repositories
 
         public virtual async Task InsertAsync(TEntity entity)
         {
-            await Db.Insertable(entity).ExecuteCommandAsync();
+            await Db.Set<TEntity>().AddAsync(entity);
+            await Db.SaveChangesAsync();
         }
 
         public virtual async Task InsertRangeAsync(IEnumerable<TEntity> entities)
         {
-            await Db.Insertable(entities.ToList()).ExecuteCommandAsync();
+            await Db.Set<TEntity>().AddRangeAsync(entities);
+            await Db.SaveChangesAsync();
         }
 
         #endregion
@@ -84,12 +90,14 @@ namespace ScadaServer.Infrastructure.Repositories
 
         public virtual async Task UpdateAsync(TEntity entity)
         {
-            await Db.Updateable(entity).ExecuteCommandAsync();
+            Db.Set<TEntity>().Update(entity);
+            await Db.SaveChangesAsync();
         }
 
         public virtual async Task UpdateRangeAsync(IEnumerable<TEntity> entities)
         {
-            await Db.Updateable(entities.ToList()).ExecuteCommandAsync();
+            Db.Set<TEntity>().UpdateRange(entities);
+            await Db.SaveChangesAsync();
         }
 
         #endregion
@@ -98,17 +106,25 @@ namespace ScadaServer.Infrastructure.Repositories
 
         public virtual async Task DeleteAsync(TKey id)
         {
-            await Db.Deleteable<TEntity>(id).ExecuteCommandAsync();
+            var entity = await GetByIdAsync(id);
+            if (entity != null)
+            {
+                Db.Set<TEntity>().Remove(entity);
+                await Db.SaveChangesAsync();
+            }
         }
 
         public virtual async Task DeleteAsync(TEntity entity)
         {
-            await Db.Deleteable(entity).ExecuteCommandAsync();
+            Db.Set<TEntity>().Remove(entity);
+            await Db.SaveChangesAsync();
         }
 
         public virtual async Task DeleteRangeAsync(Expression<Func<TEntity, bool>> predicate)
         {
-            await Db.Deleteable<TEntity>().Where(predicate).ExecuteCommandAsync();
+            var entities = await Db.Set<TEntity>().Where(predicate).ToListAsync();
+            Db.Set<TEntity>().RemoveRange(entities);
+            await Db.SaveChangesAsync();
         }
 
         #endregion

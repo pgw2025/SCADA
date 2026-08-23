@@ -1,4 +1,5 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
@@ -6,7 +7,7 @@ namespace ScadaServer.Domain.Entities
     /// <summary>
     /// 模型变量实体
     /// </summary>
-    [SugarTable("ModelVariables")]
+    [Table("ModelVariables")]
     public class ModelVariable : EntityBase
     {
         /// <summary>
@@ -37,19 +38,19 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 单位
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public string? Unit { get; set; }
 
         /// <summary>
         /// 最小值
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public double? Min { get; set; }
 
         /// <summary>
         /// 最大值
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public double? Max { get; set; }
 
         /// <summary>
@@ -60,7 +61,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 变量描述
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public string? Description { get; set; }
 
         /// <summary>
@@ -86,7 +87,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 位偏移（用于位操作）
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public int? BitOffset { get; set; }
 
         /// <summary>
@@ -102,7 +103,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 死区值（用于变化检测）
         /// </summary>
-        [SugarColumn(IsNullable = true)]
+        
         public double? DeadBand { get; set; }
 
         /// <summary>
@@ -113,7 +114,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 扩展数据（JSON格式）
         /// </summary>
-        [SugarColumn(ColumnDataType = "longtext", IsJson = true)]
+        [Column(TypeName = "longtext")]
         public Dictionary<string, string>? ExtensionData { get; set; }
     }
 }

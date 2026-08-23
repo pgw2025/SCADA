@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 数据库配置实体
     /// </summary>
-    [SugarTable("DatabaseConfigs")]
+    [Table("DatabaseConfigs")]
     public class DatabaseConfig : EntityBase
     {
         /// <summary>

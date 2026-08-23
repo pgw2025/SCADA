@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 传感器实体
     /// </summary>
-    [SugarTable("Sensors")]
+    [Table("Sensors")]
     public class Sensor : EntityBase
     {
         /// <summary>
@@ -16,7 +17,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的设备
         /// </summary>
-        [Navigate(NavigateType.OneToOne, nameof(DeviceId))]
         public Device Device { get; set; }
 
         /// <summary>

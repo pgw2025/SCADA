@@ -1,11 +1,12 @@
-using SqlSugar;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 变量触发器实体
     /// </summary>
-    [SugarTable("VariableTriggers")]
+    [Table("VariableTriggers")]
     public class VariableTrigger : EntityBase
     {
         /// <summary>
