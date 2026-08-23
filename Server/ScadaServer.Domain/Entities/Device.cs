@@ -79,6 +79,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 最后一次通信时间（仅记录，不用于运行时状态）
         /// </summary>
+        [SugarColumn(IsNullable = true)]
         public DateTime? LastCommunicationTime { get; set; }
 
         /// <summary>

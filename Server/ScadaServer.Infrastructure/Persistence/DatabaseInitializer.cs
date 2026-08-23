@@ -76,6 +76,8 @@ public class DatabaseInitializer
             // 补齐可能缺失的唯一索引 / 列（针对已存在的存量表）：
             // CodeFirst.InitTables 对老表不会追加新索引，故显式确保 Devices.Key 唯一索引存在。
             EnsureDeviceKeyUniqueIndex();
+            // Devices.LastCommunicationTime 在旧表可能被建为 NOT NULL，补齐为可空。
+            EnsureDeviceColumnsNullable();
 
             _logger.LogInformation(
                 "数据表创建完成，共发现 {Count} 个实体",
@@ -106,6 +108,32 @@ public class DatabaseInitializer
         {
             // 索引创建失败不应阻塞启动；记录后继续，后续仍可由应用层唯一性校验兜底。
             _logger.LogWarning(ex, "确保 Devices.Key 唯一索引失败，已跳过（不影响启动）");
+        }
+    }
+
+    /// <summary>
+    /// 确保 Devices.LastCommunicationTime 可空（针对存量库：旧表该列可能为 NOT NULL，导致插入失败）。
+    /// </summary>
+    private void EnsureDeviceColumnsNullable()
+    {
+        try
+        {
+            // 仅当列为 NOT NULL 时才修改（通过查询 information_schema 判断，避免无谓 ALTER）
+            var isNullable = _db.Ado.GetScalar<int?>("" +
+                "SELECT 1 FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Devices' " +
+                "AND COLUMN_NAME = 'LastCommunicationTime' AND IS_NULLABLE = 'YES'") != null;
+
+            if (!isNullable)
+            {
+                _db.Ado.ExecuteCommand(
+                    "ALTER TABLE Devices MODIFY COLUMN LastCommunicationTime DATETIME NULL;");
+                _logger.LogInformation("已将 Devices.LastCommunicationTime 调整为可空");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "确保 Devices.LastCommunicationTime 可空失败，已跳过（不影响启动）");
         }
     }
 
