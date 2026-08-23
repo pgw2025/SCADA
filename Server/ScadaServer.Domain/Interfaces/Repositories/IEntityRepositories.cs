@@ -8,6 +8,11 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IAlarmRuleRepository : IRepository<AlarmRule, int> { }
 
     /// <summary>
+    /// 联动规则仓储接口
+    /// </summary>
+    public interface ILinkageRuleRepository : IRepository<LinkageRule, int> { }
+
+    /// <summary>
     /// 区域仓储接口
     /// </summary>
     public interface IAreaRepository : IRepository<Area, int> { }

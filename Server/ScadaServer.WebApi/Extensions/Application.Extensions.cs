@@ -18,6 +18,7 @@ namespace ScadaServer.WebApi.Extensions
         public static IServiceCollection AddApplicationServices(this IServiceCollection services)
         {
             services.AddScoped<IAlarmRuleAppService, AlarmRuleAppService>();
+            services.AddScoped<ILinkageRuleAppService, LinkageRuleAppService>();
             services.AddScoped<IAreaAppService, AreaAppService>();
             services.AddScoped<IConfigLogAppService, ConfigLogAppService>();
             services.AddScoped<IDatabaseConfigAppService, DatabaseConfigAppService>();

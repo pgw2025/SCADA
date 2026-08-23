@@ -45,6 +45,7 @@ namespace ScadaServer.WebApi.Extensions
 
             // 3. Register Repositories
             services.AddScoped<IAlarmRuleRepository, AlarmRuleRepository>();
+            services.AddScoped<ILinkageRuleRepository, LinkageRuleRepository>();
             services.AddScoped<IAreaRepository, AreaRepository>();
             services.AddScoped<IConfigLogRepository, ConfigLogRepository>();
             services.AddScoped<IDatabaseConfigRepository, DatabaseConfigRepository>();

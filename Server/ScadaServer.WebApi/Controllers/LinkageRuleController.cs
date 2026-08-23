@@ -6,11 +6,11 @@ namespace ScadaServer.WebApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class AlarmRuleController : ControllerBase
+    public class LinkageRuleController : ControllerBase
     {
-        private readonly IAlarmRuleAppService _appService;
+        private readonly ILinkageRuleAppService _appService;
 
-        public AlarmRuleController(IAlarmRuleAppService appService)
+        public LinkageRuleController(ILinkageRuleAppService appService)
         {
             _appService = appService;
         }
@@ -18,11 +18,28 @@ namespace ScadaServer.WebApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll() => Ok(await _appService.GetListAsync());
 
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
+
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] AlarmRuleDto dto)
+        public async Task<IActionResult> Create([FromBody] LinkageRuleDto dto)
         {
             await _appService.CreateAsync(dto);
             return Ok(dto);
+        }
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] LinkageRuleDto dto)
+        {
+            await _appService.UpdateAsync(dto);
+            return Ok();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            await _appService.DeleteAsync(id);
+            return Ok();
         }
 
         [HttpPut("{id}/toggle")]

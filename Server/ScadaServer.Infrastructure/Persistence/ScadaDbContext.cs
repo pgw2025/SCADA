@@ -38,6 +38,7 @@ namespace ScadaServer.Infrastructure.Persistence
         #region DbSet
 
         public DbSet<AlarmRule> AlarmRules => Set<AlarmRule>();
+        public DbSet<LinkageRule> LinkageRules => Set<LinkageRule>();
         public DbSet<Area> Areas => Set<Area>();
         public DbSet<ConfigLog> ConfigLogs => Set<ConfigLog>();
         public DbSet<DatabaseConfig> DatabaseConfigs => Set<DatabaseConfig>();
@@ -67,6 +68,7 @@ namespace ScadaServer.Infrastructure.Persistence
         {
             // 表名（与现有库一致，显式声明避免 EF 复数约定差异）
             modelBuilder.Entity<AlarmRule>().ToTable("AlarmRules");
+            modelBuilder.Entity<LinkageRule>().ToTable("LinkageRules");
             modelBuilder.Entity<Area>().ToTable("Areas");
             modelBuilder.Entity<ConfigLog>().ToTable("ConfigLog");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
