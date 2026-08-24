@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using SqlSugar;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
@@ -30,7 +29,7 @@ namespace ScadaServer.Domain.Entities
         /// 信号类型（模拟量/数字量），由 DataType 推导：BIT/BOOL -> Digital，其余 -> Analog。
         /// 不再独立存储，避免与 DataType 矛盾。
         /// </summary>
-        [SugarColumn(IsIgnore = true)]
+        [NotMapped]
         public VariableType Type =>
             (DataType == DataTypeEnum.BIT || DataType == DataTypeEnum.BOOL)
                 ? VariableType.Digital
@@ -73,7 +72,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 是否存储历史数据（已由 StoreMode 替代：None 等价于不存储）。保留为只读派生，兼容旧调用。
         /// </summary>
-        [SugarColumn(IsIgnore = true)]
+        [NotMapped]
         public bool IsStored => StoreMode != StoreModeEnum.None;
 
         /// <summary>

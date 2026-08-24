@@ -96,13 +96,13 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<DeviceConfig>()
                 .HasKey(d => d.DeviceId);
 
-            // Devices.Key 唯一索引（原 SugarIndex）
+            // Devices.Key 唯一索引
             modelBuilder.Entity<Device>()
                 .HasIndex(d => d.Key)
                 .IsUnique()
                 .HasDatabaseName("ix_device_key");
 
-            // 导航关系（原 Navigate 特性，EF 通过外键标量属性推断，复杂关系显式配置）
+            // 导航关系（EF 通过外键标量属性推断，复杂关系显式配置）
             modelBuilder.Entity<Device>()
                 .HasOne(d => d.Area)
                 .WithMany()
