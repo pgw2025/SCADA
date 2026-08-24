@@ -50,6 +50,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
         public DbSet<ModelVariable> ModelVariables => Set<ModelVariable>();
+        public DbSet<Protocol> Protocols => Set<Protocol>();
         public DbSet<MqttServer> MqttServers => Set<MqttServer>();
         public DbSet<MqttVariableConfig> MqttVariableConfigs => Set<MqttVariableConfig>();
         public DbSet<ScadaPage> ScadaPages => Set<ScadaPage>();
@@ -80,6 +81,12 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<ExposedInterface>().ToTable("ExposedInterfaces");
             modelBuilder.Entity<HmiComponent>().ToTable("HmiComponents");
             modelBuilder.Entity<ModelVariable>().ToTable("ModelVariables");
+
+            modelBuilder.Entity<Protocol>().ToTable("Protocols");
+            modelBuilder.Entity<Protocol>()
+                .HasIndex(p => p.Key)
+                .IsUnique()
+                .HasDatabaseName("ix_protocol_key");
             modelBuilder.Entity<MqttServer>().ToTable("MqttServers");
             modelBuilder.Entity<MqttVariableConfig>().ToTable("MqttVariableConfigs");
             modelBuilder.Entity<ScadaPage>().ToTable("ScadaPages");
