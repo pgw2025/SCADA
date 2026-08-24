@@ -59,8 +59,13 @@ namespace ScadaServer.Domain.Entities
         public double? Max { get; set; }
 
         /// <summary>
-        /// 设备地址（寄存器地址）
+        /// 设备地址（寄存器地址）。
+        /// <para>
+        /// 【已废弃】地址属于变量在<em>具体设备上的实现</em>，已迁移至 <see cref="DeviceVariable.Address"/>。
+        /// 保留该属性仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。
+        /// </para>
         /// </summary>
+        [Obsolete("地址已迁移至 DeviceVariable.Address；属于变量在具体设备上的实现。保留仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。")]
         public string Address { get; set; }
 
         /// <summary>
@@ -86,14 +91,23 @@ namespace ScadaServer.Domain.Entities
         public UpdateMode UpdateMode { get; set; }
 
         /// <summary>
-        /// 轮询间隔（毫秒），默认1000ms
+        /// 轮询间隔（毫秒），默认1000ms。
+        /// <para>
+        /// 【已废弃】轮询间隔已迁移至 <see cref="DeviceVariable.PollingIntervalMs"/>（设备实例级）。
+        /// 保留该属性仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。
+        /// </para>
         /// </summary>
+        [Obsolete("轮询间隔已迁移至 DeviceVariable.PollingIntervalMs。保留仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。")]
         public int PollingIntervalMs { get; set; } = 1000;
 
         /// <summary>
-        /// 位偏移（用于位操作）
+        /// 位偏移（用于位操作）。
+        /// <para>
+        /// 【已废弃】位偏移已迁移至 <see cref="DeviceVariable.BitOffset"/>。
+        /// 保留该属性仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。
+        /// </para>
         /// </summary>
-        
+        [Obsolete("位偏移已迁移至 DeviceVariable.BitOffset。保留仅为过渡兼容，后续阶段将移除，请勿在新代码中使用。")]
         public int? BitOffset { get; set; }
 
         /// <summary>

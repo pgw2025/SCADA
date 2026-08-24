@@ -47,14 +47,19 @@ namespace ScadaServer.Domain.Entities
         public ModelVariable? ModelVariable { get; set; }
 
         /// <summary>
-        /// 设备实例上的实际寄存器地址。
-        /// <para>允许为空：为空时回退到 <see cref="ModelVariable.Address"/> 模板值。</para>
+        /// 设备实例上的实际寄存器地址（本字段为 <see cref="ModelVariable.Address"/> 的迁入归属，是变量的权威实现地址）。
+        /// <para>
+        /// 允许为空：过渡期可回退到 <see cref="ModelVariable.Address"/> 模板值（该模板字段已标记 <c>[Obsolete]</c>，后续将移除）；
+        /// 新设备建议始终显式赋值，不再依赖模板。
+        /// </para>
         /// </summary>
         public string? Address { get; set; }
 
         /// <summary>
-        /// 位偏移（用于位操作）。
-        /// <para>允许为空：为空时回退到 <see cref="ModelVariable.BitOffset"/> 模板值。</para>
+        /// 位偏移（用于位操作，本字段为 <see cref="ModelVariable.BitOffset"/> 的迁入归属）。
+        /// <para>
+        /// 允许为空：过渡期可回退到 <see cref="ModelVariable.BitOffset"/> 模板值（该模板字段已标记 <c>[Obsolete]</c>，后续将移除）。
+        /// </para>
         /// </summary>
         public int? BitOffset { get; set; }
 
@@ -68,9 +73,9 @@ namespace ScadaServer.Domain.Entities
         public bool IsEnabled { get; set; } = true;
 
         /// <summary>
-        /// 设备实例上的轮询间隔（毫秒）。
+        /// 设备实例上的轮询间隔（毫秒，本字段为 <see cref="ModelVariable.PollingIntervalMs"/> 的迁入归属，是权威值）。
         /// <para>
-        /// 允许为空：为空时回退到 <see cref="ModelVariable.PollingIntervalMs"/> 模板值；
+        /// 允许为空：过渡期可回退到 <see cref="ModelVariable.PollingIntervalMs"/> 模板值（该模板字段已标记 <c>[Obsolete]</c>，后续将移除）；
         /// 同时设备级 <see cref="Device.PollingInterval"/> 可作为更上层默认。
         /// </para>
         /// </summary>
