@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using S7.Net;
 using ScadaServer.Application.DTOs;
-using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces;
 
 namespace ScadaServer.Infrastructure.Communication
@@ -54,13 +53,14 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 连接管理
 
-        public async Task<bool> ConnectAsync(Device device, string configJson)
+        public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
             if (_disposed)
                 return false;
 
+            var configJson = device.ConfigJson;
             if (string.IsNullOrWhiteSpace(configJson))
-                throw new ArgumentException("S7 协议配置不能为空", nameof(configJson));
+                throw new ArgumentException("S7 协议配置不能为空", nameof(device));
 
             var config = JsonSerializer.Deserialize<S7Config>(configJson);
             if (config == null)
@@ -141,7 +141,7 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 读取
 
-        public async Task<object> ReadAsync(ModelVariable variable)
+        public async Task<object> ReadAsync(IRuntimeVariable variable)
         {
             if (_disposed || variable == null)
                 return null;
@@ -152,7 +152,8 @@ namespace ScadaServer.Infrastructure.Communication
                 if (_plc == null || !_plc.IsConnected)
                     return null;
 
-                // 单点读取仍委托 S7netplus 解析地址（DBX/DBW/DBD/IB/IW/... 均原生支持）
+                // 单点读取仍委托 S7netplus 解析地址（DBX/DBW/DBD/IB/IW/... 均原生支持）。
+                // 地址来源：RuntimeVariable.Address（由 DeviceVariable.Address 解析，驱动不感知 ModelVariable）。
                 return await _plc.ReadAsync(variable.Address);
             }
             catch (Exception)
@@ -166,7 +167,7 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<ModelVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();
             if (_disposed || variables == null)
@@ -176,7 +177,8 @@ namespace ScadaServer.Infrastructure.Communication
             try
             {
                 // 1) 解析地址：非法地址立即反馈 INVALID_ADDRESS，空变量跳过
-                var valid = new List<(ModelVariable Variable, S7AddressInfo Info)>();
+                // 地址来源：RuntimeVariable.Address（DeviceVariable.Address 权威，驱动不感知 ModelVariable）。
+                var valid = new List<(IRuntimeVariable Variable, S7AddressInfo Info)>();
                 foreach (var v in variables)
                 {
                     if (v == null)
@@ -302,13 +304,13 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 订阅（S7 不支持原生订阅，由外部轮询驱动）
 
-        public Task SubscribeAsync(IEnumerable<ModelVariable> variables, Action<string, object> onValueChanged)
+        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
         {
             // S7 不支持原生订阅，采集由 Worker 轮询 ReadBatchAsync 实现。
             return Task.CompletedTask;
         }
 
-        public Task UnsubscribeAsync(IEnumerable<ModelVariable> variables)
+        public Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables)
         {
             return Task.CompletedTask;
         }

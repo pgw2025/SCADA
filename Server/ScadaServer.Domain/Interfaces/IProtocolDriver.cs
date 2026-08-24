@@ -3,48 +3,55 @@ using ScadaServer.Domain.Entities;
 namespace ScadaServer.Domain.Interfaces
 {
     /// <summary>
-    /// 协议驱动接口，定义与物理设备通信的标准方法
+    /// 协议驱动接口，定义与物理设备通信的标准方法。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 各协议驱动（S7、ModbusTcp、OpcUa等）需实现此接口。
     /// 支持连接管理、数据读写、订阅等功能。
+    /// </para>
+    /// <para>
+    /// <b>解耦约束（第九阶段）</b>：驱动不允许知道 <c>DataModel</c> / <c>ModelVariable</c>，
+    /// 只接收 <see cref="IRuntimeDevice"/>（RuntimeDevice）与 <see cref="IRuntimeVariable"/>（RuntimeVariable）。
+    /// 地址、位偏移、轮询间隔、缩放等"设备实现"信息一律由运行时从 DeviceVariable 解析后经接口暴露；
+    /// 驱动自身不得触碰模型模板实体。
+    /// </para>
     /// </remarks>
     public interface IProtocolDriver : IAsyncDisposable
     {
         /// <summary>
         /// 连接到设备
         /// </summary>
-        /// <param name="device">设备实体</param>
-        /// <param name="configJson">设备配置（JSON格式）</param>
+        /// <param name="device">设备运行时（含连接配置 ConfigJson）</param>
         /// <returns>连接是否成功</returns>
-        Task<bool> ConnectAsync(Device device, string configJson);
+        Task<bool> ConnectAsync(IRuntimeDevice device);
 
         /// <summary>
         /// 读取单个变量值
         /// </summary>
-        /// <param name="variable">变量定义</param>
+        /// <param name="variable">变量运行时（地址来自 DeviceVariable）</param>
         /// <returns>变量值</returns>
-        Task<object> ReadAsync(ModelVariable variable);
+        Task<object> ReadAsync(IRuntimeVariable variable);
 
         /// <summary>
         /// 批量读取多个变量值
         /// </summary>
-        /// <param name="variables">变量列表</param>
+        /// <param name="variables">变量运行时列表</param>
         /// <returns>变量键值对字典</returns>
-        Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<ModelVariable> variables);
+        Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables);
 
         /// <summary>
         /// 订阅变量值变化
         /// </summary>
-        /// <param name="variables">要订阅的变量列表</param>
+        /// <param name="variables">要订阅的变量运行时列表</param>
         /// <param name="onValueChanged">值变化回调函数</param>
-        Task SubscribeAsync(IEnumerable<ModelVariable> variables, Action<string, object> onValueChanged);
+        Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged);
 
         /// <summary>
         /// 取消订阅变量
         /// </summary>
-        /// <param name="variables">要取消订阅的变量列表</param>
-        Task UnsubscribeAsync(IEnumerable<ModelVariable> variables);
+        /// <param name="variables">要取消订阅的变量运行时列表</param>
+        Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables);
 
         /// <summary>
         /// 断开与设备的连接

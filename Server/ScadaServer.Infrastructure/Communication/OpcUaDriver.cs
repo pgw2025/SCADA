@@ -1,6 +1,5 @@
 using System.Text.Json;
 using ScadaServer.Application.DTOs;
-using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -13,10 +12,10 @@ namespace ScadaServer.Infrastructure.Communication
         private readonly Dictionary<int, Subscription> _subscriptions = new();
         private readonly List<MonitoredItem> _monitoredItems = new();
 
-        public async Task<bool> ConnectAsync(Device device, string configJson)
+        public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
-            // 从 JSON 反序列化配置
-            var config = JsonSerializer.Deserialize<OpcUaConfig>(configJson);
+            // 从 JSON 反序列化配置（配置来自 RuntimeDevice.ConfigJson，驱动不感知 Device 实体）
+            var config = JsonSerializer.Deserialize<OpcUaConfig>(device.ConfigJson);
             if (config == null)
             {
                 throw new ArgumentException("无效的 OPC UA 协议配置");
@@ -68,14 +67,15 @@ namespace ScadaServer.Infrastructure.Communication
             return _session.Connected;
         }
 
-        public async Task<object> ReadAsync(ModelVariable variable)
+        public async Task<object> ReadAsync(IRuntimeVariable variable)
         {
             if (_session == null || !_session.Connected) return null;
+            // 节点地址来源：RuntimeVariable.Address（DeviceVariable.Address）
             var result = await _session.ReadValueAsync(variable.Address);
             return result.Value;
         }
 
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<ModelVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();
             if (_session == null || !_session.Connected) return results;
@@ -109,7 +109,7 @@ namespace ScadaServer.Infrastructure.Communication
             return results;
         }
 
-        public async Task SubscribeAsync(IEnumerable<ModelVariable> variables, Action<string, object> onValueChanged)
+        public async Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
         {
             if (_session == null || !_session.Connected) return;
 
@@ -156,7 +156,7 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
-        public async Task UnsubscribeAsync(IEnumerable<ModelVariable> variables)
+        public async Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables)
         {
             foreach (var variable in variables)
             {

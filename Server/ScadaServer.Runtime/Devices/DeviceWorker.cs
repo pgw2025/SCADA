@@ -98,13 +98,14 @@ namespace ScadaServer.Runtime.Devices
                     }
 
                     // 逐个读取到期变量。
-                    // 注意：驱动仍按变量模板定义（ModelVariable）读取；地址 / 位偏移 / 轮询 / 缩放等
-                    // "设备实现"信息已由 RuntimeVariable 解析并暴露，供后续驱动改造（切换至 RuntimeVariable）使用。
+                    // 第九阶段起：驱动只接收 RuntimeVariable（IRuntimeVariable 视图），
+                    // 地址 / 位偏移 / 轮询 / 缩放等由 RuntimeVariable 解析（来自 DeviceVariable），
+                    // 驱动不再感知 ModelVariable 模板实体。
                     foreach (var vr in due)
                     {
                         try
                         {
-                            var newValue = await _runtime.Driver.ReadAsync(vr.Definition);
+                            var newValue = await _runtime.Driver.ReadAsync(vr);
 
                             // 驱动可能返回 null（例如虚拟设备未连接、订阅型驱动暂无数据）。
                             // 视为本次读取无效：跳过值更新,避免 null 被当作变化值推送到前端。

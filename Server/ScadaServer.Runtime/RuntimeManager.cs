@@ -151,7 +151,18 @@ namespace ScadaServer.Runtime
                         ? _driverFactory.CreateDriver(model.Type)
                         : _driverFactory.CreateDriver(driverKey);
 
-                    var connected = await driver.ConnectAsync(device, device.Config?.JsonConfig ?? "{}");
+                    // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
+                    // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。
+                    var runtime = new Devices.DeviceRuntime(device)
+                    {
+                        Device = device,
+                        Model = model,
+                        Protocol = model.Protocol,
+                        Config = device.Config,
+                        Area = device.Area
+                    };
+
+                    var connected = await driver.ConnectAsync(runtime);
                     if (!connected)
                     {
                         _logger.LogWarning("设备 {Key} ({Protocol}) 连接失败，已跳过。", device.Key, protocolLabel);
@@ -159,15 +170,7 @@ namespace ScadaServer.Runtime
                         continue;
                     }
 
-                    var runtime = new Devices.DeviceRuntime(device)
-                    {
-                        Device = device,
-                        Model = model,
-                        Protocol = model.Protocol,
-                        Config = device.Config,
-                        Area = device.Area,
-                        Driver = driver
-                    };
+                    runtime.Driver = driver;
 
                     var now = DateTime.Now;
                     foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())

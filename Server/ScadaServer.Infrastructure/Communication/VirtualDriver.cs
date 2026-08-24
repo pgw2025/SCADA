@@ -1,6 +1,5 @@
 using System.Text.Json;
 using ScadaServer.Application.DTOs;
-using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 
@@ -23,8 +22,10 @@ namespace ScadaServer.Infrastructure.Communication
         /// </summary>
         private VirtualConfig _config = new();
 
-        public async Task<bool> ConnectAsync(Device device, string configJson)
+        public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
+            var configJson = device.ConfigJson;
+
             // 虚拟设备不需要真实连接，但需真正解析 VirtualConfig，使前端表单字段被消费。
             if (!string.IsNullOrWhiteSpace(configJson))
             {
@@ -53,13 +54,13 @@ namespace ScadaServer.Infrastructure.Communication
             return true;
         }
 
-        public async Task<object> ReadAsync(ModelVariable variable)
+        public async Task<object> ReadAsync(IRuntimeVariable variable)
         {
             if (!_connected) return null;
             return await Task.FromResult(GenerateValue(variable));
         }
 
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<ModelVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();
             if (!_connected) return results;
@@ -73,13 +74,13 @@ namespace ScadaServer.Infrastructure.Communication
             return results;
         }
 
-        public Task SubscribeAsync(IEnumerable<ModelVariable> variables, Action<string, object> onValueChanged)
+        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
         {
             // 虚拟设备采用轮询模式，订阅为空实现
             return Task.CompletedTask;
         }
 
-        public Task UnsubscribeAsync(IEnumerable<ModelVariable> variables)
+        public Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables)
         {
             return Task.CompletedTask;
         }
@@ -95,7 +96,7 @@ namespace ScadaServer.Infrastructure.Communication
             await DisconnectAsync();
         }
 
-        private object GenerateValue(ModelVariable variable)
+        private object GenerateValue(IRuntimeVariable variable)
         {
             double min = variable.Min ?? 0;
             double max = variable.Max ?? 100;

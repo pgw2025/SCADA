@@ -10,12 +10,25 @@ namespace ScadaServer.Runtime.Devices;
 /// Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)。
 /// 持有设备实体、数据模型、协议、配置、驱动实例，以及解析后的变量运行时集合。
 /// </summary>
-public class DeviceRuntime
+public class DeviceRuntime : IRuntimeDevice
 {
     private readonly Device _device;
 
     // 设备实体
     public Device Device { get; init; }
+
+    // ===================== IRuntimeDevice 显式成员 =====================
+    /// <summary>设备 ID（IRuntimeDevice）。</summary>
+    public int Id => Device.Id;
+
+    /// <summary>设备业务键（IRuntimeDevice）。</summary>
+    public string Key => Device.Key;
+
+    /// <summary>设备连接配置 JSON（IRuntimeDevice，来自 DeviceConfig.JsonConfig）。</summary>
+    public string ConfigJson => Config?.JsonConfig ?? "{}";
+
+    /// <summary>变量运行时只读视图（IRuntimeDevice 显式实现，驱动仅可遍历不可改集合）。</summary>
+    IEnumerable<IRuntimeVariable> IRuntimeDevice.Variables => Variables.Values;
 
     // 所属数据模型
     public DataModel Model { get; init; }

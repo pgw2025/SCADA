@@ -1,5 +1,6 @@
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
+using ScadaServer.Domain.Interfaces;
 
 /// <summary>
 /// 变量运行时对象（即"RuntimeVariable"）。
@@ -13,7 +14,7 @@ using ScadaServer.Domain.Enums;
 /// 4. <b>运行时严禁直接访问 ModelVariable.Address</b>——地址一律经 <see cref="Address"/> 由 DeviceVariable 提供。
 /// </para>
 /// </summary>
-public class VariableRuntime
+public class VariableRuntime : IRuntimeVariable
 {
     /// <summary>变量模板定义（来自 ModelVariable）。</summary>
     public ModelVariable Definition { get; init; } = null!;
