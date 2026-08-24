@@ -80,12 +80,16 @@ namespace ScadaServer.Application.Services
             Unit = v.Unit,
             Min = v.Min,
             Max = v.Max,
+#pragma warning disable CS0618 // 过渡期兼容读取已迁移到 DeviceVariable 的模板字段
             Address = v.Address,
+#pragma warning restore CS0618
             Description = v.Description,
             IsStored = v.IsStored,
             StoreMode = v.StoreMode,
             UpdateMode = v.UpdateMode,
+#pragma warning disable CS0618 // 过渡期兼容读取已迁移字段
             PollingIntervalMs = v.PollingIntervalMs,
+#pragma warning restore CS0618
             ExtensionData = v.ExtensionData
         };
 

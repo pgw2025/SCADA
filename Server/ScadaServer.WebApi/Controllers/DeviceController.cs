@@ -73,35 +73,6 @@ namespace ScadaServer.WebApi.Controllers
             await _deviceAppService.DeleteAsync(id);
             return Ok(new { success = true, message = "设备删除成功" });
         }
-
-        /// <summary>
-        /// 更新设备配置（带事务）
-        /// </summary>
-        /// <remarks>
-        /// 业务编排接口：更新配置并记录日志（含事务）
-        /// </remarks>
-        /// <param name="id">设备ID</param>
-        /// <param name="newAddress">新地址</param>
-        /// <returns>更新结果</returns>
-        [HttpPost("{id}/update-config")]
-        public async Task<IActionResult> UpdateConfig(int id, [FromBody] string newAddress)
-        {
-            await _deviceAppService.UpdateDeviceConfigTxAsync(id, newAddress);
-            return Ok(new { Message = "Configuration updated with transaction." });
-        }
-
-        /// <summary>
-        /// 下发控制指令
-        /// </summary>
-        /// <param name="id">设备ID</param>
-        /// <param name="command">指令内容</param>
-        /// <returns>下发结果</returns>
-        [HttpPost("{id}/control")]
-        public async Task<IActionResult> SendCommand(int id, [FromBody] string command)
-        {
-            // Logic for sending command via protocol drivers
-            return Ok(new { DeviceId = id, Status = "Command Sent", Payload = command });
-        }
     }
 }
 

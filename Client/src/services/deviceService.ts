@@ -154,35 +154,3 @@ export const getDeviceById = async (id: number): Promise<Device | null> => {
     return null;
   }
 };
-
-export const updateDeviceConfig = async (id: number, configJson: string): Promise<DeviceOperationResult> => {
-  if (systemConfig.value.isSimulationActive) {
-    return { success: true };
-  }
-
-  try {
-    await api.updateDeviceConfig(id, configJson);
-    addLog('设备管理', `已更新设备 [${id}] 配置`, 'normal');
-    return { success: true };
-  } catch (err: any) {
-    const errorResult = parseApiError(err);
-    addLog('设备管理', `更新设备配置失败 [${id}]: ${errorResult.message}`, 'warning');
-    return { success: false, error: errorResult };
-  }
-};
-
-export const sendDeviceControl = async (id: number, command: string): Promise<DeviceOperationResult> => {
-  if (systemConfig.value.isSimulationActive) {
-    return { success: true };
-  }
-
-  try {
-    await api.sendDeviceControl(id, command);
-    addLog('设备管理', `已向设备 [${id}] 发送控制命令`, 'normal');
-    return { success: true };
-  } catch (err: any) {
-    const errorResult = parseApiError(err);
-    addLog('设备管理', `发送控制命令失败 [${id}]: ${errorResult.message}`, 'warning');
-    return { success: false, error: errorResult };
-  }
-};

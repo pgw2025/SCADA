@@ -28,6 +28,24 @@ public class DeviceVariableController : ControllerBase
         Ok(await _appService.GetByDeviceAsync(deviceId));
 
     /// <summary>
+    /// 创建设备变量实例（按"设备 + 变量模板"）。模板新增变量后，可为已存在设备补齐对应变量实例。
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateDeviceVariableDto dto) =>
+        Ok(await _appService.CreateAsync(dto));
+
+    /// <summary>
+    /// 删除设备变量实例
+    /// </summary>
+    /// <param name="id">设备变量ID</param>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _appService.DeleteAsync(id);
+        return Ok(new { success = true, message = "设备变量删除成功" });
+    }
+
+    /// <summary>
     /// 更新设备变量的实例配置：修改变量地址、位偏移、采集周期、启用/禁用、缩放/死区覆盖
     /// </summary>
     [HttpPut]

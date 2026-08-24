@@ -61,16 +61,6 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
             }
 
-            // 地址唯一性仅在地址非空时校验(虚拟设备允许空地址,不参与唯一性约束)
-            if (!string.IsNullOrWhiteSpace(dto.Address))
-            {
-                var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address);
-                if (addrExists)
-                {
-                    throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
-                }
-            }
-
             var entity = MapToEntity(dto);
             await _repository.InsertAsync(entity);
             
@@ -111,21 +101,11 @@ namespace ScadaServer.Application.Services
                 }
             }
 
-            // 4. 业务校验：Key 和 Address 查重（排除自身）
+            // 4. 业务校验：Key 查重（排除自身）
             var keyExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Key == dto.Key && v.Id != dto.Id);
             if (keyExists)
             {
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
-            }
-
-            // 地址唯一性仅在地址非空时校验(虚拟设备允许空地址,不参与唯一性约束)
-            if (!string.IsNullOrWhiteSpace(dto.Address))
-            {
-                var addrExists = await _repository.AnyAsync(v => v.ModelId == dto.ModelId && v.Address == dto.Address && v.Id != dto.Id);
-                if (addrExists)
-                {
-                    throw new BusinessException($"模型内已存在地址为 '{dto.Address}' 的变量");
-                }
             }
 
             MapToEntity(dto, entity);
@@ -181,13 +161,17 @@ namespace ScadaServer.Application.Services
             Unit = entity.Unit,
             Min = entity.Min,
             Max = entity.Max,
+#pragma warning disable CS0618 // 过渡期兼容读取已迁移到 DeviceVariable 的字段（Address/PollingIntervalMs/BitOffset）
             Address = entity.Address,
+#pragma warning restore CS0618
             Description = entity.Description,
             IsStored = entity.IsStored,
             StoreMode = entity.StoreMode,
             UpdateMode = entity.UpdateMode,
+#pragma warning disable CS0618 // 过渡期兼容读取已迁移字段
             PollingIntervalMs = entity.PollingIntervalMs,
             BitOffset = entity.BitOffset,
+#pragma warning restore CS0618
             ScaleSlope = entity.ScaleSlope,
             ScaleOffset = entity.ScaleOffset,
             DeadBand = entity.DeadBand,
@@ -205,12 +189,11 @@ namespace ScadaServer.Application.Services
             entity.Unit = dto.Unit;
             entity.Min = dto.Min;
             entity.Max = dto.Max;
-            entity.Address = dto.Address;
+            // 注(P1-5)：Address / BitOffset / PollingIntervalMs 已迁移至 DeviceVariable，
+            // 模板层不再写回；地址、采集周期等采集细节统一在设备实例层维护。
             entity.Description = dto.Description;
             entity.StoreMode = dto.StoreMode;
             entity.UpdateMode = dto.UpdateMode;
-            entity.PollingIntervalMs = dto.PollingIntervalMs;
-            entity.BitOffset = dto.BitOffset;
             entity.ScaleSlope = dto.ScaleSlope;
             entity.ScaleOffset = dto.ScaleOffset;
             entity.DeadBand = dto.DeadBand;

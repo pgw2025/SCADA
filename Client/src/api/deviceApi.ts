@@ -33,19 +33,3 @@ export const deleteDeviceOnBackend = async (id: number) => {
   const response = await axios.delete(`${getBaseUrl()}/api/Device/${id}`);
   return response;
 };
-
-// POST /api/Device/{id}/update-config - 更新设备配置
-export const updateDeviceConfig = async (deviceId: number, configJson: string) => {
-  const response = await axios.post(`${getBaseUrl()}/api/Device/${deviceId}/update-config`, configJson, {
-    headers: { 'Content-Type': 'application/json' }
-  });
-  return response;
-};
-
-// POST /api/Device/{id}/control - 发送控制命令
-export const sendDeviceControl = async (deviceId: number, command: string) => {
-  const response = await axios.post(`${getBaseUrl()}/api/Device/${deviceId}/control`, command, {
-    headers: { 'Content-Type': 'application/json' }
-  });
-  return response;
-};

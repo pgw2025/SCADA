@@ -33,8 +33,9 @@ public class ModelVariableDto
     public double? Min { get; set; }
     public double? Max { get; set; }
 
-    // 地址非空校验下放到 AppService.ValidateVariableLogic,按协议区分:
-    // 虚拟设备无需物理地址,允许为空;其余协议仍要求非空。
+    // --- 已迁移字段（P1-5）---
+    // 地址、位偏移、采集周期已完成"模板→设备实例"重构，实际采集细节统一维护在 DeviceVariable。
+    // 以下三个字段在模板层仅作过渡期兼容：返回旧数据时仍会填充，创建/更新模板时后端不再写回。
     public string Address { get; set; } = string.Empty;
 
     public string? Description { get; set; }

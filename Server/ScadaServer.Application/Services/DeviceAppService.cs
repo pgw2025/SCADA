@@ -454,7 +454,5 @@ namespace ScadaServer.Application.Services
                 return true;
             });
         }
-
-        public async Task UpdateDeviceConfigTxAsync(int deviceId, string newAddress) { }
     }
 }

@@ -45,6 +45,58 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         }).ToList();
     }
 
+    public async Task<DeviceVariableDto> CreateAsync(CreateDeviceVariableDto dto)
+    {
+        // 1. 设备存在性
+        var device = await _deviceRepository.GetByIdAsync(dto.DeviceId);
+        if (device == null)
+        {
+            throw new BusinessException($"ID 为 {dto.DeviceId} 的设备不存在");
+        }
+
+        // 2. 模板存在性，且必须隶属于该设备所绑定的数据模型
+        var mv = await _modelVariableRepository.GetByIdAsync(dto.ModelVariableId);
+        if (mv == null)
+        {
+            throw new BusinessException($"ID 为 {dto.ModelVariableId} 的变量模板不存在");
+        }
+        if (mv.ModelId != device.ModelId)
+        {
+            throw new BusinessException($"变量模板 '{mv.Name}' 不属于设备 '{device.Name}' 所绑定的数据模型，无法实例化到该设备");
+        }
+
+        // 3. 唯一性：同一设备上不能重复实例化同一模板
+        if (await _repository.AnyAsync(dv => dv.DeviceId == dto.DeviceId && dv.ModelVariableId == dto.ModelVariableId))
+        {
+            throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
+        }
+
+        // 4. 从模板回退地址 / 位偏移 / 采集周期（P1-5 后这些字段由 DeviceVariable 作为权威值承载）
+        var entity = new DeviceVariable
+        {
+            DeviceId = dto.DeviceId,
+            ModelVariableId = dto.ModelVariableId,
+            IsEnabled = dto.IsEnabled,
+#pragma warning disable CS0618 // 过渡期回退读取已迁移到 DeviceVariable 的模板字段
+            Address = string.IsNullOrWhiteSpace(mv.Address) ? null : mv.Address,
+            BitOffset = mv.BitOffset,
+            PollingIntervalMs = mv.PollingIntervalMs,
+#pragma warning restore CS0618
+            ExtensionData = null
+        };
+
+        await _repository.InsertAsync(entity);
+        return MapToDto(entity, mv);
+    }
+
+    public async Task DeleteAsync(int id)
+    {
+        var entity = await _repository.GetByIdAsync(id);
+        if (entity == null) return;
+
+        await _repository.DeleteAsync(entity);
+    }
+
     public async Task<DeviceVariableDto> UpdateAsync(DeviceVariableDto dto)
     {
         var entity = await _repository.GetByIdAsync(dto.Id);
