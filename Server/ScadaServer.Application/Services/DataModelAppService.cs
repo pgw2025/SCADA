@@ -33,29 +33,28 @@ namespace ScadaServer.Application.Services
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
-            return await MapToDtoAsync(entity);
+            return await MapToDtoAsync(entity, includeVariables: true);
         }
 
-        public async Task<List<DataModelDto>> GetListAsync()
+        public async Task<List<DataModelDto>> GetListAsync(bool includeVariables = true)
         {
             var list = await _repository.GetListAsync();
             var dtos = new List<DataModelDto>();
             foreach (var entity in list)
             {
-                dtos.Add(await MapToDtoAsync(entity));
+                dtos.Add(await MapToDtoAsync(entity, includeVariables));
             }
             return dtos;
         }
 
         /// <summary>
         /// 实体 → DTO。由于 <see cref="DataModel.Variables"/> 为 [NotMapped]，EF 不会加载，
-        /// 这里通过网络查询 <see cref="ModelVariable"/> 后回填，保证接口返回的模型变量列表正确。
+        /// 这里按需查询 <see cref="ModelVariable"/> 后回填，保证接口返回的模型变量列表正确。
         /// </summary>
-        private async Task<DataModelDto> MapToDtoAsync(DataModel entity)
+        private async Task<DataModelDto> MapToDtoAsync(DataModel entity, bool includeVariables)
         {
-            var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
-
-            return new DataModelDto
+            // 协议字段来自 Include 加载的 Protocol 导航属性
+            var dtos = new DataModelDto
             {
                 Id = entity.Id,
                 Name = entity.Name,
@@ -65,8 +64,16 @@ namespace ScadaServer.Application.Services
                 ProtocolKey = entity.Protocol?.Key,
                 ProtocolName = entity.Protocol?.Name,
                 Type = entity.Type,
-                Variables = variables.Select(ToModelVariableDto).ToList()
+                Variables = new List<ModelVariableDto>()
             };
+
+            if (includeVariables)
+            {
+                var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
+                dtos.Variables = variables.Select(ToModelVariableDto).ToList();
+            }
+
+            return dtos;
         }
 
         private static ModelVariableDto ToModelVariableDto(ModelVariable v) => new()
@@ -139,7 +146,7 @@ namespace ScadaServer.Application.Services
             };
             await _repository.InsertAsync(entity);
 
-            return await MapToDtoAsync(entity);
+            return await MapToDtoAsync(entity, includeVariables: true);
         }
 
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
@@ -169,7 +176,7 @@ namespace ScadaServer.Application.Services
             entity.UpdatedAt = DateTime.Now;
             await _repository.UpdateAsync(entity);
 
-            return await MapToDtoAsync(entity);
+            return await MapToDtoAsync(entity, includeVariables: true);
         }
 
         public async Task DeleteAsync(int id)

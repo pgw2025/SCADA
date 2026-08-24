@@ -16,8 +16,13 @@ namespace ScadaServer.WebApi.Controllers
             _appService = appService;
         }
 
+        /// <summary>
+        /// 获取数据模型列表。
+        /// </summary>
+        /// <param name="includeVariables">是否同时加载模型变量（默认 true）。列表页概览可传 false 以节省查询开销。</param>
         [HttpGet]
-        public async Task<IActionResult> GetAll() => Ok(await _appService.GetListAsync());
+        public async Task<IActionResult> GetAll([FromQuery] bool includeVariables = true) =>
+            Ok(await _appService.GetListAsync(includeVariables));
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
