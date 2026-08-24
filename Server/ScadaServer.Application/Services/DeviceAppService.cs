@@ -11,9 +11,6 @@ namespace ScadaServer.Application.Services
     public class DeviceAppService : IDeviceAppService
     {
         private readonly IDeviceRepository _repository;
-        private readonly ISensorRepository _sensorRepository;
-        private readonly IVariableTriggerRepository _triggerRepository;
-        private readonly IExposedInterfaceRepository _interfaceRepository;
         private readonly IAreaRepository _areaRepository;
         private readonly IDataModelRepository _modelRepository;
         private readonly IModelVariableRepository _modelVariableRepository;
@@ -21,26 +18,20 @@ namespace ScadaServer.Application.Services
         private readonly IRepository<DeviceConfig, int> _configRepository;
         private readonly IUnitOfWork _uow;
         private readonly IRuntimeStatusProvider _runtimeStatusProvider;
+        private readonly IDeviceDeletionService _deletionService;
 
         public DeviceAppService(
             IDeviceRepository repository,
-            ISensorRepository sensorRepository,
-            IVariableTriggerRepository triggerRepository,
-
-            IExposedInterfaceRepository interfaceRepository,
             IAreaRepository areaRepository,
             IDataModelRepository modelRepository,
             IModelVariableRepository modelVariableRepository,
             IDeviceVariableRepository deviceVariableRepository,
             IRepository<DeviceConfig, int> configRepository,
             IUnitOfWork uow,
-            IRuntimeStatusProvider runtimeStatusProvider)
+            IRuntimeStatusProvider runtimeStatusProvider,
+            IDeviceDeletionService deletionService)
         {
             _repository = repository;
-            _sensorRepository = sensorRepository;
-            _triggerRepository = triggerRepository;
-            _interfaceRepository = interfaceRepository;
-
             _areaRepository = areaRepository;
             _modelRepository = modelRepository;
             _modelVariableRepository = modelVariableRepository;
@@ -48,6 +39,7 @@ namespace ScadaServer.Application.Services
             _configRepository = configRepository;
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
+            _deletionService = deletionService;
         }
 
         public async Task<DeviceDto?> GetByIdAsync(int id)
@@ -430,29 +422,8 @@ namespace ScadaServer.Application.Services
 
         public async Task DeleteAsync(int id)
         {
-            var entity = await _repository.GetByIdAsync(id);
-            if (entity == null) return;
-
-            // 1. 依赖检查：检查是否被对外接口引用
-            var interfaces = await _interfaceRepository.GetListAsync(i => i.DeviceId == id);
-            if (interfaces.Any())
-            {
-                throw new BusinessException($"无法删除设备 '{entity.Name}'，因为它已被配置到 {interfaces.Count} 个对外数据接口中。请先解除绑定。");
-            }
-
-            await _uow.ExecuteInTransactionAsync(async transaction =>
-            {
-                // 删除级联数据
-                await _sensorRepository.DeleteRangeAsync(s => s.DeviceId == id);
-                await _triggerRepository.DeleteRangeAsync(t => t.DeviceId == id);
-
-                await _configRepository.DeleteRangeAsync(c => c.DeviceId == id);
-
-                // 删除设备
-                await _repository.DeleteAsync(entity);
-
-                return true;
-            });
+            // 依赖检查与级联清理逻辑已抽离至 IDeviceDeletionService（对外接口/传感器/触发器/配置）
+            await _deletionService.DeleteAsync(id);
         }
     }
 }
