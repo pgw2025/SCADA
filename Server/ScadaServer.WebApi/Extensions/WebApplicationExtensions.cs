@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Builder;
-using ScadaServer.Application.Interfaces;
-using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.WebApi.Hubs;
 using ScadaServer.WebApi.Middlewares;
 
@@ -41,23 +39,6 @@ namespace ScadaServer.WebApi.Extensions
             app.MapHub<ScadaHub>("/hubs/scada");
 
             return app;
-        }
-
-        /// <summary>
-        /// 执行启动初始化逻辑
-        /// </summary>
-        public static async Task InitializeAsync(this WebApplication app)
-        {
-            // 自动初始化数据库表结构
-            using (var scope = app.Services.CreateScope())
-            {
-                var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
-                await initializer.InitializeAsync();
-            }
-
-            // 初始化 MQTT 管理器
-            var mqttManager = app.Services.GetRequiredService<IMqttManager>();
-            await mqttManager.StartAsync();
         }
     }
 }

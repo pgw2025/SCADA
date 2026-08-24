@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace ScadaServer.Infrastructure.Communication
 {
-    public class MqttManager : IMqttManager
+    public class MqttManager : IMqttManager, IAsyncDisposable
     {
         private readonly ILogger<MqttManager> _logger;
         private readonly IServiceProvider _serviceProvider;
@@ -56,6 +56,16 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 _lock.Release();
             }
+        }
+
+        /// <summary>
+        /// 供 DI 容器在宿主关闭时调用：断开所有 MQTT 连接并释放内部资源。
+        /// 宿主停止托管服务之后才释放单例，从而保证“先停轮询、再停 MQTT”的关闭顺序。
+        /// </summary>
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync();
+            _lock.Dispose();
         }
 
         public async Task ReloadAsync()

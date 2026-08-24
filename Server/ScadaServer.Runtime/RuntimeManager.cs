@@ -177,15 +177,26 @@ namespace ScadaServer.Runtime
         /// <inheritdoc/>
         public async Task StopAsync()
         {
-            if (_scheduler == null)
+            if (_scheduler != null)
             {
-                return;
+                var scheduler = _scheduler;
+                _scheduler = null;
+
+                await scheduler.StopAsync();
             }
 
-            var scheduler = _scheduler;
-            _scheduler = null;
-
-            await scheduler.StopAsync();
+            // 停止轮询后，断开所有设备驱动（如 S7 PLC 连接）并释放其资源，确保优雅关闭。
+            foreach (var runtime in DeviceRuntimes.Values)
+            {
+                try
+                {
+                    await runtime.Driver.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
+                }
+            }
         }
 
         /// <inheritdoc/>

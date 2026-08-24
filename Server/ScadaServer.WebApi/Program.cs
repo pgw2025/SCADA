@@ -1,14 +1,19 @@
-using System.Collections.Generic;
-using System.IO;
 using System.Net.Sockets;
-using System.Text.Json;
 using ScadaServer.Application.Options;
 using ScadaServer.WebApi.Extensions;
+using ScadaServer.WebApi.HostedServices;
 
+// ========== 1. 构建 Host ==========
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置系统数据库选项
 builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(SystemDbOptions.SectionName));
+
+// 优雅关闭配置：给后台服务 30 秒完成关闭（等待 PLC 断开、MQTT 停止、后台轮询任务退出）
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+});
 
 // 添加认证服务（JWT + CORS + Swagger + Controllers）
 builder.Services.AddAuthenticationServices(builder.Configuration);
@@ -19,95 +24,92 @@ builder.Services.AddDatabaseServices();
 // 添加应用层服务
 builder.Services.AddApplicationServices();
 
-// 添加基础设施服务（设备注册、协议工厂、Runtime等）
+// 添加基础设施服务（设备注册、协议工厂、Runtime 等）
 builder.Services.AddInfrastructureServices();
 
-var app = builder.Build();
+// 启动初始化托管服务（数据库迁移必须成功；MQTT 启动允许失败，由内部自动重连兜底）
+builder.Services.AddHostedService<StartupHostedService>();
+
+// ========== 2. 构建应用 ==========
+using var app = builder.Build();
+
+var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ScadaServer.Program");
+
+// 全局异常兜底（仅作最后防线，不能替代正常异常处理与优雅关闭）
+RegisterGlobalExceptionHandlers(logger);
 
 // 配置中间件管道
 app.ConfigureMiddlewarePipeline();
 
-// 端口预检（放在启动初始化之前，避免无谓的数据库/MQTT 连接与异常堆栈）
-var occupied = GetOccupiedListenPorts(GetListenUrls());
-if (occupied.Count > 0)
-{
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.Error.WriteLine("错误：启动失败，以下端口已被占用，另一个 SCADA 服务实例可能正在运行：");
-    foreach (var addr in occupied)
-        Console.Error.WriteLine("   - " + addr);
-    Console.ResetColor();
-    Console.Error.WriteLine("请先关闭占用该端口的进程后重试。");
-    Console.Error.WriteLine("Windows 排查： netstat -ano | findstr :<端口>   结束进程： taskkill /PID <进程号> /F");
-    Environment.Exit(1);
-}
-
-// 执行启动初始化（数据库初始化、MQTT启动等）
-await app.InitializeAsync();
-
+// ========== 3. 启动与运行 ==========
 try
 {
-    app.Run();
+    // 端口预检：仅作友好提示，不作为最终判断；最终端口占用以 Kestrel 绑定异常为准。
+    var occupied = await GetOccupiedListenPortsAsync(GetListenUrls(app.Configuration));
+    if (occupied.Count > 0)
+    {
+        logger.LogWarning("提示：以下端口疑似已被占用（另一个 SCADA 服务实例可能正在运行），最终以 Kestrel 绑定结果为准：{Ports}", string.Join("；", occupied));
+        logger.LogWarning("Windows 排查： netstat -ano | findstr :<端口>    结束进程： taskkill /PID <进程号> /F");
+    }
+
+    // 启动 Kestrel 并等待关闭信号（Ctrl+C / systemd SIGTERM / docker stop）
+    await app.RunAsync();
+
+    logger.LogInformation("SCADA 服务已正常关闭。");
+    return 0;
 }
 catch (Exception ex) when (IsAddressInUse(ex))
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.Error.WriteLine($"错误：启动失败，端口被占用（{ExtractBindAddress(ex)}）。请关闭占用该端口的进程后重试。");
-    Console.ResetColor();
-    Environment.Exit(1);
+    logger.LogCritical(ex, "错误：启动失败，端口被占用（{Address}）。请关闭占用该端口的进程后重试。", ExtractBindAddress(ex));
+    await StopAppAsync(app, logger);
+    return 1;
+}
+catch (Exception ex)
+{
+    logger.LogCritical(ex, "错误：SCADA 服务启动失败。");
+    await StopAppAsync(app, logger);
+    return 1;
 }
 
-// 取本进程即将监听的地址列表：优先用 ASPNETCORE_URLS（dotnet run 注入），
-// 回退读取 launchSettings.json 的 applicationUrl，最后回退 ASP.NET Core 默认端口
-static List<string> GetListenUrls()
+// ========== 4. 辅助方法 ==========
+
+/// <summary>
+/// 按优先级获取本进程将要监听的地址：ASPNETCORE_URLS → urls 配置项 → 默认 http://localhost:5000。
+/// 不再依赖 launchSettings.json（发布环境不存在该文件，避免误判）。
+/// </summary>
+static List<string> GetListenUrls(IConfiguration configuration)
 {
     var urls = new List<string>();
 
+    // 1. ASPNETCORE_URLS 环境变量（dotnet run / systemd Environment / docker -e 注入）
     var env = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
     if (!string.IsNullOrWhiteSpace(env))
         urls.AddRange(env.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
+    // 2. builder.Configuration["urls"]（命令行 --urls / 配置文件 urls 键等）
     if (urls.Count == 0)
     {
-        var launch = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Properties", "launchSettings.json");
-        if (File.Exists(launch))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(launch));
-                if (doc.RootElement.TryGetProperty("profiles", out var profiles))
-                {
-                    foreach (var profile in profiles.EnumerateObject())
-                    {
-                        if (profile.Value.TryGetProperty("applicationUrl", out var au) &&
-                            au.ValueKind == JsonValueKind.String)
-                        {
-                            foreach (var u in au.GetString()!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                                if (!urls.Contains(u))
-                                    urls.Add(u);
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // 解析失败则用默认端口兜底
-            }
-        }
+        var cfg = configuration["urls"];
+        if (!string.IsNullOrWhiteSpace(cfg))
+            urls.AddRange(cfg.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
+    // 3. 默认端口（仅 HTTP，避免对 HTTPS/VS/IIS Express 的误检测）
     if (urls.Count == 0)
-    {
         urls.Add("http://localhost:5000");
-        urls.Add("https://localhost:5001");
-    }
 
     return urls;
 }
 
-// 通过 TCP 连接探测监听端口是否被占用（连接成功即代表已有进程在监听）
-static List<string> GetOccupiedListenPorts(List<string> urls)
+/// <summary>
+/// 异步探测监听端口是否被占用（连接成功即代表已有进程在监听）。
+/// 使用 await + CancellationToken 超时，避免 Wait() 同步阻塞线程与启动竞态。
+/// 仅用于友好提示，不作为启动成功的最终依据。
+/// </summary>
+static async Task<List<string>> GetOccupiedListenPortsAsync(IEnumerable<string> urls)
 {
     var occupied = new List<string>();
+
     foreach (var raw in urls)
     {
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
@@ -125,21 +127,31 @@ static List<string> GetOccupiedListenPorts(List<string> urls)
         if (port <= 0)
             continue;
 
+        // 500ms 超时探测：连接成功即视为被占用，超时/被拒即视为空闲。
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         try
         {
             using var client = new TcpClient();
-            if (client.ConnectAsync(host, port).Wait(500) && client.Connected)
+            await client.ConnectAsync(host, port, cts.Token);
+            if (client.Connected)
                 occupied.Add($"{raw}（探测地址 {host}:{port}）");
+        }
+        catch (OperationCanceledException)
+        {
+            // 探测超时 => 视为端口空闲，避免误报
         }
         catch (Exception)
         {
-            // 连接失败（被拒绝/超时）=> 端口空闲
+            // 连接失败（被拒绝）=> 端口空闲
         }
     }
+
     return occupied;
 }
 
-// 兜底：识别 Kestrel 绑定失败引发的“地址已被占用”异常
+/// <summary>
+/// 兜底：识别 Kestrel 绑定失败引发的“地址已被占用”异常。
+/// </summary>
 static bool IsAddressInUse(Exception? ex)
 {
     for (var e = ex; e is not null; e = e.InnerException)
@@ -152,7 +164,9 @@ static bool IsAddressInUse(Exception? ex)
     return false;
 }
 
-// 从异常信息中提取被占用的绑定地址，用于兜底提示
+/// <summary>
+/// 从异常信息中提取被占用的绑定地址，用于兜底提示。
+/// </summary>
 static string ExtractBindAddress(Exception ex)
 {
     for (var e = ex; e is not null; e = e.InnerException)
@@ -169,4 +183,37 @@ static string ExtractBindAddress(Exception ex)
         }
     }
     return "HTTP 端口";
+}
+
+/// <summary>
+/// 使用 Host 停止流程优雅关闭应用（StopAsync → 停止托管服务 → 释放 DI 资源）。
+/// </summary>
+static async Task StopAppAsync(WebApplication app, ILogger logger)
+{
+    try
+    {
+        await app.StopAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "停止应用时发生异常（已忽略）。");
+    }
+}
+
+/// <summary>
+/// 注册全局异常兜底处理（仅作最后防线，不能替代正常的异常处理与优雅关闭）。
+/// </summary>
+static void RegisterGlobalExceptionHandlers(ILogger logger)
+{
+    AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    {
+        var ex = e.ExceptionObject as Exception;
+        logger.LogCritical(ex, "捕获到未处理异常（AppDomain.UnhandledException），进程即将终止。");
+    };
+
+    TaskScheduler.UnobservedTaskException += (_, e) =>
+    {
+        logger.LogError(e.Exception, "捕获到未观察任务异常（TaskScheduler.UnobservedTaskException）。");
+        e.SetObserved();
+    };
 }
