@@ -17,18 +17,22 @@ public class StartupHostedService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<StartupHostedService> _logger;
+    private readonly DatabaseInitializationStatus _dbReady;
 
     /// <summary>
     /// 初始化启动托管服务
     /// </summary>
     /// <param name="serviceProvider">服务提供者</param>
     /// <param name="logger">日志记录器</param>
+    /// <param name="dbReady">数据库初始化就绪协调服务（供 RuntimeHostedService 等待）</param>
     public StartupHostedService(
         IServiceProvider serviceProvider,
-        ILogger<StartupHostedService> logger)
+        ILogger<StartupHostedService> logger,
+        DatabaseInitializationStatus dbReady)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _dbReady = dbReady;
     }
 
     /// <inheritdoc/>
@@ -39,10 +43,23 @@ public class StartupHostedService : IHostedService
         _logger.LogInformation("开始执行启动初始化（数据库迁移与种子数据）...");
         using (var scope = _serviceProvider.CreateScope())
         {
-            var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
-            await initializer.InitializeAsync(cancellationToken);
+            try
+            {
+                var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+                await initializer.InitializeAsync(cancellationToken);
+
+                // 通知等待方：数据库已就绪，Runtime 可以安全查询。
+                _dbReady.MarkSucceeded();
+                _logger.LogInformation("数据库初始化完成。");
+            }
+            catch (Exception ex)
+            {
+                // 初始化失败：通知等待方立即得知，避免 Runtime 在残缺数据库上盲目重试查询。
+                _dbReady.MarkFailed(ex);
+                _logger.LogError(ex, "数据库初始化失败。");
+                throw;
+            }
         }
-        _logger.LogInformation("数据库初始化完成。");
 
         // 2. 允许失败：MQTT 启动。
         //    MqttManager.ReloadAsync 内部已对单台服务器连接失败做容错（记录日志并跳过），

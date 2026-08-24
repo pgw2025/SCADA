@@ -4,24 +4,36 @@ using ScadaServer.Domain.Interfaces;
 
 namespace ScadaServer.Runtime.Devices;
 
+/// <summary>
+/// 设备运行时对象（即"RuntimeDevice"）。
+/// 启动时由 RuntimeManager 依据以下链路构建：
+/// Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)。
+/// 持有设备实体、数据模型、协议、配置、驱动实例，以及解析后的变量运行时集合。
+/// </summary>
 public class DeviceRuntime
 {
     private readonly Device _device;
-    // 配置对象
+
+    // 设备实体
     public Device Device { get; init; }
 
-    // 所属模型
+    // 所属数据模型
     public DataModel Model { get; init; }
 
-    // 区域
-    public Area Area { get; init; }
+    // 协议实体（来自 DataModel.Protocol，可能为 null，此时回退到 Model.Type 派发驱动）
+    public Protocol? Protocol { get; init; }
+
+    // 设备配置（设备级协议配置，来自 DeviceConfig）
+    public DeviceConfig? Config { get; init; }
+
+    // 区域（可能未加载，可为 null）
+    public Area? Area { get; init; }
 
     // 驱动实例
     public IProtocolDriver Driver { get; set; }
 
-    // 变量列表
-    public Dictionary<int, VariableRuntime> Variables { get; }
-        = new();
+    // 变量运行时集合（key = DeviceVariable.Id）
+    public Dictionary<int, VariableRuntime> Variables { get; } = new();
 
     // 通信状态
     private DeviceConnectionState _connectionState;
@@ -65,8 +77,7 @@ public class DeviceRuntime
     public double AverageResponseTime { get; set; }
 
     // 运行时锁
-    public SemaphoreSlim Lock { get; }
-        = new(1, 1);
+    public SemaphoreSlim Lock { get; } = new(1, 1);
 
     // 取消令牌
     public CancellationTokenSource? CancellationTokenSource { get; set; }
@@ -80,7 +91,6 @@ public class DeviceRuntime
     public DeviceRuntime(Device device)
     {
         _device = device;
-
+        Device = device;
     }
-
 }

@@ -29,8 +29,8 @@ namespace ScadaServer.WebApi.Controllers
             var variables = runtime.Variables.Values
                 .Select(v => new
                 {
-                    Key = v.Variable.Key,
-                    Name = v.Variable.Name,
+                    Key = v.Key,
+                    Name = v.Name,
                     Value = v.Value,
                     Quality = v.Quality.ToString(),
                     UpdateTime = v.UpdateTime

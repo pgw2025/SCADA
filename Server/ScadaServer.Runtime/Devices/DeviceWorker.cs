@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -12,12 +11,13 @@ using ScadaServer.Domain.Enums;
 namespace ScadaServer.Runtime.Devices
 {
     /// <summary>
-    /// 设备工作器，负责单台设备的数据采集和驱动通讯
+    /// 设备工作器，负责单台设备的数据采集和驱动通讯。
+    /// 以变量级轮询周期（RuntimeVariable.PollingIntervalMs）驱动采集，支持变量变化检测、质量状态管理与平均响应时间计算。
     /// </summary>
     /// <remarks>
     /// 每个设备运行时对应一个 DeviceWorker 实例，由 DeviceScheduler 调度执行。
-    /// 工作器以轮询方式周期性地读取设备所有变量的值，并更新运行时状态和统计信息。
-    /// 支持变量变化检测、质量状态管理和平均响应时间计算。
+    /// 采集节奏由每个 RuntimeVariable 的 NextPollTime 决定（各自 PollingIntervalMs），
+    /// 不再依赖单一设备级固定延迟。地址等实现细节统一由 RuntimeVariable 解析（来自 DeviceVariable）。
     /// </remarks>
     public class DeviceWorker
     {
@@ -61,43 +61,82 @@ namespace ScadaServer.Runtime.Devices
             {
                 // 计时器用于统计本轮采集耗时
                 var sw = Stopwatch.StartNew();
+                var now = DateTime.Now;
                 try
                 {
-                    // 遍历读取该设备下所有变量
                     var changed = new List<(string Key, object Value)>();
-                    foreach (var variable in _runtime.Variables.Values)
+
+                    // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）
+                    var due = new List<VariableRuntime>();
+                    foreach (var vr in _runtime.Variables.Values)
+                    {
+                        if (!vr.IsEnabled) continue;
+                        if (now >= vr.NextPollTime) due.Add(vr);
+                    }
+
+                    if (due.Count == 0)
+                    {
+                        // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性
+                        var soonest = DateTime.MaxValue;
+                        foreach (var vr in _runtime.Variables.Values)
+                        {
+                            if (vr.IsEnabled && vr.NextPollTime < soonest) soonest = vr.NextPollTime;
+                        }
+
+                        var waitMs = soonest == DateTime.MaxValue
+                            ? _runtime.Device.PollingInterval
+                            : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
+                        // 上限 2000ms：避免长时间阻塞导致配置变更 / 取消信号响应不及时
+                        waitMs = Math.Min(waitMs, 2000);
+
+                        if (waitMs > 0)
+                        {
+                            try { await Task.Delay(waitMs, cancellationToken); }
+                            catch (OperationCanceledException) { break; }
+                        }
+                        continue;
+                    }
+
+                    // 逐个读取到期变量。
+                    // 注意：驱动仍按变量模板定义（ModelVariable）读取；地址 / 位偏移 / 轮询 / 缩放等
+                    // "设备实现"信息已由 RuntimeVariable 解析并暴露，供后续驱动改造（切换至 RuntimeVariable）使用。
+                    foreach (var vr in due)
                     {
                         try
                         {
-                            // 通过驱动读取变量当前值
-                            var newValue = await _runtime.Driver.ReadAsync(variable.Variable);
+                            var newValue = await _runtime.Driver.ReadAsync(vr.Definition);
 
                             // 驱动可能返回 null（例如虚拟设备未连接、订阅型驱动暂无数据）。
                             // 视为本次读取无效：跳过值更新,避免 null 被当作变化值推送到前端。
                             if (newValue == null)
                             {
-                                variable.Quality = VariableQuality.CommunicationError;
+                                vr.Quality = VariableQuality.CommunicationError;
                                 continue;
                             }
 
                             // 更新变量值和状态
-                            variable.PreviousValue = variable.Value;
-                            variable.Value = newValue;
-                            variable.UpdateTime = DateTime.Now;
-                            variable.Quality = VariableQuality.Good;
+                            vr.PreviousValue = vr.Value;
+                            vr.Value = newValue;
+                            vr.UpdateTime = now;
+                            vr.Quality = VariableQuality.Good;
 
                             // 检测值是否发生变化
-                            variable.IsChanged = !Equals(variable.Value, variable.PreviousValue);
-                            if (variable.IsChanged && variable.Value != null)
+                            vr.IsChanged = !Equals(vr.Value, vr.PreviousValue);
+                            if (vr.IsChanged && vr.Value != null)
                             {
-                                changed.Add((variable.Variable.Key, variable.Value));
+                                changed.Add((vr.Key, vr.Value));
                             }
                         }
                         catch (Exception ex)
                         {
                             // 单个变量读取失败，标记通信错误但不中断其他变量
-                            variable.Quality = VariableQuality.CommunicationError;
-                            _logger.LogError(ex, "Read variable {VariableName} failed.", variable.Variable.Name);
+                            vr.Quality = VariableQuality.CommunicationError;
+                            _logger.LogError(ex, "Read variable {VariableName} failed.", vr.Name);
+                        }
+                        finally
+                        {
+                            // 无论成功或失败，均推进该变量下一次轮询时间
+                            vr.NextPollTime = now.AddMilliseconds(vr.PollingIntervalMs);
                         }
                     }
 
@@ -130,15 +169,21 @@ namespace ScadaServer.Runtime.Devices
                 }
                 finally
                 {
-                    // 更新平均响应时间（基于成功次数的移动平均）
+                    // 更新平均响应时间（基于成功次数的移动平均；尚未成功时直接取本轮耗时）
                     sw.Stop();
-                    _runtime.AverageResponseTime =
-                        (_runtime.AverageResponseTime * (_runtime.SuccessCount - 1) + sw.Elapsed.TotalMilliseconds)
-                        / _runtime.SuccessCount;
+                    if (_runtime.SuccessCount > 0)
+                    {
+                        _runtime.AverageResponseTime =
+                            (_runtime.AverageResponseTime * (_runtime.SuccessCount - 1) + sw.Elapsed.TotalMilliseconds)
+                            / _runtime.SuccessCount;
+                    }
+                    else
+                    {
+                        _runtime.AverageResponseTime = sw.Elapsed.TotalMilliseconds;
+                    }
                 }
 
-                // 等待下一个轮询周期，间隔由设备配置决定
-                await Task.Delay(_runtime.Device.PollingInterval, cancellationToken);
+                // 节奏完全由变量级 NextPollTime 控制，此处不再使用设备级固定延迟。
             }
 
             // 循环结束，标记设备断开

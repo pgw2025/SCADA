@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
@@ -10,6 +11,7 @@ using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Infrastructure.Communication;
+using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Runtime.Devices;
 using ScadaServer.Runtime.Interface;
 
@@ -114,33 +116,45 @@ namespace ScadaServer.Runtime
             _logger.LogInformation("SCADA 运行时初始化：加载已启用设备...");
 
             // 仓储注册为 Scoped，而 RuntimeManager 为 Singleton。
-            // 在此创建独立 Scope 解析仓储，避免从根容器捕获 Scoped 服务。
+            // 在此创建独立 Scope 解析 DbContext，以便通过 Include 一次性加载运行期所需的完整对象图。
             using var scope = _scopeFactory.CreateScope();
             var sp = scope.ServiceProvider;
+            var db = sp.GetRequiredService<ScadaDbContext>();
 
-            var deviceRepo = sp.GetRequiredService<IDeviceRepository>();
-            var configRepo = sp.GetRequiredService<IRepository<DeviceConfig, int>>();
-            var modelRepo = sp.GetRequiredService<IDataModelRepository>();
-            var variableRepo = sp.GetRequiredService<IModelVariableRepository>();
+            // 加载所有启用设备及其完整运行期依赖：
+            // Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)
+            // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
+            var devices = await db.Devices
+                .Include(d => d.Model).ThenInclude(m => m.Protocol)
+                .Include(d => d.Config)
+                .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
+                .Where(d => d.IsEnabled)
+                .ToListAsync();
 
-            var devices = await deviceRepo.GetListAsync(d => d.IsEnabled);
             _logger.LogInformation("找到 {Count} 个已启用设备。", devices.Count);
 
             foreach (var device in devices)
             {
                 try
                 {
-                    var config = await configRepo.GetByIdAsync(device.Id);
-                    var model = await modelRepo.GetByIdAsync(device.ModelId);
-                    var variables = await variableRepo.GetListAsync(v => v.ModelId == device.ModelId);
+                    var model = device.Model;
+                    if (model == null)
+                    {
+                        _logger.LogWarning("设备 {Key} 缺少关联数据模型，已跳过。", device.Key);
+                        continue;
+                    }
 
-                    // 协议真相源为所绑定数据模型的 Type，设备不再单独持有协议字段
-                    var driver = _driverFactory.CreateDriver(model.Type);
+                    // 协议真相源优先取 DataModel.Protocol.DriverKey；回退到过渡字段 Model.Type
+                    var driverKey = model.Protocol?.DriverKey;
+                    var protocolLabel = driverKey ?? model.Type.ToString();
+                    var driver = string.IsNullOrWhiteSpace(driverKey)
+                        ? _driverFactory.CreateDriver(model.Type)
+                        : _driverFactory.CreateDriver(driverKey);
 
-                    var connected = await driver.ConnectAsync(device, config?.JsonConfig ?? "{}");
+                    var connected = await driver.ConnectAsync(device, device.Config?.JsonConfig ?? "{}");
                     if (!connected)
                     {
-                        _logger.LogWarning("设备 {Key} ({Type}) 连接失败，已跳过。", device.Key, model.Type);
+                        _logger.LogWarning("设备 {Key} ({Protocol}) 连接失败，已跳过。", device.Key, protocolLabel);
                         await driver.DisposeAsync();
                         continue;
                     }
@@ -149,20 +163,43 @@ namespace ScadaServer.Runtime
                     {
                         Device = device,
                         Model = model,
+                        Protocol = model.Protocol,
+                        Config = device.Config,
+                        Area = device.Area,
                         Driver = driver
                     };
 
-                    foreach (var variable in variables)
+                    var now = DateTime.Now;
+                    foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
                     {
-                        runtime.Variables[variable.Id] = new VariableRuntime { Variable = variable };
+                        if (dv.ModelVariable == null)
+                        {
+                            _logger.LogWarning(
+                                "设备 {Key} 的设备变量 #{DvId} 缺少关联模型变量，已跳过。", device.Key, dv.Id);
+                            continue;
+                        }
+
+                        // 构建 RuntimeVariable：变量定义来自 ModelVariable，设备配置来自 DeviceVariable。
+                        runtime.Variables[dv.Id] = new VariableRuntime
+                        {
+                            Definition = dv.ModelVariable,
+                            Instance = dv,
+                            NextPollTime = now // 首轮立即采集
+                        };
                     }
 
                     RegisterDevice(runtime);
-                    _deviceRegistry.UpdateDevice(device, variables.ToList());
+
+                    _deviceRegistry.UpdateDevice(device,
+                        (device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
+                            .Select(dv => dv.ModelVariable)
+                            .Where(mv => mv != null)
+                            .Cast<ModelVariable>()
+                            .ToList());
 
                     _logger.LogInformation(
-                        "设备 {Key} ({Type}) 初始化完成，共 {VarCount} 个变量。",
-                        device.Key, model.Type, variables.Count);
+                        "设备 {Key} ({Protocol}) 初始化完成，共 {VarCount} 个变量。",
+                        device.Key, protocolLabel, runtime.Variables.Count);
                 }
                 catch (Exception ex)
                 {

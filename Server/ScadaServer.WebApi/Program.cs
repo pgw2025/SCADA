@@ -13,6 +13,10 @@ builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(Sys
 builder.Services.Configure<HostOptions>(options =>
 {
     options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+
+    // 纵深防御：即使后台服务（如 RuntimeHostedService）因异常退出，也不自动终止整个 Host，
+    // 避免连带触发 EventLog disposed 等二次异常。运行时初始化失败已在服务内部记录并安全释放。
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
 });
 
 // 添加认证服务（JWT + CORS + Swagger + Controllers）
@@ -27,8 +31,16 @@ builder.Services.AddApplicationServices();
 // 添加基础设施服务（设备注册、协议工厂、Runtime 等）
 builder.Services.AddInfrastructureServices();
 
+// 数据库初始化就绪协调服务（单例）：StartupHostedService 完成后发信号，
+// RuntimeHostedService 在查询数据库前等待该信号，避免启动竞态。不使用 Thread.Sleep。
+builder.Services.AddSingleton<ScadaServer.WebApi.HostedServices.DatabaseInitializationStatus>();
+
 // 启动初始化托管服务（数据库迁移必须成功；MQTT 启动允许失败，由内部自动重连兜底）
 builder.Services.AddHostedService<StartupHostedService>();
+
+// 运行时托管服务：注册顺序在 StartupHostedService 之后（双重保险），
+// 且内部仍显式 await 数据库就绪信号，确保查询前表结构已就位。
+builder.Services.AddHostedService<RuntimeHostedService>();
 
 // ========== 2. 构建应用 ==========
 using var app = builder.Build();

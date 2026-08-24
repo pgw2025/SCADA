@@ -88,6 +88,16 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasIndex(p => p.Key)
                 .IsUnique()
                 .HasDatabaseName("ix_protocol_key");
+
+            // 协议 <-> 数据模型关系（EF Core Fluent API 显式配置，符合最佳实践）。
+            // DataModel.ProtocolId 为可空外键（过渡期数据可暂不绑定协议）；
+            // 删除协议时采用 Restrict，避免级联误删已关联的数据模型。
+            modelBuilder.Entity<DataModel>()
+                .HasOne(dm => dm.Protocol)
+                .WithMany()
+                .HasForeignKey(dm => dm.ProtocolId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DataModels_Protocols_ProtocolId");
             modelBuilder.Entity<MqttServer>().ToTable("MqttServers");
             modelBuilder.Entity<MqttVariableConfig>().ToTable("MqttVariableConfigs");
             modelBuilder.Entity<ScadaPage>().ToTable("ScadaPages");
