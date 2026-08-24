@@ -58,6 +58,11 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IModelVariableRepository : IRepository<ModelVariable, int> { }
 
     /// <summary>
+    /// 通信协议仓储接口
+    /// </summary>
+    public interface IProtocolRepository : IRepository<Protocol, int> { }
+
+    /// <summary>
     /// MQTT服务器仓储接口
     /// </summary>
     public interface IMqttServerRepository : IRepository<MqttServer, int> { }

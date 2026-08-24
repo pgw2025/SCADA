@@ -12,17 +12,20 @@ namespace ScadaServer.Application.Services
         private readonly IDataModelRepository _repository;
         private readonly IModelVariableRepository _variableRepository;
         private readonly IDeviceRepository _deviceRepository;
+        private readonly IProtocolRepository _protocolRepository;
         private readonly IUnitOfWork _uow;
 
         public DataModelAppService(
             IDataModelRepository repository,
             IModelVariableRepository variableRepository,
             IDeviceRepository deviceRepository,
+            IProtocolRepository protocolRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
             _variableRepository = variableRepository;
             _deviceRepository = deviceRepository;
+            _protocolRepository = protocolRepository;
             _uow = uow;
         }
 
@@ -30,44 +33,79 @@ namespace ScadaServer.Application.Services
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
-            return MapToDto(entity);
+            return await MapToDtoAsync(entity);
         }
 
         public async Task<List<DataModelDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(MapToDto).ToList();
+            var dtos = new List<DataModelDto>();
+            foreach (var entity in list)
+            {
+                dtos.Add(await MapToDtoAsync(entity));
+            }
+            return dtos;
         }
 
-        private DataModelDto MapToDto(DataModel entity)
+        /// <summary>
+        /// 实体 → DTO。由于 <see cref="DataModel.Variables"/> 为 [NotMapped]，EF 不会加载，
+        /// 这里通过网络查询 <see cref="ModelVariable"/> 后回填，保证接口返回的模型变量列表正确。
+        /// </summary>
+        private async Task<DataModelDto> MapToDtoAsync(DataModel entity)
         {
+            var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
+
             return new DataModelDto
             {
                 Id = entity.Id,
                 Name = entity.Name,
                 Description = entity.Description,
                 VendorModel = entity.VendorModel,
+                ProtocolId = entity.ProtocolId,
+                ProtocolKey = entity.Protocol?.Key,
+                ProtocolName = entity.Protocol?.Name,
                 Type = entity.Type,
-                Variables = entity.Variables?.Select(v => new ModelVariableDto
-                {
-                    Id = v.Id,
-                    ModelId = v.ModelId,
-                    Key = v.Key,
-                    Name = v.Name,
-                    Type = v.Type,
-                    DataType = v.DataType,
-                    Unit = v.Unit,
-                    Min = v.Min,
-                    Max = v.Max,
-                    Address = v.Address,
-                    Description = v.Description,
-                    IsStored = v.IsStored,
-                    StoreMode = v.StoreMode,
-                    UpdateMode = v.UpdateMode,
-                    PollingIntervalMs = v.PollingIntervalMs,
-                    ExtensionData = v.ExtensionData
-                }).ToList() ?? new List<ModelVariableDto>()
+                Variables = variables.Select(ToModelVariableDto).ToList()
             };
+        }
+
+        private static ModelVariableDto ToModelVariableDto(ModelVariable v) => new()
+        {
+            Id = v.Id,
+            ModelId = v.ModelId,
+            Key = v.Key,
+            Name = v.Name,
+            Type = v.Type,
+            DataType = v.DataType,
+            Unit = v.Unit,
+            Min = v.Min,
+            Max = v.Max,
+            Address = v.Address,
+            Description = v.Description,
+            IsStored = v.IsStored,
+            StoreMode = v.StoreMode,
+            UpdateMode = v.UpdateMode,
+            PollingIntervalMs = v.PollingIntervalMs,
+            ExtensionData = v.ExtensionData
+        };
+
+        /// <summary>
+        /// 协议绑定校验：若指定了 ProtocolId，则协议必须存在且已启用。
+        /// </summary>
+        private async Task<int?> ResolveProtocolIdAsync(int? protocolId)
+        {
+            if (protocolId == null) return null;
+
+            var protocol = await _protocolRepository.GetByIdAsync(protocolId.Value);
+            if (protocol == null)
+            {
+                throw new BusinessException($"ID 为 {protocolId.Value} 的协议不存在");
+            }
+            if (!protocol.IsEnabled)
+            {
+                throw new BusinessException($"协议 '{protocol.Name}' 已被停用，无法关联到数据模型");
+            }
+            return protocolId.Value;
         }
 
         public async Task<DataModelDto> CreateAsync(CreateDataModelDto dto)
@@ -82,18 +120,22 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型名称 '{dto.Name}' 已存在");
             }
 
+            // 1.5 协议绑定校验
+            var protocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
+
             var entity = new DataModel
             {
                 Name = dto.Name,
                 Description = dto.Description?.Trim(),
                 VendorModel = dto.VendorModel?.Trim(),
+                ProtocolId = protocolId,
                 Type = dto.Type,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             };
             await _repository.InsertAsync(entity);
 
-            return MapToDto(entity);
+            return await MapToDtoAsync(entity);
         }
 
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
@@ -114,6 +156,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型名称 '{dto.Name}' 已存在");
             }
 
+            // 1.5 协议绑定校验（PUT 为全量替换语义，未传 ProtocolId 即解绑）
+            entity.ProtocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
             entity.Name = dto.Name;
             entity.Description = dto.Description?.Trim();
             entity.VendorModel = dto.VendorModel?.Trim();
@@ -121,7 +165,7 @@ namespace ScadaServer.Application.Services
             entity.UpdatedAt = DateTime.Now;
             await _repository.UpdateAsync(entity);
 
-            return MapToDto(entity);
+            return await MapToDtoAsync(entity);
         }
 
         public async Task DeleteAsync(int id)

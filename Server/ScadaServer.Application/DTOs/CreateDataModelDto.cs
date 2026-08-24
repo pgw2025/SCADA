@@ -19,7 +19,12 @@ namespace ScadaServer.Application.DTOs
         public string? VendorModel { get; set; }
 
         /// <summary>
-        /// 协议类型（枚举）——数据模型的协议真相源，创建模型时必填
+        /// 关联通信协议ID（协议真相源）。创建模型时由前端选择协议下拉得到；为空表示过渡期暂不绑定协议。
+        /// </summary>
+        public int? ProtocolId { get; set; }
+
+        /// <summary>
+        /// 协议类型（枚举）——过渡期兼容字段，保留以兼容旧调用；新逻辑应优先使用 <see cref="ProtocolId"/>
         /// </summary>
         public DeviceType Type { get; set; }
     }
