@@ -1,0 +1,88 @@
+using ScadaServer.Application.DTOs;
+using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Exceptions;
+using ScadaServer.Domain.Interfaces.Repositories;
+
+namespace ScadaServer.Application.Services;
+
+/// <summary>
+/// 设备变量应用服务：负责设备变量（DeviceVariable）的查询与维护。
+/// 设备变量描述"变量模板在某台具体设备上的实例"，聚合模板定义与实例级覆盖配置。
+/// </summary>
+public class DeviceVariableAppService : IDeviceVariableAppService
+{
+    private readonly IDeviceVariableRepository _repository;
+    private readonly IModelVariableRepository _modelVariableRepository;
+    private readonly IDeviceRepository _deviceRepository;
+
+    public DeviceVariableAppService(
+        IDeviceVariableRepository repository,
+        IModelVariableRepository modelVariableRepository,
+        IDeviceRepository deviceRepository)
+    {
+        _repository = repository;
+        _modelVariableRepository = modelVariableRepository;
+        _deviceRepository = deviceRepository;
+    }
+
+    public async Task<List<DeviceVariableDto>> GetByDeviceAsync(int deviceId)
+    {
+        var device = await _deviceRepository.GetByIdAsync(deviceId);
+        if (device == null)
+        {
+            throw new BusinessException($"ID 为 {deviceId} 的设备不存在");
+        }
+
+        var deviceVariables = await _repository.GetListAsync(dv => dv.DeviceId == deviceId);
+        var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == device.ModelId);
+        var mvMap = modelVariables.ToDictionary(mv => mv.Id);
+
+        return deviceVariables.Select(dv =>
+        {
+            mvMap.TryGetValue(dv.ModelVariableId, out var mv);
+            return MapToDto(dv, mv);
+        }).ToList();
+    }
+
+    public async Task<DeviceVariableDto> UpdateAsync(DeviceVariableDto dto)
+    {
+        var entity = await _repository.GetByIdAsync(dto.Id);
+        if (entity == null)
+        {
+            throw new BusinessException($"ID 为 {dto.Id} 的设备变量不存在");
+        }
+
+        // 仅更新设备实例级配置：地址、位偏移、轮询间隔、启用状态、缩放/死区覆盖。
+        entity.Address = dto.Address;
+        entity.BitOffset = dto.BitOffset;
+        entity.PollingIntervalMs = dto.PollingIntervalMs;
+        entity.IsEnabled = dto.IsEnabled;
+        entity.ScaleSlopeOverride = dto.ScaleSlopeOverride;
+        entity.ScaleOffsetOverride = dto.ScaleOffsetOverride;
+        entity.DeadBandOverride = dto.DeadBandOverride;
+
+        await _repository.UpdateAsync(entity);
+
+        var mv = await _modelVariableRepository.GetByIdAsync(entity.ModelVariableId);
+        return MapToDto(entity, mv);
+    }
+
+    private static DeviceVariableDto MapToDto(DeviceVariable dv, ModelVariable? mv) => new()
+    {
+        Id = dv.Id,
+        DeviceId = dv.DeviceId,
+        ModelVariableId = dv.ModelVariableId,
+        Key = mv?.Key ?? string.Empty,
+        Name = mv?.Name ?? string.Empty,
+        DataType = mv?.DataType ?? default,
+        Unit = mv?.Unit,
+        Address = dv.Address,
+        BitOffset = dv.BitOffset,
+        PollingIntervalMs = dv.PollingIntervalMs,
+        IsEnabled = dv.IsEnabled,
+        ScaleSlopeOverride = dv.ScaleSlopeOverride,
+        ScaleOffsetOverride = dv.ScaleOffsetOverride,
+        DeadBandOverride = dv.DeadBandOverride
+    };
+}

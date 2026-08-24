@@ -29,6 +29,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IExposedInterfaceAppService, ExposedInterfaceAppService>();
             services.AddScoped<IHmiComponentAppService, HmiComponentAppService>();
             services.AddScoped<IModelVariableAppService, ModelVariableAppService>();
+            services.AddScoped<IDeviceVariableAppService, DeviceVariableAppService>();
             services.AddScoped<IMqttServerAppService, MqttServerAppService>();
             services.AddScoped<IScadaPageAppService, ScadaPageAppService>();
             services.AddScoped<IScadaProjectAppService, ScadaProjectAppService>();

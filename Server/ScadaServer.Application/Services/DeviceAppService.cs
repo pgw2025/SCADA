@@ -16,6 +16,8 @@ namespace ScadaServer.Application.Services
         private readonly IExposedInterfaceRepository _interfaceRepository;
         private readonly IAreaRepository _areaRepository;
         private readonly IDataModelRepository _modelRepository;
+        private readonly IModelVariableRepository _modelVariableRepository;
+        private readonly IDeviceVariableRepository _deviceVariableRepository;
         private readonly IRepository<DeviceConfig, int> _configRepository;
         private readonly IUnitOfWork _uow;
         private readonly IRuntimeStatusProvider _runtimeStatusProvider;
@@ -28,6 +30,8 @@ namespace ScadaServer.Application.Services
             IExposedInterfaceRepository interfaceRepository,
             IAreaRepository areaRepository,
             IDataModelRepository modelRepository,
+            IModelVariableRepository modelVariableRepository,
+            IDeviceVariableRepository deviceVariableRepository,
             IRepository<DeviceConfig, int> configRepository,
             IUnitOfWork uow,
             IRuntimeStatusProvider runtimeStatusProvider)
@@ -39,6 +43,8 @@ namespace ScadaServer.Application.Services
 
             _areaRepository = areaRepository;
             _modelRepository = modelRepository;
+            _modelVariableRepository = modelVariableRepository;
+            _deviceVariableRepository = deviceVariableRepository;
             _configRepository = configRepository;
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
@@ -63,28 +69,72 @@ namespace ScadaServer.Application.Services
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
                 ConfigJson = entity.Config?.JsonConfig,
-                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus)
+                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
+                Variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
             };
         }
 
         public async Task<List<DeviceDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(entity => new DeviceDto
+            var dtos = new List<DeviceDto>();
+            foreach (var entity in list)
             {
-                Id = entity.Id,
-                Name = entity.Name,
-                Key = entity.Key,
-                AreaId = entity.AreaId,
-                ModelId = entity.ModelId,
-                ModelType = entity.Model?.Type ?? default,
-                IsEnabled = entity.IsEnabled,
-                PollingInterval = entity.PollingInterval,
-                CreatedAt = entity.CreatedAt,
-                UpdatedAt = entity.UpdatedAt,
-                LastCommunicationTime = entity.LastCommunicationTime,
-                ConfigJson = entity.Config?.JsonConfig,
-                RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus)
+                dtos.Add(new DeviceDto
+                {
+                    Id = entity.Id,
+                    Name = entity.Name,
+                    Key = entity.Key,
+                    AreaId = entity.AreaId,
+                    ModelId = entity.ModelId,
+                    ModelType = entity.Model?.Type ?? default,
+                    IsEnabled = entity.IsEnabled,
+                    PollingInterval = entity.PollingInterval,
+                    CreatedAt = entity.CreatedAt,
+                    UpdatedAt = entity.UpdatedAt,
+                    LastCommunicationTime = entity.LastCommunicationTime,
+                    ConfigJson = entity.Config?.JsonConfig,
+                    RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
+                    Variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
+                });
+            }
+            return dtos;
+        }
+
+        /// <summary>
+        /// 聚合某设备的设备变量：关联各自的变量模板（ModelVariable），输出"定义 + 设备实例配置"。
+        /// </summary>
+        private async Task<List<DeviceVariableDto>> LoadDeviceVariablesAsync(int deviceId, int modelId)
+        {
+            var deviceVariables = await _deviceVariableRepository.GetListAsync(dv => dv.DeviceId == deviceId);
+            if (deviceVariables.Count == 0)
+            {
+                return new List<DeviceVariableDto>();
+            }
+
+            var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == modelId);
+            var mvMap = modelVariables.ToDictionary(mv => mv.Id);
+
+            return deviceVariables.Select(dv =>
+            {
+                mvMap.TryGetValue(dv.ModelVariableId, out var mv);
+                return new DeviceVariableDto
+                {
+                    Id = dv.Id,
+                    DeviceId = dv.DeviceId,
+                    ModelVariableId = dv.ModelVariableId,
+                    Key = mv?.Key ?? string.Empty,
+                    Name = mv?.Name ?? string.Empty,
+                    DataType = mv?.DataType ?? default,
+                    Unit = mv?.Unit,
+                    Address = dv.Address,
+                    BitOffset = dv.BitOffset,
+                    PollingIntervalMs = dv.PollingIntervalMs,
+                    IsEnabled = dv.IsEnabled,
+                    ScaleSlopeOverride = dv.ScaleSlopeOverride,
+                    ScaleOffsetOverride = dv.ScaleOffsetOverride,
+                    DeadBandOverride = dv.DeadBandOverride
+                };
             }).ToList();
         }
 
@@ -252,6 +302,25 @@ namespace ScadaServer.Application.Services
                     UpdatedAt = DateTime.Now
                 };
                 await _configRepository.InsertAsync(config);
+
+                // 根据数据模型的变量模板，自动生成设备变量实例（DeviceVariable）。
+                // 初始值从模板复制地址/位偏移/轮询间隔；后续可在设备变量接口上单独覆盖。
+                var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == model.Id);
+#pragma warning disable CS0618 // 过渡期：从模板读取已标记 [Obsolete] 的地址/位偏移/轮询字段
+                if (modelVariables.Any())
+                {
+                    var deviceVariables = modelVariables.Select(mv => new DeviceVariable
+                    {
+                        DeviceId = entity.Id,
+                        ModelVariableId = mv.Id,
+                        Address = mv.Address,
+                        BitOffset = mv.BitOffset,
+                        PollingIntervalMs = mv.PollingIntervalMs,
+                        IsEnabled = true
+                    }).ToList();
+                    await _deviceVariableRepository.InsertRangeAsync(deviceVariables);
+                }
+#pragma warning restore CS0618
 
                 return await GetByIdAsync(entity.Id)
                     ?? throw new BusinessException($"创建设备后无法读取 ID 为 {entity.Id} 的设备记录");
