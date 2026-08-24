@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Enums;
-using ScadaServer.Runtime.Interface;
 using ScadaServer.WebApi.Hubs;
 
 namespace ScadaServer.WebApi.Services
@@ -9,6 +8,11 @@ namespace ScadaServer.WebApi.Services
     /// <summary>
     /// SignalR通知服务实现，同时支持MQTT发布
     /// </summary>
+    /// <remarks>
+    /// 仅作为 IScadaNotificationService 的下游实现，被 RuntimeManager 主动调用。
+    /// 不再注入 IRuntimeManager，避免与 RuntimeManager 注入 IScadaNotificationService 形成 Singleton 循环依赖。
+    /// 设备状态变更推送由 RuntimeManager.OnDeviceConnectionStateChanged 主动调用 NotifyDeviceStatusAsync 完成。
+    /// </remarks>
     public class SignalRNotificationService : IScadaNotificationService
     {
         private readonly IHubContext<ScadaHub> _hubContext;
@@ -19,30 +23,12 @@ namespace ScadaServer.WebApi.Services
         /// </summary>
         /// <param name="hubContext">SignalR Hub上下文</param>
         /// <param name="mqttManager">MQTT管理器</param>
-        /// <param name="runtimeManager">运行时管理器（订阅状态变更事件）</param>
         public SignalRNotificationService(
             IHubContext<ScadaHub> hubContext,
-            IMqttManager mqttManager,
-            IRuntimeManager runtimeManager)
+            IMqttManager mqttManager)
         {
             _hubContext = hubContext;
             _mqttManager = mqttManager;
-
-            // 订阅运行时状态变更，向所有客户端实时推送设备上线/离线/故障。
-            runtimeManager.StatusChanged += OnRuntimeStatusChanged;
-        }
-
-        private async void OnRuntimeStatusChanged(object? sender, DeviceStatusChangedEventArgs e)
-        {
-            try
-            {
-                await NotifyDeviceStatusAsync(e.DeviceId, e.Status);
-            }
-            catch (Exception ex)
-            {
-                // 推送失败不应影响运行时采集循环
-                Console.Error.WriteLine($"[SignalR] 设备状态推送失败: {ex.Message}");
-            }
         }
 
         /// <inheritdoc/>

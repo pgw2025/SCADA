@@ -73,7 +73,7 @@ namespace ScadaServer.Runtime
             _lastPushedStatus[runtime.Device.Id] = initial;
         }
 
-        private void OnDeviceConnectionStateChanged(int deviceId, DeviceConnectionState state)
+        private async void OnDeviceConnectionStateChanged(int deviceId, DeviceConnectionState state)
         {
             if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
             {
@@ -94,6 +94,18 @@ namespace ScadaServer.Runtime
                 DeviceId = deviceId,
                 Status = status
             });
+
+            // 主动推送设备状态变更：RuntimeManager 直接调用通知服务，
+            // 避免通知服务反向注入 IRuntimeManager 形成 Singleton 循环依赖。
+            // 推送失败仅告警，不影响采集循环与事件订阅者（如持久化订阅者）。
+            try
+            {
+                await _notificationService.NotifyDeviceStatusAsync(deviceId, status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 状态变更通知推送失败。", deviceId);
+            }
         }
 
         /// <inheritdoc/>
