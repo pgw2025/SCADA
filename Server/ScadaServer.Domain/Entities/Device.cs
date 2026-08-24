@@ -86,5 +86,14 @@ namespace ScadaServer.Domain.Entities
         /// 该设备下的触发器
         /// </summary>
         public List<VariableTrigger>? Triggers { get; set; }
+
+        /// <summary>
+        /// 该设备下的设备变量实例（变量在设备上的具体实现）。
+        /// <para>
+        /// 一台设备可包含多条 <see cref="DeviceVariable"/>，每条对应其模型 <see cref="DataModel"/> 中
+        /// 一个 <see cref="ModelVariable"/> 的实例化；设备实例上可覆盖地址、轮询间隔、缩放、死区等。
+        /// </para>
+        /// </summary>
+        public List<DeviceVariable>? DeviceVariables { get; set; }
     }
 }

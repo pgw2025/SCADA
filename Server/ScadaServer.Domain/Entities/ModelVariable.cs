@@ -122,5 +122,14 @@ namespace ScadaServer.Domain.Entities
         /// </summary>
         [Column(TypeName = "longtext")]
         public Dictionary<string, string>? ExtensionData { get; set; }
+
+        /// <summary>
+        /// 该模型变量在各设备上的实例化集合（<see cref="DeviceVariable"/>）。
+        /// <para>
+        /// 一个 <see cref="ModelVariable"/> 模板可被多台设备各自实例化出一条 <see cref="DeviceVariable"/>，
+        /// 因此这里是 1:N 关系；具体地址、轮询、缩放等实现细节由设备实例决定。
+        /// </para>
+        /// </summary>
+        public List<DeviceVariable>? DeviceVariables { get; set; }
     }
 }

@@ -47,6 +47,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<DbVersion> DbVersions => Set<DbVersion>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<DeviceConfig> DeviceConfigs => Set<DeviceConfig>();
+        public DbSet<DeviceVariable> DeviceVariables => Set<DeviceVariable>();
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
         public DbSet<ModelVariable> ModelVariables => Set<ModelVariable>();
@@ -93,6 +94,11 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<ScadaProject>().ToTable("ScadaProjects");
             modelBuilder.Entity<ScheduledTask>().ToTable("ScheduledTasks");
             modelBuilder.Entity<Sensor>().ToTable("Sensors");
+            modelBuilder.Entity<DeviceVariable>().ToTable("DeviceVariables");
+            modelBuilder.Entity<DeviceVariable>()
+                .HasIndex(dv => new { dv.DeviceId, dv.ModelVariableId })
+                .IsUnique()
+                .HasDatabaseName("ix_devicevariable_device_model");
             modelBuilder.Entity<SystemConfig>().ToTable("SystemConfig");
             modelBuilder.Entity<SystemLog>().ToTable("SystemLogs");
             modelBuilder.Entity<SystemScript>().ToTable("SystemScripts");
@@ -145,6 +151,18 @@ namespace ScadaServer.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(s => s.DeviceId);
 
+            modelBuilder.Entity<DeviceVariable>()
+                .HasOne(dv => dv.Device)
+                .WithMany(d => d.DeviceVariables)
+                .HasForeignKey(dv => dv.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DeviceVariable>()
+                .HasOne(dv => dv.ModelVariable)
+                .WithMany(mv => mv.DeviceVariables)
+                .HasForeignKey(dv => dv.ModelVariableId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // 长文本列类型（MySQL 不支持 nvarchar(max)/text 默认映射，显式指定）
             modelBuilder.Entity<DeviceConfig>()
                 .Property(c => c.JsonConfig)
@@ -156,6 +174,11 @@ namespace ScadaServer.Infrastructure.Persistence
 
             modelBuilder.Entity<ModelVariable>()
                 .Property(m => m.ExtensionData)
+                .HasConversion(ExtensionDataConverter, ExtensionDataComparer)
+                .HasColumnType("longtext");
+
+            modelBuilder.Entity<DeviceVariable>()
+                .Property(dv => dv.ExtensionData)
                 .HasConversion(ExtensionDataConverter, ExtensionDataComparer)
                 .HasColumnType("longtext");
 
