@@ -84,6 +84,8 @@ const renderedVariables = computed(() => {
       max: v.max ?? 100,
       description: v.description || '现场控制元件回写值',
       value: value,
+      // 读写权限（来自模型模板 ModelVariable.isReadOnly），供写入按钮显隐判断
+      isReadOnly: v.isReadOnly,
       // 优先展示变量级实时推送时间戳，无推送时回退设备更新时间
       updatedAt: selectedDevice.value?.variableTimestamps?.[v.key]
         || selectedDevice.value?.lastUpdated
@@ -438,7 +440,7 @@ watch(() => devices.value.length, (len) => {
 
                     <!-- Open overwrite button -->
                     <button 
-                      v-else-if="selectedDevice.status === 1 || selectedDevice.status === 'online'"
+                      v-else-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
                       @click="startOverride(v.key, v.value)"
                       class="text-[11px] font-sans font-bold text-[#1890ff] hover:text-sky-600 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer"
                     >
@@ -551,7 +553,7 @@ watch(() => devices.value.length, (len) => {
 
                   <!-- Read only block / override button -->
                   <button 
-                    v-else-if="selectedDevice.status === 1 || selectedDevice.status === 'online'"
+                    v-else-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
                     @click="startOverride(v.key, v.value)"
                     class="text-[10px] font-sans font-bold text-[#1890ff] border border-slate-200 dark:border-slate-700 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                   >
