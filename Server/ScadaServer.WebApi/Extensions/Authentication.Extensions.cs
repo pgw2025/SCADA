@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -49,28 +50,27 @@ namespace ScadaServer.WebApi.Extensions
                     };
                 });
 
-            // Add CORS policy
+            // CORS 策略：只放行显式配置的白名单来源（AllowedCorsOrigins）。
+            // 移除 SetIsOriginAllowed 动态放行逻辑，避免任何来源都能携带凭证跨域访问。
             services.AddCors(options =>
             {
-                var allowedOrigins = configuration.GetSection("AllowedCorsOrigins").Get<string[]>() ?? Array.Empty<string>();
+                var allowedOrigins = configuration.GetSection("AllowedCorsOrigins").Get<string[]>()
+                                    ?? Array.Empty<string>();
                 options.AddPolicy("AllowSpecificOrigins", policy =>
                 {
                     policy.WithOrigins(allowedOrigins)
                            .AllowAnyMethod()
                            .AllowAnyHeader()
-                           .AllowCredentials()
-                           .SetIsOriginAllowedToAllowWildcardSubdomains();
-
-                    policy.SetIsOriginAllowed(origin =>
-                    {
-                        if (string.IsNullOrWhiteSpace(origin)) return false;
-                        return origin.Contains("localhost") || origin.Contains("127.0.0.1") || origin.Contains("100.88.88.");
-                    });
+                           .AllowCredentials();
                 });
             });
 
-            // JWT Authentication Configuration
-            var jwtKey = configuration["Jwt:Key"] ?? "SUPER_SECRET_KEY_FOR_SCADA_SERVER_12345";
+            // JWT 签名密钥：仅来自配置（appsettings.json 开发占位 / 生产环境变量 Jwt__Key 覆盖）。
+            // 严禁代码内硬编码默认密钥——缺失时快速失败，防止弱密钥或默认密钥上线。
+            var jwtKey = configuration["Jwt:Key"]
+                ?? throw new InvalidOperationException(
+                    "未配置 Jwt:Key 签名密钥。开发环境使用 appsettings.json 的 Jwt:Key，生产环境必须通过环境变量 Jwt__Key 注入。");
+
             services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -88,6 +88,15 @@ namespace ScadaServer.WebApi.Extensions
                     ValidAudience = configuration["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
                 };
+            });
+
+            // 全局授权策略：除显式标记 [AllowAnonymous] 的端点（登录、SignalR Hub）外，
+            // 所有 API 默认必须携带有效 JWT 才能访问，避免“忘了加 [Authorize] 就裸奔”。
+            services.AddAuthorization(options =>
+            {
+                options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                    .RequireAuthenticatedUser()
+                    .Build();
             });
 
             services.AddSignalR();

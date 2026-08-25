@@ -61,7 +61,9 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           description: v.description,
           isStored: v.isStored || false,
           storeMode: (v.storeMode === 'Cycle' ? 'Cycle' : 'Change') as 'Change' | 'Cycle',
-          updateMode: (v.updateMode === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
+          // 后端 UpdateMode 枚举以 JsonStringEnumConverter 输出 PascalCase（Subscription/Polling），
+          // 统一 toLowerCase 后比较，避免大小写漂移导致订阅模式变量回传后恒变 polling。
+          updateMode: (String(v.updateMode ?? '').toLowerCase() === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
           pollingIntervalMs: v.pollingIntervalMs || 1000,
           bitOffset: v.bitOffset,
           scaleSlope: v.scaleSlope || 1.0,

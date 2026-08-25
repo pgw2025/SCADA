@@ -51,5 +51,13 @@ namespace ScadaServer.WebApi.Services
 
             // MQTT通知：发布设备状态到MQTT服务器（当前 MQTT 管理器未实现状态发布，静默忽略）
         }
+
+        /// <inheritdoc/>
+        public async Task NotifySystemAlarmAsync(int deviceId, string variableKey, string variableName, string message, string level)
+        {
+            // SignalR通知：向所有连接的客户端广播系统报警（前端 ReceiveSystemAlarm 监听展示）。
+            // MQTT通知：当前 MQTT 管理器未实现报警发布，静默忽略。
+            await _hubContext.Clients.All.SendAsync("ReceiveSystemAlarm", deviceId, variableKey, variableName, message, level);
+        }
     }
 }

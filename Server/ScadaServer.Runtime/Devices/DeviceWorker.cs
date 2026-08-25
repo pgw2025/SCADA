@@ -27,6 +27,12 @@ namespace ScadaServer.Runtime.Devices
         private readonly IHistoryRecorder _historyRecorder;
 
         /// <summary>
+        /// 变量越界报警去重状态：key = 变量Key，值 = (是否超上限, 是否低于限)。
+        /// 仅在进入越界时推送一次，恢复在限内后复位，避免持续越界刷屏报警。
+        /// </summary>
+        private readonly Dictionary<string, (bool High, bool Low)> _alarmStates = new();
+
+        /// <summary>
         /// 初始化设备工作器
         /// </summary>
         /// <param name="runtime">设备运行时，包含设备配置、驱动实例和变量集合</param>
@@ -133,6 +139,9 @@ namespace ScadaServer.Runtime.Devices
 
                             // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）
                             TryRecordHistory(vr);
+
+                            // 检测变量上下限越界并推送系统报警（仅进入越界时推送一次）
+                            TryCheckAlarm(vr);
                         }
                         catch (Exception ex)
                         {
@@ -250,6 +259,78 @@ namespace ScadaServer.Runtime.Devices
                 numericValue,
                 rawValue,
                 vr.Quality.ToString());
+        }
+
+        /// <summary>
+        /// 检测变量上下限越界并推送系统报警（SignalR ReceiveSystemAlarm）。
+        /// <list type="bullet">
+        /// <item>仅当模型变量配置了数值上下限（Min / Max）时检测；数字量 / 非数值型不参与；</item>
+        /// <item>进入越界时推送一次，持续越界不重复推送；恢复在限内后自动复位，允许下次越界再次报警。</item>
+        /// </list>
+        /// </summary>
+        private void TryCheckAlarm(VariableRuntime vr)
+        {
+            var definition = vr.Definition;
+            if (definition.Min == null && definition.Max == null)
+            {
+                return;
+            }
+            if (vr.Value == null)
+            {
+                return;
+            }
+
+            double numeric;
+            try
+            {
+                numeric = Convert.ToDouble(vr.Value);
+            }
+            catch
+            {
+                // 非数值型（如字符串）不参与上下限报警
+                return;
+            }
+
+            var high = definition.Max != null && numeric > definition.Max.Value;
+            var low = definition.Min != null && numeric < definition.Min.Value;
+
+            if (!_alarmStates.TryGetValue(vr.Key, out var last))
+            {
+                last = (false, false);
+            }
+
+            if (high && !last.High)
+            {
+                // 进入上限越界：推送一次
+                _alarmStates[vr.Key] = (true, low);
+                FireAlarm(vr, $"变量值 {numeric} 超过上限 {definition.Max}", "High");
+            }
+            else if (low && !last.Low)
+            {
+                // 进入下限越界：推送一次
+                _alarmStates[vr.Key] = (high, true);
+                FireAlarm(vr, $"变量值 {numeric} 低于下限 {definition.Min}", "Low");
+            }
+            else if (!high && !low && (last.High || last.Low))
+            {
+                // 恢复在限内：复位状态，允许下次越界再次报警
+                _alarmStates[vr.Key] = (false, false);
+            }
+        }
+
+        /// <summary>
+        /// 推送系统报警（fire-and-forget，不阻塞采集循环）。
+        /// </summary>
+        private void FireAlarm(VariableRuntime vr, string message, string level)
+        {
+            try
+            {
+                _ = _notificationService.NotifySystemAlarmAsync(_runtime.Device.Id, vr.Key, vr.Name, message, level);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "推送系统报警失败: {VariableKey}", vr.Key);
+            }
         }
     }
 }

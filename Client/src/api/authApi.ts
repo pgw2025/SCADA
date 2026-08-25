@@ -6,6 +6,35 @@ import { SystemUser, CreateUserDto, UpdateUserDto } from '../types';
 
 const TOKEN_KEY = 'scada_access_token';
 
+// ---------- 全局认证拦截器（S-1b） ----------
+// 请求拦截：为所有 API 请求自动附加 JWT Token；响应拦截：Token 失效（401）时清除凭证回到登录态。
+// 所有 api 文件均使用默认 axios 实例，此处注册一次即可全局生效。
+
+const getToken = () => localStorage.getItem(TOKEN_KEY);
+
+axios.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.set('Authorization', `Bearer ${token}`);
+  }
+  return config;
+});
+
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 登录接口自身的 401 属于“用户名或密码错误”，不属于凭证失效，跳过强制登出
+    const isLoginRequest = error.config?.url?.includes('/api/Auth/login');
+    if (error.response?.status === 401 && !isLoginRequest && getToken()) {
+      localStorage.removeItem(TOKEN_KEY);
+      isAuthenticated.value = false;
+      loginUser.value = null;
+      addLog('安全认证', '登录状态已失效，请重新登录', 'warning');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 初始化认证状态
 export const initializeAuth = () => {
   const token = localStorage.getItem(TOKEN_KEY);

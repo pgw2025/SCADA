@@ -26,9 +26,14 @@ namespace ScadaServer.WebApi.Controllers
         /// <summary>
         /// 获取所有设备
         /// </summary>
+        /// <param name="includeVariables">
+        /// 是否携带各设备的变量明细（默认 true）。
+        /// 轻量轮询场景（仅需状态/概要）可传 false 跳过每台设备 2 次变量相关 DB 查询。
+        /// </param>
         /// <returns>设备列表</returns>
         [HttpGet]
-        public async Task<IActionResult> GetAll() => Ok(await _deviceAppService.GetListAsync());
+        public async Task<IActionResult> GetAll([FromQuery] bool includeVariables = true)
+            => Ok(await _deviceAppService.GetListAsync(includeVariables));
 
         /// <summary>
         /// 根据ID获取设备

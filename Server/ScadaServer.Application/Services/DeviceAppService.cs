@@ -68,7 +68,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
-        public async Task<List<DeviceDto>> GetListAsync()
+        public async Task<List<DeviceDto>> GetListAsync(bool includeVariables = true)
         {
             var list = await _repository.GetListAsync();
             var dtos = new List<DeviceDto>();
@@ -91,7 +91,9 @@ namespace ScadaServer.Application.Services
                     LastCommunicationTime = entity.LastCommunicationTime,
                     ConfigJson = entity.Config?.JsonConfig,
                     RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
-                    Variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
+                    Variables = includeVariables
+                        ? await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
+                        : new List<DeviceVariableDto>()
                 });
             }
             return dtos;

@@ -36,14 +36,20 @@ namespace ScadaServer.Application.Services
             }
 
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? "SUPER_SECRET_KEY_FOR_SCADA_SERVER_12345");
+            // 与 WebApi 端一致：密钥必须来自配置（Jwt__Key），缺失即快速失败，禁止硬编码默认密钥。
+            var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]
+                ?? throw new InvalidOperationException("未配置 Jwt:Key 签名密钥，无法签发 Token。"));
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new[]
                 {
                     new Claim(ClaimTypes.Name, user.Username),
                     new Claim(ClaimTypes.Role, user.Role),
-                    new Claim("id", user.Id.ToString())
+                    new Claim("id", user.Id.ToString()),
+                    // 短名 claim：前端 authApi 直接读 payload.username / payload.role，
+                    // 避免解析 ClaimTypes 的长 URI claim（http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name）
+                    new Claim("username", user.Username),
+                    new Claim("role", user.Role)
                 }),
                 Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),

@@ -6,6 +6,7 @@ namespace ScadaServer.Application.Interfaces
     {
         Task<ModelVariableDto?> GetByIdAsync(int id);
         Task<List<ModelVariableDto>> GetListAsync();
+        Task<List<ModelVariableDto>> GetByModelIdAsync(int modelId);
         Task<ModelVariableDto> CreateAsync(ModelVariableDto dto);
         Task<ModelVariableDto> UpdateAsync(ModelVariableDto dto);
         Task DeleteAsync(int id);

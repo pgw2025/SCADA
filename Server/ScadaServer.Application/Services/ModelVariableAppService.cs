@@ -37,6 +37,12 @@ namespace ScadaServer.Application.Services
             return list.Select(MapToDto).ToList();
         }
 
+        public async Task<List<ModelVariableDto>> GetByModelIdAsync(int modelId)
+        {
+            var list = await _repository.GetListAsync(mv => mv.ModelId == modelId);
+            return list.Select(MapToDto).ToList();
+        }
+
         public async Task<ModelVariableDto> CreateAsync(ModelVariableDto dto)
         {
             // 0. 规范化

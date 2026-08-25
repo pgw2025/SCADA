@@ -33,9 +33,21 @@ namespace ScadaServer.WebApi.Controllers
             return Ok(result);
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Update([FromBody] ModelVariableDto dto)
+        /// <summary>
+        /// 按数据模型ID查询其变量列表（字面量段 by-model 优先于 {id} 路由，不冲突）
+        /// </summary>
+        [HttpGet("by-model/{modelId}")]
+        public async Task<IActionResult> GetByModelId(int modelId)
         {
+            var result = await _appService.GetByModelIdAsync(modelId);
+            return Ok(result);
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, [FromBody] ModelVariableDto dto)
+        {
+            // 从路由取 id，与前端 variableApi PUT /api/ModelVariable/{id} 契约对齐
+            dto.Id = id;
             var result = await _appService.UpdateAsync(dto);
             return Ok(result);
         }

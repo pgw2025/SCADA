@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
@@ -27,6 +28,7 @@ namespace ScadaServer.WebApi.Controllers
         /// </summary>
         /// <param name="loginDto">登录信息</param>
         /// <returns>登录结果</returns>
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
