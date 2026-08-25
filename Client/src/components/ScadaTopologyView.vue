@@ -23,6 +23,7 @@ import {
 import { devices } from '../store/deviceStore';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { showToast } from '../services/toastService';
 import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
@@ -220,6 +221,21 @@ const handleClearCanvas = () => {
 const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, legacyKey: string, actionType?: string, val?: any) => {
   const key = variableKey || legacyKey;
   if (!key && deviceId == null) return;
+
+  // 阶段4-4 只读拦截：设备级有效只读权限优先于写操作（后端 RuntimeManager 仍会兜底校验 IsReadOnly）。
+  // 命中只读时直接拦截，不发起乐观更新与 REST 写，仅提示不可写。
+  if (deviceId != null) {
+    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+    const meta = dev?.variableMeta?.[key];
+    // 后端未配置 camelCase，DTO 默认 PascalCase；两种命名均兼容读取。
+    const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+    if (isReadOnly) {
+      showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
+      addLog('SCADA 写控', `写拦截：变量 [设备${deviceId}.${key}] 为只读`, 'warning');
+      return;
+    }
+  }
+
   const current = getDeviceVariableValue(deviceId, key);
 
   let targetVal: any;

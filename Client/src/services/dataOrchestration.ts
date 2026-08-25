@@ -1,63 +1,56 @@
 import { devices } from '../store/deviceStore';
 import { dataConversions } from '../store/configStore';
 import { addLog, systemConfig } from '../store/index';
-import { HubConnectionState } from '@microsoft/signalr';
-import { signalRConnection } from '../services/socketService';
+import { writeDeviceVariable } from '../api/deviceApi';
+import { showToast } from '../services/toastService';
 
 export const setDeviceVariableValue = (
   deviceId: number | null,
   variableKey: string,
   newValue: number | boolean
 ) => {
+  // 写前快照：记录受乐观更新影响的 (设备, 变量, 旧值)，供 REST 失败回滚（阶段4-3）
+  const snapshots: { dev: any; key: string; val: any }[] = [];
+
+  const applyOptimistic = (dev: any, key: string, value: number | boolean) => {
+    if (!dev || !dev.variables || dev.variables[key] === undefined) return;
+    snapshots.push({ dev, key, val: dev.variables[key] });
+
+    dev.variables[key] = value;
+
+    if (!dev.variableTimestamps) dev.variableTimestamps = {};
+    const pad2 = (n: number) => n.toString().padStart(2, '0');
+    const d = new Date();
+    dev.variableTimestamps[key] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+
+    // 数据换算联动（写入后按换算规则下推到目标变量）
+    propagateDataLinkages(String(dev.id), key, value);
+
+    addLog('核心控制器', `写变量 [设备${dev.id}.${key}] -> ${value} (${typeof value === 'boolean' ? (value ? 'ON/合闸' : 'OFF/开路') : value})`, 'info');
+  };
+
   if (deviceId != null) {
     // 阶段3：复合绑定（deviceId + variableKey），精准写入指定设备
     const dev = devices.value.find((d) => String(d.id) === String(deviceId));
-    if (dev && dev.variables && dev.variables[variableKey] !== undefined) {
-      dev.variables[variableKey] = newValue;
-
-      if (!dev.variableTimestamps) {
-        dev.variableTimestamps = {};
+    applyOptimistic(dev, variableKey, newValue);
+  } else {
+    // 遗留：仅按变量名跨设备写入（兼容未绑定设备的旧调用方）
+    devices.value.forEach((dev) => {
+      if (dev.status === 'online' || dev.status === 1) {
+        applyOptimistic(dev, variableKey, newValue);
       }
-      const pad2 = (n: number) => n.toString().padStart(2, '0');
-      const d = new Date();
-      dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-
-      // Propagate linkages
-      propagateDataLinkages(String(dev.id), variableKey, newValue);
-
-      // Post log
-      addLog('核心控制器', `写变量 [设备${deviceId}.${variableKey}] -> ${newValue} (${typeof newValue === 'boolean' ? (newValue ? 'ON/合闸' : 'OFF/开路') : newValue})`, 'info');
-    }
-    // 写通道形态（REST / Hub 上行）见阶段4
-    if (!systemConfig.value.isSimulationActive) {
-      writeVariableToBackend(variableKey, newValue);
-    }
-    return;
+    });
   }
 
-  // 遗留：仅按变量名跨设备写入（兼容未绑定设备的旧调用方）
-  devices.value.forEach((dev) => {
-    if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
-      dev.variables[variableKey] = newValue;
-
-      if (!dev.variableTimestamps) {
-        dev.variableTimestamps = {};
-      }
-      const pad2 = (n: number) => n.toString().padStart(2, '0');
-      const d = new Date();
-      dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-
-      // Propagate linkages
-      propagateDataLinkages(String(dev.id), variableKey, newValue);
-
-      // Post log
-      addLog('核心控制器', `写变量 [${variableKey}] -> ${newValue} (${typeof newValue === 'boolean' ? (newValue ? 'ON/合闸' : 'OFF/开路') : newValue})`, 'info');
-    }
-  });
-
-  // Call backend API if simulation data is deactivated
-  if (!systemConfig.value.isSimulationActive) {
-    writeVariableToBackend(variableKey, newValue);
+  // 真机模式：经 REST 下发写指令（仅单设备绑定场景；遗留裸 key 无单设备目标，跳过 REST）
+  if (!systemConfig.value.isSimulationActive && deviceId != null) {
+    writeVariableToBackend(deviceId, variableKey, newValue).catch((err: any) => {
+      // 写失败：回滚本次乐观更新，避免 UI 与设备实际值不一致（后端 RuntimeManager 已拒绝写入）
+      snapshots.forEach((s) => { if (s.dev.variables) s.dev.variables[s.key] = s.val; });
+      const msg = err?.response?.data?.message || err?.message || '未知错误';
+      showToast(`变量 [${variableKey}] 写入失败，已回滚：${msg}`, 'error');
+      addLog('REST 写入', `写入失败并回滚: ${msg}`, 'error');
+    });
   }
 };
 
@@ -104,19 +97,23 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
   }
 };
 
-export const writeVariableToBackend = async (variableKey: string, value: any) => {
+export const writeVariableToBackend = async (
+  deviceId: number | null,
+  variableKey: string,
+  value: any
+) => {
   if (systemConfig.value.isSimulationActive) return;
-
-  // SignalR socket write first
-  if (signalRConnection.value && signalRConnection.value.state === HubConnectionState.Connected) {
-    try {
-      await signalRConnection.value.invoke("WritePlcVariable", variableKey, value);
-      addLog('SignalR 写入', `下行写指令成功 (WebSocket): [${variableKey}] = ${value}`, 'info');
-      return;
-    } catch (err: any) {
-      addLog('SignalR 写入', `Websocket 下发失败: ${err.message}，正在尝试使用 REST API 写入...`, 'warning');
-    }
+  if (deviceId == null) {
+    addLog('SCADA 写控', `REST 写入跳过：未绑定设备，无法定位写目标 (${variableKey})`, 'warning');
+    return;
   }
+
+  // 阶段4（方案 A · 仅 REST）：统一走 DeviceController 写端点（POST /api/Device/{id}/variables/{key}/write），
+  // 全局 JWT FallbackPolicy 鉴权零成本；RuntimeManager 完成校验链
+  // （设备在线→变量存在→启用→只读→驱动就绪→已连接）→ 写驱动 → SignalR 写后回读广播。
+  // 不再依赖设计规范.md 中未实现的 SignalR Hub.WritePlcVariable（ScadaHub 当前为纯下行 [AllowAnonymous]）。
+  await writeDeviceVariable(deviceId, variableKey, value);
+  addLog('REST 写入', `下行写指令成功 (HTTP): 设备#${deviceId} [${variableKey}] = ${value}`, 'info');
 };
 
 // Synchronize all dev/custom simulator variables back to the active HMI components values!
