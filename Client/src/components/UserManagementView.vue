@@ -77,6 +77,7 @@ const handleSaveUser = async () => {
   try {
     if (isEditing.value && editingUserId.value !== null) {
       await updateSystemUser({
+        id: editingUserId.value,
         username: uName.value.trim(),
         role: uRole.value,
         status: uStatus.value

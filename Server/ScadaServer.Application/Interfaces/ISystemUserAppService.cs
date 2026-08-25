@@ -7,7 +7,7 @@ namespace ScadaServer.Application.Interfaces
         Task<LoginResponseDto> LoginAsync(LoginDto loginDto);
         Task<SystemUserDto?> GetByIdAsync(int id);
         Task<List<SystemUserDto>> GetListAsync();
-        Task CreateAsync(SystemUserDto dto);
+        Task CreateAsync(CreateUserDto dto);
         Task UpdateAsync(SystemUserDto dto);
         Task DeleteAsync(int id);
     }

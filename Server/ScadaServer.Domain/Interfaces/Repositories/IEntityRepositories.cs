@@ -111,4 +111,15 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     /// 变量触发器仓储接口
     /// </summary>
     public interface IVariableTriggerRepository : IRepository<VariableTrigger, int> { }
+
+    /// <summary>
+    /// 变量历史数据仓储接口（主键为 long，历史数据量大）
+    /// </summary>
+    public interface IVariableHistoryRepository : IRepository<VariableHistory, long>
+    {
+        /// <summary>
+        /// 查询指定变量的最近 limit 条记录（按采样时间倒序，SQL 下推取数，避免全表回拉）。
+        /// </summary>
+        Task<List<VariableHistory>> GetLatestAsync(string variableKey, int limit);
+    }
 }

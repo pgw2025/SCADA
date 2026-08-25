@@ -24,18 +24,16 @@ namespace ScadaServer.WebApi.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
         {
-            await _appService.CreateAsync(new SystemUserDto
-            {
-                Username = dto.Username,
-                Role = dto.Role,
-                Status = dto.Status
-            });
+            // 透传 dto（含 Password），由应用服务完成哈希与校验
+            await _appService.CreateAsync(dto);
             return Ok(new { Success = true, Message = "User created successfully" });
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Update([FromBody] SystemUserDto dto)
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, [FromBody] SystemUserDto dto)
         {
+            // 从路由取 id，避免前端漏传时静默更新失败（实体不存在会抛业务异常）
+            dto.Id = id;
             await _appService.UpdateAsync(dto);
             return Ok();
         }

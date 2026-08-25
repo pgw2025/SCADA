@@ -78,7 +78,8 @@ export const createSystemUser = async (userData: CreateUserDto): Promise<SystemU
 };
 
 export const updateSystemUser = async (userData: UpdateUserDto): Promise<SystemUser> => {
-  const response = await axios.put(`${systemConfig.value.backendApiUrl}/api/SystemUser`, userData);
+  // 后端路由为 PUT /api/SystemUser/{id}，必须携带 id
+  const response = await axios.put(`${systemConfig.value.backendApiUrl}/api/SystemUser/${userData.id}`, userData);
   return response.data;
 };
 

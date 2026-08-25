@@ -3,6 +3,7 @@ using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.Services;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Persistence;
+using ScadaServer.WebApi.HostedServices;
 using ScadaServer.WebApi.Services;
 
 namespace ScadaServer.WebApi.Extensions
@@ -42,6 +43,12 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<ISystemScriptAppService, SystemScriptAppService>();
             services.AddScoped<ISystemUserAppService, SystemUserAppService>();
             services.AddScoped<IVariableTriggerAppService, VariableTriggerAppService>();
+            services.AddScoped<IHistoryAppService, HistoryAppService>();
+
+            // 历史数据记录器：采集线程异步入队，后台批量落库（单例 + IHostedService 常驻）。
+            services.AddSingleton<HistoryRecorder>();
+            services.AddSingleton<IHistoryRecorder>(sp => sp.GetRequiredService<HistoryRecorder>());
+            services.AddHostedService(sp => sp.GetRequiredService<HistoryRecorder>());
 
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();

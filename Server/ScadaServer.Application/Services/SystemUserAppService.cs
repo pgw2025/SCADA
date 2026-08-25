@@ -2,6 +2,7 @@ using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
+using ScadaServer.Domain.Exceptions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -90,28 +91,52 @@ namespace ScadaServer.Application.Services
             }).ToList();
         }
 
-        public async Task CreateAsync(SystemUserDto dto)
+        public async Task CreateAsync(CreateUserDto dto)
         {
+            // 用户名与初始密码校验
+            if (string.IsNullOrWhiteSpace(dto.Username))
+            {
+                throw new BusinessException("用户名不能为空");
+            }
+            if (string.IsNullOrWhiteSpace(dto.Password))
+            {
+                throw new BusinessException("新建用户必须设置初始密码");
+            }
+
+            // 用户名唯一性
+            var exists = await _repository.AnyAsync(u => u.Username == dto.Username);
+            if (exists)
+            {
+                throw new BusinessException($"用户名 '{dto.Username}' 已存在");
+            }
+
             var entity = new SystemUser
             {
                 Username = dto.Username,
-                Role = dto.Role,
-                Status = dto.Status,
-                PasswordHash = "DEFAULT_HASH" // In a real app, this would be handled properly
+                Role = string.IsNullOrWhiteSpace(dto.Role) ? "Operator" : dto.Role,
+                Status = string.IsNullOrWhiteSpace(dto.Status) ? "Active" : dto.Status
             };
+
+            // 使用 PasswordHasher 哈希初始密码（与登录校验一致），保证 API 创建的用户可正常登录。
+            var passwordHasher = new PasswordHasher<SystemUser>();
+            entity.PasswordHash = passwordHasher.HashPassword(entity, dto.Password);
+
             await _repository.InsertAsync(entity);
         }
 
         public async Task UpdateAsync(SystemUserDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
-            if (entity != null)
+            if (entity == null)
             {
-                entity.Username = dto.Username;
-                entity.Role = dto.Role;
-                entity.Status = dto.Status;
-                await _repository.UpdateAsync(entity);
+                // 修复：原实现静默返回，前端提示成功但实际未更新。改为显式报错。
+                throw new BusinessException($"ID 为 {dto.Id} 的用户不存在");
             }
+
+            entity.Username = dto.Username;
+            entity.Role = dto.Role;
+            entity.Status = dto.Status;
+            await _repository.UpdateAsync(entity);
         }
 
         public async Task DeleteAsync(int id)

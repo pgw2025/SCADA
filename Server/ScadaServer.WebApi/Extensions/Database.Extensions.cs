@@ -69,6 +69,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<ISystemScriptRepository, SystemScriptRepository>();
             services.AddScoped<ISystemUserRepository, SystemUserRepository>();
             services.AddScoped<IVariableTriggerRepository, VariableTriggerRepository>();
+            services.AddScoped<IVariableHistoryRepository, VariableHistoryRepository>();
 
             return services;
         }

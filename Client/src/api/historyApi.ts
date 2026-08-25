@@ -27,6 +27,9 @@ export const fetchHistoryFromBackend = async (variableKey: string, limit: number
             addLog('历史查询', `同步后端时序库记录成功！拉取 ${converted.length} 条数据点`, 'normal');
         }
     } catch (err: any) {
-        addLog('历史查询', `调取时序时钟出线硬阻塞: ${err.message}`, 'warning');
+        // 失败时清空该变量历史区，避免残留上次数据被误认为当前查询结果；
+        // 同时向操作日志抛出明确错误，不再静默吞掉（区分“后端未实现/未连通”与“查询无数据”）。
+        historicalRecords.value = historicalRecords.value.filter(r => r.variableKey !== variableKey);
+        addLog('历史查询', `调取历史曲线失败: ${err.message}（请确认后端历史接口已启用、服务已启动）`, 'warning');
     }
 };

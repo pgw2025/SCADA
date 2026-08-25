@@ -23,6 +23,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly ILogger<DeviceScheduler> _logger;
         private readonly ILogger<DeviceWorker> _workerLogger;
         private readonly IScadaNotificationService _notificationService;
+        private readonly IHistoryRecorder _historyRecorder;
 
         // 调度器自身的取消源：由 StopAsync 触发，独立于宿主的 stoppingToken，
         // 确保在应用退出时调度循环与已派发的 worker 都能干净退出。
@@ -36,7 +37,7 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="runtimeManager">运行时管理器，提供设备运行时列表</param>
         /// <param name="maxConcurrentWorkers">最大并发工作线程数，限制同时执行的设备任务数量</param>
         /// <param name="logger">日志记录器</param>
-        public DeviceScheduler(RuntimeManager runtimeManager, int maxConcurrentWorkers, ILogger<DeviceScheduler> logger, ILogger<DeviceWorker> workerLogger, IScadaNotificationService notificationService)
+        public DeviceScheduler(RuntimeManager runtimeManager, int maxConcurrentWorkers, ILogger<DeviceScheduler> logger, ILogger<DeviceWorker> workerLogger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder)
         {
             _runtimeManager = runtimeManager;
             _workerLimiter = new SemaphoreSlim(maxConcurrentWorkers);
@@ -44,6 +45,7 @@ namespace ScadaServer.Runtime.Devices
             _logger = logger;
             _workerLogger = workerLogger;
             _notificationService = notificationService;
+            _historyRecorder = historyRecorder;
         }
 
         /// <summary>
@@ -88,7 +90,7 @@ namespace ScadaServer.Runtime.Devices
                         {
                             try
                             {
-                                var worker = new DeviceWorker(runtime, _workerLogger, _notificationService);
+                                var worker = new DeviceWorker(runtime, _workerLogger, _notificationService, _historyRecorder);
                                 await worker.WorkerAsync(linkedToken);
                             }
                             catch (Exception ex) when (ex is not OperationCanceledException)

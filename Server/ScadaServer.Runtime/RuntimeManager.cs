@@ -32,6 +32,7 @@ namespace ScadaServer.Runtime
         private readonly IProtocolDriverFactory _driverFactory;
         private readonly DeviceRegistry _deviceRegistry;
         private readonly IScadaNotificationService _notificationService;
+        private readonly IHistoryRecorder _historyRecorder;
         private readonly IServiceScopeFactory _scopeFactory;
         private DeviceScheduler? _scheduler;
 
@@ -54,6 +55,7 @@ namespace ScadaServer.Runtime
             IProtocolDriverFactory driverFactory,
             DeviceRegistry deviceRegistry,
             IScadaNotificationService notificationService,
+            IHistoryRecorder historyRecorder,
             IServiceScopeFactory scopeFactory)
         {
             _logger = logger;
@@ -61,6 +63,7 @@ namespace ScadaServer.Runtime
             _driverFactory = driverFactory;
             _deviceRegistry = deviceRegistry;
             _notificationService = notificationService;
+            _historyRecorder = historyRecorder;
             _scopeFactory = scopeFactory;
         }
 
@@ -221,7 +224,8 @@ namespace ScadaServer.Runtime
                 maxConcurrentWorkers,
                 _loggerFactory.CreateLogger<DeviceScheduler>(),
                 _loggerFactory.CreateLogger<DeviceWorker>(),
-                _notificationService);
+                _notificationService,
+                _historyRecorder);
 
             await _scheduler.StartAsync(token);
         }

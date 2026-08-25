@@ -29,7 +29,9 @@ export const initializeRealtimeSignals = () => {
             const dev = devices.value.find(d => d.id === deviceId);
             if (!dev) return;
 
-            if (dev.variables && dev.variables[variableKey] !== undefined) {
+            // 实时值推送直接写入变量表；normalizeDevices 已为后端变量预置 null 占位，
+            // 此处不再用 !== undefined 拦截（避免运行时新增变量被丢弃）。
+            if (dev.variables) {
                 dev.variables[variableKey] = newValue;
                 if (!dev.variableTimestamps) dev.variableTimestamps = {};
                 const pad2 = (n: number) => n.toString().padStart(2, '0');

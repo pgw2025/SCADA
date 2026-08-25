@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.DTOs
@@ -59,8 +60,13 @@ namespace ScadaServer.Application.DTOs
         public string? ConfigJson { get; set; }
 
         /// <summary>
-        /// 运行时状态（仅查询时返回）
+        /// 运行时状态（仅查询时返回）。
+        /// <para>
+        /// 以字符串枚举输出（Online/Offline/Fault/Connecting/ConfigUpdating），
+        /// 与 SignalR 推送的字符串状态一致，保证 REST 与实时两条链路前端映射统一。
+        /// </para>
         /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
         public DeviceStatus? RuntimeStatus { get; set; }
 
         /// <summary>

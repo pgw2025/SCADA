@@ -143,6 +143,11 @@ export interface DataModel {
   name: string;
   description: string;
   type: DeviceType;   // 协议真相源（后端 DataModel.Type），模型自建时即定协议
+  // 协议绑定（协议真相源）：对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName。
+  // 更新模型时必须原样回传 protocolId，避免后端 PUT 全量替换语义把协议解绑。
+  protocolId?: number;
+  protocolKey?: string;
+  protocolName?: string;
   variables: ModelVariable[];
 }
 
@@ -218,6 +223,7 @@ export interface CreateUserDto {
 }
 
 export interface UpdateUserDto {
+  id: number;         // 必传：后端 PUT /api/SystemUser/{id} 从路由取 id，实体不存在会报错
   username?: string;
   role?: string;
   status?: string;

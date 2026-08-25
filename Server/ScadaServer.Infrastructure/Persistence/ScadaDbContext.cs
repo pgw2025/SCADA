@@ -63,6 +63,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<SystemScript> SystemScripts => Set<SystemScript>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
         public DbSet<VariableTrigger> VariableTriggers => Set<VariableTrigger>();
+        public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
 
         #endregion
 
@@ -114,6 +115,13 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<SystemScript>().ToTable("SystemScripts");
             modelBuilder.Entity<SystemUser>().ToTable("SystemUsers");
             modelBuilder.Entity<VariableTrigger>().ToTable("VariableTriggers");
+
+            // 变量历史数据表：按 变量键 + 时间 建复合索引，支撑历史趋势查询。
+            // 历史数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能。
+            modelBuilder.Entity<VariableHistory>().ToTable("VariableHistory");
+            modelBuilder.Entity<VariableHistory>()
+                .HasIndex(h => new { h.VariableKey, h.Timestamp })
+                .HasDatabaseName("ix_variablehistory_key_timestamp");
 
             // 主键（DeviceConfig 使用 DeviceId 作为主键，非自增）
             modelBuilder.Entity<DeviceConfig>()

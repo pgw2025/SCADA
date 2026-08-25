@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using Microsoft.Extensions.Hosting;
 using ScadaServer.Application.Options;
 using ScadaServer.WebApi.Extensions;
 using ScadaServer.WebApi.HostedServices;
@@ -64,8 +65,13 @@ try
         logger.LogWarning("Windows 排查： netstat -ano | findstr :<端口>    结束进程： taskkill /PID <进程号> /F");
     }
 
-    // 启动 Kestrel 并等待关闭信号（Ctrl+C / systemd SIGTERM / docker stop）
-    await app.RunAsync();
+    // 启动 Kestrel 并等待关闭信号（Ctrl+C / systemd SIGTERM / docker stop）。
+    // 手动拆分 StartAsync + WaitForShutdownAsync，替代 RunAsync：
+    // RunAsync 在启动异常向上传播前会先在 finally 里 Dispose 整个 Host，
+    // 导致下方 catch 里 logger 已失效（Windows 上触发 EventLog disposed 二次崩溃）。
+    await app.StartAsync();
+    await app.WaitForShutdownAsync(
+        app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
 
     logger.LogInformation("SCADA 服务已正常关闭。");
     return 0;
@@ -208,7 +214,9 @@ static async Task StopAppAsync(WebApplication app, ILogger logger)
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "停止应用时发生异常（已忽略）。");
+        // 兜底路径：StopAsync 可能在 Host 已释放时被调用，此时 ILogger 可能已失效
+        //（Windows EventLog provider 已 Dispose）。改用最后手段输出，避免兜底自身再抛异常。
+        SafeLogError(logger, ex, "停止应用时发生异常（已忽略）。");
     }
 }
 
@@ -220,12 +228,40 @@ static void RegisterGlobalExceptionHandlers(ILogger logger)
     AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     {
         var ex = e.ExceptionObject as Exception;
-        logger.LogCritical(ex, "捕获到未处理异常（AppDomain.UnhandledException），进程即将终止。");
+        // 兜底处理器自身绝不能抛异常，否则会覆盖原始异常、导致进程崩溃且无法定位根因。
+        SafeLog(logger, () => logger.LogCritical(ex, "捕获到未处理异常（AppDomain.UnhandledException），进程即将终止。"),
+            "捕获到未处理异常（AppDomain.UnhandledException）：" + ex?.Message);
     };
 
     TaskScheduler.UnobservedTaskException += (_, e) =>
     {
-        logger.LogError(e.Exception, "捕获到未观察任务异常（TaskScheduler.UnobservedTaskException）。");
+        SafeLog(logger, () => logger.LogError(e.Exception, "捕获到未观察任务异常（TaskScheduler.UnobservedTaskException）。"),
+            "捕获到未观察任务异常（TaskScheduler.UnobservedTaskException）：" + e.Exception?.Message);
         e.SetObserved();
     };
+}
+
+/// <summary>
+/// 安全的日志写入：尝试通过 ILogger 输出；若 logger 已失效（例如 Host 已释放），
+/// 则回退到控制台标准错误，确保兜底路径自身永不抛异常。
+/// </summary>
+static void SafeLog(ILogger logger, Action logAction, string fallbackMessage)
+{
+    try
+    {
+        logAction();
+    }
+    catch
+    {
+        try { Console.Error.WriteLine(fallbackMessage); }
+        catch { /* 最后防线：忽略一切输出失败 */ }
+    }
+}
+
+/// <summary>
+/// 安全的错误日志写入（带异常对象版本，供 StopAppAsync 等兜底路径使用）。
+/// </summary>
+static void SafeLogError(ILogger logger, Exception ex, string message)
+{
+    SafeLog(logger, () => logger.LogError(ex, message), message + " " + ex.Message);
 }

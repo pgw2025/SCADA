@@ -43,6 +43,10 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
         description: m.description || '',
         // 协议真相源在 DataModel.Type（后端返回真实协议）
         type: (m.type as DataModel['type']) || 'Virtual',
+        // 协议绑定（对应后端 DataModelDto.ProtocolId），更新模型时须原样回传
+        protocolId: m.protocolId ?? undefined,
+        protocolKey: m.protocolKey ?? undefined,
+        protocolName: m.protocolName ?? undefined,
         variables: m.variables?.map((v: any) => ({
           id: v.id,
           modelId: v.modelId,
@@ -80,7 +84,15 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
   if (systemConfig.value.isSimulationActive) return true;
 
   try {
-    await axios.put(`${systemConfig.value.backendApiUrl}/api/DataModel/${modelId}`, modelData);
+    // 后端 PUT /api/DataModel/{id} 为全量替换语义：未传 protocolId 会解绑协议。
+    // 这里在合并提交体时保留既有模型的协议绑定，避免误解绑。
+    const existing = dataModels.value.find(m => m.id === modelId);
+    const payload: Record<string, any> = {
+      ...modelData,
+      protocolId: modelData.protocolId ?? existing?.protocolId ?? null
+    };
+
+    await axios.put(`${systemConfig.value.backendApiUrl}/api/DataModel/${modelId}`, payload);
     
     const idx = dataModels.value.findIndex(m => m.id === modelId);
     if (idx !== -1) {

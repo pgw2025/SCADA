@@ -24,6 +24,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly DeviceRuntime _runtime;
         private readonly ILogger<DeviceWorker> _logger;
         private readonly IScadaNotificationService _notificationService;
+        private readonly IHistoryRecorder _historyRecorder;
 
         /// <summary>
         /// 初始化设备工作器
@@ -31,12 +32,14 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="runtime">设备运行时，包含设备配置、驱动实例和变量集合</param>
         /// <param name="logger">日志记录器</param>
         /// <param name="notificationService">变量更新通知服务（SignalR / MQTT）</param>
+        /// <param name="historyRecorder">历史数据记录器（异步落库）</param>
         /// <exception cref="ArgumentNullException">runtime 或 logger 为 null 时抛出</exception>
-        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService)
+        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+            _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
         }
 
         /// <summary>
@@ -127,6 +130,9 @@ namespace ScadaServer.Runtime.Devices
                             {
                                 changed.Add((vr.Key, vr.Value));
                             }
+
+                            // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）
+                            TryRecordHistory(vr);
                         }
                         catch (Exception ex)
                         {
@@ -190,6 +196,60 @@ namespace ScadaServer.Runtime.Devices
             // 循环结束，标记设备断开
             _runtime.ConnectionState = DeviceConnectionState.Disconnected;
             _logger.LogInformation("DeviceWorker {DeviceKey} stopped.", _runtime.Device.Key);
+        }
+
+        /// <summary>
+        /// 按变量存储策略决定是否记录历史采样点并异步入队。
+        /// <list type="bullet">
+        /// <item>None：不存储；</item>
+        /// <item>Change：值变化时记录；</item>
+        /// <item>Cycle / Compressed / Aggregated：本阶段统一按采集周期记录原始点。</item>
+        /// </list>
+        /// </summary>
+        private void TryRecordHistory(VariableRuntime vr)
+        {
+            var storeMode = vr.Definition.StoreMode;
+            if (storeMode == StoreModeEnum.None)
+            {
+                return;
+            }
+
+            // Change 模式仅在值变化时记录；周期类模式每轮采集都记录。
+            if (storeMode == StoreModeEnum.Change && !vr.IsChanged)
+            {
+                return;
+            }
+
+            // 数值化：数字量（bool）→ 0/1；数值型 → double；其余 → 0（原始值保留在 RawValue）。
+            double numericValue = 0;
+            string? rawValue = vr.Value?.ToString();
+            if (vr.Value != null)
+            {
+                if (vr.Value is bool flag)
+                {
+                    numericValue = flag ? 1 : 0;
+                }
+                else
+                {
+                    try
+                    {
+                        numericValue = Convert.ToDouble(vr.Value);
+                    }
+                    catch
+                    {
+                        numericValue = 0;
+                    }
+                }
+            }
+
+            _historyRecorder.Record(
+                _runtime.Device.Id,
+                _runtime.Device.Key,
+                vr.Key,
+                vr.Name,
+                numericValue,
+                rawValue,
+                vr.Quality.ToString());
         }
     }
 }

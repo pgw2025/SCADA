@@ -44,8 +44,10 @@ namespace ScadaServer.WebApi.Services
         /// <inheritdoc/>
         public async Task NotifyDeviceStatusAsync(int deviceId, DeviceStatus status)
         {
-            // SignalR通知：向所有连接的客户端广播设备状态变更
-            await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", deviceId, status);
+            // SignalR通知：向所有连接的客户端广播设备状态变更。
+            // 显式传枚举名（status.ToString()），SignalR 默认 JSON 协议会把枚举序列化为数字，
+            // 与 REST 接口的字符串枚举不一致会导致前端状态映射错位（设备恒显离线）。
+            await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", deviceId, status.ToString());
 
             // MQTT通知：发布设备状态到MQTT服务器（当前 MQTT 管理器未实现状态发布，静默忽略）
         }
