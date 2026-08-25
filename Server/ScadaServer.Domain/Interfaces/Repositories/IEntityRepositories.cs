@@ -35,7 +35,14 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     /// <summary>
     /// 设备仓储接口
     /// </summary>
-    public interface IDeviceRepository : IRepository<Device, int> { }
+    public interface IDeviceRepository : IRepository<Device, int>
+    {
+        /// <summary>
+        /// 按主键加载设备及其协议配置（跟踪查询），专供更新场景使用。
+        /// 仅 Include Config（更新事务中唯一需要的导航），避免附加大对象图引发实体跟踪冲突。
+        /// </summary>
+        Task<Device?> GetByIdForUpdateAsync(int id);
+    }
 
     /// <summary>
     /// 数据模型仓储接口

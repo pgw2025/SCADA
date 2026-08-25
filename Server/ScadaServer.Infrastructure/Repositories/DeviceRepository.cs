@@ -28,6 +28,18 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// 更新专用加载：跟踪查询 + 仅 Include Config。
+        /// 不使用 AsNoTracking、不 Include Area/Model，
+        /// 使 Update(entity) 无需附加导航对象图，避免与其他跟踪实例（如区域校验加载的 Area）产生同主键跟踪冲突。
+        /// </summary>
+        public async Task<Device?> GetByIdForUpdateAsync(int id)
+        {
+            return await Db.Devices
+                .Include(d => d.Config)
+                .FirstOrDefaultAsync(d => d.Id == id);
+        }
+
+        /// <summary>
         /// 显式加载与 <see cref="GetByIdAsync"/> 一致的导航属性。
         /// </summary>
         public override async Task<List<Device>> GetListAsync()
