@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable } from '../store/index';
+import { extractApiError } from '../api/http';
 import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
 
 onMounted(() => {
@@ -56,8 +57,9 @@ const varName = ref<string>('');
 const varType = ref<'analog' | 'digital'>('analog');
 const varDataType = ref<string>('Float');
 const varUnit = ref<string>('');
-const varMin = ref<number>(0);
-const varMax = ref<number>(100);
+// number 输入框清空后 v-model 运行时值为 ''，类型放宽以匹配真实值（提交时再归一）
+const varMin = ref<number | ''>(0);
+const varMax = ref<number | ''>(100);
 const varDesc = ref<string>('');
 
 // Allowed dataType options dependent on active device format
@@ -142,9 +144,9 @@ const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregate
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 
 // 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DeviceVariable，模板层不再维护）
-const varScaleSlope = ref<number>(1.0);
-const varScaleOffset = ref<number>(0.0);
-const varDeadBand = ref<number | null>(null);
+const varScaleSlope = ref<number | ''>(1.0);
+const varScaleOffset = ref<number | ''>(0.0);
+const varDeadBand = ref<number | null | ''>(null);
 const varIsReadOnly = ref<boolean>(true);
 
 // Filtered variables for search
@@ -203,14 +205,31 @@ const handleDeleteModel = async (id: string, name: string) => {
   }
 };
 
+// 与后端 ModelVariableDto 的 DataAnnotations 保持一致的前端校验
+const KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
+
 // Append tag to current selected model variables
 const handleSaveVariable = async () => {
-  if (!varKey.value.trim() || !varName.value.trim()) return;
+  // 统一 trim，避免首尾空格在本地查重与后端正则间产生不一致
+  const key = varKey.value.trim();
+  const name = varName.value.trim();
+  if (!key || !name) return;
+
+  // 前置校验（与后端 [RegularExpression] / [StringLength] 对齐），拦截非法字符避免 400
+  if (!KEY_PATTERN.test(key)) {
+    alert('变量 Key 只能包含字母、数字和下划线（不能用中文、空格、连字符、点号）');
+    return;
+  }
+  if (key.length > 50) {
+    alert('变量 Key 不能超过 50 个字符');
+    return;
+  }
+
   const model = currentModel.value;
   if (!model) return;
 
   // Check unique key
-  if (model.variables.some(v => v.key === varKey.value)) {
+  if (model.variables.some(v => v.key === key)) {
     alert('变量 Key 在该数据模型中已存在, 请确认后再试。');
     return;
   }
@@ -220,21 +239,22 @@ const handleSaveVariable = async () => {
 
   const newVar: ModelVariable = {
     modelId: Number(model.id),
-    key: varKey.value,
-    name: varName.value,
+    key,
+    name,
     // type 由后端按 DataType 派生,前端不冗余传递(后端 Type 为 IsIgnore 派生字段)
     dataType: varDataType.value as DataTypeEnum,
     unit: varUnit.value || undefined,
-    min: varMin.value || undefined,
-    max: varMax.value || undefined,
+    // number 输入框清空后值为 ''，显式归一：空串不发送、0 保留（避免 || 误吞 0）
+    min: varMin.value === '' ? undefined : varMin.value,
+    max: varMax.value === '' ? undefined : varMax.value,
     description: varDesc.value || undefined,
     isStored: varIsStored.value,
     // 未勾选"存储历史"时显式发 None,后端据此派生 IsStored=false,不写时序库
     storeMode: varIsStored.value ? varStoreMode.value : 'None',
     updateMode: varUpdateMode.value,
-    scaleSlope: varScaleSlope.value,
-    scaleOffset: varScaleOffset.value,
-    deadBand: varDeadBand.value,
+    scaleSlope: varScaleSlope.value === '' ? 1.0 : varScaleSlope.value,
+    scaleOffset: varScaleOffset.value === '' ? 0.0 : varScaleOffset.value,
+    deadBand: varDeadBand.value === '' ? null : varDeadBand.value,
     isReadOnly: varIsReadOnly.value,
     extensionData: {
       accessLevel: varAccessLevel.value,
@@ -255,20 +275,21 @@ const handleSaveVariable = async () => {
       } as ModelVariable);
     }
   } catch (err: any) {
-    alert('保存变量到服务器失败: ' + err.message);
+    // 透传后端具体错误信息（BusinessException 文案 / 模型校验 errors），避免只显示 400 状态码
+    alert('保存变量到服务器失败: ' + extractApiError(err));
     return;
   }
 
   // Synchronize new variable in all existing online devices relying on this model!
   devices.value.forEach((d) => {
     if (d.modelId === model.id) {
-      if (d.variables[varKey.value] === undefined) {
-        d.variables[varKey.value] = varType.value === 'digital' ? false : varMin.value;
+      if (d.variables[key] === undefined) {
+        d.variables[key] = varType.value === 'digital' ? false : (newVar.min ?? 0);
       }
     }
   });
 
-  addLog('模型建立', `模型 [${model.name}] 添加变量 [${varName.value}]`, 'normal');
+  addLog('模型建立', `模型 [${model.name}] 添加变量 [${name}]`, 'normal');
 
   // Clear states
   varKey.value = '';

@@ -19,6 +19,25 @@ const getToken = () => localStorage.getItem(TOKEN_KEY);
  */
 export const http = axios.create();
 
+/**
+ * 从 axios 错误中提取后端 ApiResponse 的具体错误信息，供 UI 直接展示。
+ * 后端统一返回 { success, message, errors }：
+ *  - BusinessException：message 即业务错误文案
+ *  - 模型校验失败：message 为"数据校验失败"，errors 为 { 字段: [原因...] }
+ */
+export const extractApiError = (error: any): string => {
+  const data = error?.response?.data;
+  if (data?.message) {
+    const fieldErrors = data.errors
+      ? '\n' + Object.entries(data.errors)
+          .map(([field, msgs]) => `${field}: ${(Array.isArray(msgs) ? msgs : [msgs]).join('; ')}`)
+          .join('\n')
+      : '';
+    return data.message + fieldErrors;
+  }
+  return error?.message || '未知错误';
+};
+
 // 请求拦截：为所有请求自动附加 JWT Token
 http.interceptors.request.use((config) => {
   const token = getToken();
