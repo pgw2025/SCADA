@@ -22,6 +22,12 @@ namespace ScadaServer.Infrastructure.Communication
         /// </summary>
         private VirtualConfig _config = new();
 
+        /// <summary>
+        /// 写入值存储（key = 变量Key）。写入后 ReadAsync 优先返回该值，
+        /// 使虚拟设备在刷新后仍能"读回"最后一次写入的值，贴近真实链路。
+        /// </summary>
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _writtenValues = new();
+
         public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
             var configJson = device.ConfigJson;
@@ -57,7 +63,21 @@ namespace ScadaServer.Infrastructure.Communication
         public async Task<object> ReadAsync(IRuntimeVariable variable)
         {
             if (!_connected) return null;
+            // 写入过的变量优先返回最后一次写入值，否则生成模拟值。
+            if (_writtenValues.TryGetValue(variable.Key, out var written))
+            {
+                return await Task.FromResult(written);
+            }
             return await Task.FromResult(GenerateValue(variable));
+        }
+
+        public async Task WriteAsync(IRuntimeVariable variable, object value)
+        {
+            if (!_connected) throw new InvalidOperationException("虚拟设备未连接");
+
+            // 落库写入值（原始值即可），供后续 ReadAsync 读回。
+            _writtenValues[variable.Key] = value;
+            await Task.CompletedTask;
         }
 
         public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)

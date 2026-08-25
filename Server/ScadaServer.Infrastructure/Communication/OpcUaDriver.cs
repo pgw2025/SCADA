@@ -75,6 +75,27 @@ namespace ScadaServer.Infrastructure.Communication
             return result.Value;
         }
 
+        public async Task WriteAsync(IRuntimeVariable variable, object value)
+        {
+            if (_session == null || !_session.Connected || string.IsNullOrWhiteSpace(variable.Address))
+                throw new InvalidOperationException("OPC UA 会话未连接或变量地址为空");
+
+            var node = new WriteValue
+            {
+                NodeId = variable.Address,
+                AttributeId = Attributes.Value,
+                Value = new DataValue(new Variant(value))
+            };
+
+            var response = await _session.WriteAsync(null, new WriteValueCollection { node }, default);
+            if (response.Results.Count == 0 || response.Results[0].Code != (uint)Opc.Ua.StatusCodes.Good)
+            {
+                // 用友好文案替代状态码，便于上层直接展示失败原因
+                var code = response.Results.Count > 0 ? response.Results[0].Code : (uint)0;
+                throw new InvalidOperationException($"OPC UA 写入被拒绝: 状态码 0x{code:X8}");
+            }
+        }
+
         public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();

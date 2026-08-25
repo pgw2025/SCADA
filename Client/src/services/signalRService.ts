@@ -2,8 +2,21 @@ import { HubConnectionBuilder } from '@microsoft/signalr';
 import { addLog, systemConfig } from '../store/index';
 import { devices } from '../store/deviceStore';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
+import { setDevices } from '../store/deviceStore';
+import { normalizeDevices } from '../utils/deviceStatus';
 import { isBackendConnected, signalRConnection } from './socketService';
 import { mapRuntimeStatusToStatus } from '../utils/deviceStatus';
+
+// 拉取设备列表并写回全局 store。包装 fetchDevicesFromBackend + normalizeDevices，
+// 修复 SignalR 握手成功/重连后设备拉取结果被丢弃、设备列表从未进入 store 的问题。
+const refreshDevices = async () => {
+    try {
+        const { data } = await fetchDevicesFromBackend();
+        setDevices(normalizeDevices(data));
+    } catch (err: any) {
+        addLog('后端对接', `同步设备列表失败: ${err.message}`, 'warning');
+    }
+};
 
 export const initializeRealtimeSignals = () => {
     if (systemConfig.value.isSimulationActive) {
@@ -61,7 +74,7 @@ export const initializeRealtimeSignals = () => {
             .then(() => {
                 isBackendConnected.value = true;
                 addLog('后端对接', `SignalR 通信链路握手建立成功！桥接工业控制链网关。`, 'normal');
-                fetchDevicesFromBackend();
+                refreshDevices();
             })
             .catch((err) => {
                 isBackendConnected.value = false;
@@ -76,7 +89,7 @@ export const initializeRealtimeSignals = () => {
         connection.onreconnected((connectionId) => {
             isBackendConnected.value = true;
             addLog('后端对接', `SignalR 物理转发信道自动重连成功！ID: ${connectionId}`, 'normal');
-            fetchDevicesFromBackend();
+            refreshDevices();
         });
 
         connection.onclose((error) => {

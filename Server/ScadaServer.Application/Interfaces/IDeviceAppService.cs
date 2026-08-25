@@ -17,6 +17,13 @@ namespace ScadaServer.Application.Interfaces
         Task<DeviceDto> CreateAsync(CreateDeviceDto dto);
         Task<DeviceDto> UpdateAsync(DeviceDto dto);
         Task DeleteAsync(int id);
+
+        /// <summary>
+        /// 向设备运行时变量写入值（下发强制/控制命令）。
+        /// 运行时校验（变量存在/启用/非只读/设备在线等）不通过或物理写入失败时抛 <see cref="ScadaServer.Domain.Exceptions.BusinessException"/>，
+        /// 由全局异常处理返回 { success=false, message } 供前端展示。
+        /// </summary>
+        Task WriteVariableAsync(int deviceId, string variableKey, object value);
     }
 }
 

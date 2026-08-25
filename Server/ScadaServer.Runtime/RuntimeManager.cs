@@ -382,6 +382,58 @@ namespace ScadaServer.Runtime
             return false;
         }
 
+        /// <inheritdoc/>
+        public async Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value)
+        {
+            if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+                return (false, "设备不在运行中");
+
+            var vr = runtime.Variables.Values.FirstOrDefault(v => v.Key == variableKey);
+            if (vr == null)
+                return (false, $"设备下不存在变量 [{variableKey}]");
+            if (!vr.IsEnabled)
+                return (false, $"变量 [{variableKey}] 已禁用");
+            if (vr.Definition.IsReadOnly)
+                return (false, $"变量 [{variableKey}] 为只读，禁止写入");
+            if (runtime.Driver == null)
+                return (false, "设备驱动未就绪");
+            if (runtime.ConnectionState != DeviceConnectionState.Connected)
+                return (false, "设备未连接，无法写入");
+
+            // 串行化内存状态更新，避免与采集调度对同一变量并发读写。
+            await runtime.Lock.WaitAsync();
+            try
+            {
+                await runtime.Driver.WriteAsync(vr, value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("设备 {DeviceId} 变量 [{VarKey}] 写入失败: {Msg}", deviceId, variableKey, ex.Message);
+                return (false, $"写入失败: {ex.Message}");
+            }
+            finally
+            {
+                runtime.Lock.Release();
+            }
+
+            // 写成功后同步运行时内存值，并经 SignalR 广播，使所有客户端刷新后能看到新值。
+            vr.PreviousValue = vr.Value;
+            vr.Value = value;
+            vr.UpdateTime = DateTime.Now;
+            vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
+
+            try
+            {
+                await _notificationService.NotifyVariableUpdateAsync(deviceId, variableKey, value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入回拨通知失败。", deviceId, variableKey);
+            }
+
+            return (true, null);
+        }
+
         /// <summary>
         /// 将设备运行时的连接态与运行态映射为对外设备状态枚举。
         /// 注意：此处仅依据运行时内存态，不依赖数据库持久字段。

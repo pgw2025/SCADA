@@ -1,6 +1,6 @@
 import { HubConnectionState } from '@microsoft/signalr';
 import { systemConfig } from '../store/index';
-import { fetchDevicesFromBackend } from '../api/deviceApi';
+import { syncDevices } from './deviceService';
 import { signalRConnection } from './socketService';
 
 let backendPollInterval: any = null;
@@ -18,7 +18,9 @@ export const startBackendPolling = () => {
 
         if (now - lastRun >= interval) {
             lastRun = now;
-            fetchDevicesFromBackend();
+            // 复用 syncDevices：内部拉取 + normalize + setDevices，确保轮询结果真正写回全局 store。
+            // 修复旧实现直接 fetchDevicesFromBackend() 丢弃返回值、设备列表不刷新的问题。
+            syncDevices();
         }
     }, 100);
 };

@@ -355,7 +355,7 @@ namespace ScadaServer.Application.Services
 
         public async Task<DeviceDto> UpdateAsync(DeviceDto dto)
         {
-            var entity = await _repository.GetByIdAsync(dto.Id);
+            var entity = await _repository.GetByIdForUpdateAsync(dto.Id);
             if (entity == null)
             {
                 throw new BusinessException($"ID 为 {dto.Id} 的设备不存在");
@@ -442,6 +442,19 @@ namespace ScadaServer.Application.Services
 
             // 级联删除完成后，若设备仍在运行时则注销（移除 Worker、断开驱动、推送 Offline）。
             await _runtimeDeviceManager.RemoveDeviceAsync(id);
+        }
+
+        /// <summary>
+        /// 向设备运行时变量写入值。运行时校验及物理写入失败原因经 IRuntimeDeviceManager 返回，
+        /// 失败时抛 BusinessException 由全局异常处理转成 { success=false, message } 供前端展示。
+        /// </summary>
+        public async Task WriteVariableAsync(int deviceId, string variableKey, object value)
+        {
+            var (success, errorMessage) = await _runtimeDeviceManager.WriteVariableAsync(deviceId, variableKey, value);
+            if (!success)
+            {
+                throw new BusinessException(errorMessage ?? "变量写入失败");
+            }
         }
     }
 }

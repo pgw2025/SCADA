@@ -44,6 +44,21 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> GetById(int id) => Ok(await _deviceAppService.GetByIdAsync(id));
 
         /// <summary>
+        /// 向设备运行时变量写入值（下发强制/控制命令）。
+        /// 端点受全局 FallbackPolicy 默认认证保护；物理写入结果经 SignalR 广播，各客户端刷新后可见新值。
+        /// </summary>
+        /// <param name="id">设备ID</param>
+        /// <param name="variableKey">变量业务键（ModelVariable.Key）</param>
+        /// <param name="dto">写入请求，Value 为待写入原始值</param>
+        /// <returns>统一成功响应；校验/写入失败抛 BusinessException 由全局异常处理返回</returns>
+        [HttpPost("{id}/variables/{variableKey}/write")]
+        public async Task<IActionResult> WriteVariable(int id, string variableKey, [FromBody] WriteVariableRequestDto dto)
+        {
+            await _deviceAppService.WriteVariableAsync(id, variableKey, dto.Value!);
+            return Ok(new { success = true, message = "写入成功" });
+        }
+
+        /// <summary>
         /// 创建设备
         /// </summary>
         /// <param name="dto">创建设备DTO</param>

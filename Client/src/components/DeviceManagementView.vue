@@ -3,13 +3,16 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
 import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
-import { dataModels, addLog } from '../store/index';
+import { dataModels, addLog, fetchDataModelsFromBackend } from '../store/index';
 import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync } from '../services/deviceService';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 
 onMounted(() => {
   syncAreas();
   syncDevices();
+  // 模型列表在 App.vue 启动时(登录前)拉取会因无 token 而 401,登录后不会重拉;
+  // 这里兜底刷新,确保 dataModels 就绪,设备卡片的"数据模型"才能正确显示名称。
+  fetchDataModelsFromBackend();
   startBackendPolling();
 });
 
@@ -221,7 +224,9 @@ const openEditDeviceModal = (device: Device) => {
   devName.value = device.name;
   devKey.value = device.key;
   devArea.value = Number(device.areaId);
-  devModel.value = device.modelId;
+  // dataModels[].id 为 string(后端 int 序列化后由 modelApi 统一 String 化),
+  // device.modelId 为 number,须归一为 string 才能命中下拉框 option 与后续 find。
+  devModel.value = String(device.modelId ?? '');
   devType.value = device.type;
   devIP.value = device.ipAddress || '';
   devPort.value = device.port || '';
@@ -518,7 +523,7 @@ const toggleDeviceStateInGrid = (device: Device) => {
             <div>
               <span class="text-slate-400 dark:text-slate-500">数据模型:</span>
               <span class="text-[#1890ff] dark:text-sky-400 font-sans font-medium block">
-                {{ dataModels.find(m => m.id === d.modelId)?.name || '未配置' }}
+                {{ dataModels.find(m => String(m.id) === String(d.modelId))?.name || '未配置' }}
               </span>
             </div>
             <div class="col-span-2 space-y-1">

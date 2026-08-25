@@ -41,6 +41,17 @@ namespace ScadaServer.Domain.Interfaces
         Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables);
 
         /// <summary>
+        /// 写入单个变量值到物理设备。
+        /// </summary>
+        /// <param name="variable">变量运行时（地址来自 DeviceVariable，数据类型来自 DataType）</param>
+        /// <param name="value">待写入的原始值（由驱动按 DataType 转换为设备对应类型）</param>
+        /// <remarks>
+        /// 成功返回；失败（设备未连接、地址非法、类型不匹配、通信错误等）抛异常，由上层捕获并向调用方返回失败原因。
+        /// 驱动需按 <see cref="IRuntimeVariable.DataType"/> 将传入值转换为设备期望的具体类型。
+        /// </remarks>
+        Task WriteAsync(IRuntimeVariable variable, object value);
+
+        /// <summary>
         /// 订阅变量值变化
         /// </summary>
         /// <param name="variables">要订阅的变量运行时列表</param>

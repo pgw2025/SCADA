@@ -189,6 +189,31 @@ export const DEVICE_TYPES: { value: DeviceType; label: string; implemented: bool
   { value: 'DNP3', label: 'DNP3', implemented: false }
 ];
 
+/**
+ * 协议 → 设备变量实例字段需求配置（单一真相源）。
+ * 不同协议设备的"采集属性"不同，前端据此条件渲染字段：
+ * - addressLabel 缺省 = 该协议不需要地址（如虚拟设备），不渲染地址列/输入框
+ * - addressRequired 用于编辑弹窗的"必填"提示
+ * - needsBitOffset 控制是否渲染位偏移字段
+ */
+export interface ProtocolFieldConfig {
+  addressLabel?: string;
+  addressPlaceholder?: string;
+  addressRequired?: boolean;
+  needsBitOffset?: boolean;
+}
+
+/** 协议字段配置表：新增协议只需在此补一行，页面自动适配 */
+export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
+  S7:        { addressLabel: '寄存器地址', addressPlaceholder: '如 DB1.DBD4 / DB1.DBX0.0', addressRequired: true, needsBitOffset: true },
+  OPCUA:     { addressLabel: '节点ID',    addressPlaceholder: '如 ns=2;i=5',             addressRequired: true, needsBitOffset: false },
+  ModbusTcp: { addressLabel: '寄存器地址', addressPlaceholder: '如 40001',                addressRequired: true, needsBitOffset: true },
+  MQTT:      { addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level',    addressRequired: true, needsBitOffset: false },
+  BACnet:    { addressLabel: '对象地址',   addressPlaceholder: '如 AV:1',                 addressRequired: true, needsBitOffset: false },
+  DNP3:      { addressLabel: '点表索引',   addressPlaceholder: '如 2-3',                  addressRequired: true, needsBitOffset: false },
+  Virtual:   { }
+};
+
 export interface DataModel {
   id: string;
   name: string;

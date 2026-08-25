@@ -26,5 +26,16 @@ namespace ScadaServer.Application.Interfaces
         /// 注销后重新注册同一设备（用于配置/模型/变量集合变更后热加载）。等价于 Remove + Register。
         /// </summary>
         Task ReloadDeviceAsync(int deviceId);
+
+        /// <summary>
+        /// 向运行中的设备变量写入值：定位 DeviceRuntime → VariableRuntime → 驱动 WriteAsync，
+        /// 写成功后同步变量运行时内存值并经 SignalR 广播，供所有客户端（含写入方自己刷新后）刷新值。
+        /// 不抛异常：写入结果以 <see cref="ValueTuple{bool,String}"/> 返回，Success=false 时 ErrorMessage 为可展示原因。
+        /// </summary>
+        /// <param name="deviceId">设备 ID</param>
+        /// <param name="variableKey">变量业务键（ModelVariable.Key）</param>
+        /// <param name="value">待写入的原始值</param>
+        /// <returns>(Success, ErrorMessage)；Success=true 时 ErrorMessage 为 null</returns>
+        Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value);
     }
 }

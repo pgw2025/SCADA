@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { devices } from '../store/deviceStore';
 import { dataModels } from '../store/index';
 import { addLog } from '../store/index';
+import { syncDevices } from '../services/deviceService';
+import { fetchDataModelsFromBackend } from '../api/modelApi';
+import { writeDeviceVariable } from '../api/deviceApi';
+import { extractApiError } from '../api/http';
 import { DEVICE_TYPES } from '../types';
 import {
   Database, 
@@ -57,9 +61,17 @@ const renderedVariables = computed(() => {
   const modelVars = currentModel.value.variables || [];
   
   return modelVars.map((v) => {
-    const storedValue = simulatedValues.value[v.key];
-    const value = storedValue !== undefined ? storedValue : (v.type === 'digital' ? false : v.min ?? 0);
-    
+    // 取值优先级：① 本地强制值（simulatedValues，写入后的即时反馈）
+    //            → ② SignalR/轮询写入设备的真实遥测值（selectedDevice.variables[key]）
+    //            → ③ 默认值（digital 反 false，analog 反 min）
+    const forcedValue = simulatedValues.value[v.key];
+    const liveValue = selectedDevice.value?.variables?.[v.key];
+    const value = forcedValue !== undefined
+      ? forcedValue
+      : (liveValue !== undefined && liveValue !== null
+          ? liveValue
+          : (v.type === 'digital' ? false : v.min ?? 0));
+
     return {
       key: v.key,
       name: v.name || '未定义系统点位',
@@ -72,7 +84,10 @@ const renderedVariables = computed(() => {
       max: v.max ?? 100,
       description: v.description || '现场控制元件回写值',
       value: value,
-      updatedAt: selectedDevice.value?.lastUpdated || new Date().toISOString().replace('T', ' ').slice(0, 19)
+      // 优先展示变量级实时推送时间戳，无推送时回退设备更新时间
+      updatedAt: selectedDevice.value?.variableTimestamps?.[v.key]
+        || selectedDevice.value?.lastUpdated
+        || new Date().toISOString().replace('T', ' ').slice(0, 19)
     };
   });
 });
@@ -95,6 +110,7 @@ const filteredRenderedVariables = computed(() => {
 // Control override state variables
 const isWritingVarKey = ref<string | null>(null);
 const overrideValueInput = ref<string>('');
+const isSubmitting = ref(false);
 
 // Perform override operation
 const startOverride = (varKey: string, currentVal: number | boolean) => {
@@ -102,8 +118,8 @@ const startOverride = (varKey: string, currentVal: number | boolean) => {
   overrideValueInput.value = currentVal.toString();
 };
 
-const commitOverride = (varKey: string, type: 'analog' | 'digital') => {
-  if (!selectedDevice.value) return;
+const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
+  if (!selectedDevice.value || isSubmitting.value) return;
 
   let finalVal: number | boolean = false;
   if (type === 'digital') {
@@ -113,23 +129,47 @@ const commitOverride = (varKey: string, type: 'analog' | 'digital') => {
     finalVal = isNaN(num) ? 0 : num;
   }
 
-  // Update simulated values
-  simulatedValues.value[varKey] = finalVal;
-  
-  // Submit trace logger
-  const typeLabel = type === 'digital' ? 'Boolean' : 'Analog';
-  addLog(
-    '调试面板', 
-    `下发强制命令 [${selectedDevice.value.key}]: 强制点位 [${varKey}] 写入 (值为 ${finalVal}) [${typeLabel}]`, 
-    'info'
-  );
+  try {
+    isSubmitting.value = true;
+    // 真实写入链路：后端下发到设备驱动，成功后经 SignalR 广播回所有客户端（含刷新后）。
+    await writeDeviceVariable(Number(selectedDevice.value.id as any), varKey, finalVal);
+    // 乐观更新本地即时反馈（SignalR 广播到达后被真实遥测值覆盖）
+    simulatedValues.value[varKey] = finalVal;
 
-  isWritingVarKey.value = null;
+    // Submit trace logger
+    const typeLabel = type === 'digital' ? 'Boolean' : 'Analog';
+    addLog(
+      '调试面板',
+      `下发强制命令 [${selectedDevice.value.key}]: 强制点位 [${varKey}] 写入 (值为 ${finalVal}) [${typeLabel}]`,
+      'info'
+    );
+    isWritingVarKey.value = null;
+  } catch (err: any) {
+    // 写入失败：保留本地旧值，仅展示后端返回的具体原因（只读/越界/离线等）
+    addLog('调试面板', `写入失败 [${varKey}]: ${extractApiError(err)}`, 'warning');
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
 const cancelOverride = () => {
   isWritingVarKey.value = null;
 };
+
+// 页面自举：直接进入实时监控页时主动拉取设备与数据模型，避免依赖"先访问设备管理页"
+// 填充全局 store 才能显示数据。devices/models 的全局兜底见 App.vue 登录后预载。
+onMounted(() => {
+  syncDevices();
+  fetchDataModelsFromBackend();
+});
+
+// selectedDevId 在 setup 时一次性取 devices[0]，若挂载时 store 为空会停在空串。
+// 全部设备首次非空时回填默认选中，保证直进本页也能自动选中第一台设备。
+watch(() => devices.value.length, (len) => {
+  if (len && !devices.value.some(d => String(d.id) === selectedDevId.value)) {
+    selectedDevId.value = String(devices.value[0].id);
+  }
+});
 </script>
 
 <template>

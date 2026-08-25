@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using S7.Net;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 
 namespace ScadaServer.Infrastructure.Communication
@@ -297,6 +298,60 @@ namespace ScadaServer.Infrastructure.Communication
 
                 default:
                     return null;
+            }
+        }
+
+        #endregion
+
+        #region 写入
+
+        public async Task WriteAsync(IRuntimeVariable variable, object value)
+        {
+            if (_disposed || variable == null)
+                throw new InvalidOperationException("驱动已释放或变量无效");
+
+            if (string.IsNullOrWhiteSpace(variable.Address))
+                throw new ArgumentException("变量地址为空，无法写入", nameof(variable));
+
+            await _plcLock.WaitAsync();
+            try
+            {
+                if (_plc == null || !_plc.IsConnected)
+                    throw new InvalidOperationException("PLC 未连接");
+
+                // 按变量数据类型转换为设备期望类型（DBW->Int16 / DBD->Int32 / DBR->Single / DBX->bool）。
+                // S7netplus WriteAsync(address, value) 会依据地址推断目标类型与字节长度，类型不匹配会抛异常。
+                var converted = ConvertForWrite(variable.DataType, value);
+                await _plc.WriteAsync(variable.Address, converted);
+            }
+            finally
+            {
+                _plcLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// 将前端传入的原始值按变量数据类型转换为设备写入类型。
+        /// 位 BOOL/BIT -> bool；BYTE -> byte；INT -> short；DINT -> int；REAL/FLOAT -> float；DOUBLE -> double。
+        /// </summary>
+        private static object ConvertForWrite(DataTypeEnum dataType, object value)
+        {
+            try
+            {
+                return dataType switch
+                {
+                    DataTypeEnum.BOOL or DataTypeEnum.BIT => (bool)Convert.ToBoolean(value),
+                    DataTypeEnum.BYTE => Convert.ToByte(value),
+                    DataTypeEnum.INT => (short)Convert.ToInt16(value),
+                    DataTypeEnum.DINT => Convert.ToInt32(value),
+                    DataTypeEnum.REAL or DataTypeEnum.FLOAT => Convert.ToSingle(value),
+                    DataTypeEnum.DOUBLE => Convert.ToDouble(value),
+                    _ => value
+                };
+            }
+            catch (InvalidCastException)
+            {
+                throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {dataType}");
             }
         }
 

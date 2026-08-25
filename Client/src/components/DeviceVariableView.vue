@@ -15,7 +15,7 @@ import {
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
-import { DEVICE_TYPES, DeviceVariable, ModelVariable } from '../types';
+import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, DeviceVariable, ModelVariable } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import {
@@ -114,9 +114,9 @@ const confirmAdd = async () => {
   }
   addLog('设备变量', `批量添加完成：成功 ${ok}/${addSelectedIds.value.length}`, ok > 0 ? 'normal' : 'warning');
   showAddModal.value = false;
-  // 新建实例后 Address 为空，提示用户补充地址（S7/OPCUA 空地址采集会失败）
-  if (ok > 0 && selectedDevice.value.type !== 'Virtual') {
-    addLog('设备变量', '提示：请为新增实例补充寄存器地址（地址为空时采集将失败）', 'warning');
+  // 新建实例后 Address 为空，提示用户补充地址（需要地址的协议如 S7/OPCUA 空地址采集会失败）
+  if (ok > 0 && needsAddress.value) {
+    addLog('设备变量', `提示：请为新增实例补充${fieldConfig.value.addressLabel}（地址为空时采集将失败）`, 'warning');
   }
   await refreshAll();
 };
@@ -131,13 +131,11 @@ const openEditModal = (v: DeviceVariable) => {
   showEditModal.value = true;
 };
 
-const addressPlaceholder = computed(() => {
-  const t = selectedDevice.value?.type;
-  if (t === 'S7') return '如 DB1.DBD4 / DB1.DBX0.0';
-  if (t === 'OPCUA') return '如 ns=2;i=5';
-  if (t === 'Virtual') return '任意（虚拟驱动不使用地址）';
-  return '实际寄存器地址';
-});
+// 协议 → 实例字段需求：虚拟设备无地址/位偏移，无需采集属性配置
+const fieldConfig = computed(() => PROTOCOL_FIELD_CONFIG[selectedDevice.value?.type || 'Virtual'] || {});
+const needsAddress = computed(() => !!fieldConfig.value.addressLabel);
+const needsBitOffset = computed(() => !!fieldConfig.value.needsBitOffset);
+const tableColspan = computed(() => 6 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
 
 const saveEdit = async () => {
   if (!editingForm.value || !selectedDevice.value) return;
@@ -308,8 +306,8 @@ onMounted(async () => {
                   <th class="px-4 py-3.5">变量标识</th>
                   <th class="px-4 py-3.5">名称 / 单位</th>
                   <th class="px-4 py-3.5">类型</th>
-                  <th class="px-4 py-3.5">寄存器地址</th>
-                  <th class="px-4 py-3.5">位偏移</th>
+                  <th v-if="needsAddress" class="px-4 py-3.5">{{ fieldConfig.addressLabel }}</th>
+                  <th v-if="needsBitOffset" class="px-4 py-3.5">位偏移</th>
                   <th class="px-4 py-3.5">轮询(ms)</th>
                   <th class="px-4 py-3.5">启用</th>
                   <th class="px-4 py-3.5 text-right">操作</th>
@@ -330,11 +328,11 @@ onMounted(async () => {
                       :class="isBitType(v.dataType) ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
                     >{{ v.dataType }}</span>
                   </td>
-                  <td class="px-4 py-3.5 text-[11px]">
+                  <td v-if="needsAddress" class="px-4 py-3.5 text-[11px]">
                     <span v-if="v.address" class="bg-slate-100 dark:bg-slate-800 font-bold px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{{ v.address }}</span>
                     <span v-else class="text-rose-500 dark:text-rose-400 font-bold text-[10px]">未配置地址</span>
                   </td>
-                  <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ isBitType(v.dataType) ? (v.bitOffset ?? '—') : '—' }}</td>
+                  <td v-if="needsBitOffset" class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ isBitType(v.dataType) ? (v.bitOffset ?? '—') : '—' }}</td>
                   <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ v.pollingIntervalMs ?? 1000 }}</td>
                   <td class="px-4 py-3.5">
                     <button
@@ -358,14 +356,14 @@ onMounted(async () => {
                   </td>
                 </tr>
                 <tr v-if="!isLoading && deviceVariables.length === 0">
-                  <td colspan="8" class="p-10 text-center text-slate-400 dark:text-slate-500 text-xs font-sans">
+                  <td :colspan="tableColspan" class="p-10 text-center text-slate-400 dark:text-slate-500 text-xs font-sans">
                     <Database class="w-8 h-8 mx-auto mb-2 opacity-30" />
                     该设备尚未配置变量实例，请点击“添加实例”或“一键补齐”。
                     <template v-if="modelTemplates.length > 0">（模型共有 {{ modelTemplates.length }} 个模板变量）</template>
                   </td>
                 </tr>
                 <tr v-if="loadError">
-                  <td colspan="8" class="p-6 text-center text-rose-500 text-xs font-sans">加载失败: {{ loadError }}</td>
+                  <td :colspan="tableColspan" class="p-6 text-center text-rose-500 text-xs font-sans">加载失败: {{ loadError }}</td>
                 </tr>
               </tbody>
             </table>
@@ -382,8 +380,8 @@ onMounted(async () => {
                   </div>
                   <div class="text-[10px] text-slate-500 mt-0.5 font-sans">{{ v.name }}{{ v.unit ? ' (' + v.unit + ')' : '' }}</div>
                 </div>
-                <span v-if="v.address" class="text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">{{ v.address }}</span>
-                <span v-else class="text-[9px] text-rose-500 font-bold">未配置地址</span>
+                <span v-if="needsAddress && v.address" class="text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">{{ v.address }}</span>
+                <span v-else-if="needsAddress" class="text-[9px] text-rose-500 font-bold">未配置地址</span>
               </div>
               <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono">
                 <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
@@ -458,21 +456,21 @@ onMounted(async () => {
               <input :value="editingForm.dataType" disabled class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-500" />
             </div>
           </div>
-          <div>
+          <div v-if="needsAddress">
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-              寄存器地址 <span class="text-rose-400" v-if="!editingForm.address">（必填，空地址采集失败）</span>
+              {{ fieldConfig.addressLabel }} <span class="text-rose-400" v-if="fieldConfig.addressRequired && !editingForm.address">（必填，空地址采集失败）</span>
             </label>
-            <input v-model="editingForm.address" type="text" :placeholder="addressPlaceholder"
+            <input v-model="editingForm.address" type="text" :placeholder="fieldConfig.addressPlaceholder"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <div>
+            <div v-if="needsBitOffset">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">位偏移（BOOL/BIT）</label>
               <input v-model.number="editingForm.bitOffset" type="number" min="0" max="7"
                 :disabled="!isBitType(editingForm.dataType)"
                 class="w-full disabled:opacity-40 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
-            <div>
+            <div :class="needsBitOffset ? '' : 'col-span-2'">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">轮询间隔（ms）</label>
               <input v-model.number="editingForm.pollingIntervalMs" type="number" min="100"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
@@ -504,7 +502,9 @@ onMounted(async () => {
             </button>
           </div>
           <p class="text-[10px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed">
-            注：缩放/死区留空时使用模板值；位偏移仅对 BOOL/BIT 有效。
+            <template v-if="needsAddress && needsBitOffset">注：缩放/死区留空时使用模板值；位偏移仅对 BOOL/BIT 有效。</template>
+            <template v-else-if="needsAddress">注：缩放/死区留空时使用模板值。</template>
+            <template v-else>虚拟设备由驱动按数据类型自动生成模拟值，无需配置地址等采集属性。</template>
           </p>
         </div>
         <div class="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">

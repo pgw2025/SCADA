@@ -57,3 +57,12 @@ public class DeviceVariableDto
     /// <summary>死区覆盖值。空 → 使用模板 DeadBand。</summary>
     public double? DeadBandOverride { get; set; }
 }
+
+/// <summary>
+/// 变量写入请求 DTO：设备运行时写入变量的原始值（驱动按变量 DataType 转换为物理类型）。
+/// </summary>
+public class WriteVariableRequestDto
+{
+    /// <summary>待写入的原始值（数字或布尔）。</summary>
+    public object? Value { get; set; }
+}

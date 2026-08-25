@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { 
   isAuthenticated,
@@ -16,7 +16,7 @@ import { initializeRealtimeSignals } from './services/signalRService';
 import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
-import { fetchDevicesFromBackend } from './api/deviceApi';
+import { syncDevices } from './services/deviceService';
 
 import { 
   LayoutDashboard, 
@@ -90,11 +90,17 @@ onMounted(async () => {
   initializeAuth();
   startClock();
   initializeRealtimeSignals();
-  
-  await Promise.all([
+});
+
+// 登录（含 token 自动登录）成功后统一预载全局数据。
+// 原实现将 areas/models 拉取放在 onMounted(登录前)，此时无 token 必 401 且登录后不重拉，
+// 导致直接进入实时监控等页面时全局 store 为空。改为监听登录态后预载，供任意页面直接消费。
+watch(isAuthenticated, (authed, prev) => {
+  if (!authed || prev === authed) return;
+  Promise.all([
     syncAreas(),
-    fetchDataModelsFromBackend()
-    // Removed fetchDevicesFromBackend() as it will be managed by DeviceManagementView
+    fetchDataModelsFromBackend(),
+    syncDevices()
   ]);
 });
 
