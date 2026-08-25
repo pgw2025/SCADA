@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { HMIComponent, ScadaScreenProject } from '../types';
 import { TEMPLATES } from '../templates';
+import * as api from '../api/scadaApi';
 
 export const scadaProjects = ref<ScadaScreenProject[]>([
     {
@@ -108,6 +109,32 @@ export const currentProject = computed(() => {
 });
 
 export const currentPage = computed(() => {
-    const proj = currentProject.value;
-    return proj.pages.find(pg => pg.id === selectedPageId.value) || proj.pages[0];
+  const proj = currentProject.value;
+  return proj.pages.find(pg => pg.id === selectedPageId.value) || proj.pages[0];
 });
+
+/**
+ * 阶段2：挂载时从后端整树加载组态。
+ *  - 后端有工程 -> 用后端数据（带 serverId）替换本地模板；
+ *  - 后端为空 / 未登录 / 请求失败 -> 保留硬编码模板（离线可用，编辑时再落库）。
+ */
+let _scadaInitialized = false;
+export const initializeScada = async () => {
+  if (_scadaInitialized) return;
+  _scadaInitialized = true;
+  try {
+    const summaries = await api.loadProjectSummaries();
+    if (!summaries || summaries.length === 0) return; // 保留模板
+
+    const trees = await Promise.all(summaries.map(s => api.loadProjectFull(s.id)));
+    const projects = trees.map(api.fromProjectFullDto).filter(Boolean) as ScadaScreenProject[];
+    if (projects.length === 0) return;
+
+    scadaProjects.value = projects;
+    selectedProjectId.value = projects[0].id;
+    selectedPageId.value = projects[0].pages[0]?.id || '';
+  } catch {
+    // 后端不可用 / 未认证：静默回退到本地模板
+    _scadaInitialized = false; // 允许下次重试
+  }
+};

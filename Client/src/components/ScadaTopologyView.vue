@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { 
   scadaProjects, 
   selectedProjectId, 
   selectedPageId, 
   currentProject, 
-  currentPage
+  currentPage,
+  initializeScada
 } from '../store/scadaStore';
-import { updateCurrentPageComponents } from '../services/scadaService';
+import { 
+  updateCurrentPageComponents,
+  ensureProjectSaved,
+  ensurePageSaved,
+  persistNewComponent,
+  persistComponentUpdate,
+  persistComponentDelete,
+  persistPageUpdate,
+  persistPageDelete,
+  persistProjectUpdate,
+  persistDuplicatePage
+} from '../services/scadaService';
 import { devices } from '../store/deviceStore';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
@@ -56,6 +68,11 @@ function genComponentId(type: string): string {
   return `${type}-${Date.now()}-${_componentSeq}`;
 }
 
+// 阶段2：挂载时从后端整树加载组态（后端为空则保留本地模板）
+onMounted(() => {
+  initializeScada();
+});
+
 // Fetch dynamic telemetry for the active drawing canvas
 const simulatedDataComputed = computed(() => {
   const res: Record<string, number | boolean> = {};
@@ -80,6 +97,12 @@ const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
     return comp;
   });
   updateCurrentPageComponents(newComps);
+
+  // 阶段2：本地乐观更新后，防抖落库（拖拽/缩放/属性编辑高频，统一走 600ms 防抖 PUT）
+  const updated = newComps.find((c) => c.id === id);
+  if (updated) {
+    persistComponentUpdate(currentPage.value, updated);
+  }
 };
 
 // Add a widget from panel library
@@ -113,6 +136,9 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
   updateCurrentPageComponents([...currentComps, newComponent]);
   selectedId.value = newId;
   addLog('组态编辑', `在页面 [${currentPage.value.name}] 添加组件 [${label}]`, 'info');
+
+  // 阶段2：落库并回填 serverId（确保所属页面已落库）
+  persistNewComponent(currentPage.value, currentProject.value, newComponent).catch(() => {});
 };
 
 // Duplicate widget
@@ -133,6 +159,9 @@ const handleDuplicateComponent = (id: string) => {
   updateCurrentPageComponents([...currentComps, cloned]);
   selectedId.value = cloned.id;
   addLog('组态编辑', `复制组件: [${target.name}]`, 'info');
+
+  // 阶段2：落库并回填 serverId
+  persistNewComponent(currentPage.value, currentProject.value, cloned).catch(() => {});
 };
 
 // Delete widget
@@ -146,14 +175,23 @@ const handleDeleteComponent = (id: string) => {
     selectedId.value = null;
   }
   addLog('组态编辑', `删除组件 [${name}]`, 'warning');
+
+  // 阶段2：若已落库则删除后端记录
+  if (target?.serverId) {
+    persistComponentDelete(target).catch(() => {});
+  }
 };
 
 // Clear active drawing canvas Layout
 const handleClearCanvas = () => {
   if (confirm('确定要清空画布吗？此操作不可逆。')) {
+    const toDelete = currentPage.value.components.filter(c => c.serverId);
     updateCurrentPageComponents([]);
     selectedId.value = null;
     addLog('组态编辑', `清空画布: [${currentPage.value.name}]`, 'warning');
+
+    // 阶段2：批量删除已落库的组件
+    Promise.all(toDelete.map(c => persistComponentDelete(c))).catch(() => {});
   }
 };
 
@@ -187,26 +225,32 @@ const handleCreateProject = () => {
   if (!newProjectName.value.trim()) return;
 
   const newProjId = `project-${Date.now()}`;
-  scadaProjects.value.push({
+  const newProj: ScadaScreenProject = {
     id: newProjId,
+    serverId: undefined,
     name: newProjectName.value,
     description: newProjectDesc.value || '新建SCADA工程',
     pages: [
       {
         id: `page-${Date.now()}-primary`,
+        serverId: undefined,
         name: '未命名页面 1',
         components: []
       }
     ]
-  });
+  };
+  scadaProjects.value.push(newProj);
 
   addLog('组态编辑', `创建新工程: [${newProjectName.value}]`, 'normal');
   selectedProjectId.value = newProjId;
-  selectedPageId.value = scadaProjects.value[scadaProjects.value.length - 1].pages[0].id;
+  selectedPageId.value = newProj.pages[0].id;
   
   newProjectName.value = '';
   newProjectDesc.value = '';
   showProjectModal.value = false;
+
+  // 阶段2：落库并回填 serverId
+  ensureProjectSaved(newProj).catch(() => {});
 };
 
 // Add child page to active screen project
@@ -215,8 +259,9 @@ const handleAddPage = () => {
   if (!proj) return;
 
   const newPageId = `page-${Date.now()}`;
-  const newPage = {
+  const newPage: ScadaPage = {
     id: newPageId,
+    serverId: undefined,
     name: `未命名页面 ${proj.pages.length + 1}`,
     components: []
   };
@@ -224,6 +269,9 @@ const handleAddPage = () => {
   proj.pages.push(newPage);
   selectedPageId.value = newPageId;
   addLog('组态编辑', `项目 [${proj.name}] 新增页面: [${newPage.name}]`, 'normal');
+
+  // 阶段2：确保工程已落库后落库页面并回填 serverId
+  ensurePageSaved(newPage, proj).catch(() => {});
 };
 
 // Copy / Duplicate child page
@@ -232,13 +280,18 @@ const handleDuplicatePage = (page: { id: string; name: string; components: any[]
   if (!proj) return;
 
   const newPageId = `page-${Date.now()}`;
-  proj.pages.push({
+  const newPage: ScadaPage = {
     id: newPageId,
+    serverId: undefined,
     name: `${page.name} - 副本`,
     components: JSON.parse(JSON.stringify(page.components))
-  });
+  };
+  proj.pages.push(newPage);
   selectedPageId.value = newPageId;
   addLog('组态编辑', `复制页面: [${page.name}]`, 'normal');
+
+  // 阶段2：落库页面 + 其下全部组件并回填 serverId
+  persistDuplicatePage(newPage, proj).catch(() => {});
 };
 
 // Delete page
@@ -251,11 +304,17 @@ const handleDeletePage = (pId: string, pName: string) => {
     return;
   }
 
+  const target = proj.pages.find(pg => pg.id === pId);
   proj.pages = proj.pages.filter(pg => pg.id !== pId);
   if (selectedPageId.value === pId) {
     selectedPageId.value = proj.pages[0].id;
   }
   addLog('组态编辑', `删除页面: [${pName}]`, 'warning');
+
+  // 阶段2：若已落库则级联删除后端页面（后端事务删组件）
+  if (target?.serverId) {
+    persistPageDelete(target).catch(() => {});
+  }
 };
 
 // Inline rename actions
@@ -273,6 +332,8 @@ const savePageRename = (pId: string) => {
     const oldName = pg.name;
     pg.name = renamePageInput.value.trim();
     addLog('组态编辑', `页面更名: [${oldName}] -> [${pg.name}]`, 'normal');
+    // 阶段2：落库
+    persistPageUpdate(pg).catch(() => {});
   }
   isRenamingPageId.value = null;
 };
@@ -288,6 +349,8 @@ const saveProjRename = (pId: string) => {
     const oldName = proj.name;
     proj.name = renameProjInput.value.trim();
     addLog('组态编辑', `工程更名: [${oldName}] -> [${proj.name}]`, 'normal');
+    // 阶段2：落库
+    persistProjectUpdate(proj).catch(() => {});
   }
   isRenamingProjId.value = null;
 };

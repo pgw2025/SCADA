@@ -20,6 +20,8 @@ export type ComponentType =
 
 export interface HMIComponent {
   id: string;
+  /** 后端自增主键（持久化后回填）；未保存的新组件为 undefined */
+  serverId?: number;
   type: ComponentType;
   name: string;
   x: number;
@@ -320,12 +322,19 @@ export interface LoginDto {
 
 export interface ScadaPage {
   id: string;
+  /** 后端自增主键（持久化后回填）；未保存的新页面为 undefined */
+  serverId?: number;
   name: string;
+  /** 画布尺寸（后端持久化；缺省回退默认 1100×700） */
+  width?: number;
+  height?: number;
   components: HMIComponent[];
 }
 
 export interface ScadaScreenProject {
   id: string;
+  /** 后端自增主键（持久化后回填）；未保存的新工程为 undefined */
+  serverId?: number;
   name: string;
   description: string;
   pages: ScadaPage[];
