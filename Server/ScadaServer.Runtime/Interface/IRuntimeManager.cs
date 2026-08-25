@@ -23,9 +23,9 @@ public interface IRuntimeManager
     Task InitializeAsync();
 
     /// <summary>
-    /// 启动运行时调度
+    /// 启动运行时调度。调度器为每台启用设备派生唯一的常驻 Worker，无需并发度参数。
     /// </summary>
-    Task StartAsync(CancellationToken token, int maxConcurrentWorkers = 10);
+    Task StartAsync(CancellationToken token);
 
     /// <summary>
     /// 停止运行时调度，优雅退出所有设备工作线程

@@ -15,15 +15,18 @@ public class DeviceVariableAppService : IDeviceVariableAppService
     private readonly IDeviceVariableRepository _repository;
     private readonly IModelVariableRepository _modelVariableRepository;
     private readonly IDeviceRepository _deviceRepository;
+    private readonly IRuntimeDeviceManager _runtimeDeviceManager;
 
     public DeviceVariableAppService(
         IDeviceVariableRepository repository,
         IModelVariableRepository modelVariableRepository,
-        IDeviceRepository deviceRepository)
+        IDeviceRepository deviceRepository,
+        IRuntimeDeviceManager runtimeDeviceManager)
     {
         _repository = repository;
         _modelVariableRepository = modelVariableRepository;
         _deviceRepository = deviceRepository;
+        _runtimeDeviceManager = runtimeDeviceManager;
     }
 
     public async Task<List<DeviceVariableDto>> GetByDeviceAsync(int deviceId)
@@ -81,6 +84,8 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         };
 
         await _repository.InsertAsync(entity);
+        // 设备变量集合变化需热加载设备运行时（重建 Worker 与变量集合）。
+        await _runtimeDeviceManager.ReloadDeviceAsync(dto.DeviceId);
         return MapToDto(entity, mv);
     }
 
@@ -90,6 +95,9 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         if (entity == null) return;
 
         await _repository.DeleteAsync(entity);
+
+        // 设备变量集合变化需热加载设备运行时。
+        await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
     }
 
     public async Task<DeviceVariableDto> UpdateAsync(DeviceVariableDto dto)
@@ -110,6 +118,9 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         entity.DeadBandOverride = dto.DeadBandOverride;
 
         await _repository.UpdateAsync(entity);
+
+        // 采集配置（地址/轮询/启用等）变化需热加载设备运行时。
+        await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
 
         var mv = await _modelVariableRepository.GetByIdAsync(entity.ModelVariableId);
         return MapToDto(entity, mv);

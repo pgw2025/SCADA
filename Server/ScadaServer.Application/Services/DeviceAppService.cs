@@ -19,6 +19,7 @@ namespace ScadaServer.Application.Services
         private readonly IUnitOfWork _uow;
         private readonly IRuntimeStatusProvider _runtimeStatusProvider;
         private readonly IDeviceDeletionService _deletionService;
+        private readonly IRuntimeDeviceManager _runtimeDeviceManager;
 
         public DeviceAppService(
             IDeviceRepository repository,
@@ -29,7 +30,8 @@ namespace ScadaServer.Application.Services
             IRepository<DeviceConfig, int> configRepository,
             IUnitOfWork uow,
             IRuntimeStatusProvider runtimeStatusProvider,
-            IDeviceDeletionService deletionService)
+            IDeviceDeletionService deletionService,
+            IRuntimeDeviceManager runtimeDeviceManager)
         {
             _repository = repository;
             _areaRepository = areaRepository;
@@ -40,6 +42,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
             _deletionService = deletionService;
+            _runtimeDeviceManager = runtimeDeviceManager;
         }
 
         public async Task<DeviceDto?> GetByIdAsync(int id)
@@ -296,7 +299,7 @@ namespace ScadaServer.Application.Services
                 }
             }
 
-            return await _uow.ExecuteInTransactionAsync(async transaction =>
+            var created = await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 var entity = new Device
                 {
@@ -340,6 +343,14 @@ namespace ScadaServer.Application.Services
                 return await GetByIdAsync(entity.Id)
                     ?? throw new BusinessException($"创建设备后无法读取 ID 为 {entity.Id} 的设备记录");
             });
+
+            // 事务提交成功后，将已启用的新设备注册进运行时，使其无需重启即可开始采集。
+            if (created.IsEnabled)
+            {
+                await _runtimeDeviceManager.RegisterDeviceAsync(created.Id);
+            }
+
+            return created;
         }
 
         public async Task<DeviceDto> UpdateAsync(DeviceDto dto)
@@ -349,6 +360,8 @@ namespace ScadaServer.Application.Services
             {
                 throw new BusinessException($"ID 为 {dto.Id} 的设备不存在");
             }
+            // 记录更新前的启用状态，供事务提交后判断运行时注册/注销/重载。
+            var wasEnabled = entity.IsEnabled;
 
             // 1. 业务校验：Key 不能与其他设备重复
             var existing = await _repository.GetListAsync(d => d.Key == dto.Key && d.Id != dto.Id);
@@ -376,7 +389,7 @@ namespace ScadaServer.Application.Services
                 ValidateConfigJson(model.Protocol?.DriverKey, dto.ConfigJson);
             }
 
-            return await _uow.ExecuteInTransactionAsync(async transaction =>
+            var updated = await _uow.ExecuteInTransactionAsync(async transaction =>
             {
                 entity.Name = dto.Name;
                 entity.Key = dto.Key;
@@ -400,12 +413,35 @@ namespace ScadaServer.Application.Services
                 return await GetByIdAsync(dto.Id)
                     ?? throw new BusinessException($"更新设备后无法读取 ID 为 {dto.Id} 的设备记录");
             });
+
+            // 事务提交成功后，依据启用状态变化与运行时交互：
+            // 禁用 → 注销；启用（原本禁用）→ 注册；保持启用 → 重载（热加载配置/模型/变量变更）。
+            if (updated.IsEnabled)
+            {
+                if (wasEnabled)
+                {
+                    await _runtimeDeviceManager.ReloadDeviceAsync(updated.Id);
+                }
+                else
+                {
+                    await _runtimeDeviceManager.RegisterDeviceAsync(updated.Id);
+                }
+            }
+            else if (wasEnabled)
+            {
+                await _runtimeDeviceManager.RemoveDeviceAsync(updated.Id);
+            }
+
+            return updated;
         }
 
         public async Task DeleteAsync(int id)
         {
             // 依赖检查与级联清理逻辑已抽离至 IDeviceDeletionService（对外接口/传感器/触发器/配置）
             await _deletionService.DeleteAsync(id);
+
+            // 级联删除完成后，若设备仍在运行时则注销（移除 Worker、断开驱动、推送 Offline）。
+            await _runtimeDeviceManager.RemoveDeviceAsync(id);
         }
     }
 }

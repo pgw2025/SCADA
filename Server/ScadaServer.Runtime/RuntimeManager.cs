@@ -20,7 +20,7 @@ namespace ScadaServer.Runtime
     /// <summary>
     /// SCADA运行时管理器，负责管理所有设备运行时的生命周期
     /// </summary>
-    public class RuntimeManager : IRuntimeManager
+    public class RuntimeManager : IRuntimeManager, IRuntimeDeviceManager
     {
         /// <summary>
         /// 设备运行时字典，键为设备ID
@@ -138,93 +138,204 @@ namespace ScadaServer.Runtime
 
             foreach (var device in devices)
             {
-                try
-                {
-                    var model = device.Model;
-                    if (model == null)
-                    {
-                        _logger.LogWarning("设备 {Key} 缺少关联数据模型，已跳过。", device.Key);
-                        continue;
-                    }
-
-                    // 协议真相源为 Protocol.DriverKey（模型必绑协议后不再回退过渡字段）；缺少则跳过该设备。
-                    var driverKey = model.Protocol?.DriverKey;
-                    if (string.IsNullOrWhiteSpace(driverKey))
-                    {
-                        _logger.LogWarning("设备 {Key} 的数据模型未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
-                        continue;
-                    }
-                    var protocolLabel = driverKey;
-                    var driver = _driverFactory.CreateDriver(driverKey);
-
-                    // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
-                    // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。
-                    var runtime = new Devices.DeviceRuntime(device)
-                    {
-                        Device = device,
-                        Model = model,
-                        Protocol = model.Protocol,
-                        Config = device.Config,
-                        Area = device.Area
-                    };
-
-                    var connected = await driver.ConnectAsync(runtime);
-                    if (!connected)
-                    {
-                        _logger.LogWarning("设备 {Key} ({Protocol}) 连接失败，已跳过。", device.Key, protocolLabel);
-                        await driver.DisposeAsync();
-                        continue;
-                    }
-
-                    runtime.Driver = driver;
-
-                    var now = DateTime.Now;
-                    foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
-                    {
-                        if (dv.ModelVariable == null)
-                        {
-                            _logger.LogWarning(
-                                "设备 {Key} 的设备变量 #{DvId} 缺少关联模型变量，已跳过。", device.Key, dv.Id);
-                            continue;
-                        }
-
-                        // 构建 RuntimeVariable：变量定义来自 ModelVariable，设备配置来自 DeviceVariable。
-                        runtime.Variables[dv.Id] = new VariableRuntime
-                        {
-                            Definition = dv.ModelVariable,
-                            Instance = dv,
-                            NextPollTime = now // 首轮立即采集
-                        };
-                    }
-
-                    RegisterDevice(runtime);
-
-                    _deviceRegistry.UpdateDevice(device,
-                        (device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
-                            .Select(dv => dv.ModelVariable)
-                            .Where(mv => mv != null)
-                            .Cast<ModelVariable>()
-                            .ToList());
-
-                    _logger.LogInformation(
-                        "设备 {Key} ({Protocol}) 初始化完成，共 {VarCount} 个变量。",
-                        device.Key, protocolLabel, runtime.Variables.Count);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "设备 {Key} 初始化失败。", device.Key);
-                }
+                await BuildAndRegisterDeviceAsync(device);
             }
         }
 
         /// <inheritdoc/>
-        public async Task StartAsync(CancellationToken token, int maxConcurrentWorkers = 10)
+        public async Task RegisterDeviceAsync(int deviceId)
+        {
+            // 幂等：若已存在同 ID 运行时则先注销，避免残留旧 Worker / 旧驱动。
+            await RemoveDeviceAsync(deviceId);
+
+            var device = await LoadDeviceGraphByIdAsync(deviceId);
+            if (device == null)
+            {
+                _logger.LogWarning("运行期注册设备失败：ID {DeviceId} 不存在。", deviceId);
+                return;
+            }
+
+            if (!device.IsEnabled)
+            {
+                _logger.LogInformation("运行期注册设备 {Key} 被跳过：设备未启用。", device.Key);
+                return;
+            }
+
+            await BuildAndRegisterDeviceAsync(device);
+        }
+
+        /// <inheritdoc/>
+        public async Task ReloadDeviceAsync(int deviceId)
+        {
+            await RegisterDeviceAsync(deviceId);
+        }
+
+        /// <inheritdoc/>
+        public async Task RemoveDeviceAsync(int deviceId)
+        {
+            if (!DeviceRuntimes.TryRemove(deviceId, out var runtime))
+            {
+                return;
+            }
+
+            _lastPushedStatus.TryRemove(deviceId, out _);
+
+            // 1) 取消当前 Worker 并等待其收尾，避免在驱动断开期间仍被采集访问。
+            runtime.CancelWorker();
+            if (runtime.WorkerTask != null)
+            {
+                try
+                {
+                    await runtime.WorkerTask.WaitAsync(TimeSpan.FromSeconds(3));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("设备 {Key} Worker 停止超时（3s），可能仍在退出。", runtime.Device.Key);
+                }
+            }
+
+            // 2) 断开设备驱动并释放资源。
+            if (runtime.Driver != null)
+            {
+                try
+                {
+                    await runtime.Driver.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
+                }
+            }
+
+            // 3) 推送 Offline，使界面即时反映设备已移除/被禁用。
+            StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
+            {
+                DeviceId = deviceId,
+                Status = DeviceStatus.Offline
+            });
+            try
+            {
+                await _notificationService.NotifyDeviceStatusAsync(deviceId, DeviceStatus.Offline);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 注销状态通知推送失败。", deviceId);
+            }
+        }
+
+        /// <summary>
+        /// 按设备 ID 加载其完整运行期依赖对象图（Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)）。
+        /// 每次调用处于独立 Scope 内解析 DbContext，避免 Singleton 持有 Scoped DbContext。
+        /// </summary>
+        private async Task<Device?> LoadDeviceGraphByIdAsync(int deviceId)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
+            return await db.Devices
+                .Include(d => d.Model).ThenInclude(m => m.Protocol)
+                .Include(d => d.Config)
+                .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
+                .FirstOrDefaultAsync(d => d.Id == deviceId);
+        }
+
+        /// <summary>
+        /// 依据数据库实体构建并注册单个设备运行时（含驱动连接）。成功返回 true，失败/跳过返回 false。
+        /// 同时用于启动初始化与运行期注册，避免两份实现漂移。
+        /// </summary>
+        private async Task<bool> BuildAndRegisterDeviceAsync(Device device)
+        {
+            try
+            {
+                var model = device.Model;
+                if (model == null)
+                {
+                    _logger.LogWarning("设备 {Key} 缺少关联数据模型，已跳过。", device.Key);
+                    return false;
+                }
+
+                // 协议真相源为 Protocol.DriverKey（模型必绑协议后不再回退过渡字段）；缺少则跳过该设备。
+                var driverKey = model.Protocol?.DriverKey;
+                if (string.IsNullOrWhiteSpace(driverKey))
+                {
+                    _logger.LogWarning("设备 {Key} 的数据模型未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
+                    return false;
+                }
+                var protocolLabel = driverKey;
+                var driver = _driverFactory.CreateDriver(driverKey);
+
+                // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
+                // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。
+                var runtime = new Devices.DeviceRuntime(device)
+                {
+                    Device = device,
+                    Model = model,
+                    Protocol = model.Protocol,
+                    Config = device.Config,
+                    Area = device.Area
+                };
+
+                var connected = await driver.ConnectAsync(runtime);
+                if (!connected)
+                {
+                    _logger.LogWarning("设备 {Key} ({Protocol}) 连接失败，已跳过。", device.Key, protocolLabel);
+                    await driver.DisposeAsync();
+                    return false;
+                }
+
+                runtime.Driver = driver;
+
+                // 驱动连接即视为已连接：设备无需等待首轮采集即可对外呈现在线，
+                // 并为空转（无启用变量）设备直接定格在线状态，避免停留在 Initializing/Offline。
+                runtime.ConnectionState = DeviceConnectionState.Connected;
+
+                var now = DateTime.Now;
+                foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
+                {
+                    if (dv.ModelVariable == null)
+                    {
+                        _logger.LogWarning(
+                            "设备 {Key} 的设备变量 #{DvId} 缺少关联模型变量，已跳过。", device.Key, dv.Id);
+                        continue;
+                    }
+
+                    // 构建 RuntimeVariable：变量定义来自 ModelVariable，设备配置来自 DeviceVariable。
+                    runtime.Variables[dv.Id] = new VariableRuntime
+                    {
+                        Definition = dv.ModelVariable,
+                        Instance = dv,
+                        NextPollTime = now // 首轮立即采集
+                    };
+                }
+
+                RegisterDevice(runtime);
+
+                _deviceRegistry.UpdateDevice(device,
+                    (device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
+                        .Select(dv => dv.ModelVariable)
+                        .Where(mv => mv != null)
+                        .Cast<ModelVariable>()
+                        .ToList());
+
+                _logger.LogInformation(
+                    "设备 {Key} ({Protocol}) 初始化完成，共 {VarCount} 个变量。",
+                    device.Key, protocolLabel, runtime.Variables.Count);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "设备 {Key} 初始化失败。", device.Key);
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task StartAsync(CancellationToken token)
         {
             if (_scheduler != null) return;
 
             _scheduler = new DeviceScheduler(
                 this,
-                maxConcurrentWorkers,
                 _loggerFactory.CreateLogger<DeviceScheduler>(),
                 _loggerFactory.CreateLogger<DeviceWorker>(),
                 _notificationService,

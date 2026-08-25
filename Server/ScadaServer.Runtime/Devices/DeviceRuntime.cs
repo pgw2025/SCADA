@@ -92,14 +92,42 @@ public class DeviceRuntime : IRuntimeDevice
     // 运行时锁
     public SemaphoreSlim Lock { get; } = new(1, 1);
 
-    // 取消令牌
-    public CancellationTokenSource? CancellationTokenSource { get; set; }
+    // Worker 独立取消源（链接全局关停令牌，支持单设备启停）
+    private CancellationTokenSource? _workerCts;
 
-    private CancellationTokenSource?
-        _cts;
+    /// <summary>
+    /// 当前 Worker 的任务句柄（由调度器派发时记录，供单设备停止时等待其收尾）。
+    /// </summary>
+    public Task? WorkerTask { get; set; }
 
-    private Task?
-        _workerTask;
+    /// <summary>
+    /// 创建当前 Worker 使用的取消令牌：链接全局关停令牌（调度器/宿主），
+    /// 同时允许对单台设备独立取消（用于运行期注销/重载该设备）。
+    /// </summary>
+    /// <param name="globalToken">全局关停令牌（调度器链接宿主 token 的令牌）</param>
+    /// <returns>Worker 应监听的取消令牌</returns>
+    public CancellationToken CreateWorkerToken(CancellationToken globalToken)
+    {
+        _workerCts = CancellationTokenSource.CreateLinkedTokenSource(globalToken);
+        return _workerCts.Token;
+    }
+
+    /// <summary>
+    /// 取消当前 Worker（单设备注销/重载时调用），触发其干净退出。
+    /// </summary>
+    public void CancelWorker()
+    {
+        _workerCts?.Cancel();
+    }
+
+    /// <summary>
+    /// 释放 Worker 取消源，应在 Worker 退出后由调度器调用。
+    /// </summary>
+    public void DisposeWorkerToken()
+    {
+        _workerCts?.Dispose();
+        _workerCts = null;
+    }
 
     public DeviceRuntime(Device device)
     {

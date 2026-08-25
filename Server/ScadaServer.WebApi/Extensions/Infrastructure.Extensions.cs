@@ -29,6 +29,7 @@ namespace ScadaServer.WebApi.Extensions
             // Runtime 运行时服务
             services.AddSingleton<RuntimeManager>();
             services.AddSingleton<IRuntimeManager>(sp => sp.GetRequiredService<RuntimeManager>());
+            services.AddSingleton<IRuntimeDeviceManager>(sp => sp.GetRequiredService<RuntimeManager>());
             services.AddSingleton<IRuntimeStatusProvider, RuntimeStatusProviderAdapter>();
             services.AddHostedService<ScadaServer.WebApi.HostedServices.RuntimeHostedService>();
 

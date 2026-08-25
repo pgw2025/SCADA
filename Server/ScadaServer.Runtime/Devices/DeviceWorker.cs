@@ -62,7 +62,8 @@ namespace ScadaServer.Runtime.Devices
                 return;
             }
 
-            _runtime.ConnectionState = DeviceConnectionState.Initializing;
+            // 驱动连接成功状态已由设备注册阶段置为 Connected，此处不再强置 Initializing，
+            // 避免覆盖启动即在线状态（尤其空转/无启变量设备）。
             _logger.LogInformation("DeviceWorker {DeviceKey} initializing...", _runtime.Device.Key);
 
             // 主采集循环，直到收到取消信号
@@ -85,6 +86,10 @@ namespace ScadaServer.Runtime.Devices
 
                     if (due.Count == 0)
                     {
+                        // 本 tick 无到期变量（含无启用变量的空转设备）：驱动连接依然有效，
+                        // 保持 Connected，避免始终停留在 Initializing/Offline（空转设备离线的根因之一）。
+                        _runtime.ConnectionState = DeviceConnectionState.Connected;
+
                         // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性
                         var soonest = DateTime.MaxValue;
                         foreach (var vr in _runtime.Variables.Values)
