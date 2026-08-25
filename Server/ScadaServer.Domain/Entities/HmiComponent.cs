@@ -50,9 +50,24 @@ namespace ScadaServer.Domain.Entities
         public int ZIndex { get; set; }
 
         /// <summary>
-        /// 绑定字段（变量键）
+        /// 绑定字段（变量键，旧绑定模型，保留以兼容存量数据）
         /// </summary>
         public string BindField { get; set; }
+
+        /// <summary>
+        /// 组件标签（前端组件显示名，原只能塞进 PropsJson，现独立成列；可选）
+        /// </summary>
+        public string? Label { get; set; }
+
+        /// <summary>
+        /// 绑定设备ID（阶段3 绑定模型预埋，复合绑定 deviceId + variableKey；可选）
+        /// </summary>
+        public int? BindDeviceId { get; set; }
+
+        /// <summary>
+        /// 绑定变量键（阶段3 绑定模型预埋；可选，未绑定组件为空）
+        /// </summary>
+        public string? BindVariableKey { get; set; }
 
         /// <summary>
         /// 组件属性（JSON格式）

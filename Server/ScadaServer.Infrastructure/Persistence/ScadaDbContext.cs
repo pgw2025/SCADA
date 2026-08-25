@@ -164,6 +164,23 @@ namespace ScadaServer.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(p => p.ProjectId);
 
+            // HMI 组件绑定设备：BindDeviceId 为可空外键，设备删除时绑定置 NULL（画面组件保留，仅提示绑定失效）
+            modelBuilder.Entity<HmiComponent>()
+                .HasOne<Device>()
+                .WithMany()
+                .HasForeignKey(c => c.BindDeviceId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_HmiComponents_Devices_BindDeviceId");
+
+            // 页面画布尺寸默认值（与前端硬编码 1100×700 对齐）
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.Width)
+                .HasDefaultValue(1100);
+
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.Height)
+                .HasDefaultValue(700);
+
             modelBuilder.Entity<Sensor>()
                 .HasOne(s => s.Device)
                 .WithMany()

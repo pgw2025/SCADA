@@ -30,6 +30,16 @@ namespace ScadaServer.Domain.Entities
         public bool IsHome { get; set; }
 
         /// <summary>
+        /// 画布宽度（像素），默认 1100
+        /// </summary>
+        public int Width { get; set; }
+
+        /// <summary>
+        /// 画布高度（像素），默认 700
+        /// </summary>
+        public int Height { get; set; }
+
+        /// <summary>
         /// 页面包含的HMI组件列表
         /// </summary>
         [NotMapped]

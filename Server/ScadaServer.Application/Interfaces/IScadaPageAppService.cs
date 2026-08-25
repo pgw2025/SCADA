@@ -6,9 +6,15 @@ namespace ScadaServer.Application.Interfaces
     {
         Task<ScadaPageDto?> GetByIdAsync(int id);
         Task<List<ScadaPageDto>> GetListAsync();
-        Task CreateAsync(ScadaPageDto dto);
-        Task UpdateAsync(ScadaPageDto dto);
+        /// <summary>按项目过滤页面列表，projectId 为 null 时返回全部</summary>
+        Task<List<ScadaPageDto>> GetByProjectAsync(int? projectId);
+        /// <summary>创建页面，返回新建的自增Id</summary>
+        Task<int> CreateAsync(ScadaPageDto dto);
+        /// <summary>更新页面，返回是否存在并更新成功</summary>
+        Task<bool> UpdateAsync(ScadaPageDto dto);
         Task DeleteAsync(int id);
+        /// <summary>全量保存页面布局（删旧全量 + 批量插入），事务内完成</summary>
+        Task SaveLayoutAsync(int pageId, List<HmiComponentDto> components);
     }
 }
 

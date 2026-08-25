@@ -13,76 +13,42 @@ namespace ScadaServer.Application.Services
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
-            return new HmiComponentDto
-            {
-                Id = entity.Id,
-                PageId = entity.PageId,
-                Type = entity.Type,
-                Name = entity.Name,
-                X = entity.X,
-                Y = entity.Y,
-                Width = entity.Width,
-                Height = entity.Height,
-                ZIndex = entity.ZIndex,
-                BindField = entity.BindField,
-                PropsJson = entity.PropsJson
-            };
+            return MapToDto(entity);
         }
 
         public async Task<List<HmiComponentDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(entity => new HmiComponentDto
-            {
-                Id = entity.Id,
-                PageId = entity.PageId,
-                Type = entity.Type,
-                Name = entity.Name,
-                X = entity.X,
-                Y = entity.Y,
-                Width = entity.Width,
-                Height = entity.Height,
-                ZIndex = entity.ZIndex,
-                BindField = entity.BindField,
-                PropsJson = entity.PropsJson
-            }).ToList();
+            return list.Select(MapToDto).ToList();
         }
 
-        public async Task CreateAsync(HmiComponentDto dto)
+        public async Task<int> CreateAsync(HmiComponentDto dto)
         {
-            var entity = new HmiComponent
-            {
-                PageId = dto.PageId,
-                Type = dto.Type,
-                Name = dto.Name,
-                X = dto.X,
-                Y = dto.Y,
-                Width = dto.Width,
-                Height = dto.Height,
-                ZIndex = dto.ZIndex,
-                BindField = dto.BindField,
-                PropsJson = dto.PropsJson
-            };
+            var entity = MapToEntity(dto);
             await _repository.InsertAsync(entity);
+            return entity.Id;
         }
 
-        public async Task UpdateAsync(HmiComponentDto dto)
+        public async Task<bool> UpdateAsync(HmiComponentDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
-            if (entity != null)
-            {
-                entity.PageId = dto.PageId;
-                entity.Type = dto.Type;
-                entity.Name = dto.Name;
-                entity.X = dto.X;
-                entity.Y = dto.Y;
-                entity.Width = dto.Width;
-                entity.Height = dto.Height;
-                entity.ZIndex = dto.ZIndex;
-                entity.BindField = dto.BindField;
-                entity.PropsJson = dto.PropsJson;
-                await _repository.UpdateAsync(entity);
-            }
+            if (entity == null) return false;
+
+            entity.PageId = dto.PageId;
+            entity.Type = dto.Type;
+            entity.Name = dto.Name;
+            entity.X = dto.X;
+            entity.Y = dto.Y;
+            entity.Width = dto.Width;
+            entity.Height = dto.Height;
+            entity.ZIndex = dto.ZIndex;
+            entity.BindField = dto.BindField;
+            entity.Label = dto.Label;
+            entity.BindDeviceId = dto.BindDeviceId;
+            entity.BindVariableKey = dto.BindVariableKey;
+            entity.PropsJson = dto.PropsJson;
+            await _repository.UpdateAsync(entity);
+            return true;
         }
 
         public async Task DeleteAsync(int id)
@@ -93,6 +59,44 @@ namespace ScadaServer.Application.Services
                 await _repository.DeleteAsync(entity);
             }
         }
+
+        #region 映射
+
+        private static HmiComponentDto MapToDto(HmiComponent entity) => new()
+        {
+            Id = entity.Id,
+            PageId = entity.PageId,
+            Type = entity.Type,
+            Name = entity.Name,
+            X = entity.X,
+            Y = entity.Y,
+            Width = entity.Width,
+            Height = entity.Height,
+            ZIndex = entity.ZIndex,
+            BindField = entity.BindField,
+            Label = entity.Label,
+            BindDeviceId = entity.BindDeviceId,
+            BindVariableKey = entity.BindVariableKey,
+            PropsJson = entity.PropsJson
+        };
+
+        private static HmiComponent MapToEntity(HmiComponentDto dto) => new()
+        {
+            PageId = dto.PageId,
+            Type = dto.Type,
+            Name = dto.Name,
+            X = dto.X,
+            Y = dto.Y,
+            Width = dto.Width,
+            Height = dto.Height,
+            ZIndex = dto.ZIndex,
+            BindField = dto.BindField,
+            Label = dto.Label,
+            BindDeviceId = dto.BindDeviceId,
+            BindVariableKey = dto.BindVariableKey,
+            PropsJson = dto.PropsJson
+        };
+
+        #endregion
     }
 }
-

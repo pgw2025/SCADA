@@ -1,6 +1,7 @@
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
@@ -13,9 +14,9 @@ namespace ScadaServer.Application.Services
         public ScadaPageAppService(
             IScadaPageRepository repository,
             IHmiComponentRepository componentRepository,
-            IUnitOfWork uow) 
-        { 
-            _repository = repository; 
+            IUnitOfWork uow)
+        {
+            _repository = repository;
             _componentRepository = componentRepository;
             _uow = uow;
         }
@@ -24,30 +25,48 @@ namespace ScadaServer.Application.Services
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
-            return new ScadaPageDto { Id = entity.Id, ProjectId = entity.ProjectId, Name = entity.Name, IsHome = entity.IsHome };
+            return MapToDto(entity);
         }
 
         public async Task<List<ScadaPageDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(entity => new ScadaPageDto { Id = entity.Id, ProjectId = entity.ProjectId, Name = entity.Name, IsHome = entity.IsHome }).ToList();
+            return list.Select(MapToDto).ToList();
         }
 
-        public async Task CreateAsync(ScadaPageDto dto)
+        public async Task<List<ScadaPageDto>> GetByProjectAsync(int? projectId)
         {
-            var entity = new ScadaPage { ProjectId = dto.ProjectId, Name = dto.Name, IsHome = dto.IsHome };
-            await _repository.InsertAsync(entity);
+            var list = projectId == null
+                ? await _repository.GetListAsync()
+                : await _repository.GetListAsync(p => p.ProjectId == projectId.Value);
+            return list.Select(MapToDto).ToList();
         }
 
-        public async Task UpdateAsync(ScadaPageDto dto)
+        public async Task<int> CreateAsync(ScadaPageDto dto)
+        {
+            var entity = new ScadaPage
+            {
+                ProjectId = dto.ProjectId,
+                Name = dto.Name,
+                IsHome = dto.IsHome,
+                Width = dto.Width > 0 ? dto.Width : 1100,
+                Height = dto.Height > 0 ? dto.Height : 700
+            };
+            await _repository.InsertAsync(entity);
+            return entity.Id;
+        }
+
+        public async Task<bool> UpdateAsync(ScadaPageDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
-            if (entity != null)
-            {
-                entity.Name = dto.Name;
-                entity.IsHome = dto.IsHome;
-                await _repository.UpdateAsync(entity);
-            }
+            if (entity == null) return false;
+
+            entity.Name = dto.Name;
+            entity.IsHome = dto.IsHome;
+            entity.Width = dto.Width > 0 ? dto.Width : entity.Width;
+            entity.Height = dto.Height > 0 ? dto.Height : entity.Height;
+            await _repository.UpdateAsync(entity);
+            return true;
         }
 
         public async Task DeleteAsync(int id)
@@ -64,6 +83,67 @@ namespace ScadaServer.Application.Services
                 return true;
             });
         }
+
+        public async Task SaveLayoutAsync(int pageId, List<HmiComponentDto> components)
+        {
+            // 页面必须存在
+            var page = await _repository.GetByIdAsync(pageId);
+            if (page == null)
+                throw new BusinessException($"页面不存在：{pageId}", 404);
+
+            // 参数校验：组件类型/名称为必填，且 PageId 必须与路由一致
+            for (var i = 0; i < components.Count; i++)
+            {
+                var c = components[i];
+                if (string.IsNullOrWhiteSpace(c.Type))
+                    throw new BusinessException($"第 {i + 1} 个组件类型不能为空", 400);
+                if (string.IsNullOrWhiteSpace(c.Name))
+                    throw new BusinessException($"第 {i + 1} 个组件名称不能为空", 400);
+                c.PageId = pageId; // 以路由为准，忽略请求体中的 PageId
+            }
+
+            await _uow.ExecuteInTransactionAsync(async transaction =>
+            {
+                // 删旧全量
+                await _componentRepository.DeleteRangeAsync(c => c.PageId == pageId);
+
+                // 批量插入（Id 重新生成，忽略请求体中的 Id）
+                var entities = components.Select(c => new HmiComponent
+                {
+                    PageId = pageId,
+                    Type = c.Type,
+                    Name = c.Name,
+                    X = c.X,
+                    Y = c.Y,
+                    Width = c.Width,
+                    Height = c.Height,
+                    ZIndex = c.ZIndex,
+                    BindField = c.BindField,
+                    Label = c.Label,
+                    BindDeviceId = c.BindDeviceId,
+                    BindVariableKey = c.BindVariableKey,
+                    PropsJson = c.PropsJson
+                }).ToList();
+
+                if (entities.Count > 0)
+                    await _componentRepository.InsertRangeAsync(entities);
+
+                return true;
+            });
+        }
+
+        #region 映射
+
+        private static ScadaPageDto MapToDto(ScadaPage entity) => new()
+        {
+            Id = entity.Id,
+            ProjectId = entity.ProjectId,
+            Name = entity.Name,
+            IsHome = entity.IsHome,
+            Width = entity.Width,
+            Height = entity.Height
+        };
+
+        #endregion
     }
 }
-
