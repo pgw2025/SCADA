@@ -46,11 +46,22 @@ const renamePageInput = ref<string>('');
 const isRenamingProjId = ref<string | null>(null);
 const renameProjInput = ref<string>('');
 
+// 生成全局唯一的组件 id（避免同秒内「添加+复制」撞车导致 Vue key 冲突/误删）
+let _componentSeq = 0;
+function genComponentId(type: string): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `${type}-${crypto.randomUUID()}`;
+  }
+  _componentSeq += 1;
+  return `${type}-${Date.now()}-${_componentSeq}`;
+}
+
 // Fetch dynamic telemetry for the active drawing canvas
 const simulatedDataComputed = computed(() => {
   const res: Record<string, number | boolean> = {};
   devices.value.forEach((d) => {
-    if (d.status === 'online') {
+    // 兼容字符串 'online'（模拟态）与数字 1（P0-1 修复后 mapRuntimeStatusToStatus 产出 0–4）
+    if (d.status === 'online' || d.status === 1) {
       Object.keys(d.variables).forEach((key) => {
         res[key] = d.variables[key];
       });
@@ -74,7 +85,7 @@ const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
 // Add a widget from panel library
 const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string) => {
   const currentComps = currentPage.value.components;
-  const newId = `${type}-${Date.now().toString().slice(-6)}`;
+  const newId = genComponentId(type);
   
   const newComponent: HMIComponent = {
     id: newId,
@@ -112,7 +123,7 @@ const handleDuplicateComponent = (id: string) => {
 
   const cloned: HMIComponent = {
     ...target,
-    id: `${target.type}-${Date.now().toString().slice(-6)}`,
+    id: genComponentId(target.type),
     name: `${target.name} (副本)`,
     x: target.x + 20,
     y: target.y + 20,

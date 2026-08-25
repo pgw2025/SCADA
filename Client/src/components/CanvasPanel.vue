@@ -208,6 +208,14 @@ const handleMouseMove = (e: MouseEvent) => {
         nextY = sizeSnap(compOriginalPos.value.y + deltaY);
         nextH = potentialH;
       }
+    } else if (activeResizeHandle.value === 'ne') {
+      // NE 角：宽随 deltaX 正向、高随 deltaY 反向（顶部边移动）、y 同步移动，与 sw 镜像
+      const potentialH = sizeSnap(compOriginalPos.value.h - deltaY);
+      if (potentialH >= 20) {
+        nextY = sizeSnap(compOriginalPos.value.y + deltaY);
+        nextH = potentialH;
+      }
+      nextW = Math.max(20, sizeSnap(compOriginalPos.value.w + deltaX));
     }
 
     emit('updateComponent', props.selectedId, {
@@ -457,7 +465,7 @@ onUnmounted(() => {
             <!-- NE Handle -->
             <div
               class="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'nw')"
+              @mousedown="handleResizeStart($event, component, 'ne')"
             />
             <!-- SE Handle (Primary Resize trigger) -->
             <div
@@ -471,7 +479,7 @@ onUnmounted(() => {
             />
             <!-- South handle -->
             <div
-              class="absolute bottom-1/2 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-s-resize z-50 shadow"
+              class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-s-resize z-50 shadow"
               @mousedown="handleResizeStart($event, component, 's')"
             />
           </template>
