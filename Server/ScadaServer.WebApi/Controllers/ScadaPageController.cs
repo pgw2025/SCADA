@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using System.Security.Claims;
@@ -40,8 +41,8 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll([FromQuery] int? projectId)
-            => Ok(await _appService.GetByProjectAsync(projectId));
+        public async Task<IActionResult> GetAll([FromQuery] int? projectId, [FromQuery] string? platform)
+            => Ok(await _appService.GetByProjectAsync(projectId, platform));
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
@@ -52,6 +53,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Create([FromBody] ScadaPageDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -62,6 +64,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Update([FromBody] ScadaPageDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -72,6 +75,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);
@@ -83,6 +87,7 @@ namespace ScadaServer.WebApi.Controllers
         /// 全量保存页面布局：请求体为该页全部组件（删旧全量 + 批量插入，事务内完成）
         /// </summary>
         [HttpPut("{id}/layout")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> SaveLayout(int id, [FromBody] List<HmiComponentDto> components)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);

@@ -252,9 +252,9 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     icon: SquareTerminal,
     iconKind: 'lucide',
     iconColor: 'text-amber-500',
-    description: '工业现场操作主令按钮，支持自锁(Toggle)、点动(Momentary)、设值(SetValue)三种回写执行逻辑。',
+    description: '工业现场操作主令按钮，支持自锁(Toggle)、点动(Momentary)、设值(SetValue)、跳转(Navigate)四种执行逻辑。',
     category: 'structures',
-    defaultProps: () => baseProps('button'),
+    defaultProps: () => ({ ...baseProps('button'), targetPageId: null }),
   },
   switch: {
     type: 'switch',

@@ -69,6 +69,9 @@ const triggerFormLogin = async () => {
   const result = await performLogin(loginUsernameInput.value.trim(), loginPasswordInput.value.trim());
   if (!result.success) {
     loginErrorMessage.value = result.errorMessage || '登录失败，请检查网络连接';
+  } else {
+    // 阶段5：登录成功按角色落地——管理员进仪表盘，普通用户（Operator）进组态运行画面
+    router.push(loginUser.value?.role === 'Admin' ? '/dashboard' : '/scada-view');
   }
 };
 
@@ -117,6 +120,9 @@ const navigate = (path: string) => {
 
 // Helper for active class
 const isActive = (path: string) => router.currentRoute.value.path === path;
+
+// 阶段5：角色隔离——仅管理员可见后台导航；普通用户（Operator）仅见「组态运行」入口
+const isAdmin = computed(() => loginUser.value?.role === 'Admin');
 </script>
 
 <template>
@@ -301,7 +307,24 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
         </div>
 
         <div class="flex-1 flex flex-col pt-3 overflow-y-auto space-y-2.5 pb-4">
-          <div>
+          <!-- 组态运行：所有已登录用户（含普通用户）可见，是普通用户的唯一入口 -->
+          <nav class="space-y-0.5 px-2">
+            <button
+              @click="navigate('/scada-view')"
+              :class="[
+                isActive('/scada-view')
+                  ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent',
+                isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+              ]"
+              class="flex items-center rounded-lg text-xs transition-all text-left cursor-pointer group w-full"
+            >
+              <MonitorPlay class="w-4 h-4 shrink-0 transition-colors" :class="isActive('/scada-view') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
+              <span v-if="!isSidebarCollapsed" class="truncate">组态运行</span>
+            </button>
+          </nav>
+
+          <div v-if="isAdmin">
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">监控中心</span>
             <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
@@ -405,7 +428,7 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
             </nav>
           </div>
 
-          <div>
+          <div v-if="isAdmin">
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">自动化</span>
             <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
@@ -509,7 +532,7 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
             </nav>
           </div>
 
-          <div>
+          <div v-if="isAdmin">
             <span v-if="!isSidebarCollapsed" class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">系统设置</span>
             <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
@@ -598,7 +621,20 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
               <X class="w-4.5 h-4.5" />
             </button>
           </div>
+          <!-- 组态运行：所有已登录用户（含普通用户）可见 -->
           <nav class="space-y-0.5 px-2">
+            <button 
+              @click="navigate('/scada-view'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/scada-view') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
+              <MonitorPlay class="w-4 h-4" />
+              <span>组态运行</span>
+            </button>
+          </nav>
+
+          <!-- 后台导航：仅管理员可见 -->
+          <nav v-if="isAdmin" class="space-y-0.5 px-2">
             <button 
               @click="navigate('/dashboard'); isMobileSidebarOpen = false;" 
               :class="[isActive('/dashboard') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 

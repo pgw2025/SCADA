@@ -181,6 +181,16 @@ namespace ScadaServer.Infrastructure.Persistence
                 .Property(p => p.Height)
                 .HasDefaultValue(700);
 
+            // 画面归属端（桌面/移动），默认 Desktop；运行态会高频按 (ProjectId, Platform) 过滤
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.Platform)
+                .HasMaxLength(16)
+                .HasDefaultValue("Desktop");
+
+            modelBuilder.Entity<ScadaPage>()
+                .HasIndex(p => new { p.ProjectId, p.Platform })
+                .HasDatabaseName("IX_ScadaPages_ProjectId_Platform");
+
             modelBuilder.Entity<Sensor>()
                 .HasOne(s => s.Device)
                 .WithMany()

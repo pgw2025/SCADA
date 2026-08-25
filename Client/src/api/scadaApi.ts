@@ -33,6 +33,7 @@ export interface PageWithComponentsDto {
   projectId: number;
   name: string;
   isHome: boolean;
+  platform: string;
   width: number;
   height: number;
   components: ComponentDto[];
@@ -42,6 +43,7 @@ export interface PageDto {
   projectId: number;
   name: string;
   isHome: boolean;
+  platform: string;
   width: number;
   height: number;
 }
@@ -120,7 +122,8 @@ export const toPageDto = (pg: ScadaPage, projectId: number) => ({
   id: pg.serverId ?? 0,
   projectId,
   name: pg.name,
-  isHome: false,
+  isHome: pg.isHome ?? false,
+  platform: pg.platform ?? 'Desktop',
   width: pg.width ?? PAGE_DEFAULT_W,
   height: pg.height ?? PAGE_DEFAULT_H,
 });
@@ -164,6 +167,8 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   id: `srv-${d.id}`,
   serverId: d.id,
   name: d.name,
+  platform: d.platform ?? 'Desktop',
+  isHome: d.isHome,
   width: d.width,
   height: d.height,
   components: (d.components || []).map(fromComponentDto),

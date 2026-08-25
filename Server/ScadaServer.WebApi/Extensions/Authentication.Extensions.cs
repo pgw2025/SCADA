@@ -96,9 +96,14 @@ namespace ScadaServer.WebApi.Extensions
             // 所有 API 默认必须携带有效 JWT 才能访问，避免“忘了加 [Authorize] 就裸奔”。
             services.AddAuthorization(options =>
             {
+                // 阶段5：管理员专属策略。仅 Admin 角色可访问组态/配置/管理类写接口；
+                // 普通用户（Operator）只能访问运行态读取接口与下发控制
+                // （DeviceController.WriteVariable 保留 Operator 角色，详见该端点）。
                 options.FallbackPolicy = new AuthorizationPolicyBuilder()
                     .RequireAuthenticatedUser()
                     .Build();
+
+                options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
             });
 
             services.AddSignalR();

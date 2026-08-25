@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 
@@ -6,6 +7,7 @@ namespace ScadaServer.WebApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Policy = "RequireAdmin")]
     public class ExposedInterfaceController : ControllerBase
     {
         private readonly IExposedInterfaceAppService _appService;

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Configuration;
 
@@ -6,6 +7,7 @@ namespace ScadaServer.WebApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Policy = "RequireAdmin")]
     public class DatabaseConfigController : ControllerBase
     {
         private readonly DatabaseConfigManager _configManager;

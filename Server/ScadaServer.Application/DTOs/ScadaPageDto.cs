@@ -8,6 +8,11 @@ namespace ScadaServer.Application.DTOs
         public bool IsHome { get; set; }
 
         /// <summary>
+        /// 画面归属端：Desktop / Mobile。默认 Desktop。
+        /// </summary>
+        public string Platform { get; set; } = "Desktop";
+
+        /// <summary>
         /// 画布宽度（像素）
         /// </summary>
         public int Width { get; set; }

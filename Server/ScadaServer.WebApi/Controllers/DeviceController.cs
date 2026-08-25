@@ -68,6 +68,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <param name="dto">创建设备DTO</param>
         /// <returns>创建结果</returns>
         [HttpPost]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Create([FromBody] CreateDeviceDto dto)
         {
             var result = await _deviceAppService.CreateAsync(dto);
@@ -80,6 +81,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <param name="dto">设备DTO</param>
         /// <returns>更新结果</returns>
         [HttpPut]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Update([FromBody] DeviceDto dto)
         {
             var result = await _deviceAppService.UpdateAsync(dto);
@@ -92,6 +94,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <param name="id">设备ID</param>
         /// <returns>删除结果</returns>
         [HttpDelete("{id}")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Delete(int id)
         {
             await _deviceAppService.DeleteAsync(id);

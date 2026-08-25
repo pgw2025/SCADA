@@ -10,11 +10,14 @@ import {
   redoAvailable,
 } from '../services/historyService';
 import { 
-  scadaProjects, 
-  selectedProjectId, 
-  selectedPageId, 
-  currentProject, 
+  scadaProjects,
+  selectedProjectId,
+  selectedPageId,
+  currentProject,
   currentPage,
+  currentPlatform,
+  desktopPages,
+  mobilePages,
   initializeScada
 } from '../store/scadaStore';
 import { 
@@ -53,7 +56,8 @@ import {
   Check,
   Activity,
   Undo2,
-  Redo2
+  Redo2,
+  Home
 } from 'lucide-vue-next';
 
 // Editor settings
@@ -406,25 +410,66 @@ const handleCreateProject = () => {
   ensureProjectSaved(newProj).catch(() => {});
 };
 
-// Add child page to active screen project
-const handleAddPage = () => {
+// Add child page to active screen project.
+// platform：新增画面归属端（桌面端/移动端），缺省 Desktop；不同端使用各自默认画布尺寸。
+const PAGE_SIZES: Record<'Desktop' | 'Mobile', { w: number; h: number }> = {
+  Desktop: { w: 1100, h: 700 },
+  Mobile: { w: 375, h: 812 }
+};
+const handleAddPage = (platform: 'Desktop' | 'Mobile' = 'Desktop') => {
   const proj = currentProject.value;
   if (!proj) return;
 
+  const list = platform === 'Mobile' ? mobilePages.value : desktopPages.value;
+  const size = PAGE_SIZES[platform];
   const newPageId = `page-${Date.now()}`;
   const newPage: ScadaPage = {
     id: newPageId,
     serverId: undefined,
-    name: `未命名页面 ${proj.pages.length + 1}`,
+    name: `${platform === 'Mobile' ? '移动端画面' : '桌面端画面'} ${list.length + 1}`,
+    platform,
+    width: size.w,
+    height: size.h,
     components: []
   };
 
   proj.pages.push(newPage);
   selectedPageId.value = newPageId;
-  addLog('组态编辑', `项目 [${proj.name}] 新增页面: [${newPage.name}]`, 'normal');
+  currentPlatform.value = platform;
+  addLog('组态编辑', `项目 [${proj.name}] 新增${platform === 'Mobile' ? '移动端' : '桌面端'}画面: [${newPage.name}]`, 'normal');
 
   // 阶段2：确保工程已落库后落库页面并回填 serverId
   ensurePageSaved(newPage, proj).catch(() => {});
+};
+
+// 视口切换：切换到指定端，并选中该端首个画面（保持编辑上下文一致）。
+const switchPlatform = (platform: 'Desktop' | 'Mobile') => {
+  currentPlatform.value = platform;
+  const list = platform === 'Mobile' ? mobilePages.value : desktopPages.value;
+  if (list.length > 0) selectedPageId.value = list[0].id;
+};
+
+// 阶段3：运行模式（预览）下点击「导航」按钮 → 切换到目标画面（目标必为同端，编辑器不跨端）。
+const handleNavigate = (pageId: string) => {
+  const target = currentProject.value?.pages.find(p => p.id === pageId);
+  if (!target) return;
+  selectedPageId.value = pageId;
+  currentPlatform.value = (target.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
+};
+
+// 设置/取消某画面为「所在端首页」：同端仅保留一个首页（由后端 AppService 兜底唯一性）。
+const setHomePage = (page: ScadaPage) => {
+  const proj = currentProject.value;
+  if (!proj) return;
+  const platform = (page.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
+  proj.pages.forEach(pg => {
+    if ((pg.platform ?? 'Desktop') === platform) pg.isHome = false;
+  });
+  page.isHome = true;
+  addLog('组态编辑', `设置首页: [${page.name}] (${platform === 'Mobile' ? '移动端' : '桌面端'})`, 'normal');
+  proj.pages
+    .filter(pg => (pg.platform ?? 'Desktop') === platform)
+    .forEach(pg => persistPageUpdate(pg).catch(() => {}));
 };
 
 // Copy / Duplicate child page
@@ -437,6 +482,9 @@ const handleDuplicatePage = (page: { id: string; name: string; components: any[]
     id: newPageId,
     serverId: undefined,
     name: `${page.name} - 副本`,
+    platform: page.platform ?? 'Desktop',
+    width: page.width,
+    height: page.height,
     components: JSON.parse(JSON.stringify(page.components))
   };
   proj.pages.push(newPage);
@@ -584,29 +632,31 @@ const selectedCompObj = computed(() => {
         </p>
       </div>
 
-      <!-- Subpages Directory explorer -->
-      <div class="p-4 flex items-center justify-between border-b border-slate-100/60 dark:border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">
-        <span>页面列表 ({{ currentProject?.pages.length || 0 }})</span>
+      <!-- Subpages Directory explorer：按归属端分「桌面端 / 移动端」两组 -->
+      <div class="p-4 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100/60 dark:border-slate-800">
+        画面列表
+      </div>
+
+      <!-- 桌面端分组 -->
+      <div class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-100/60 dark:border-slate-800">
+        <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">🖥 桌面端 ({{ desktopPages.length }})</span>
         <button 
-          @click="handleAddPage"
-          class="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
-          title="新增页面"
+          @click="handleAddPage('Desktop')"
+          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+          title="新增桌面端画面"
         >
           <Plus class="w-3.5 h-3.5" />
         </button>
       </div>
-
-      <!-- Pages catalog list -->
-      <div v-if="currentProject" class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[180px] md:max-h-none text-left font-sans">
+      <div v-if="currentProject" class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[140px] md:max-h-none text-left font-sans">
         <div 
-          v-for="page in currentProject.pages" 
+          v-for="page in desktopPages" 
           :key="page.id"
           @click="selectedPageId = page.id"
           class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
           :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'"
         >
           <div class="flex items-center justify-between gap-2 overflow-hidden">
-            
             <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
               <input 
                 v-model="renamePageInput"
@@ -616,41 +666,62 @@ const selectedCompObj = computed(() => {
               />
               <button @click="savePageRename(page.id)" class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700"><Check class="w-4 h-4" /></button>
             </div>
-
-            <span v-else class="font-bold text-xs truncate flex-1 leading-relaxed">
-              {{ page.name }}
+            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
+              <span v-if="page.isHome" class="shrink-0 text-[8px] bg-amber-500 text-white px-1 py-0.5 rounded leading-none">首页</span>
+              <span class="truncate">{{ page.name }}</span>
             </span>
-
-            <!-- Actions popovers -->
             <div v-if="isRenamingPageId !== page.id" class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
-              <button 
-                @click.stop="startRenamePage(page.id, page.name)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" 
-                title="重命名"
-              >
-                <Edit class="w-3 h-3" />
-              </button>
-              <button 
-                @click.stop="handleDuplicatePage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" 
-                title="复制页面"
-              >
-                <Copy class="w-3 h-3" />
-              </button>
-              <button 
-                @click.stop="handleDeletePage(page.id, page.name)"
-                class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" 
-                title="删除页面"
-              >
-                <Trash2 class="w-3 h-3" />
-              </button>
+              <button @click.stop="setHomePage(page)" class="text-xs text-slate-400 hover:text-amber-500" :title="page.isHome ? '当前已是该端首页' : '设为该端首页'"><Home class="w-3 h-3" :class="page.isHome ? 'text-amber-500' : ''" /></button>
+              <button @click.stop="startRenamePage(page.id, page.name)" class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名"><Edit class="w-3 h-3" /></button>
+              <button @click.stop="handleDuplicatePage(page)" class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面"><Copy class="w-3 h-3" /></button>
+              <button @click.stop="handleDeletePage(page.id, page.name)" class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面"><Trash2 class="w-3 h-3" /></button>
             </div>
-
           </div>
+          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
+        </div>
+      </div>
 
-          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">
-            组件数: {{ page.components.length }}
-          </p>
+      <!-- 移动端分组 -->
+      <div class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-y border-slate-100/60 dark:border-slate-800 mt-1">
+        <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">📱 移动端 ({{ mobilePages.length }})</span>
+        <button 
+          @click="handleAddPage('Mobile')"
+          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+          title="新增移动端画面"
+        >
+          <Plus class="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div v-if="currentProject" class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[140px] md:max-h-none text-left font-sans">
+        <div 
+          v-for="page in mobilePages" 
+          :key="page.id"
+          @click="selectedPageId = page.id"
+          class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
+          :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'"
+        >
+          <div class="flex items-center justify-between gap-2 overflow-hidden">
+            <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
+              <input 
+                v-model="renamePageInput"
+                type="text"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-xs text-slate-800 dark:text-slate-100 outline-none"
+                @keyup.enter="savePageRename(page.id)"
+              />
+              <button @click="savePageRename(page.id)" class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700"><Check class="w-4 h-4" /></button>
+            </div>
+            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
+              <span v-if="page.isHome" class="shrink-0 text-[8px] bg-amber-500 text-white px-1 py-0.5 rounded leading-none">首页</span>
+              <span class="truncate">{{ page.name }}</span>
+            </span>
+            <div v-if="isRenamingPageId !== page.id" class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
+              <button @click.stop="setHomePage(page)" class="text-xs text-slate-400 hover:text-amber-500" :title="page.isHome ? '当前已是该端首页' : '设为该端首页'"><Home class="w-3 h-3" :class="page.isHome ? 'text-amber-500' : ''" /></button>
+              <button @click.stop="startRenamePage(page.id, page.name)" class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名"><Edit class="w-3 h-3" /></button>
+              <button @click.stop="handleDuplicatePage(page)" class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面"><Copy class="w-3 h-3" /></button>
+              <button @click.stop="handleDeletePage(page.id, page.name)" class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面"><Trash2 class="w-3 h-3" /></button>
+            </div>
+          </div>
+          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
         </div>
       </div>
 
@@ -673,6 +744,22 @@ const selectedCompObj = computed(() => {
           </div>
 
           <div class="flex items-center gap-2">
+            <!-- 视口切换：桌面端 / 移动端 -->
+            <div class="hidden md:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-bold">
+              <button
+                @click="switchPlatform('Desktop')"
+                class="px-2.5 py-1 cursor-pointer transition-colors"
+                :class="currentPlatform === 'Desktop' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                title="桌面端视口"
+              >🖥 桌面</button>
+              <button
+                @click="switchPlatform('Mobile')"
+                class="px-2.5 py-1 cursor-pointer transition-colors"
+                :class="currentPlatform === 'Mobile' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                title="移动端视口"
+              >📱 移动</button>
+            </div>
+
             <!-- 撤销/重做 -->
             <div class="hidden md:flex items-center gap-1">
               <button
@@ -716,26 +803,62 @@ const selectedCompObj = computed(() => {
 
           <!-- Sandbox Design canvas panel -->
           <div class="flex-1 bg-slate-900 relative overflow-hidden flex flex-col min-h-[350px] md:min-h-0">
-            <CanvasPanel 
-              :components="currentPage.components"
-              :selectedId="selectedId"
-              :selectedIds="selectedIds"
-              :isActiveMode="isActiveMode"
-              :component-values="componentValues"
-              :canvas-width="pageWidth"
-              :canvas-height="pageHeight"
-              :can-control-write="canControlWrite"
-              @select-components="handleSelectComponents"
-              @updateComponent="handleUpdateComponent"
-              @update-components="handleUpdateComponents"
-              @toggleMode="isActiveMode = !isActiveMode"
-              @triggerToggleValue="handleTriggerToggleValue"
-              @delete-components="handleDeleteComponents"
-              @duplicate-components="handleDuplicateComponents"
-              @clearCanvas="handleClearCanvas"
-              @update-canvas-size="handleUpdateCanvasSize"
-              @add-component-at="handleAddWidgetAt"
-            />
+            <div
+              class="flex-1 overflow-auto p-4"
+              :class="currentPlatform === 'Mobile' ? 'flex justify-center items-start md:items-center' : ''"
+            >
+              <!-- 移动端：套一层手机外框，强化移动视口区分 -->
+              <div
+                v-if="currentPlatform === 'Mobile'"
+                class="shrink-0 rounded-[2.25rem] bg-neutral-900 p-2.5 shadow-2xl ring-1 ring-neutral-700"
+              >
+                <div class="rounded-[1.6rem] overflow-hidden bg-slate-900">
+                  <CanvasPanel 
+                    :components="currentPage.components"
+                    :selectedId="selectedId"
+                    :selectedIds="selectedIds"
+                    :isActiveMode="isActiveMode"
+                    :component-values="componentValues"
+                    :canvas-width="pageWidth"
+                    :canvas-height="pageHeight"
+                    :can-control-write="canControlWrite"
+                    @select-components="handleSelectComponents"
+                    @updateComponent="handleUpdateComponent"
+                    @update-components="handleUpdateComponents"
+                    @toggleMode="isActiveMode = !isActiveMode"
+                    @triggerToggleValue="handleTriggerToggleValue"
+                    @delete-components="handleDeleteComponents"
+                    @duplicate-components="handleDuplicateComponents"
+                    @clearCanvas="handleClearCanvas"
+                    @update-canvas-size="handleUpdateCanvasSize"
+                    @add-component-at="handleAddWidgetAt"
+                    @navigate-to-page="handleNavigate"
+                  />
+                </div>
+              </div>
+              <CanvasPanel 
+                v-else
+                :components="currentPage.components"
+                :selectedId="selectedId"
+                :selectedIds="selectedIds"
+                :isActiveMode="isActiveMode"
+                :component-values="componentValues"
+                :canvas-width="pageWidth"
+                :canvas-height="pageHeight"
+                :can-control-write="canControlWrite"
+                @select-components="handleSelectComponents"
+                @updateComponent="handleUpdateComponent"
+                @update-components="handleUpdateComponents"
+                @toggleMode="isActiveMode = !isActiveMode"
+                @triggerToggleValue="handleTriggerToggleValue"
+                @delete-components="handleDeleteComponents"
+                @duplicate-components="handleDuplicateComponents"
+                @clearCanvas="handleClearCanvas"
+                @update-canvas-size="handleUpdateCanvasSize"
+                @add-component-at="handleAddWidgetAt"
+                @navigate-to-page="handleNavigate"
+              />
+            </div>
           </div>
         </div>
       </div>

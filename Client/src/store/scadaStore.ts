@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { HMIComponent, ScadaScreenProject } from '../types';
 import { TEMPLATES } from '../templates';
 import * as api from '../api/scadaApi';
@@ -111,6 +111,21 @@ export const currentProject = computed(() => {
 export const currentPage = computed(() => {
   const proj = currentProject.value;
   return proj.pages.find(pg => pg.id === selectedPageId.value) || proj.pages[0];
+});
+
+// 双布局：当前编辑/查看的端（Desktop / Mobile）。缺省 Desktop。
+export const currentPlatform = ref<'Desktop' | 'Mobile'>('Desktop');
+
+// 按归属端分组的页面列表（缺省按 Desktop 处理），编辑器页面树据此分两栏。
+export const desktopPages = computed(() =>
+  (currentProject.value?.pages ?? []).filter(p => (p.platform ?? 'Desktop') === 'Desktop'));
+export const mobilePages = computed(() =>
+  (currentProject.value?.pages ?? []).filter(p => (p.platform ?? 'Mobile') === 'Mobile'));
+
+// 选中页面时自动同步当前端，保证视口与页面归属一致。
+watch(selectedPageId, (id) => {
+  const pg = currentProject.value?.pages.find(p => p.id === id);
+  if (pg) currentPlatform.value = (pg.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
 });
 
 /**

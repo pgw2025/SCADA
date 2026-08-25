@@ -50,9 +50,10 @@ export interface HMIComponent {
     bold?: boolean;
     
     // 按钮/开关专属属性
-    buttonMode?: 'toggle' | 'momentary' | 'set-value'; // 按钮操作模式
+    buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'navigate'; // 按钮操作模式（navigate=跳转其它画面）
     clickValue?: number; // 设值模式下点击写入的具体数值
     buttonText?: string; // 按钮上静态/动态显示的文本
+    targetPageId?: string | null; // 导航模式下跳转目标画面 id（仅限同端）
     
     // 多状态文本映射属性
     stateMappings?: string; // 用户可自定义配置: "0:停止;1:预热;2:满载运行" 或 "false:关闭;true:激活"
@@ -329,6 +330,10 @@ export interface ScadaPage {
   /** 后端自增主键（持久化后回填）；未保存的新页面为 undefined */
   serverId?: number;
   name: string;
+  /** 画面归属端：Desktop（桌面端）/ Mobile（移动端）。缺省回退 Desktop。 */
+  platform?: 'Desktop' | 'Mobile';
+  /** 是否为所在端（桌面端/移动端）的首页。同一 (工程, 端) 至多一个首页。 */
+  isHome?: boolean;
   /** 画布尺寸（后端持久化；缺省回退默认 1100×700） */
   width?: number;
   height?: number;

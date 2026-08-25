@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
@@ -7,6 +8,7 @@ namespace ScadaServer.WebApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Policy = "RequireAdmin")]
     public class ModelVariableController : ControllerBase
     {
         private readonly IModelVariableAppService _appService;

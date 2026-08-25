@@ -22,6 +22,8 @@ const props = defineProps<{
   canvasWidth: number;
   canvasHeight: number;
   canControlWrite?: boolean;
+  /** 只读（运行时查看）模式：隐藏编辑器工具条，仅渲染画布与实时状态 */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -35,6 +37,7 @@ const emit = defineEmits<{
   (e: 'clearCanvas'): void;
   (e: 'updateCanvasSize', w: number, h: number): void;
   (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number): void;
+  (e: 'navigateToPage', pageId: string): void;
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
@@ -116,6 +119,13 @@ const handleKeyDown = (e: KeyboardEvent) => {
 // Pointer Events callbacks
 const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
+    // 阶段3：导航模式——点击跳转目标画面（同端），不受写权限限制，运行时/编辑器预览均可触发
+    if (component.type === 'button' && component.props.buttonMode === 'navigate') {
+      const target = component.props.targetPageId;
+      if (target) emit('navigateToPage', target);
+      return;
+    }
+
     // 阶段6-2：非授权角色（非 Operator/Admin）在运行模式禁止下发写指令，
     // 控件仅作只读展示；后端 [Authorize(Roles)] 仍兜底返回 403。
     if (props.canControlWrite === false) return;
@@ -469,8 +479,8 @@ onUnmounted(() => {
 
 <template>
   <div class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none" @mouseup="handleMouseUp">
-    <!-- Top Toolbar controls -->
-    <div class="h-12 border-b border-[#d9d9d9] bg-[#fafafa] px-4 flex items-center justify-between z-10 gap-2 flex-wrap shadow-sm">
+    <!-- Top Toolbar controls（只读/运行时模式隐藏编辑器工具条） -->
+    <div v-if="!readonly" class="h-12 border-b border-[#d9d9d9] bg-[#fafafa] px-4 flex items-center justify-between z-10 gap-2 flex-wrap shadow-sm">
       <!-- Run/Edit Mode toggle -->
       <div class="flex items-center gap-1 bg-white p-0.5 rounded border border-[#d9d9d9]">
         <button

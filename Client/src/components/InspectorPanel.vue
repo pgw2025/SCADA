@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { HMIComponent } from '../types';
 import { devices } from '../store/deviceStore';
+import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
 import { Settings, Tag, Sliders, Layout, Hash } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -58,6 +59,15 @@ const onBindVariableChange = (val: string) => {
   updateComponentField('bindVariableKey', val);
   updateComponentField('bindField', val); // 同步遗留字段，兼容旧逻辑/HMIWidget 提示
 };
+
+// 阶段3：导航目标候选（仅限当前端画面，排除自身）。编辑器内按 currentPlatform 过滤，
+// 保证「跨端跳转不允许」由设计约束（目标下拉不含异端画面）。
+const navTargetOptions = computed(() => {
+  const list = currentPlatform.value === 'Mobile' ? mobilePages.value : desktopPages.value;
+  return list
+    .filter(p => p.id !== props.selectedComponent?.id)
+    .map(p => ({ id: p.id, name: p.name }));
+});
 </script>
 
 <template>
@@ -330,6 +340,7 @@ const onBindVariableChange = (val: string) => {
               <option value="toggle">主锁/自锁 (Toggle - 单击取反)</option>
               <option value="momentary">点动操作 (Momentary - 按下1松开0)</option>
               <option value="set-value">恒定设值 (SetValue - 写入固定值)</option>
+              <option value="navigate">画面跳转 (Navigate - 跳转到同端其它画面)</option>
             </select>
           </div>
           
@@ -352,6 +363,22 @@ const onBindVariableChange = (val: string) => {
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
               placeholder="默认取本级Label"
             />
+          </div>
+
+          <!-- 阶段3：导航模式 → 选择同端目标画面 -->
+          <div v-if="componentProps.buttonMode === 'navigate'">
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">跳转目标画面（仅同端）</label>
+            <select
+              :value="componentProps.targetPageId ?? ''"
+              @change="updateProp('targetPageId', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white"
+            >
+              <option value="">-- 请选择目标画面 --</option>
+              <option v-for="opt in navTargetOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
+            </select>
+            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
+              运行时点击该按钮将跳转到所选画面；跨端跳转不允许，下拉仅列出「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端' }}」画面。
+            </p>
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 
@@ -10,6 +11,7 @@ namespace ScadaServer.WebApi.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Policy = "RequireAdmin")]
     public class ProtocolController : ControllerBase
     {
         private readonly IProtocolAppService _appService;

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 
@@ -27,6 +28,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Create([FromBody] HmiComponentDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -36,6 +38,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Update([FromBody] HmiComponentDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -45,6 +48,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);
