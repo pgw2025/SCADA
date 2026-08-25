@@ -84,8 +84,12 @@ const renderedVariables = computed(() => {
       max: v.max ?? 100,
       description: v.description || '现场控制元件回写值',
       value: value,
-      // 读写权限（来自模型模板 ModelVariable.isReadOnly），供写入按钮显隐判断
-      isReadOnly: v.isReadOnly,
+      // 读写权限：优先取设备实例级有效权限（variableMeta.effectiveIsReadOnly，
+      // 含设备级 IsReadOnlyOverride 覆盖结果），后端未下发时回退模板 isReadOnly。
+      // 这样用户在"设备变量"视图把变量覆盖为可写后，实时监控页写入按钮即可显示。
+      isReadOnly: selectedDevice.value?.variableMeta?.[v.key]?.effectiveIsReadOnly
+        ?? v.isReadOnly
+        ?? true,
       // 优先展示变量级实时推送时间戳，无推送时回退设备更新时间
       updatedAt: selectedDevice.value?.variableTimestamps?.[v.key]
         || selectedDevice.value?.lastUpdated
@@ -109,15 +113,33 @@ const filteredRenderedVariables = computed(() => {
   );
 });
 
-// Control override state variables
-const isWritingVarKey = ref<string | null>(null);
+// 写入弹窗状态：writingTarget 为待写入变量元数据，overrideValueInput 为输入值
+const showWriteModal = ref(false);
+const writingTarget = ref<{
+  key: string;
+  name: string;
+  type: 'analog' | 'digital';
+  value: number | boolean;
+  min: number;
+  max: number;
+  unit: string;
+} | null>(null);
 const overrideValueInput = ref<string>('');
 const isSubmitting = ref(false);
 
-// Perform override operation
-const startOverride = (varKey: string, currentVal: number | boolean) => {
-  isWritingVarKey.value = varKey;
-  overrideValueInput.value = currentVal.toString();
+// 点击"写入"：打开写值弹窗并预填当前值
+const startOverride = (v: any) => {
+  writingTarget.value = {
+    key: v.key,
+    name: v.name,
+    type: v.type,
+    value: v.value,
+    min: v.min,
+    max: v.max,
+    unit: v.unit
+  };
+  overrideValueInput.value = String(v.value);
+  showWriteModal.value = true;
 };
 
 const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
@@ -145,7 +167,7 @@ const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
       `下发强制命令 [${selectedDevice.value.key}]: 强制点位 [${varKey}] 写入 (值为 ${finalVal}) [${typeLabel}]`,
       'info'
     );
-    isWritingVarKey.value = null;
+    showWriteModal.value = false;
   } catch (err: any) {
     // 写入失败：保留本地旧值，仅展示后端返回的具体原因（只读/越界/离线等）
     addLog('调试面板', `写入失败 [${varKey}]: ${extractApiError(err)}`, 'warning');
@@ -155,7 +177,8 @@ const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
 };
 
 const cancelOverride = () => {
-  isWritingVarKey.value = null;
+  showWriteModal.value = false;
+  writingTarget.value = null;
 };
 
 // 页面自举：直接进入实时监控页时主动拉取设备与数据模型，避免依赖"先访问设备管理页"
@@ -404,44 +427,10 @@ watch(() => devices.value.length, (len) => {
 
                   <!-- Manual overrides -->
                   <td class="px-4 py-3.5 text-right">
-                    <!-- Overwrite inline input -->
-                    <div v-if="isWritingVarKey === v.key" class="flex items-center justify-end gap-1.5">
-                      <select 
-                        v-if="v.type === 'digital'"
-                        v-model="overrideValueInput"
-                        class="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded px-1.5 py-1 text-[11px] focus:outline-none"
-                      >
-                        <option value="true">ON</option>
-                        <option value="false">OFF</option>
-                      </select>
-                      <input 
-                        v-else
-                        v-model="overrideValueInput"
-                        type="number"
-                        step="0.1"
-                        :min="v.min"
-                        :max="v.max"
-                        class="w-16 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded px-1.5 py-1 text-[11px] text-right focus:outline-none"
-                      />
-                      <button 
-                        @click="commitOverride(v.key, v.type)"
-                        class="p-1 rounded bg-[#1890ff] text-white hover:bg-sky-600 cursor-pointer"
-                        title="确认强制"
-                      >
-                        <Check class="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        @click="cancelOverride"
-                        class="p-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer text-xs font-sans font-medium"
-                      >
-                        取消
-                      </button>
-                    </div>
-
-                    <!-- Open overwrite button -->
+                    <!-- Open write modal button -->
                     <button 
-                      v-else-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
-                      @click="startOverride(v.key, v.value)"
+                      v-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
+                      @click="startOverride(v)"
                       class="text-[11px] font-sans font-bold text-[#1890ff] hover:text-sky-600 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer"
                     >
                       <Settings class="w-3 h-3" />
@@ -518,43 +507,10 @@ watch(() => devices.value.length, (len) => {
                 <span class="text-[10px] text-slate-400 dark:text-slate-500 font-sans">数值写入</span>
                 
                 <div class="shrink-0 font-sans">
-                  <!-- Mode Override Active -->
-                  <div v-if="isWritingVarKey === v.key" class="flex items-center gap-1.5">
-                    <select 
-                      v-if="v.type === 'digital'"
-                      v-model="overrideValueInput"
-                      class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-1.5 py-1 text-xs focus:outline-none font-sans"
-                    >
-                      <option value="true">ON</option>
-                      <option value="false">OFF</option>
-                    </select>
-                    <input 
-                      v-else
-                      v-model="overrideValueInput"
-                      type="number"
-                      step="0.1"
-                      :min="v.min"
-                      :max="v.max"
-                      class="w-16 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-2 py-1 text-xs text-right focus:outline-none font-mono font-bold"
-                    />
-                    <button 
-                      @click="commitOverride(v.key, v.type)"
-                      class="p-1 px-1.5 rounded-lg bg-[#1890ff] text-white hover:bg-sky-600 cursor-pointer flex items-center justify-center shadow-sm"
-                    >
-                      <Check class="w-3.5 h-3.5" />
-                    </button>
-                    <button 
-                      @click="cancelOverride"
-                      class="text-xs font-bold text-slate-400 hover:text-slate-600 px-1 cursor-pointer"
-                    >
-                      取消
-                    </button>
-                  </div>
-
-                  <!-- Read only block / override button -->
+                  <!-- Open write modal button -->
                   <button 
-                    v-else-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
-                    @click="startOverride(v.key, v.value)"
+                    v-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
+                    @click="startOverride(v)"
                     class="text-[10px] font-sans font-bold text-[#1890ff] border border-slate-200 dark:border-slate-700 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                   >
                     <Settings class="w-3 h-3" />
@@ -573,6 +529,65 @@ watch(() => devices.value.length, (len) => {
           <Database class="w-8 h-8 text-slate-300 dark:text-slate-700" />
           <p class="text-xs">请选择设备查看变量数据</p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 变量写入弹窗 -->
+  <div v-if="showWriteModal && writingTarget" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="cancelOverride">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <h3 class="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+          <Settings class="w-4 h-4 text-[#1890ff]" /> 写入变量 — <span class="font-mono">{{ writingTarget.key }}</span>
+        </h3>
+        <button @click="cancelOverride" class="text-slate-400 hover:text-slate-600 cursor-pointer"><X class="w-4 h-4" /></button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">变量名称</label>
+          <div class="text-sm font-bold text-slate-800 dark:text-slate-200 font-sans">{{ writingTarget.name }}</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">当前值</label>
+            <div class="text-xs font-mono text-slate-600 dark:text-slate-300">
+              {{ writingTarget.type === 'digital' ? (writingTarget.value ? 'ON / 闭合' : 'OFF / 断开') : `${writingTarget.value} ${writingTarget.unit}` }}
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">类型</label>
+            <div class="text-xs font-mono text-slate-600 dark:text-slate-300">{{ writingTarget.type === 'digital' ? 'Boolean' : 'Analog' }}</div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+            写入值<span v-if="writingTarget.type === 'analog'" class="text-slate-400 font-normal">（范围 {{ writingTarget.min }} ~ {{ writingTarget.max }}{{ writingTarget.unit }}）</span>
+          </label>
+          <select
+            v-if="writingTarget.type === 'digital'"
+            v-model="overrideValueInput"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none"
+          >
+            <option value="true">ON</option>
+            <option value="false">OFF</option>
+          </select>
+          <input
+            v-else
+            v-model="overrideValueInput"
+            type="number"
+            step="0.1"
+            :min="writingTarget.min"
+            :max="writingTarget.max"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none"
+          />
+        </div>
+      </div>
+      <div class="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+        <button @click="cancelOverride" :disabled="isSubmitting" class="px-3 py-1.5 text-xs font-bold border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer disabled:opacity-40">取消</button>
+        <button @click="commitOverride(writingTarget.key, writingTarget.type)" :disabled="isSubmitting" class="px-3 py-1.5 text-xs font-bold bg-[#1890ff] text-white rounded-lg hover:bg-sky-600 disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">
+          <Check v-if="!isSubmitting" class="w-3.5 h-3.5" />
+          {{ isSubmitting ? '写入中...' : '确认写入' }}
+        </button>
       </div>
     </div>
   </div>
