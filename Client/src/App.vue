@@ -624,6 +624,14 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
               <span>设备管理</span>
             </button>
             <button 
+              @click="navigate('/device-variables'); isMobileSidebarOpen = false;" 
+              :class="[isActive('/device-variables') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
+            >
+              <Braces class="w-4 h-4" />
+              <span>设备变量</span>
+            </button>
+            <button 
               @click="navigate('/data-models'); isMobileSidebarOpen = false;" 
               :class="[isActive('/data-models') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']" 
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left"
