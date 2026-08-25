@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { HMIComponent } from '../types';
+import { devices } from '../store/deviceStore';
 import { Settings, Tag, Sliders, Layout, Hash } from 'lucide-vue-next';
 
 const props = defineProps<{
   selectedComponent: HMIComponent | null;
-  plcTags: Array<{ key: string; name: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +32,31 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
   emit('updateComponent', props.selectedComponent.id, {
     [field]: value,
   });
+};
+
+// 阶段3：复合绑定（设备 + 变量）两级选择
+const bindingVariableOptions = computed(() => {
+  const dev = devices.value.find((d) => String(d.id) === String(props.selectedComponent?.bindDeviceId));
+  if (dev && dev.variables) {
+    return Object.keys(dev.variables).map((k) => ({ key: k }));
+  }
+  // 未选设备：汇总所有设备变量键，兼容遗留 bindField
+  const all = new Set<string>();
+  devices.value.forEach((d) => {
+    if (d.variables) Object.keys(d.variables).forEach((k) => all.add(k));
+  });
+  return Array.from(all).map((k) => ({ key: k }));
+});
+
+const onBindDeviceChange = (val: string) => {
+  const id = val === '' ? null : Number(val);
+  updateComponentField('bindDeviceId', id);
+  updateComponentField('bindVariableKey', ''); // 设备变更后清空变量
+};
+
+const onBindVariableChange = (val: string) => {
+  updateComponentField('bindVariableKey', val);
+  updateComponentField('bindField', val); // 同步遗留字段，兼容旧逻辑/HMIWidget 提示
 };
 </script>
 
@@ -146,16 +171,25 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
         </div>
 
         <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定设备</label>
+          <select
+            :value="selectedComponent?.bindDeviceId ?? ''"
+            @change="onBindDeviceChange(($event.target as HTMLSelectElement).value)"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs"
+          >
+            <option value="">-- 无设备（按变量名全局匹配）--</option>
+            <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
+          </select>
+        </div>
+        <div>
           <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定变量</label>
           <select
-            :value="selectedComponent.bindField"
-            @change="updateComponentField('bindField', ($event.target as HTMLSelectElement).value)"
+            :value="(selectedComponent?.bindDeviceId != null ? selectedComponent?.bindVariableKey : selectedComponent?.bindField) ?? ''"
+            @change="onBindVariableChange(($event.target as HTMLSelectElement).value)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs"
           >
             <option value="">-- 无绑定 --</option>
-            <option v-for="tag in plcTags" :key="tag.key" :value="tag.key">
-              {{ tag.name }} ({{ tag.key }})
-            </option>
+            <option v-for="v in bindingVariableOptions" :key="v.key" :value="v.key">{{ v.key }}</option>
           </select>
         </div>
       </section>

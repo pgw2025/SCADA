@@ -4,8 +4,38 @@ import { addLog, systemConfig } from '../store/index';
 import { HubConnectionState } from '@microsoft/signalr';
 import { signalRConnection } from '../services/socketService';
 
-export const setDeviceVariableValue = (variableKey: string, newValue: number | boolean) => {
-  // Seek and update across all online devices that have this key
+export const setDeviceVariableValue = (
+  deviceId: number | null,
+  variableKey: string,
+  newValue: number | boolean
+) => {
+  if (deviceId != null) {
+    // 阶段3：复合绑定（deviceId + variableKey），精准写入指定设备
+    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+    if (dev && dev.variables && dev.variables[variableKey] !== undefined) {
+      dev.variables[variableKey] = newValue;
+
+      if (!dev.variableTimestamps) {
+        dev.variableTimestamps = {};
+      }
+      const pad2 = (n: number) => n.toString().padStart(2, '0');
+      const d = new Date();
+      dev.variableTimestamps[variableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+
+      // Propagate linkages
+      propagateDataLinkages(String(dev.id), variableKey, newValue);
+
+      // Post log
+      addLog('核心控制器', `写变量 [设备${deviceId}.${variableKey}] -> ${newValue} (${typeof newValue === 'boolean' ? (newValue ? 'ON/合闸' : 'OFF/开路') : newValue})`, 'info');
+    }
+    // 写通道形态（REST / Hub 上行）见阶段4
+    if (!systemConfig.value.isSimulationActive) {
+      writeVariableToBackend(variableKey, newValue);
+    }
+    return;
+  }
+
+  // 遗留：仅按变量名跨设备写入（兼容未绑定设备的旧调用方）
   devices.value.forEach((dev) => {
     if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
       dev.variables[variableKey] = newValue;
@@ -90,8 +120,16 @@ export const writeVariableToBackend = async (variableKey: string, value: any) =>
 };
 
 // Synchronize all dev/custom simulator variables back to the active HMI components values!
-export const getDeviceVariableValue = (variableKey: string): number | boolean => {
-  // Seek the first online device that hosts this variable key
+export const getDeviceVariableValue = (deviceId: number | null, variableKey: string): number | boolean => {
+  if (deviceId != null) {
+    // 阶段3：复合绑定，精准读取指定设备的变量
+    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+    if (dev && dev.variables && dev.variables[variableKey] !== undefined) {
+      return dev.variables[variableKey];
+    }
+    return 0;
+  }
+  // 遗留：按变量名跨设备查找第一个在线设备
   for (const dev of devices.value) {
     if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
       return dev.variables[variableKey];

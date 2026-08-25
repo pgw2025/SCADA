@@ -29,7 +29,11 @@ export interface HMIComponent {
   width: number;
   height: number;
   label: string;
-  bindField: string; // The simulation variable key
+  bindField: string; // 遗留：裸变量键（兼容模板与旧组件）
+  /** 阶段3 复合绑定：设备ID（对应 Device.id / 后端 HmiComponent.BindDeviceId） */
+  bindDeviceId?: number | null;
+  /** 阶段3 复合绑定：设备内变量键（对应后端 HmiComponent.BindVariableKey） */
+  bindVariableKey?: string | null;
   zIndex: number;
   props: {
     activeColor?: string;

@@ -581,7 +581,7 @@ const mappedStateText = computed(() => {
       >
         {{ component.props.buttonText || component.label || '命令键' }}
       </span>
-      <span class="text-[8px] opacity-60 font-sans pointer-events-none mt-0.5 select-none" v-if="component.bindField">
+      <span class="text-[8px] opacity-60 font-sans pointer-events-none mt-0.5 select-none" v-if="component.bindVariableKey || component.bindField">
         {{ component.props.buttonMode === 'momentary' ? '[点动]' : component.props.buttonMode === 'set-value' ? `[设值:${component.props.clickValue ?? 0}]` : '[自锁]' }}
       </span>
     </div>

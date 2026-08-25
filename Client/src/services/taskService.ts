@@ -20,7 +20,7 @@ export const executeTask = (taskId: string) => {
           const valToWrite = task.params.variableKey === 'pump_state' || task.params.variableKey === 'valve_state'
             ? !!task.params.newValue
             : task.params.newValue;
-          setDeviceVariableValue(task.params.variableKey, valToWrite);
+          setDeviceVariableValue(null, task.params.variableKey, valToWrite);
           addLog('调度执行', `计划任务 [${task.name}] 写入 [${task.params.variableKey}] = ${task.params.newValue} 成功`, 'normal');
         }
       } else if (task.type === 'backup') {

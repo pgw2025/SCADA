@@ -73,18 +73,39 @@ onMounted(() => {
   initializeScada();
 });
 
-// Fetch dynamic telemetry for the active drawing canvas
-const simulatedDataComputed = computed(() => {
-  const res: Record<string, number | boolean> = {};
+// 阶段3：按组件解析实时值（复合绑定 deviceId+variableKey 优先，遗留 bindField 兜底）
+const componentValues = computed(() => {
+  const composite: Record<string, number | boolean> = {};
+  const flat: Record<string, number | boolean> = {};
   devices.value.forEach((d) => {
     // 兼容字符串 'online'（模拟态）与数字 1（P0-1 修复后 mapRuntimeStatusToStatus 产出 0–4）
     if (d.status === 'online' || d.status === 1) {
       Object.keys(d.variables).forEach((key) => {
-        res[key] = d.variables[key];
+        composite[`${d.id}:${key}`] = d.variables[key];
+        flat[key] = d.variables[key];
       });
     }
   });
-  return res;
+
+  const result: Record<string, number | boolean> = {};
+  currentPage.value.components.forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const v = composite[`${c.bindDeviceId}:${c.bindVariableKey}`];
+      if (v !== undefined) {
+        result[c.id] = v;
+        return;
+      }
+    }
+    if (c.bindField) {
+      const v = flat[c.bindField];
+      if (v !== undefined) {
+        result[c.id] = v;
+        return;
+      }
+    }
+    result[c.id] = 0;
+  });
+  return result;
 });
 
 // Map CanvasPanel updates directly to active project page
@@ -196,9 +217,10 @@ const handleClearCanvas = () => {
 };
 
 // Toggle or forces live registries value on active devices
-const handleTriggerToggleValue = (bindField: string, actionType?: string, val?: any) => {
-  if (!bindField) return;
-  const current = getDeviceVariableValue(bindField);
+const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, legacyKey: string, actionType?: string, val?: any) => {
+  const key = variableKey || legacyKey;
+  if (!key && deviceId == null) return;
+  const current = getDeviceVariableValue(deviceId, key);
 
   let targetVal: any;
   if (actionType === 'setValue' && val !== undefined) {
@@ -217,7 +239,7 @@ const handleTriggerToggleValue = (bindField: string, actionType?: string, val?: 
       targetVal = current === 0 ? 100 : 0;
     }
   }
-  setDeviceVariableValue(bindField, targetVal);
+  setDeviceVariableValue(deviceId, key, targetVal);
 };
 
 // Create new SCADA project screen
@@ -365,18 +387,6 @@ const selectProjectDirectly = (projId: string) => {
 
 const selectedCompObj = computed(() => {
   return currentPage.value.components.find((c) => c.id === selectedId.value) || null;
-});
-
-const plcTagsList = computed(() => {
-  const res: Array<{ key: string; name: string }> = [];
-  dataModels.value.forEach((m) => {
-    m.variables.forEach((v) => {
-      if (!res.some(existing => existing.key === v.key)) {
-        res.push({ key: v.key, name: `${v.name} (${v.key})` });
-      }
-    });
-  });
-  return res;
 });
 </script>
 
@@ -555,7 +565,7 @@ const plcTagsList = computed(() => {
               :components="currentPage.components"
               :selectedId="selectedId"
               :isActiveMode="isActiveMode"
-              :simulatedData="simulatedDataComputed"
+              :component-values="componentValues"
               @selectComponent="selectedId = $event"
               @updateComponent="handleUpdateComponent"
               @toggleMode="isActiveMode = !isActiveMode"
@@ -573,7 +583,6 @@ const plcTagsList = computed(() => {
         <!-- Render Inspector Panel directly targeting chosen component -->
         <InspectorPanel 
           :selectedComponent="selectedCompObj"
-          :plcTags="plcTagsList"
           @updateComponent="handleUpdateComponent"
         />
       </div>

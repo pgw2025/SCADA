@@ -137,8 +137,8 @@ export const toComponentDto = (c: HMIComponent, pageId: number) => ({
   zIndex: c.zIndex,
   bindField: c.bindField || '',
   label: c.label || '',
-  bindDeviceId: null,
-  bindVariableKey: null,
+  bindDeviceId: c.bindDeviceId ?? null,
+  bindVariableKey: c.bindVariableKey ?? null,
   propsJson: JSON.stringify(c.props || {}),
 });
 
@@ -155,6 +155,8 @@ export const fromComponentDto = (d: ComponentDto): HMIComponent => ({
   zIndex: d.zIndex,
   label: d.label || '',
   bindField: d.bindField || '',
+  bindDeviceId: d.bindDeviceId ?? null,
+  bindVariableKey: d.bindVariableKey ?? null,
   props: d.propsJson ? safeParse(d.propsJson) : {},
 });
 

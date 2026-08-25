@@ -11,12 +11,12 @@ export const runScriptEngine = (script: SystemScript) => {
 
   const sandbox = {
     getVal: (key: string) => {
-      const val = getDeviceVariableValue(key);
+      const val = getDeviceVariableValue(null, key);
       logFormatter(`读取绑定键 [${key}] = ${val}`);
       return val;
     },
     setVal: (key: string, val: any) => {
-      setDeviceVariableValue(key, val);
+      setDeviceVariableValue(null, key, val);
       logFormatter(`命令写入 [${key}] = ${val}`);
     },
     log: (msg: string) => {

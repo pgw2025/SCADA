@@ -17,14 +17,14 @@ const props = defineProps<{
   components: HMIComponent[];
   selectedId: string | null;
   isActiveMode: boolean;
-  simulatedData: Record<string, number | boolean>;
+  componentValues: Record<string, number | boolean>;
 }>();
 
 const emit = defineEmits<{
   (e: 'selectComponent', id: string | null): void;
   (e: 'updateComponent', id: string, updates: Partial<HMIComponent>): void;
   (e: 'toggleMode'): void;
-  (e: 'triggerToggleValue', bindField: string, actionType?: string, val?: any): void;
+  (e: 'triggerToggleValue', deviceId: number | null, variableKey: string, legacyKey: string, actionType?: string, val?: any): void;
   (e: 'deleteComponent', id: string): void;
   (e: 'duplicateComponent', id: string): void;
   (e: 'clearCanvas'): void;
@@ -97,29 +97,32 @@ const handleKeyDown = (e: KeyboardEvent) => {
 // Pointer Events callbacks
 const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
-    if (component.bindField) {
+    if (component.bindVariableKey || component.bindField) {
+      const devId = component.bindDeviceId ?? null;
+      const varKey = component.bindVariableKey ?? component.bindField ?? '';
+      const legacy = component.bindField;
       if (component.type === 'button') {
         const mode = component.props.buttonMode || 'toggle';
         if (mode === 'set-value') {
           const writeVal = component.props.clickValue ?? 1;
-          emit('triggerToggleValue', component.bindField, 'setValue', writeVal);
+          emit('triggerToggleValue', devId, varKey, legacy, 'setValue', writeVal);
         } else if (mode === 'momentary') {
           // Write true on mouse press
-          emit('triggerToggleValue', component.bindField, 'momentary', true);
+          emit('triggerToggleValue', devId, varKey, legacy, 'momentary', true);
           
           // Fast release on window mouseup
           const onRelease = () => {
-            emit('triggerToggleValue', component.bindField, 'momentary', false);
+            emit('triggerToggleValue', devId, varKey, legacy, 'momentary', false);
             window.removeEventListener('mouseup', onRelease);
           };
           window.addEventListener('mouseup', onRelease);
         } else {
           // Toggle mode
-          emit('triggerToggleValue', component.bindField, 'toggle');
+          emit('triggerToggleValue', devId, varKey, legacy, 'toggle');
         }
       } else {
         // Standard toggle behavior for valves/switches
-        emit('triggerToggleValue', component.bindField, 'toggle');
+        emit('triggerToggleValue', devId, varKey, legacy, 'toggle');
       }
     }
     return;
@@ -438,7 +441,7 @@ onUnmounted(() => {
           <!-- Visual rendering logic box -->
           <HMIWidget
             :component="component"
-            :value="simulatedData[component.bindField] ?? 0"
+            :value="componentValues[component.id] ?? 0"
             :isActiveMode="isActiveMode"
           />
 
