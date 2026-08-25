@@ -1,0 +1,278 @@
+import { ComponentType } from './types';
+import {
+  Activity,
+  Cpu,
+  Layers,
+  Thermometer,
+  ToggleLeft,
+  Tv,
+  Type,
+  BatteryCharging,
+  Gauge,
+  Workflow,
+  SquareTerminal,
+  Clock,
+  SlidersHorizontal,
+  RefreshCw,
+} from 'lucide-vue-next';
+
+/**
+ * 阶段5-5：组件注册机制（消除四处散改）。
+ *
+ * 单一注册点：type → { 名称 / 默认尺寸 / 图标 / 分类 / 描述 / 默认 props 工厂 }。
+ * - `WidgetLibrary` 列表从此处渲染（不再维护独立 WIDGETS 数组）。
+ * - `ScadaTopologyView.handleAddWidget` 的默认 props / 尺寸 / 名称从此处取（消除与图库两处散改）。
+ * 新增组件类型只需：① 在此注册；② 在 `HMIWidget.vue` 增加渲染分支。
+ */
+
+export type WidgetCategory = 'equipment' | 'sensors' | 'structures';
+
+export interface WidgetDef {
+  type: ComponentType;
+  name: string;
+  defaultWidth: number;
+  defaultHeight: number;
+  icon: any; // lucide 组件，或 'div-h'/'div-v'/'div-led' 字符串（iconKind='div'）
+  iconKind: 'lucide' | 'div';
+  iconColor: string;
+  description: string;
+  category: WidgetCategory;
+  defaultProps: () => Record<string, any>;
+}
+
+const baseProps = (type: ComponentType): Record<string, any> => ({
+  activeColor: type === 'valve' || type === 'led' ? '#10b981' : '#3b82f6',
+  inactiveColor: '#94a3b8',
+  maxValue: type === 'gauge-dial' ? 120 : 100,
+  unit: type === 'gauge-dial' ? '℃' : '',
+  showValue: false,
+  fontSize: 12,
+  bold: false,
+  align: 'center',
+});
+
+export const widgetRegistry: Record<string, WidgetDef> = {
+  boiler: {
+    type: 'boiler',
+    name: '加热锅炉反应釜',
+    defaultWidth: 140,
+    defaultHeight: 180,
+    icon: BatteryCharging,
+    iconKind: 'lucide',
+    iconColor: 'text-amber-500',
+    description: '工业超温蒸汽燃煤锅炉，带火焰动态变频效果。',
+    category: 'equipment',
+    defaultProps: () => baseProps('boiler'),
+  },
+  pump: {
+    type: 'pump',
+    name: '离心输送水泵',
+    defaultWidth: 70,
+    defaultHeight: 70,
+    icon: Cpu,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-500',
+    description: '液体或气体加压叶轮主输水泵，运行自带叶片旋转效果。',
+    category: 'equipment',
+    defaultProps: () => baseProps('pump'),
+  },
+  valve: {
+    type: 'valve',
+    name: '智能两位电磁阀',
+    defaultWidth: 60,
+    defaultHeight: 60,
+    icon: ToggleLeft,
+    iconKind: 'lucide',
+    iconColor: 'text-indigo-500',
+    description: '蝶阀/电磁球阀，状态切换时蝶阀手轮旋转90°。',
+    category: 'equipment',
+    defaultProps: () => baseProps('valve'),
+  },
+  tank: {
+    type: 'tank',
+    name: '圆角储液容器罐',
+    defaultWidth: 120,
+    defaultHeight: 160,
+    icon: Layers,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-500',
+    description: '带刻度及气泡波纹的液体深度容器。',
+    category: 'equipment',
+    defaultProps: () => baseProps('tank'),
+  },
+  conveyor: {
+    type: 'conveyor',
+    name: '变频滚轮传送带',
+    defaultWidth: 260,
+    defaultHeight: 40,
+    icon: Workflow,
+    iconKind: 'lucide',
+    iconColor: 'text-orange-500',
+    description: '物料或箱体传动物件传送带，速度非零时展现位移动画。',
+    category: 'equipment',
+    defaultProps: () => baseProps('conveyor'),
+  },
+  motor: {
+    type: 'motor',
+    name: '变频伺服AC电机',
+    defaultWidth: 120,
+    defaultHeight: 90,
+    icon: RefreshCw,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-500',
+    description: '变频配给驱动电机，工作时伴随冷却风扇叶极速旋转效果。',
+    category: 'equipment',
+    defaultProps: () => baseProps('motor'),
+  },
+  'gauge-dial': {
+    type: 'gauge-dial',
+    name: '高精度机械表盘',
+    defaultWidth: 120,
+    defaultHeight: 120,
+    icon: Gauge,
+    iconKind: 'lucide',
+    iconColor: 'text-purple-500',
+    description: '圆形度盘表，支持设置极限阈值并同步变红警告。',
+    category: 'sensors',
+    defaultProps: () => baseProps('gauge-dial'),
+  },
+  'gauge-level': {
+    type: 'gauge-level',
+    name: '液位刻度警告柱',
+    defaultWidth: 50,
+    defaultHeight: 140,
+    icon: Thermometer,
+    iconKind: 'lucide',
+    iconColor: 'text-rose-500',
+    description: '带有高、中、低限阈值的段式刻度检测条。',
+    category: 'sensors',
+    defaultProps: () => baseProps('gauge-level'),
+  },
+  'digital-val': {
+    type: 'digital-val',
+    name: '多功能数显仪表',
+    defaultWidth: 130,
+    defaultHeight: 60,
+    icon: Tv,
+    iconKind: 'lucide',
+    iconColor: 'text-cyan-500',
+    description: '工业LED高亮七段数值显示面板，可绑定任意PLC点。',
+    category: 'sensors',
+    defaultProps: () => baseProps('digital-val'),
+  },
+  'trend-chart': {
+    type: 'trend-chart',
+    name: '实时波段趋势图',
+    defaultWidth: 280,
+    defaultHeight: 160,
+    icon: Activity,
+    iconKind: 'lucide',
+    iconColor: 'text-red-500',
+    description: '动态微积分平滑滤波趋势图，记录历史PLC模拟参数。',
+    category: 'sensors',
+    defaultProps: () => baseProps('trend-chart'),
+  },
+  led: {
+    type: 'led',
+    name: '高发光LED指示灯',
+    defaultWidth: 40,
+    defaultHeight: 50,
+    icon: 'div-led',
+    iconKind: 'div',
+    iconColor: '',
+    description: '红绿双色状态警告信源灯，支持光晕频闪效果。',
+    category: 'sensors',
+    defaultProps: () => baseProps('led'),
+  },
+  'sys-time': {
+    type: 'sys-time',
+    name: '实时系统时钟',
+    defaultWidth: 160,
+    defaultHeight: 50,
+    icon: Clock,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-500',
+    description: '数字式数码时钟控件，毫秒级响应显示。',
+    category: 'sensors',
+    defaultProps: () => baseProps('sys-time'),
+  },
+  'state-text': {
+    type: 'state-text',
+    name: 'PLC变量中文翻译器',
+    defaultWidth: 155,
+    defaultHeight: 55,
+    icon: SlidersHorizontal,
+    iconKind: 'lucide',
+    iconColor: 'text-blue-500',
+    description: '多状态信号到汉字状态文本翻译映射转换板。',
+    category: 'sensors',
+    defaultProps: () => baseProps('state-text'),
+  },
+  'pipe-h': {
+    type: 'pipe-h',
+    name: '水平输水管路',
+    defaultWidth: 160,
+    defaultHeight: 16,
+    icon: 'div-h',
+    iconKind: 'div',
+    iconColor: '',
+    description: '支持流向光带闪烁动效的水平流动金属管。',
+    category: 'structures',
+    defaultProps: () => baseProps('pipe-h'),
+  },
+  'pipe-v': {
+    type: 'pipe-v',
+    name: '垂直高压管道',
+    defaultWidth: 16,
+    defaultHeight: 160,
+    icon: 'div-v',
+    iconKind: 'div',
+    iconColor: '',
+    description: '支持流速频闪的垂直重力回流水管。',
+    category: 'structures',
+    defaultProps: () => baseProps('pipe-v'),
+  },
+  text: {
+    type: 'text',
+    name: '自定义文本组态',
+    defaultWidth: 120,
+    defaultHeight: 35,
+    icon: Type,
+    iconKind: 'lucide',
+    iconColor: 'text-slate-300',
+    description: '静态或者动态映射文字说明，可调节字号和对齐方式。',
+    category: 'structures',
+    defaultProps: () => baseProps('text'),
+  },
+  button: {
+    type: 'button',
+    name: '3D重载控制按钮',
+    defaultWidth: 100,
+    defaultHeight: 50,
+    icon: SquareTerminal,
+    iconKind: 'lucide',
+    iconColor: 'text-amber-500',
+    description: '工业现场操作主令按钮，支持自锁(Toggle)、点动(Momentary)、设值(SetValue)三种回写执行逻辑。',
+    category: 'structures',
+    defaultProps: () => baseProps('button'),
+  },
+  switch: {
+    type: 'switch',
+    name: '两位旋动选择按钮',
+    defaultWidth: 70,
+    defaultHeight: 90,
+    icon: ToggleLeft,
+    iconKind: 'lucide',
+    iconColor: 'text-[#1890ff]',
+    description: '自复位旋钮式状态控制开关，触手可及。',
+    category: 'structures',
+    defaultProps: () => baseProps('switch'),
+  },
+};
+
+// 保持注册表声明顺序的列表（图库渲染用）
+export const widgetList: WidgetDef[] = Object.values(widgetRegistry);
+
+// 取某类型注册项（缺省回退到通用配置，避免新增类型未注册时报错）
+export const getWidgetDef = (type: string): WidgetDef | undefined =>
+  widgetRegistry[type];

@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import {
+  beginChange,
+  endChange,
+  recordDiscrete,
+  undo,
+  redo,
+  undoAvailable,
+  redoAvailable,
+} from '../services/historyService';
 import { 
   scadaProjects, 
   selectedProjectId, 
@@ -28,6 +37,8 @@ import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
+import ConfirmModal from './ConfirmModal.vue';
+import { getWidgetDef } from '../widgetRegistry';
 import { 
   FolderIcon, 
   Layers, 
@@ -39,17 +50,42 @@ import {
   X, 
   FileCode,
   Check,
-  Activity
+  Activity,
+  Undo2,
+  Redo2
 } from 'lucide-vue-next';
 
 // Editor settings
-const selectedId = ref<string | null>(null);
+// 阶段5-2：选中模型由单值升级为集合（支持多选/框选）；selectedId 为「单选」派生值，供 Inspector 单组件编辑
+const selectedIds = ref<string[]>([]);
+const selectedId = computed<string | null>(() =>
+  selectedIds.value.length === 1 ? selectedIds.value[0] : null
+);
 const isActiveMode = ref<boolean>(false);
 
 // Modal state for custom screen creation
 const showProjectModal = ref<boolean>(false);
 const newProjectName = ref<string>('');
 const newProjectDesc = ref<string>('');
+
+// 阶段5-6：统一危险操作确认模态（替换原生 confirm/alert）
+const confirmState = ref<{
+  open: boolean;
+  title: string;
+  message: string;
+  danger: boolean;
+  confirmText: string;
+  onConfirm: () => void;
+}>({ open: false, title: '', message: '', danger: true, confirmText: '确认', onConfirm: () => {} });
+
+function askConfirm(title: string, message: string, onConfirm: () => void, danger = true, confirmText = '确认') {
+  confirmState.value = { open: true, title, message, danger, confirmText, onConfirm };
+}
+function onConfirmModal() {
+  const fn = confirmState.value.onConfirm;
+  confirmState.value = { ...confirmState.value, open: false };
+  fn();
+}
 
 // Inline page renaming states
 const isRenamingPageId = ref<string | null>(null);
@@ -72,7 +108,36 @@ function genComponentId(type: string): string {
 // 阶段2：挂载时从后端整树加载组态（后端为空则保留本地模板）
 onMounted(() => {
   initializeScada();
+  window.addEventListener('keydown', onHistoryKey);
 });
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onHistoryKey);
+});
+
+// 阶段5-1：撤销/重做（纯前端快照栈，不影响后端持久化）
+const applyRestored = (restored: HMIComponent[] | null) => {
+  if (!restored) return;
+  updateCurrentPageComponents(restored.map((c) => ({ ...c })));
+  if (selectedId.value && !restored.find((c) => c.id === selectedId.value)) {
+    selectedIds.value = [];
+  }
+  addLog('组态编辑', '已撤销/重做编辑操作', 'normal');
+};
+
+const onHistoryKey = (e: KeyboardEvent) => {
+  if (isActiveMode.value) return;
+  const tag = (e.target as HTMLElement).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      applyRestored(redo(currentPage.value.components));
+    } else {
+      applyRestored(undo(currentPage.value.components));
+    }
+  }
+};
 
 // 阶段3：按组件解析实时值（复合绑定 deviceId+variableKey 优先，遗留 bindField 兜底）
 const componentValues = computed(() => {
@@ -109,8 +174,21 @@ const componentValues = computed(() => {
   return result;
 });
 
+// 阶段5-3：画布分辨率（由页面属性驱动，回退默认 1100×700）
+const pageWidth = computed(() => currentPage.value.width ?? 1100);
+const pageHeight = computed(() => currentPage.value.height ?? 700);
+const handleUpdateCanvasSize = (w: number, h: number) => {
+  const pg = currentPage.value;
+  pg.width = w;
+  pg.height = h;
+  addLog('组态编辑', `画布分辨率调整为 [${w} × ${h}]`, 'normal');
+  // 阶段2：落库页面尺寸（新建未落库页面仅前端生效）
+  persistPageUpdate(pg).catch(() => {});
+};
+
 // Map CanvasPanel updates directly to active project page
 const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
+  beginChange(currentPage.value.components, id);
   const currentComps = currentPage.value.components;
   const newComps = currentComps.map((comp) => {
     if (comp.id === id) {
@@ -125,96 +203,125 @@ const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
   if (updated) {
     persistComponentUpdate(currentPage.value, updated);
   }
+  endChange();
+};
+
+// 阶段5-2：批量属性更新（多选整体拖动/对齐/分布）；连续编辑段合并为单条历史
+const handleUpdateComponents = (updates: { id: string; updates: Partial<HMIComponent> }[]) => {
+  if (!updates.length) return;
+  beginChange(currentPage.value.components, 'batch');
+  const idSet = new Set(updates.map((u) => u.id));
+  const newComps = currentPage.value.components.map((comp) => {
+    const u = updates.find((x) => x.id === comp.id);
+    return u ? { ...comp, ...u.updates } : comp;
+  });
+  updateCurrentPageComponents(newComps);
+  updates.forEach((u) => {
+    const updated = newComps.find((c) => c.id === u.id);
+    if (updated) persistComponentUpdate(currentPage.value, updated);
+  });
+  endChange();
+};
+
+// 阶段5-2：选中集合变更（单选/多选/框选统一入口）
+const handleSelectComponents = (ids: string[]) => {
+  selectedIds.value = ids;
 };
 
 // Add a widget from panel library
-const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string) => {
+// 阶段5-5：默认尺寸 / props 取自 widgetRegistry（消除与图库两处散改）
+const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string, x = 40, y = 60) => {
   const currentComps = currentPage.value.components;
   const newId = genComponentId(type);
-  
+  const def = getWidgetDef(type);
+  const w = defaultW || def?.defaultWidth || 100;
+  const h = defaultH || def?.defaultHeight || 50;
+
   const newComponent: HMIComponent = {
     id: newId,
     type,
     name: `${label} ${currentComps.filter((c) => c.type === type).length + 1}`,
-    x: 40,
-    y: 60,
-    width: defaultW,
-    height: defaultH,
+    x,
+    y,
+    width: w,
+    height: h,
     label: label,
     bindField: '',
     zIndex: currentComps.length + 1,
-    props: {
-      activeColor: type === 'valve' || type === 'led' ? '#10b981' : '#3b82f6',
-      inactiveColor: '#94a3b8',
-      maxValue: type === 'gauge-dial' ? 120 : 100,
-      unit: type === 'gauge-dial' ? '℃' : '',
-      showValue: false,
-      fontSize: 12,
-      bold: false,
-      align: 'center',
-    },
+    props: def?.defaultProps() ?? {},
   };
 
+  recordDiscrete(currentComps);
   updateCurrentPageComponents([...currentComps, newComponent]);
-  selectedId.value = newId;
+  selectedIds.value = [newId];
   addLog('组态编辑', `在页面 [${currentPage.value.name}] 添加组件 [${label}]`, 'info');
 
   // 阶段2：落库并回填 serverId（确保所属页面已落库）
   persistNewComponent(currentPage.value, currentProject.value, newComponent).catch(() => {});
 };
 
-// Duplicate widget
-const handleDuplicateComponent = (id: string) => {
-  const currentComps = currentPage.value.components;
-  const target = currentComps.find(c => c.id === id);
-  if (!target) return;
-
-  const cloned: HMIComponent = {
-    ...target,
-    id: genComponentId(target.type),
-    name: `${target.name} (副本)`,
-    x: target.x + 20,
-    y: target.y + 20,
-    zIndex: currentComps.length + 1,
-  };
-
-  updateCurrentPageComponents([...currentComps, cloned]);
-  selectedId.value = cloned.id;
-  addLog('组态编辑', `复制组件: [${target.name}]`, 'info');
-
-  // 阶段2：落库并回填 serverId
-  persistNewComponent(currentPage.value, currentProject.value, cloned).catch(() => {});
+// 阶段5-4：组件库拖拽投放落点（由 CanvasPanel 反算坐标后调用，x/y 为画布内坐标）
+const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number) => {
+  handleAddWidget(type as ComponentType, w, h, name, x, y);
 };
 
-// Delete widget
-const handleDeleteComponent = (id: string) => {
+// Duplicate widget(s) — 阶段5-2 支持批量复制
+const handleDuplicateComponents = (ids: string[]) => {
   const currentComps = currentPage.value.components;
-  const target = currentComps.find(c => c.id === id);
-  const name = target ? target.name : 'Unknown';
-  
-  updateCurrentPageComponents(currentComps.filter(c => c.id !== id));
-  if (selectedId.value === id) {
-    selectedId.value = null;
-  }
-  addLog('组态编辑', `删除组件 [${name}]`, 'warning');
+  const targets = currentComps.filter((c) => ids.includes(c.id));
+  if (!targets.length) return;
 
-  // 阶段2：若已落库则删除后端记录
-  if (target?.serverId) {
-    persistComponentDelete(target).catch(() => {});
-  }
+  const clones: HMIComponent[] = targets.map((t) => ({
+    ...t,
+    id: genComponentId(t.type),
+    name: `${t.name} (副本)`,
+    x: t.x + 20,
+    y: t.y + 20,
+    zIndex: currentComps.length + 1,
+  }));
+
+  recordDiscrete(currentComps);
+  updateCurrentPageComponents([...currentComps, ...clones]);
+  selectedIds.value = clones.map((c) => c.id);
+  addLog('组态编辑', `复制组件: ${targets.length} 个`, 'info');
+
+  // 阶段2：落库并回填 serverId
+  clones.forEach((c) =>
+    persistNewComponent(currentPage.value, currentProject.value, c).catch(() => {})
+  );
+};
+
+// Delete widget(s) — 阶段5-2 支持批量删除（统一一次确认）
+const handleDeleteComponents = (ids: string[]) => {
+  const targets = currentPage.value.components.filter((c) => ids.includes(c.id));
+  if (!targets.length) return;
+
+  askConfirm('删除组件', `确定删除选中的 ${targets.length} 个组件吗？`, () => {
+    recordDiscrete(currentPage.value.components);
+    const idSet = new Set(ids);
+    updateCurrentPageComponents(currentPage.value.components.filter((c) => !idSet.has(c.id)));
+    selectedIds.value = [];
+    addLog('组态编辑', `批量删除组件: ${targets.length} 个`, 'warning');
+
+    // 阶段2：若已落库则删除后端记录
+    targets.filter((t) => t.serverId).forEach((t) =>
+      persistComponentDelete(t).catch(() => {})
+    );
+  });
 };
 
 // Clear active drawing canvas Layout
 const handleClearCanvas = () => {
-  if (confirm('确定要清空画布吗？此操作不可逆。')) {
+  askConfirm('清空画布', '确定要清空当前画布吗？此操作将移除本页全部组件且不可逆。', () => {
+    recordDiscrete(currentPage.value.components);
     const toDelete = currentPage.value.components.filter(c => c.serverId);
     updateCurrentPageComponents([]);
-    selectedId.value = null;
+    selectedIds.value = [];
     addLog('组态编辑', `清空画布: [${currentPage.value.name}]`, 'warning');
 
     // 阶段2：批量删除已落库的组件
     Promise.all(toDelete.map(c => persistComponentDelete(c))).catch(() => {});
-  }
+  });
 };
 
 // Toggle or forces live registries value on active devices
@@ -338,21 +445,23 @@ const handleDeletePage = (pId: string, pName: string) => {
   if (!proj) return;
 
   if (proj.pages.length <= 1) {
-    alert('项目至少需要保留一个页面。');
+    showToast('项目至少需要保留一个页面。', 'warning');
     return;
   }
 
-  const target = proj.pages.find(pg => pg.id === pId);
-  proj.pages = proj.pages.filter(pg => pg.id !== pId);
-  if (selectedPageId.value === pId) {
-    selectedPageId.value = proj.pages[0].id;
-  }
-  addLog('组态编辑', `删除页面: [${pName}]`, 'warning');
+  askConfirm('删除页面', `确定删除页面 [${pName}] 吗？其下所有组件将一并移除。`, () => {
+    const target = proj.pages.find(pg => pg.id === pId);
+    proj.pages = proj.pages.filter(pg => pg.id !== pId);
+    if (selectedPageId.value === pId) {
+      selectedPageId.value = proj.pages[0].id;
+    }
+    addLog('组态编辑', `删除页面: [${pName}]`, 'warning');
 
-  // 阶段2：若已落库则级联删除后端页面（后端事务删组件）
-  if (target?.serverId) {
-    persistPageDelete(target).catch(() => {});
-  }
+    // 阶段2：若已落库则级联删除后端页面（后端事务删组件）
+    if (target?.serverId) {
+      persistPageDelete(target).catch(() => {});
+    }
+  });
 };
 
 // Inline rename actions
@@ -556,6 +665,28 @@ const selectedCompObj = computed(() => {
           </div>
 
           <div class="flex items-center gap-2">
+            <!-- 撤销/重做 -->
+            <div class="hidden md:flex items-center gap-1">
+              <button
+                @click="applyRestored(undo(currentPage.value.components))"
+                :disabled="!undoAvailable"
+                title="撤销 (Ctrl+Z)"
+                class="p-1.5 rounded border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="undoAvailable ? 'border-[#d9d9d9] text-gray-500 hover:text-[#1890ff]' : 'border-transparent text-gray-300'"
+              >
+                <Undo2 class="w-3.5 h-3.5" />
+              </button>
+              <button
+                @click="applyRestored(redo(currentPage.value.components))"
+                :disabled="!redoAvailable"
+                title="重做 (Ctrl+Shift+Z)"
+                class="p-1.5 rounded border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="redoAvailable ? 'border-[#d9d9d9] text-gray-500 hover:text-[#1890ff]' : 'border-transparent text-gray-300'"
+              >
+                <Redo2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <!-- Mode switch toggle indicator -->
             <button 
               @click="isActiveMode = !isActiveMode"
@@ -580,15 +711,21 @@ const selectedCompObj = computed(() => {
             <CanvasPanel 
               :components="currentPage.components"
               :selectedId="selectedId"
+              :selectedIds="selectedIds"
               :isActiveMode="isActiveMode"
               :component-values="componentValues"
-              @selectComponent="selectedId = $event"
+              :canvas-width="pageWidth"
+              :canvas-height="pageHeight"
+              @select-components="handleSelectComponents"
               @updateComponent="handleUpdateComponent"
+              @update-components="handleUpdateComponents"
               @toggleMode="isActiveMode = !isActiveMode"
               @triggerToggleValue="handleTriggerToggleValue"
-              @deleteComponent="handleDeleteComponent"
-              @duplicateComponent="handleDuplicateComponent"
+              @delete-components="handleDeleteComponents"
+              @duplicate-components="handleDuplicateComponents"
               @clearCanvas="handleClearCanvas"
+              @update-canvas-size="handleUpdateCanvasSize"
+              @add-component-at="handleAddWidgetAt"
             />
           </div>
         </div>
@@ -653,6 +790,17 @@ const selectedCompObj = computed(() => {
         </div>
       </div>
     </div>
+
+    <!-- 阶段5-6：统一危险操作确认模态 -->
+    <ConfirmModal
+      :open="confirmState.open"
+      :title="confirmState.title"
+      :message="confirmState.message"
+      :danger="confirmState.danger"
+      :confirm-text="confirmState.confirmText"
+      @confirm="onConfirmModal"
+      @cancel="confirmState.open = false"
+    />
 
   </div>
 </template>
