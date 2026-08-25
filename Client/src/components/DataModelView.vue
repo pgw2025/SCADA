@@ -612,6 +612,9 @@ const handleDeleteVariable = (key: string, name: string) => {
               <input 
                 v-model="varKey"
                 type="text"
+                maxlength="50"
+                pattern="[a-zA-Z0-9_]+"
+                title="仅限字母、数字和下划线，最多50个字符"
                 placeholder="例如: boiler_temp"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
               />
@@ -621,6 +624,8 @@ const handleDeleteVariable = (key: string, name: string) => {
               <input 
                 v-model="varName"
                 type="text"
+                maxlength="50"
+                title="最多50个字符"
                 placeholder="例如: 炉顶极限水套实温"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
               />
