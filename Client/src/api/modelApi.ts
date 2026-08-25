@@ -67,7 +67,9 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           scaleSlope: v.scaleSlope || 1.0,
           scaleOffset: v.scaleOffset || 0.0,
           deadBand: v.deadBand,
-          isReadOnly: v.isReadOnly || true,
+          // 仅当后端缺省（null/undefined）时回退到安全默认 true；
+          // 后端明确返回 false（可写）时须保留 false，否则会被 || true 误判为只读导致写入按钮恒隐藏。
+          isReadOnly: v.isReadOnly ?? true,
           extensionData: v.extensionData
         })) || []
       }));

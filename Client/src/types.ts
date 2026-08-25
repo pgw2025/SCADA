@@ -248,6 +248,11 @@ export interface Device {
   lastUpdated: string; // ISO 8601 datetime string
   variables?: Record<string, any>;
   variableTimestamps?: Record<string, string>;
+  // 设备实例级变量元数据（按 key 索引，来源后端 DeviceDto.Variables 数组）。
+  // normalizeDevices 把后端数组压扁成 variables 键值表时，同步保留这里以便消费方
+  // 取 effectiveIsReadOnly / isReadOnlyOverride / templateIsReadOnly 等实例级权限，
+  // 实时监控页据此判断写入按钮显隐（设备级覆盖优先于模板 isReadOnly）。
+  variableMeta?: Record<string, DeviceVariable>;
 
   // Advanced connection parameters
   cpuType?: string;         // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)

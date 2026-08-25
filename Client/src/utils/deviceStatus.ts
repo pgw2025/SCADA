@@ -44,10 +44,16 @@ export const mapRuntimeStatusToStatus = (runtimeStatus?: string | number): numbe
 export const normalizeDevices = (raw: Device[]): Device[] =>
   (raw ?? []).map((d) => {
     const variableMap: Record<string, any> = {};
+    const variableMeta: Record<string, any> = {};
     if (Array.isArray(d.variables)) {
-      // 后端变量数组（每个元素含 key）：预置 null 占位，等待实时值填充
+      // 后端 DeviceDto.Variables 为 DeviceVariableDto[]：含实例级权限/地址/覆盖字段。
+      // 一份按 key 索引保留完整元数据（variableMeta），供实时监控页取 effectiveIsReadOnly 等；
+      // 另一份压扁为 variables 键值表（预置 null 占位），等待 SignalR 实时值推送落点。
       (d.variables as any[]).forEach((v: any) => {
-        if (v && v.key) variableMap[v.key] = null;
+        if (v && v.key) {
+          variableMap[v.key] = null;
+          variableMeta[v.key] = v;
+        }
       });
     } else if (d.variables && typeof d.variables === 'object') {
       // 已是键值表（如本地模拟/兼容数据）：原样保留
@@ -57,6 +63,7 @@ export const normalizeDevices = (raw: Device[]): Device[] =>
     return {
       ...d,
       variables: variableMap,
+      variableMeta,
       // 后端 DeviceDto 已不再返回 Type / ModelType，协议真相源在 Protocol 实体。
       // type 为派生只读，由调用方在同步数据中携带或在此兜底为 Virtual，
       // 其余派生逻辑经由 protocolKey / protocolKeyToDeviceType 完成。
