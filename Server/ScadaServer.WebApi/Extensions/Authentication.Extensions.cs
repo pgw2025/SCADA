@@ -28,6 +28,8 @@ namespace ScadaServer.WebApi.Extensions
                     options.JsonSerializerOptions.Converters.Add(new DeviceTypeJsonConverter());
                     // 前后端数据类型枚举命名不一致（Boolean ↔ BOOL / Float ↔ FLOAT 等），统一转换
                     options.JsonSerializerOptions.Converters.Add(new DataTypeEnumJsonConverter());
+                    // object 属性反序列化为 CLR 原始类型而非 JsonElement，避免驱动层类型转换失败
+                    options.JsonSerializerOptions.Converters.Add(new ObjectClrTypeJsonConverter());
                 })
                 .ConfigureApiBehaviorOptions(options =>
                 {
