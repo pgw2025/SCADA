@@ -39,3 +39,10 @@ export const writeDeviceVariable = async (deviceId: number, variableKey: string,
   const response = await http.post<any>(`${getBaseUrl()}/api/Device/${deviceId}/variables/${variableKey}/write`, { value });
   return response;
 };
+
+// GET /api/TelemetryData/{deviceId}/realtime - 获取设备运行时所有变量的当前实时值（含手动写入值）。
+// 设备列表接口(DeviceDto.Variables)仅返回配置不含实时值，前端刷新/重连后需调用本接口回填。
+export const fetchDeviceRealtime = async (deviceId: number) => {
+  const response = await http.get<any>(`${getBaseUrl()}/api/TelemetryData/${deviceId}/realtime`);
+  return response;
+};

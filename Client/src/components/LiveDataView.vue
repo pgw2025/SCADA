@@ -5,7 +5,7 @@ import { dataModels } from '../store/index';
 import { addLog } from '../store/index';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
-import { writeDeviceVariable } from '../api/deviceApi';
+import { writeDeviceVariable, fetchDeviceRealtime } from '../api/deviceApi';
 import { extractApiError } from '../api/http';
 import { DEVICE_TYPES } from '../types';
 import {
@@ -181,11 +181,31 @@ const cancelOverride = () => {
   writingTarget.value = null;
 };
 
+// 拉取设备运行时当前值回填 store(dev.variables[key])：修复刷新/重连后手动写入值丢失。
+// 后端 /api/TelemetryData/{id}/realtime 返回运行时变量真实值(含手动写入),覆盖 normalizeDevices 预置的 null 占位。
+const loadRealtime = async (deviceId: string | number) => {
+  if (!deviceId) return;
+  try {
+    const { data } = await fetchDeviceRealtime(Number(deviceId));
+    const dev = devices.value.find(d => String(d.id) === String(data?.deviceId));
+    if (!dev || !Array.isArray(data?.variables)) return;
+    if (!dev.variables) dev.variables = {};
+    data.variables.forEach((v: any) => {
+      const key = v?.key ?? v?.Key;
+      if (key != null) dev.variables[key] = v?.value ?? v?.Value;
+    });
+  } catch (err: any) {
+    addLog('调试面板', `拉取实时值失败 [设备#${deviceId}]: ${extractApiError(err)}`, 'warning');
+  }
+};
+
 // 页面自举：直接进入实时监控页时主动拉取设备与数据模型，避免依赖"先访问设备管理页"
 // 填充全局 store 才能显示数据。devices/models 的全局兜底见 App.vue 登录后预载。
 onMounted(() => {
   syncDevices();
   fetchDataModelsFromBackend();
+  // 主动拉取当前选中设备实时值回填（刷新后手动写入值不丢失）
+  loadRealtime(selectedDevId.value);
 });
 
 // selectedDevId 在 setup 时一次性取 devices[0]，若挂载时 store 为空会停在空串。
@@ -194,6 +214,11 @@ watch(() => devices.value.length, (len) => {
   if (len && !devices.value.some(d => String(d.id) === selectedDevId.value)) {
     selectedDevId.value = String(devices.value[0].id);
   }
+});
+
+// 切换设备时拉取该设备实时值回填
+watch(selectedDevId, (id) => {
+  loadRealtime(id);
 });
 </script>
 

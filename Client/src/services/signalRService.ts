@@ -1,7 +1,7 @@
 import { HubConnectionBuilder } from '@microsoft/signalr';
 import { addLog, systemConfig } from '../store/index';
 import { devices } from '../store/deviceStore';
-import { fetchDevicesFromBackend } from '../api/deviceApi';
+import { fetchDevicesFromBackend, fetchDeviceRealtime } from '../api/deviceApi';
 import { setDevices } from '../store/deviceStore';
 import { normalizeDevices } from '../utils/deviceStatus';
 import { isBackendConnected, signalRConnection } from './socketService';
@@ -13,6 +13,23 @@ const refreshDevices = async () => {
     try {
         const { data } = await fetchDevicesFromBackend();
         setDevices(normalizeDevices(data));
+        // 回填运行时实时值：DeviceDto.Variables 仅含配置不含实时值（normalizeDevices 已预置 null 占位），
+        // 主动拉取 /api/TelemetryData/{id}/realtime 写回 store，否则刷新/重连后变量值显示为默认值。
+        (data ?? []).forEach((d: any) => {
+            const id = Number(d?.id);
+            if (!id) return;
+            fetchDeviceRealtime(id)
+                .then(({ data: rt }: any) => {
+                    const dev = devices.value.find(x => String(x.id) === String(rt?.deviceId));
+                    if (!dev || !Array.isArray(rt?.variables)) return;
+                    if (!dev.variables) dev.variables = {};
+                    rt.variables.forEach((v: any) => {
+                        const key = v?.key ?? v?.Key;
+                        if (key != null) dev.variables[key] = v?.value ?? v?.Value;
+                    });
+                })
+                .catch(() => { /* 单设备实时值拉取失败静默，不影响设备列表 */ });
+        });
     } catch (err: any) {
         addLog('后端对接', `同步设备列表失败: ${err.message}`, 'warning');
     }
