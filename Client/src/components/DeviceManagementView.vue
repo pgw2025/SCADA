@@ -22,6 +22,7 @@ import {
   Plus, 
   Trash2, 
   Edit3, 
+  Braces, 
   Server, 
   Sliders, 
   X, 
@@ -30,6 +31,9 @@ import {
   Info 
 } from 'lucide-vue-next';
 import { Device, Area, DeviceType, protocolKeyToDeviceType } from '../types';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
 
 // Area Form States
 const showAreaModal = ref<boolean>(false);
@@ -552,6 +556,14 @@ const toggleDeviceStateInGrid = (device: Device) => {
               >
                 <Edit3 class="w-3.5 h-3.5" />
                 编辑
+              </button>
+              <button 
+                @click="router.push(`/device-variables?deviceId=${d.id}`)"
+                class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-bold inline-flex items-center gap-0.5 cursor-pointer ml-1"
+                :title="`管理设备 ${d.name} 的变量实例`"
+              >
+                <Braces class="w-3.5 h-3.5" />
+                变量
               </button>
               <button 
                 @click="handleDeleteDevice(d.id, d.name)"

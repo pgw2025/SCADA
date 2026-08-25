@@ -5,6 +5,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/dashboard', component: () => import('../components/DashboardView.vue') },
   { path: '/live-data', component: () => import('../components/LiveDataView.vue') },
   { path: '/device-management', component: () => import('../components/DeviceManagementView.vue') },
+  { path: '/device-variables', component: () => import('../components/DeviceVariableView.vue') },
   { path: '/data-models', component: () => import('../components/DataModelView.vue') },
   { path: '/scada-editor', component: () => import('../components/ScadaTopologyView.vue') },
   { path: '/system-logs', component: () => import('../components/SystemLogsView.vue') },

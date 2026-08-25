@@ -42,7 +42,9 @@ const selectedDevice = computed(() => {
 // Variables dictionary detail from corresponding Data Model
 const currentModel = computed(() => {
   if (!selectedDevice.value) return null;
-  return dataModels.value.find(m => m.id === selectedDevice.value.modelId);
+  // dataModels.id 为 string（modelApi.ts 中转 String(m.id)），device.modelId 为 number，
+  // 需两端统一转字符串比较，否则 === 恒为 false 导致模型匹配不上、变量列表恒空。
+  return dataModels.value.find(m => String(m.id) === String(selectedDevice.value.modelId));
 });
 
 // Simulated variable values storage

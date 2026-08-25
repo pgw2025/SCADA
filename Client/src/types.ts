@@ -122,6 +122,29 @@ export interface ModelVariable {
   extensionData?: Record<string, string>;
 }
 
+/**
+ * 设备变量实例：变量模板（ModelVariable）在某台具体设备上的落地配置。
+ * 对应后端 DeviceVariableDto（ScadaServer.Application.DTOs.DeviceVariableDto）。
+ * "是什么"（Key/Name/DataType/Unit）来自模板；"怎么采集"（Address/BitOffset/PollingInterval/覆盖值）为实例级。
+ * 创建（POST）仅需 deviceId + modelVariableId + isEnabled，地址等需后续 PUT 补全。
+ */
+export interface DeviceVariable {
+  id: number;
+  deviceId: number;
+  modelVariableId: number;
+  key: string;               // 来自模板 ModelVariable.Key
+  name: string;              // 来自模板 ModelVariable.Name
+  dataType: DataTypeEnum;    // 来自模板 ModelVariable.DataType
+  unit?: string;             // 来自模板 ModelVariable.Unit
+  address?: string | null;           // 实例级：实际寄存器地址；空字符串采集会失败
+  bitOffset?: number | null;         // 实例级：位偏移（BOOL/BIT 用）
+  pollingIntervalMs?: number | null; // 实例级：轮询间隔，空=运行时默认 1000ms
+  isEnabled: boolean;                // 实例级：是否启用采集
+  scaleSlopeOverride?: number | null;   // 实例级覆盖：缩放斜率，空=用模板值
+  scaleOffsetOverride?: number | null;  // 实例级覆盖：缩放偏移，空=用模板值
+  deadBandOverride?: number | null;     // 实例级覆盖：死区，空=用模板值
+}
+
 export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BACnet' | 'DNP3';
 
 /**
