@@ -129,7 +129,8 @@ const editingForm = ref<DeviceVariable | null>(null);
 
 const openEditModal = (v: DeviceVariable) => {
   // 浅拷贝到可编辑副本；覆盖字段保留 null（null 表示"用模板值"，见下方提示文案）
-  editingForm.value = { ...v };
+  // isReadOnlyOverride 归一化：undefined → null，保证三态下拉"继承"项能正确选中。
+  editingForm.value = { ...v, isReadOnlyOverride: v.isReadOnlyOverride ?? null };
   showEditModal.value = true;
 };
 
@@ -137,7 +138,7 @@ const openEditModal = (v: DeviceVariable) => {
 const fieldConfig = computed(() => PROTOCOL_FIELD_CONFIG[selectedDevice.value?.type || 'Virtual'] || {});
 const needsAddress = computed(() => !!fieldConfig.value.addressLabel);
 const needsBitOffset = computed(() => !!fieldConfig.value.needsBitOffset);
-const tableColspan = computed(() => 6 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
+const tableColspan = computed(() => 7 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
 
 const saveEdit = async () => {
   if (!editingForm.value || !selectedDevice.value) return;
@@ -308,6 +309,7 @@ onMounted(async () => {
                   <th class="px-4 py-3.5">变量标识</th>
                   <th class="px-4 py-3.5">名称 / 单位</th>
                   <th class="px-4 py-3.5">类型</th>
+                  <th class="px-4 py-3.5">读写</th>
                   <th v-if="needsAddress" class="px-4 py-3.5">{{ fieldConfig.addressLabel }}</th>
                   <th v-if="needsBitOffset" class="px-4 py-3.5">位偏移</th>
                   <th class="px-4 py-3.5">轮询(ms)</th>
@@ -329,6 +331,18 @@ onMounted(async () => {
                     <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase"
                       :class="isBitType(v.dataType) ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
                     >{{ v.dataType }}</span>
+                  </td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
+                      :class="v.effectiveIsReadOnly
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                        : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'"
+                      :title="v.isReadOnlyOverride != null
+                        ? (v.isReadOnlyOverride ? '该设备强制只读（覆盖模板）' : '该设备强制可写（覆盖模板）')
+                        : (v.templateIsReadOnly ? '继承模板：只读' : '继承模板：可写')"
+                    >
+                      {{ v.effectiveIsReadOnly ? '只读' : '可写' }}<span v-if="v.isReadOnlyOverride != null" class="ml-0.5 opacity-70">·覆盖</span>
+                    </span>
                   </td>
                   <td v-if="needsAddress" class="px-4 py-3.5 text-[11px]">
                     <span v-if="v.address" class="bg-slate-100 dark:bg-slate-800 font-bold px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{{ v.address }}</span>
@@ -386,7 +400,14 @@ onMounted(async () => {
                 <span v-else-if="needsAddress" class="text-[9px] text-rose-500 font-bold">未配置地址</span>
               </div>
               <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
+                <span class="flex items-center gap-1.5">
+                  <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
+                  <span class="inline-block px-1 py-px rounded border font-bold"
+                    :class="v.effectiveIsReadOnly
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'"
+                  >{{ v.effectiveIsReadOnly ? '只读' : '可写' }}{{ v.isReadOnlyOverride != null ? '·覆盖' : '' }}</span>
+                </span>
                 <button @click="toggleEnabled(v)" class="text-[10px] font-bold" :class="v.isEnabled ? 'text-emerald-500' : 'text-slate-400'">{{ v.isEnabled ? '启用' : '停用' }}</button>
               </div>
               <div class="flex gap-2">
@@ -495,6 +516,17 @@ onMounted(async () => {
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
           </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">读写权限</label>
+            <select
+              v-model="editingForm.isReadOnlyOverride"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none"
+            >
+              <option :value="null">继承模板（当前：{{ editingForm.templateIsReadOnly ? '只读' : '可写' }}）</option>
+              <option :value="true">强制只读</option>
+              <option :value="false">强制可写</option>
+            </select>
+          </div>
           <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-sans">
             <span>启用采集</span>
             <button @click="editingForm.isEnabled = !editingForm.isEnabled"
@@ -504,9 +536,9 @@ onMounted(async () => {
             </button>
           </div>
           <p class="text-[10px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed">
-            <template v-if="needsAddress && needsBitOffset">注：缩放/死区留空时使用模板值；位偏移仅对 BOOL/BIT 有效。</template>
-            <template v-else-if="needsAddress">注：缩放/死区留空时使用模板值。</template>
-            <template v-else>虚拟设备由驱动按数据类型自动生成模拟值，无需配置地址等采集属性。</template>
+            <template v-if="needsAddress && needsBitOffset">注：缩放/死区留空时使用模板值；位偏移仅对 BOOL/BIT 有效；读写权限默认继承模板，可按设备强制覆盖。</template>
+            <template v-else-if="needsAddress">注：缩放/死区留空时使用模板值；读写权限默认继承模板，可按设备强制覆盖。</template>
+            <template v-else>虚拟设备由驱动按数据类型自动生成模拟值，无需配置地址等采集属性；读写权限默认继承模板。</template>
           </p>
         </div>
         <div class="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">

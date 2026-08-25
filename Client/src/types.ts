@@ -143,6 +143,9 @@ export interface DeviceVariable {
   scaleSlopeOverride?: number | null;   // 实例级覆盖：缩放斜率，空=用模板值
   scaleOffsetOverride?: number | null;  // 实例级覆盖：缩放偏移，空=用模板值
   deadBandOverride?: number | null;     // 实例级覆盖：死区，空=用模板值
+  isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板
+  templateIsReadOnly?: boolean;         // 回显：模板定义的只读权限
+  effectiveIsReadOnly?: boolean;        // 回显：有效权限（Override ?? 模板）
 }
 
 export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BACnet' | 'DNP3';

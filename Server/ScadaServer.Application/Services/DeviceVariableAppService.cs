@@ -116,6 +116,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         entity.ScaleSlopeOverride = dto.ScaleSlopeOverride;
         entity.ScaleOffsetOverride = dto.ScaleOffsetOverride;
         entity.DeadBandOverride = dto.DeadBandOverride;
+        entity.IsReadOnlyOverride = dto.IsReadOnlyOverride;
 
         await _repository.UpdateAsync(entity);
 
@@ -141,6 +142,9 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         IsEnabled = dv.IsEnabled,
         ScaleSlopeOverride = dv.ScaleSlopeOverride,
         ScaleOffsetOverride = dv.ScaleOffsetOverride,
-        DeadBandOverride = dv.DeadBandOverride
+        DeadBandOverride = dv.DeadBandOverride,
+        IsReadOnlyOverride = dv.IsReadOnlyOverride,
+        TemplateIsReadOnly = mv?.IsReadOnly ?? true,
+        EffectiveIsReadOnly = dv.IsReadOnlyOverride ?? (mv?.IsReadOnly ?? true)
     };
 }

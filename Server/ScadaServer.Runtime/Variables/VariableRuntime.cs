@@ -67,6 +67,9 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>该变量在设备实例上是否启用。</summary>
     public bool IsEnabled => Instance?.IsEnabled ?? true;
 
+    /// <summary>有效读写权限。来源：DeviceVariable.IsReadOnlyOverride 优先，否则模板 IsReadOnly。</summary>
+    public bool IsReadOnly => Instance?.IsReadOnlyOverride ?? Definition.IsReadOnly;
+
     /// <summary>下一次应执行轮询的时间点（由采集调度维护）。</summary>
     public DateTime NextPollTime { get; set; } = DateTime.MinValue;
 

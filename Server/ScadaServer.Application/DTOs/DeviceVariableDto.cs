@@ -56,6 +56,17 @@ public class DeviceVariableDto
 
     /// <summary>死区覆盖值。空 → 使用模板 DeadBand。</summary>
     public double? DeadBandOverride { get; set; }
+
+    /// <summary>读写权限覆盖值。空 → 继承模板 IsReadOnly。</summary>
+    public bool? IsReadOnlyOverride { get; set; }
+
+    // ===== 回显字段（来自 ModelVariable 模板，只出不进）=====
+
+    /// <summary>模板定义的只读权限（用于前端展示"继承"时的模板当前值）。</summary>
+    public bool TemplateIsReadOnly { get; set; }
+
+    /// <summary>有效权限 = IsReadOnlyOverride ?? TemplateIsReadOnly（运行时实际生效值）。</summary>
+    public bool EffectiveIsReadOnly { get; set; }
 }
 
 /// <summary>

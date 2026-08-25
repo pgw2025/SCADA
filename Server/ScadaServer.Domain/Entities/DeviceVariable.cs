@@ -100,6 +100,15 @@ namespace ScadaServer.Domain.Entities
         public double? DeadBandOverride { get; set; }
 
         /// <summary>
+        /// 读写权限覆盖值。
+        /// <para>
+        /// 允许为空：为空时回退到 <see cref="ModelVariable.IsReadOnly"/> 模板值（继承模板权限）；
+        /// true = 强制只读；false = 强制可写。用于单台设备上对某变量权限做差异化覆盖，不影响模板及其它设备。
+        /// </para>
+        /// </summary>
+        public bool? IsReadOnlyOverride { get; set; }
+
+        /// <summary>
         /// 扩展数据（JSON 格式，设备实例级附加信息，如设备厂商私有参数等）
         /// </summary>
         [Column(TypeName = "longtext")]

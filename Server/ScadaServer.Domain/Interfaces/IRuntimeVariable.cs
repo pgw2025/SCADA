@@ -58,5 +58,8 @@ namespace ScadaServer.Domain.Interfaces
 
         /// <summary>该变量在设备实例上是否启用（DeviceVariable.IsEnabled）。</summary>
         bool IsEnabled { get; }
+
+        /// <summary>有效读写权限（DeviceVariable.IsReadOnlyOverride 优先，空则回退模板 IsReadOnly）。</summary>
+        bool IsReadOnly { get; }
     }
 }

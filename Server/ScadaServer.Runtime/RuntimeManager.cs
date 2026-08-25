@@ -393,7 +393,7 @@ namespace ScadaServer.Runtime
                 return (false, $"设备下不存在变量 [{variableKey}]");
             if (!vr.IsEnabled)
                 return (false, $"变量 [{variableKey}] 已禁用");
-            if (vr.Definition.IsReadOnly)
+            if (vr.IsReadOnly)
                 return (false, $"变量 [{variableKey}] 为只读，禁止写入");
             if (runtime.Driver == null)
                 return (false, "设备驱动未就绪");
