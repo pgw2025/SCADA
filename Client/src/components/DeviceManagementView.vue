@@ -29,7 +29,7 @@ import {
   ToggleLeft, 
   Info 
 } from 'lucide-vue-next';
-import { Device, Area, DeviceType } from '../types';
+import { Device, Area, DeviceType, protocolKeyToDeviceType } from '../types';
 
 // Area Form States
 const showAreaModal = ref<boolean>(false);
@@ -166,7 +166,7 @@ const openNewDeviceModal = () => {
   // 否则当第一个模型为 OPCUA 类型时,即使选中虚拟设备也会错误显示 OPC UA 地址。
   const initialModel = dataModels.value.find(m => m.id === devModel.value) || dataModels.value[0];
   devModel.value = initialModel?.id || '';
-  devType.value = initialModel?.type || 'OPCUA';
+  devType.value = initialModel ? protocolKeyToDeviceType(initialModel.protocolKey) : 'OPCUA';
   devIP.value = '192.168.1.100';
   devPort.value = '4840';
   devStatus.value = 'online';
@@ -191,18 +191,19 @@ const openNewDeviceModal = () => {
 const onModelChange = () => {
   const model = dataModels.value.find(m => m.id === devModel.value);
   if (model) {
-    devType.value = model.type;
-    if (model.type === 'OPCUA') {
+    // 协议真相源在 Protocol 实体，由 model.protocolKey 派生设备类型
+    devType.value = protocolKeyToDeviceType(model.protocolKey);
+    if (devType.value === 'OPCUA') {
       devPort.value = '4840';
       devIP.value = '192.168.1.10';
-    } else if (model.type === 'S7') {
+    } else if (devType.value === 'S7') {
       devPort.value = '102';
       devIP.value = '192.168.1.12';
       devCpuType.value = 'S7-1200';
       devRack.value = 0;
       devSlot.value = 1;
-    } else if (model.type === 'MQTT') {
-    } else if (model.type === 'Virtual') {
+    } else if (devType.value === 'MQTT') {
+    } else if (devType.value === 'Virtual') {
       devVirtualIntervalMs.value = 1000;
       devVirtualRandomValues.value = true;
     }
@@ -308,8 +309,8 @@ const handleSaveDevice = async () => {
     cpuType: devCpuType.value,
     rack: Number(devRack.value),
     slot: Number(devSlot.value),
-    // 按模型协议构造后端 ConfigJson(对应后端 ValidateConfigJson 的各协议配置类)
-    configJson: buildConfigJson(chosenModel?.type ?? devType.value)
+    // 协议由后端从 modelId 推导，前端按模型 protocolKey 派生类型构造 ConfigJson
+    configJson: buildConfigJson(chosenModel ? protocolKeyToDeviceType(chosenModel.protocolKey) : devType.value)
   };
 
   deviceFormErrors.value = {};

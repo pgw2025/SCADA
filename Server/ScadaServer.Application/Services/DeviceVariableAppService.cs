@@ -71,17 +71,12 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
         }
 
-        // 4. 从模板回退地址 / 位偏移 / 采集周期（P1-5 后这些字段由 DeviceVariable 作为权威值承载）
+        // 4. 实例化到设备（地址/位偏移/采集周期以设备实例级配置为准；模板层已不再携带这些字段）
         var entity = new DeviceVariable
         {
             DeviceId = dto.DeviceId,
             ModelVariableId = dto.ModelVariableId,
             IsEnabled = dto.IsEnabled,
-#pragma warning disable CS0618 // 过渡期回退读取已迁移到 DeviceVariable 的模板字段
-            Address = string.IsNullOrWhiteSpace(mv.Address) ? null : mv.Address,
-            BitOffset = mv.BitOffset,
-            PollingIntervalMs = mv.PollingIntervalMs,
-#pragma warning restore CS0618
             ExtensionData = null
         };
 

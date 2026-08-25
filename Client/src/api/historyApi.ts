@@ -1,17 +1,18 @@
 import { HistoricalRecord } from '../types';
 import { addLog, systemConfig } from '../store/index';
 import { historicalRecords } from '../store/historyStore';
+import { http } from './http';
 
 export const fetchHistoryFromBackend = async (variableKey: string, limit: number = 80) => {
     if (systemConfig.value.isSimulationActive) return;
 
     try {
         addLog('历史查询', `正在向后端调取时间曲线. 变量: ${variableKey}, 长度: ${limit}...`, 'info');
-        const res = await fetch(`${systemConfig.value.backendApiUrl}/api/scada/history?variableKey=${variableKey}&limit=${limit}`);
-        if (!res.ok) {
-            throw new Error(`HTTP status code ${res.status}`);
-        }
-        const data = await res.json();
+        // 统一走 http 实例（自动附加 JWT），stage-3 认证收紧后原生 fetch 会因缺 Token 返回 401
+        const res = await http.get(
+            `${systemConfig.value.backendApiUrl}/api/scada/history?variableKey=${variableKey}&limit=${limit}`
+        );
+        const data = res.data;
         if (Array.isArray(data)) {
             const otherRecords = historicalRecords.value.filter(r => r.variableKey !== variableKey);
 

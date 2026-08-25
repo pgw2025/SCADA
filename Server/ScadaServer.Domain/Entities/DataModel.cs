@@ -1,16 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// 数据模型实体，描述一类设备"是什么型号"，与"如何通信"解耦。
     /// <para>
-    /// 协议真相源已从 <see cref="Type"/>（原 <c>DeviceType</c> 枚举，同时承担设备型号与通信协议）
-    /// 迁移至独立的 <see cref="Protocol"/> 实体：本实体通过 <see cref="ProtocolId"/> 关联协议，
-    /// <see cref="Type"/> 仅作为过渡期兼容字段保留（运行期 / 驱动仍依赖它派发驱动），
-    /// 待运行期与驱动改造完成、统一改用 <see cref="Protocol"/> 后，<see cref="Type"/> 将被移除。
+    /// 协议真相源为独立的 <see cref="Protocol"/> 实体：本实体通过必填的 <see cref="ProtocolId"/> 关联协议，
+    /// 运行期 / 驱动统一按 <c>Protocol.DriverKey</c> 派发驱动，不再依赖 DeviceType 枚举过渡字段。
     /// </para>
     /// </summary>
     [Table("DataModels")]
@@ -49,27 +46,16 @@ namespace ScadaServer.Domain.Entities
         public string? Description { get; set; }
 
         /// <summary>
-        /// 关联通信协议的外部键。协议真相源统一为 <see cref="Protocol"/>，
-        /// 一台设备通过本模型绑定的协议确定其驱动方式；允许为空以兼容尚未指定协议的过渡数据。
+        /// 关联通信协议的外部键（必填）。协议真相源统一为 <see cref="Protocol"/>，
+        /// 一台设备通过本模型绑定的协议确定其驱动方式。
         /// </summary>
-        public int? ProtocolId { get; set; }
+        public int ProtocolId { get; set; }
 
         /// <summary>
         /// 关联通信协议导航属性（对应 <see cref="ProtocolId"/>）。
         /// </summary>
         [ForeignKey(nameof(ProtocolId))]
-        public Protocol? Protocol { get; set; }
-
-        /// <summary>
-        /// 过渡期兼容字段：协议类型（枚举）。
-        /// <para>
-        /// 运行期与驱动目前仍通过此字段派发驱动（<c>RuntimeManager</c> 调用
-        /// <c>ProtocolDriverFactory.CreateDriver(model.Type)</c>），故暂时保留；
-        /// 新逻辑应优先使用 <see cref="ProtocolId"/> / <see cref="Protocol"/>。
-        /// 该字段将在运行期与驱动改造完成、统一迁移到 <see cref="Protocol"/> 后移除。
-        /// </para>
-        /// </summary>
-        public DeviceType Type { get; set; }
+        public Protocol Protocol { get; set; } = null!;
 
         /// <summary>
         /// 创建时间

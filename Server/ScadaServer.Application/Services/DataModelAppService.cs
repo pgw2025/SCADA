@@ -3,7 +3,6 @@ using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Domain.Exceptions;
-using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.Services
 {
@@ -63,7 +62,6 @@ namespace ScadaServer.Application.Services
                 ProtocolId = entity.ProtocolId,
                 ProtocolKey = entity.Protocol?.Key,
                 ProtocolName = entity.Protocol?.Name,
-                Type = entity.Type,
                 Variables = new List<ModelVariableDto>()
             };
 
@@ -87,36 +85,28 @@ namespace ScadaServer.Application.Services
             Unit = v.Unit,
             Min = v.Min,
             Max = v.Max,
-#pragma warning disable CS0618 // 过渡期兼容读取已迁移到 DeviceVariable 的模板字段
-            Address = v.Address,
-#pragma warning restore CS0618
             Description = v.Description,
             IsStored = v.IsStored,
             StoreMode = v.StoreMode,
             UpdateMode = v.UpdateMode,
-#pragma warning disable CS0618 // 过渡期兼容读取已迁移字段
-            PollingIntervalMs = v.PollingIntervalMs,
-#pragma warning restore CS0618
             ExtensionData = v.ExtensionData
         };
 
         /// <summary>
-        /// 协议绑定校验：若指定了 ProtocolId，则协议必须存在且已启用。
+        /// 协议绑定校验：协议必须存在且已启用（模型必须绑定协议，作为驱动派发真相源）。
         /// </summary>
-        private async Task<int?> ResolveProtocolIdAsync(int? protocolId)
+        private async Task<int> ResolveProtocolIdAsync(int protocolId)
         {
-            if (protocolId == null) return null;
-
-            var protocol = await _protocolRepository.GetByIdAsync(protocolId.Value);
+            var protocol = await _protocolRepository.GetByIdAsync(protocolId);
             if (protocol == null)
             {
-                throw new BusinessException($"ID 为 {protocolId.Value} 的协议不存在");
+                throw new BusinessException($"ID 为 {protocolId} 的协议不存在");
             }
             if (!protocol.IsEnabled)
             {
                 throw new BusinessException($"协议 '{protocol.Name}' 已被停用，无法关联到数据模型");
             }
-            return protocolId.Value;
+            return protocolId;
         }
 
         public async Task<DataModelDto> CreateAsync(CreateDataModelDto dto)
@@ -140,7 +130,6 @@ namespace ScadaServer.Application.Services
                 Description = dto.Description?.Trim(),
                 VendorModel = dto.VendorModel?.Trim(),
                 ProtocolId = protocolId,
-                Type = dto.Type,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             };
@@ -172,7 +161,6 @@ namespace ScadaServer.Application.Services
             entity.Name = dto.Name;
             entity.Description = dto.Description?.Trim();
             entity.VendorModel = dto.VendorModel?.Trim();
-            entity.Type = dto.Type;
             entity.UpdatedAt = DateTime.Now;
             await _repository.UpdateAsync(entity);
 

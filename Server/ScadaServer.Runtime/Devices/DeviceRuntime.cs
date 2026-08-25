@@ -33,7 +33,7 @@ public class DeviceRuntime : IRuntimeDevice
     // 所属数据模型
     public DataModel Model { get; init; }
 
-    // 协议实体（来自 DataModel.Protocol，可能为 null，此时回退到 Model.Type 派发驱动）
+    // 协议实体（来自 DataModel.Protocol，模型必绑协议后作为驱动派发真相源）
     public Protocol? Protocol { get; init; }
 
     // 设备配置（设备级协议配置，来自 DeviceConfig）

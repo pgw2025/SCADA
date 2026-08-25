@@ -49,29 +49,11 @@ public class VariableRuntime : IRuntimeVariable
     /// </summary>
     public string Address => Instance?.Address ?? string.Empty;
 
-    /// <summary>位偏移。来源：DeviceVariable.BitOffset 优先，否则回退模板 BitOffset（已 [Obsolete]）。</summary>
-    public int? BitOffset
-    {
-        get
-        {
-            if (Instance?.BitOffset is { } v) return v;
-            #pragma warning disable CS0618
-            return Definition.BitOffset;
-            #pragma warning restore CS0618
-        }
-    }
+    /// <summary>位偏移。来源：DeviceVariable.BitOffset（设备实例级权威；模板层已移除该字段）。</summary>
+    public int? BitOffset => Instance?.BitOffset;
 
-    /// <summary>轮询间隔(ms)。来源：DeviceVariable.PollingIntervalMs 优先，否则回退模板 PollingIntervalMs（已 [Obsolete]）。</summary>
-    public int PollingIntervalMs
-    {
-        get
-        {
-            if (Instance?.PollingIntervalMs is { } v) return v;
-            #pragma warning disable CS0618
-            return Definition.PollingIntervalMs;
-            #pragma warning restore CS0618
-        }
-    }
+    /// <summary>轮询间隔(ms)。来源：DeviceVariable.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。</summary>
+    public int PollingIntervalMs => Instance?.PollingIntervalMs ?? 1000;
 
     /// <summary>缩放斜率(Scale)。来源：DeviceVariable.ScaleSlopeOverride 优先，否则模板 ScaleSlope。</summary>
     public double ScaleSlope => Instance?.ScaleSlopeOverride ?? Definition.ScaleSlope;

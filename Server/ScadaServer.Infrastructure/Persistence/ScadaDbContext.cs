@@ -91,7 +91,7 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasDatabaseName("ix_protocol_key");
 
             // 协议 <-> 数据模型关系（EF Core Fluent API 显式配置，符合最佳实践）。
-            // DataModel.ProtocolId 为可空外键（过渡期数据可暂不绑定协议）；
+            // DataModel.ProtocolId 为必填外键（模型必须绑定协议，作为驱动派发真相源）；
             // 删除协议时采用 Restrict，避免级联误删已关联的数据模型。
             modelBuilder.Entity<DataModel>()
                 .HasOne(dm => dm.Protocol)

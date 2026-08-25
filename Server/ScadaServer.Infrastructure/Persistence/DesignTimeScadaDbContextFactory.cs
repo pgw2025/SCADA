@@ -14,10 +14,21 @@ public class DesignTimeScadaDbContextFactory : IDesignTimeDbContextFactory<Scada
     {
         var optionsBuilder = new DbContextOptionsBuilder<ScadaDbContext>();
         // 设计时固定 ServerVersion，避免 AutoDetect 触发真实连接（生成迁移只需模型）
+        // 连接参数与运行时对齐（Database=scada），密码不硬编码，由环境变量 SystemDbConfig__Password 注入
+        var host = GetEnv("SystemDbConfig__Host", "localhost");
+        var port = GetEnv("SystemDbConfig__Port", "3306");
+        var database = GetEnv("SystemDbConfig__DatabaseName", "scada");
+        var user = GetEnv("SystemDbConfig__Username", "root");
+        var password = GetEnv("SystemDbConfig__Password", "");
+        var connStr = $"Server={host};Port={port};Database={database};Uid={user};Pwd={password};";
+
         optionsBuilder.UseMySql(
-            "Server=localhost;Port=3306;Database=scada_design;Uid=root;Pwd=root;",
+            connStr,
             new MySqlServerVersion(new Version(8, 0, 36)));
 
         return new ScadaDbContext(optionsBuilder.Options);
     }
+
+    private static string GetEnv(string name, string fallback)
+        => Environment.GetEnvironmentVariable(name) ?? fallback;
 }

@@ -147,12 +147,15 @@ namespace ScadaServer.Runtime
                         continue;
                     }
 
-                    // 协议真相源优先取 DataModel.Protocol.DriverKey；回退到过渡字段 Model.Type
+                    // 协议真相源为 Protocol.DriverKey（模型必绑协议后不再回退过渡字段）；缺少则跳过该设备。
                     var driverKey = model.Protocol?.DriverKey;
-                    var protocolLabel = driverKey ?? model.Type.ToString();
-                    var driver = string.IsNullOrWhiteSpace(driverKey)
-                        ? _driverFactory.CreateDriver(model.Type)
-                        : _driverFactory.CreateDriver(driverKey);
+                    if (string.IsNullOrWhiteSpace(driverKey))
+                    {
+                        _logger.LogWarning("设备 {Key} 的数据模型未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
+                        continue;
+                    }
+                    var protocolLabel = driverKey;
+                    var driver = _driverFactory.CreateDriver(driverKey);
 
                     // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
                     // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。

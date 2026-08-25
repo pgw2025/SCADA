@@ -109,15 +109,12 @@ export interface ModelVariable {
   unit?: string;
   min?: number;
   max?: number;
-  address: string;
   description?: string;
   isStored: boolean;
   storeMode: 'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated';
   updateMode: UpdateMode;
-  pollingIntervalMs: number;
   
   // 工业级增强字段
-  bitOffset?: number;
   scaleSlope: number;
   scaleOffset: number;
   deadBand?: number;
@@ -126,6 +123,37 @@ export interface ModelVariable {
 }
 
 export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BACnet' | 'DNP3';
+
+/**
+ * 通信协议（协议/驱动解耦真相源）。
+ * 对应后端 ProtocolDto（Id / Key / Name / DriverKey / Description / IsEnabled）。
+ * 创建数据模型时必须选择协议（ProtocolId 必填），运行期由 Protocol.DriverKey 派发驱动。
+ */
+export interface Protocol {
+  id: number;
+  key: string;         // 如 "S7" / "OPCUA" / "VIRTUAL" / "MQTT" / "MODBUSTCP"
+  name: string;
+  driverKey: string;
+  description?: string;
+  isEnabled: boolean;
+}
+
+/**
+ * 将后端 Protocol.Key 映射为前端 DeviceType(枚举)。
+ * 协议真相源在 Protocol 实体后，protocolKey 取代 DataModel.Type 派生协议类型。
+ */
+export const protocolKeyToDeviceType = (key?: string): DeviceType => {
+  switch ((key || '').trim().toUpperCase()) {
+    case 'S7': return 'S7';
+    case 'OPCUA': return 'OPCUA';
+    case 'MQTT': return 'MQTT';
+    case 'MODBUSTCP': return 'ModbusTcp';
+    case 'BACNET': return 'BACnet';
+    case 'DNP3': return 'DNP3';
+    case 'VIRTUAL': return 'Virtual';
+    default: return 'Virtual';
+  }
+};
 
 /** 设备类型下拉/筛选选项（label 与后端 DeviceTypeJsonConverter.SerializeMap 对齐） */
 export const DEVICE_TYPES: { value: DeviceType; label: string; implemented: boolean }[] = [
@@ -142,10 +170,11 @@ export interface DataModel {
   id: string;
   name: string;
   description: string;
-  type: DeviceType;   // 协议真相源（后端 DataModel.Type），模型自建时即定协议
   // 协议绑定（协议真相源）：对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName。
-  // 更新模型时必须原样回传 protocolId，避免后端 PUT 全量替换语义把协议解绑。
-  protocolId?: number;
+  // 协议真相源在独立的 Protocol 实体，不再有过渡字段 Type；
+  // 协议类型由 protocolKey 经 protocolKeyToDeviceType() 派生。
+  // ProtocolId 必填：创建模型时必须选择协议；更新时必须原样回传，避免后端 PUT 全量替换语义解绑协议。
+  protocolId: number;
   protocolKey?: string;
   protocolName?: string;
   variables: ModelVariable[];
@@ -160,8 +189,7 @@ export interface Device {
   areaName?: string;
   modelId: number;
   modelName?: string;
-  type: DeviceType;   // 派生只读：由 modelId 反查 dataModels 得到，设备本身不再存储协议
-  modelType?: DeviceType;  // 后端返回的模型协议（DeviceDto.ModelType），作为 type 派生兜底来源
+  type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
   ipAddress?: string; // S7/OPCUA specific
   port?: number | string;      // Port, e.g. 502, 4840
   status: number | string;     // 0: offline, 1: online or 'online' | 'offline'

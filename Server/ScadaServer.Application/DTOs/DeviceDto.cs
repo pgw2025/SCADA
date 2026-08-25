@@ -25,11 +25,6 @@ namespace ScadaServer.Application.DTOs
         public string? ModelName { get; set; }
 
         /// <summary>
-        /// 协议类型（枚举）——过渡期兼容字段，由所绑定数据模型的 <c>Model.Type</c> 推导，仅查询时返回
-        /// </summary>
-        public DeviceType ModelType { get; set; }
-
-        /// <summary>
         /// 协议业务键（只读，来自所绑定数据模型的 <c>Protocol.Key</c>）。协议真相源。
         /// </summary>
         public string? ProtocolKey { get; set; }

@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable } from '../store/index';
-import { DataModel, ModelVariable, DeviceType, DataTypeEnum } from '../types';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable } from '../store/index';
+import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
 
 onMounted(() => {
   fetchDataModelsFromBackend();
+  fetchProtocols().then(list => { protocols.value = list; });
 });
+
+// 协议下拉数据源（协议/驱动解耦，来自 /api/Protocol，作为数据模型协议选择）
+const protocols = ref<Protocol[]>([]);
 
 import { 
   FileCode, 
@@ -27,23 +31,23 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => m.id === selectedModelId.value) || dataModels.value[0];
 });
 
-// 当前模型的协议类型：协议真相源在 DataModel.Type（模型自建时即定协议），
+// 当前模型的协议类型：协议真相源在 Protocol 实体（protocolKey），
 // 新建模型即使未绑定任何设备也有明确协议，不再臆造 Virtual。
 const currentModelProtocol = computed<DeviceType>(() => {
-  return currentModel.value?.type ?? 'Virtual';
+  return protocolKeyToDeviceType(currentModel.value?.protocolKey);
 });
 
-// 列表项协议徽章：直接读模型自带协议
-const protocolOf = (model: { id: string; type?: DeviceType }) => {
+// 列表项协议徽章：直接读模型自带的 protocolKey 派生协议类型
+const protocolOf = (model: { id: string; protocolKey?: string }) => {
   const m = dataModels.value.find(x => x.id === model.id);
-  return m?.type ?? 'Virtual';
+  return protocolKeyToDeviceType(m?.protocolKey);
 };
 
 // Create model form state
 const showModelModal = ref<boolean>(false);
 const modelName = ref<string>('');
 const modelDesc = ref<string>('');
-const modelType = ref<DeviceType>('OPCUA');
+const modelProtocolId = ref<number>(0);
 
 // Create variable form state Inside Model
 const showVarModal = ref<boolean>(false);
@@ -54,7 +58,6 @@ const varDataType = ref<string>('Float');
 const varUnit = ref<string>('');
 const varMin = ref<number>(0);
 const varMax = ref<number>(100);
-const varAddress = ref<string>('');
 const varDesc = ref<string>('');
 
 // Allowed dataType options dependent on active device format
@@ -138,11 +141,7 @@ const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregate
 // OPCUA custom state properties
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 
-// Common polling timers (S7, OPCUA polling, MQTT variables)
-const varPollIntervalSecs = ref<number>(5);
-
-// 工业级增强字段
-const varBitOffset = ref<number | null>(null);
+// 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DeviceVariable，模板层不再维护）
 const varScaleSlope = ref<number>(1.0);
 const varScaleOffset = ref<number>(0.0);
 const varDeadBand = ref<number | null>(null);
@@ -156,8 +155,7 @@ const filteredVariables = computed(() => {
   return currentModel.value.variables.filter(v => 
     v.key.toLowerCase().includes(query) || 
     v.name.toLowerCase().includes(query) || 
-    (v.description && v.description.toLowerCase().includes(query)) ||
-    (v.address && v.address.toLowerCase().includes(query))
+    (v.description && v.description.toLowerCase().includes(query))
   );
 });
 
@@ -165,10 +163,16 @@ const filteredVariables = computed(() => {
 const handleCreateModel = async () => {
   if (!modelName.value.trim()) return;
 
+  // 协议真相源在 Protocol 实体：创建模型必须选择协议（ProtocolId 必填）
+  if (!modelProtocolId.value) {
+    alert('请选择通信协议');
+    return;
+  }
+
   const newModel = await createDataModelOnBackend({
     name: modelName.value,
     description: modelDesc.value,
-    type: modelType.value as any,
+    protocolId: modelProtocolId.value,
     variables: []
   });
 
@@ -179,6 +183,7 @@ const handleCreateModel = async () => {
     // Clear
     modelName.value = '';
     modelDesc.value = '';
+    modelProtocolId.value = 0;
   }
 };
 
@@ -210,13 +215,8 @@ const handleSaveVariable = async () => {
     return;
   }
 
-  // 地址必填策略: 虚拟设备不发起网络通信,无需物理地址,允许为空;
-  // 其余协议(OPCUA/S7/MQTT)必须填写寄存器/节点地址,前端先行拦截。
-  const trimmedAddress = varAddress.value.trim();
-  if (currentModelProtocol.value !== 'Virtual' && !trimmedAddress) {
-    alert('当前协议类型需要填写寄存器/节点地址');
-    return;
-  }
+  // 模板变量不再承载协议地址/采集周期：Address / BitOffset / PollingIntervalMs
+  // 已下放至设备实例级 DeviceVariable，由运行时按设备实例配置采集细节。
 
   const newVar: ModelVariable = {
     modelId: Number(model.id),
@@ -227,15 +227,11 @@ const handleSaveVariable = async () => {
     unit: varUnit.value || undefined,
     min: varMin.value || undefined,
     max: varMax.value || undefined,
-    // 地址已按协议在上方处理:虚拟设备允许为空,其余协议已拦截非空
-    address: trimmedAddress,
     description: varDesc.value || undefined,
     isStored: varIsStored.value,
     // 未勾选"存储历史"时显式发 None,后端据此派生 IsStored=false,不写时序库
     storeMode: varIsStored.value ? varStoreMode.value : 'None',
     updateMode: varUpdateMode.value,
-    pollingIntervalMs: Number(varPollIntervalSecs.value) * 1000,
-    bitOffset: varBitOffset.value,
     scaleSlope: varScaleSlope.value,
     scaleOffset: varScaleOffset.value,
     deadBand: varDeadBand.value,
@@ -278,7 +274,6 @@ const handleSaveVariable = async () => {
   varKey.value = '';
   varName.value = '';
   varUnit.value = '';
-  varAddress.value = '';
   varDesc.value = '';
   
   // Clear advanced connection details
@@ -287,10 +282,8 @@ const handleSaveVariable = async () => {
   varIsStored.value = true;
   varStoreMode.value = 'Change';
   varUpdateMode.value = 'subscription';
-  varPollIntervalSecs.value = 5;
   
   // Clear industrial-grade fields
-  varBitOffset.value = null;
   varScaleSlope.value = 1.0;
   varScaleOffset.value = 0.0;
   varDeadBand.value = null;
@@ -427,7 +420,6 @@ const handleDeleteVariable = (key: string, name: string) => {
                   <th class="px-4 py-3.5">名称</th>
                   <th class="px-4 py-3.5">类型</th>
                   <th class="px-4 py-3.5">单位</th>
-                  <th class="px-4 py-3.5">地址</th>
                   <th class="px-4 py-3.5 text-right">操作</th>
                 </tr>
               </thead>
@@ -457,14 +449,15 @@ const handleDeleteVariable = (key: string, name: string) => {
                     </div>
 
                     <div v-else-if="currentModelProtocol === 'OPCUA'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800 px-1.5 py-0.5 rounded font-mono">NodeId: {{ v.address }}</span>
                       <span class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded">
-                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : `轮询 (${v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5}s)` }}
+                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : '定时轮询' }}
                       </span>
                     </div>
 
                     <div v-else-if="currentModelProtocol === 'MQTT'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-800 px-1.5 py-0.5 rounded font-mono">刷新周期: {{ v.pollingIntervalMs ? v.pollingIntervalMs / 1000 : 5 }}s (MQTT Polling)</span>
+                      <span class="bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-800 px-1.5 py-0.5 rounded">
+                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : '定时轮询' }}
+                      </span>
                     </div>
                   </td>
                   <td class="px-4 py-4">
@@ -486,7 +479,6 @@ const handleDeleteVariable = (key: string, name: string) => {
                     </span>
                   </td>
                   <td class="px-4 py-4 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
-                  <td class="px-4 py-4 text-slate-500 dark:text-slate-400 font-bold text-[11px]">{{ v.address }}</td>
                   <td class="px-4 py-4 text-right">
                     <button 
                       @click="handleDeleteVariable(v.key, v.name)"
@@ -499,7 +491,7 @@ const handleDeleteVariable = (key: string, name: string) => {
                 </tr>
 
                 <tr v-if="currentModel.variables.length === 0">
-                  <td colspan="6" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
+                  <td colspan="5" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
                     暂无变量，点击"添加变量"创建
                   </td>
                 </tr>
@@ -537,16 +529,21 @@ const handleDeleteVariable = (key: string, name: string) => {
             />
           </div>
           <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">协议类型</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">通信协议</label>
             <select 
-              v-model="modelType"
+              v-model="modelProtocolId"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white font-bold focus:outline-none focus:border-violet-500"
             >
-              <option value="OPCUA">OPC UA</option>
-              <option value="S7">Siemens S7</option>
-              <option value="MQTT">MQTT</option>
-              <option value="Virtual">Virtual</option>
+              <option :value="0" disabled>请选择协议</option>
+              <option
+                v-for="p in protocols.filter(x => x.isEnabled)"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.name }} ({{ p.key }})
+              </option>
             </select>
+            <p v-if="protocols.length === 0" class="text-[9px] text-slate-400 dark:text-slate-500 mt-1">未获取到可用协议，请确认后端协议已启用</p>
           </div>
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">描述</label>
@@ -655,16 +652,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
           <!-- Siemens S7 Specific Variable Fields -->
           <div v-if="currentModel && currentModelProtocol === 'S7'" class="p-3 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl space-y-3.5 border border-indigo-100/50 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200">
-            <div class="font-bold text-[10px] text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">S7 寄存器配置</div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">寄存器地址</label>
-              <input
-                v-model="varAddress"
-                type="text"
-                placeholder="例如: DB10.DBD12, MB0, IW0"
-                class="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
-              />
-            </div>
+            <div class="font-bold text-[10px] text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">S7 配置（寄存器地址在设备实例级配置）</div>
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">访问权限</label>
@@ -706,16 +694,7 @@ const handleDeleteVariable = (key: string, name: string) => {
 
           <!-- OPCUA Specific Variable Fields -->
           <div v-if="currentModel && currentModelProtocol === 'OPCUA'" class="p-3 bg-sky-50/50 dark:bg-sky-950/40 rounded-xl space-y-3 border border-sky-100/50 dark:border-sky-800">
-            <div class="font-bold text-[10px] text-sky-700 dark:text-sky-400 uppercase tracking-wider">OPC UA 配置</div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">节点ID (地址)</label>
-              <input
-                v-model="varAddress"
-                type="text"
-                placeholder="例如: ns=2;s=Line1.Temperature"
-                class="w-full bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-700 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
-              />
-            </div>
+            <div class="font-bold text-[10px] text-sky-700 dark:text-sky-400 uppercase tracking-wider">OPC UA 配置（节点地址在设备实例级配置）</div>
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">更新模式</label>
@@ -727,41 +706,13 @@ const handleDeleteVariable = (key: string, name: string) => {
                   <option value="polling">定时轮询</option>
                 </select>
               </div>
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">采样周期 (秒)</label>
-                <input
-                  v-model="varPollIntervalSecs"
-                  type="number"
-                  min="1"
-                  max="60"
-                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-                />
-              </div>
             </div>
           </div>
 
-          <!-- MQTT Specific Variable Fields -->
-          <div v-if="currentModel && currentModelProtocol === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl space-y-3 border border-teal-100 dark:border-teal-800 text-teal-900 dark:text-teal-200">
-            <div class="font-bold text-[10px] text-teal-800 dark:text-teal-400 uppercase tracking-wider">MQTT 配置</div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">主题地址</label>
-              <input
-                v-model="varAddress"
-                type="text"
-                placeholder="例如: factory/line1/temperature"
-                class="w-full bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-              />
-            </div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">刷新周期 (秒)</label>
-              <input
-                v-model="varPollIntervalSecs"
-                type="number"
-                min="1"
-                class="w-full bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-              />
-              <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-1">设置变量在 MQTT 主题刷新消息提取解析的定时器速度 (秒)</p>
-            </div>
+          <!-- MQTT 协议：模板变量不再承载主题地址/刷新周期（已下放设备实例级 DeviceVariable） -->
+          <div v-if="currentModel && currentModelProtocol === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl border border-teal-100/50 dark:border-teal-800 text-teal-900 dark:text-teal-200">
+            <div class="font-bold text-[10px] text-teal-800 dark:text-teal-400 uppercase tracking-wider">MQTT 配置（主题地址在设备实例级配置）</div>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">MQTT 主题地址与刷新周期已下放至设备实例级，此处仅维护变量定义。</p>
           </div>
 
           <!-- 历史存储配置 -->
@@ -794,17 +745,6 @@ const handleDeleteVariable = (key: string, name: string) => {
           <div class="p-3 bg-orange-50/50 dark:bg-orange-950/40 rounded-xl space-y-3 border border-orange-100 dark:border-orange-800">
             <div class="font-bold text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wider">工业级参数</div>
             <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">位偏移</label>
-                <input 
-                  v-model="varBitOffset"
-                  type="number"
-                  min="0"
-                  max="15"
-                  placeholder="0-15"
-                  class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-                />
-              </div>
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">只读模式</label>
                 <select 

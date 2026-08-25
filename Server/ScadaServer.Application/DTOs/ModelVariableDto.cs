@@ -33,11 +33,6 @@ public class ModelVariableDto
     public double? Min { get; set; }
     public double? Max { get; set; }
 
-    // --- 已迁移字段（P1-5）---
-    // 地址、位偏移、采集周期已完成"模板→设备实例"重构，实际采集细节统一维护在 DeviceVariable。
-    // 以下三个字段在模板层仅作过渡期兼容：返回旧数据时仍会填充，创建/更新模板时后端不再写回。
-    public string Address { get; set; } = string.Empty;
-
     public string? Description { get; set; }
     public bool IsStored { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -46,12 +41,7 @@ public class ModelVariableDto
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public UpdateMode UpdateMode { get; set; }
 
-    [Range(1, 3600000, ErrorMessage = "采集频率必须在 1ms 到 1小时之间")]
-    public int PollingIntervalMs { get; set; } = 1000;
-
     // --- 工业级增强字段 ---
-    
-    public int? BitOffset { get; set; }
     public double ScaleSlope { get; set; } = 1.0;
     public double ScaleOffset { get; set; } = 0.0;
     public double? DeadBand { get; set; }

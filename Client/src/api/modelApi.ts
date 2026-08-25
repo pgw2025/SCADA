@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { http } from './http';
 import { DataModel } from '../types';
 import { dataModels } from '../store/modelStore';
 import { addLog, systemConfig } from '../store/index';
@@ -8,18 +8,20 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
   if (systemConfig.value.isSimulationActive) return null;
 
   try {
-    const response = await axios.post(`${systemConfig.value.backendApiUrl}/api/DataModel`, modelData);
+    const response = await http.post(`${systemConfig.value.backendApiUrl}/api/DataModel`, modelData);
     const createdModel = response.data;
-    
+
     dataModels.value.push({
       id: String(createdModel.id),
       name: createdModel.name,
       description: createdModel.description || '',
-      // 协议真相源在 DataModel.Type（后端返回）
-      type: (createdModel.type as DataModel['type']) ?? (modelData.type || 'Virtual'),
+      // 协议真相源在 Protocol 实体：创建成功后回填 protocolId / protocolKey / protocolName
+      protocolId: createdModel.protocolId ?? modelData.protocolId,
+      protocolKey: createdModel.protocolKey ?? modelData.protocolKey,
+      protocolName: createdModel.protocolName ?? modelData.protocolName,
       variables: createdModel.variables || []
     });
-    
+
     addLog('数据模型', `已在后端创建模型: ${modelData.name}`, 'normal');
     return dataModels.value[dataModels.value.length - 1];
   } catch (err: any) {
@@ -33,7 +35,7 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
   if (systemConfig.value.isSimulationActive) return;
 
   try {
-    const response = await axios.get(`${systemConfig.value.backendApiUrl}/api/DataModel`);
+    const response = await http.get(`${systemConfig.value.backendApiUrl}/api/DataModel`);
     const data = response.data;
     
     if (Array.isArray(data)) {
@@ -41,10 +43,9 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
         id: String(m.id),
         name: m.name,
         description: m.description || '',
-        // 协议真相源在 DataModel.Type（后端返回真实协议）
-        type: (m.type as DataModel['type']) || 'Virtual',
-        // 协议绑定（对应后端 DataModelDto.ProtocolId），更新模型时须原样回传
-        protocolId: m.protocolId ?? undefined,
+        // 协议真相源在 Protocol 实体（对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName），
+        // 更新模型时须原样回传 protocolId
+        protocolId: m.protocolId ?? 0,
         protocolKey: m.protocolKey ?? undefined,
         protocolName: m.protocolName ?? undefined,
         variables: m.variables?.map((v: any) => ({
@@ -57,15 +58,12 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           unit: v.unit,
           min: v.min,
           max: v.max,
-          address: v.address,
           description: v.description,
           isStored: v.isStored || false,
           storeMode: (v.storeMode === 'Cycle' ? 'Cycle' : 'Change') as 'Change' | 'Cycle',
           // 后端 UpdateMode 枚举以 JsonStringEnumConverter 输出 PascalCase（Subscription/Polling），
           // 统一 toLowerCase 后比较，避免大小写漂移导致订阅模式变量回传后恒变 polling。
           updateMode: (String(v.updateMode ?? '').toLowerCase() === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
-          pollingIntervalMs: v.pollingIntervalMs || 1000,
-          bitOffset: v.bitOffset,
           scaleSlope: v.scaleSlope || 1.0,
           scaleOffset: v.scaleOffset || 0.0,
           deadBand: v.deadBand,
@@ -94,7 +92,7 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
       protocolId: modelData.protocolId ?? existing?.protocolId ?? null
     };
 
-    await axios.put(`${systemConfig.value.backendApiUrl}/api/DataModel/${modelId}`, payload);
+    await http.put(`${systemConfig.value.backendApiUrl}/api/DataModel/${modelId}`, payload);
     
     const idx = dataModels.value.findIndex(m => m.id === modelId);
     if (idx !== -1) {
@@ -121,7 +119,7 @@ export const deleteDataModelOnBackend = async (id: string): Promise<boolean> => 
   }
 
   try {
-    await axios.delete(`${systemConfig.value.backendApiUrl}/api/DataModel/${id}`);
+    await http.delete(`${systemConfig.value.backendApiUrl}/api/DataModel/${id}`);
     
     dataModels.value = dataModels.value.filter(m => m.id !== id);
     addLog('数据模型', `已删除数据模型 [${id}]`, 'warning');

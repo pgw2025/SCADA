@@ -57,9 +57,10 @@ export const normalizeDevices = (raw: Device[]): Device[] =>
     return {
       ...d,
       variables: variableMap,
-      // 后端 DeviceDto 返回 ModelType(从模型推导的协议)；旧字段 Type 已删除。
-      // 用它兜底填充派生只读的 type，确保所有 device.type 引用有值。
-      type: (d.type ?? d.modelType ?? 'Virtual') as DeviceType,
+      // 后端 DeviceDto 已不再返回 Type / ModelType，协议真相源在 Protocol 实体。
+      // type 为派生只读，由调用方在同步数据中携带或在此兜底为 Virtual，
+      // 其余派生逻辑经由 protocolKey / protocolKeyToDeviceType 完成。
+      type: (d.type ?? 'Virtual') as DeviceType,
       runtimeStatus: d.runtimeStatus,
       status: mapRuntimeStatusToStatus(d.runtimeStatus)
     };

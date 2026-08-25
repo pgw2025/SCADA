@@ -54,7 +54,6 @@ namespace ScadaServer.Application.Services
                 Key = entity.Key,
                 AreaId = entity.AreaId,
                 ModelId = entity.ModelId,
-                ModelType = entity.Model?.Type ?? default,
                 ProtocolKey = entity.Model?.Protocol?.Key,
                 ProtocolName = entity.Model?.Protocol?.Name,
                 IsEnabled = entity.IsEnabled,
@@ -81,7 +80,6 @@ namespace ScadaServer.Application.Services
                     Key = entity.Key,
                     AreaId = entity.AreaId,
                     ModelId = entity.ModelId,
-                    ModelType = entity.Model?.Type ?? default,
                     ProtocolKey = entity.Model?.Protocol?.Key,
                     ProtocolName = entity.Model?.Protocol?.Name,
                     IsEnabled = entity.IsEnabled,
@@ -165,41 +163,30 @@ namespace ScadaServer.Application.Services
         private enum DriverKind { S7, ModbusTcp, OpcUa, Mqtt, Virtual, Unknown }
 
         /// <summary>
-        /// 解析校验用的驱动种类。优先采用协议真相源 <paramref name="driverKey"/>（来自 Protocol.DriverKey），
-        /// 兼容 <c>S7Driver</c>/<c>S7</c> 等写法；为空时回退到过渡字段 <paramref name="type"/>。
+        /// 解析校验用的驱动种类。采用协议真相源 <paramref name="driverKey"/>（来自 Protocol.DriverKey），
+        /// 兼容 <c>S7Driver</c>/<c>S7</c> 等写法；协议必填后不再有过渡字段回退。
         /// </summary>
-        private static DriverKind ResolveDriverKind(DeviceType type, string? driverKey)
+        private static DriverKind ResolveDriverKind(string? driverKey)
         {
-            if (!string.IsNullOrWhiteSpace(driverKey))
+            switch (driverKey?.Trim().ToUpperInvariant())
             {
-                switch (driverKey.Trim().ToUpperInvariant())
-                {
-                    case "S7" or "S7DRIVER": return DriverKind.S7;
-                    case "MODBUSTCP" or "MODBUSTCPDRIVER": return DriverKind.ModbusTcp;
-                    case "OPCUA" or "OPCUADRIVER": return DriverKind.OpcUa;
-                    case "MQTT" or "MQTTDRIVER": return DriverKind.Mqtt;
-                    case "VIRTUAL" or "VIRTUALDRIVER": return DriverKind.Virtual;
-                }
+                case "S7" or "S7DRIVER": return DriverKind.S7;
+                case "MODBUSTCP" or "MODBUSTCPDRIVER": return DriverKind.ModbusTcp;
+                case "OPCUA" or "OPCUADRIVER": return DriverKind.OpcUa;
+                case "MQTT" or "MQTTDRIVER": return DriverKind.Mqtt;
+                case "VIRTUAL" or "VIRTUALDRIVER": return DriverKind.Virtual;
+                default: return DriverKind.Unknown;
             }
-            return type switch
-            {
-                DeviceType.S7 => DriverKind.S7,
-                DeviceType.ModbusTcp => DriverKind.ModbusTcp,
-                DeviceType.OpcUa => DriverKind.OpcUa,
-                DeviceType.Mqtt => DriverKind.Mqtt,
-                DeviceType.Virtual => DriverKind.Virtual,
-                _ => DriverKind.Unknown
-            };
         }
 
         /// <summary>
         /// 验证协议配置 JSON 格式（按协议驱动键路由到对应的配置类）。
         /// </summary>
-        private void ValidateConfigJson(DeviceType type, string? driverKey, string configJson)
+        private void ValidateConfigJson(string? driverKey, string configJson)
         {
             try
             {
-                switch (ResolveDriverKind(type, driverKey))
+                switch (ResolveDriverKind(driverKey))
                 {
                     case DriverKind.S7:
                         JsonSerializer.Deserialize<S7Config>(configJson);
@@ -285,18 +272,15 @@ namespace ScadaServer.Application.Services
 
             // 协议驱动前置校验：未实现驱动的协议在运行时初始化阶段才会失败，
             // 提前在此拦截并返回友好错误，避免设备被创建后无法进入运行时。
-            // 协议真相源为所绑定数据模型的 Protocol.DriverKey（无协议时回退到过渡字段 model.Type）。
+            // 协议真相源为所绑定数据模型的 Protocol.DriverKey（模型必绑协议后不再回退过渡字段）。
             var driverKey = model.Protocol?.DriverKey;
-            var protocolImplemented =
-                (driverKey != null && ProtocolDriverSupport.IsDriverImplemented(driverKey))
-                || (driverKey == null && model.Type.IsDriverImplemented());
-            if (!protocolImplemented)
+            if (!ProtocolDriverSupport.IsDriverImplemented(driverKey))
             {
-                throw new BusinessException($"协议 {driverKey ?? model.Type.ToString()} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
+                throw new BusinessException($"协议 {driverKey ?? "(未绑定)"} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
             }
 
             // 2. 验证协议配置 JSON 格式（按协议驱动键对应的配置类校验）
-            ValidateConfigJson(model.Type, driverKey, dto.ConfigJson);
+            ValidateConfigJson(driverKey, dto.ConfigJson);
 
             // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
             if (string.IsNullOrWhiteSpace(dto.Key))
@@ -339,23 +323,19 @@ namespace ScadaServer.Application.Services
                 await _configRepository.InsertAsync(config);
 
                 // 根据数据模型的变量模板，自动生成设备变量实例（DeviceVariable）。
-                // 初始值从模板复制地址/位偏移/轮询间隔；后续可在设备变量接口上单独覆盖。
+                // 地址/位偏移/轮询间隔等采集细节已迁移到设备实例层，此处仅创建实例（IsEnabled=true），
+                // 具体地址后续在设备变量接口上单独配置；模板层不再携带这些字段。
                 var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == model.Id);
-#pragma warning disable CS0618 // 过渡期：从模板读取已标记 [Obsolete] 的地址/位偏移/轮询字段
                 if (modelVariables.Any())
                 {
                     var deviceVariables = modelVariables.Select(mv => new DeviceVariable
                     {
                         DeviceId = entity.Id,
                         ModelVariableId = mv.Id,
-                        Address = mv.Address,
-                        BitOffset = mv.BitOffset,
-                        PollingIntervalMs = mv.PollingIntervalMs,
                         IsEnabled = true
                     }).ToList();
                     await _deviceVariableRepository.InsertRangeAsync(deviceVariables);
                 }
-#pragma warning restore CS0618
 
                 return await GetByIdAsync(entity.Id)
                     ?? throw new BusinessException($"创建设备后无法读取 ID 为 {entity.Id} 的设备记录");
@@ -393,7 +373,7 @@ namespace ScadaServer.Application.Services
             // 3. 验证协议配置 JSON 格式（允许改绑定模型，协议随模型推导）
             if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
-                ValidateConfigJson(model.Type, model.Protocol?.DriverKey, dto.ConfigJson);
+                ValidateConfigJson(model.Protocol?.DriverKey, dto.ConfigJson);
             }
 
             return await _uow.ExecuteInTransactionAsync(async transaction =>

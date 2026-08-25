@@ -48,7 +48,6 @@ namespace ScadaServer.Application.Services
             // 0. 规范化
             dto.Key = dto.Key?.Trim();
             dto.Name = dto.Name?.Trim();
-            dto.Address = dto.Address?.Trim();
 
             // 1. 存在性检查：模型必须存在
             var model = await _modelRepository.GetByIdAsync(dto.ModelId);
@@ -79,7 +78,6 @@ namespace ScadaServer.Application.Services
             // 0. 规范化
             dto.Key = dto.Key?.Trim();
             dto.Name = dto.Name?.Trim();
-            dto.Address = dto.Address?.Trim();
 
             var entity = await _repository.GetByIdAsync(dto.Id);
             if (entity == null)
@@ -167,17 +165,10 @@ namespace ScadaServer.Application.Services
             Unit = entity.Unit,
             Min = entity.Min,
             Max = entity.Max,
-#pragma warning disable CS0618 // 过渡期兼容读取已迁移到 DeviceVariable 的字段（Address/PollingIntervalMs/BitOffset）
-            Address = entity.Address,
-#pragma warning restore CS0618
             Description = entity.Description,
             IsStored = entity.IsStored,
             StoreMode = entity.StoreMode,
             UpdateMode = entity.UpdateMode,
-#pragma warning disable CS0618 // 过渡期兼容读取已迁移字段
-            PollingIntervalMs = entity.PollingIntervalMs,
-            BitOffset = entity.BitOffset,
-#pragma warning restore CS0618
             ScaleSlope = entity.ScaleSlope,
             ScaleOffset = entity.ScaleOffset,
             DeadBand = entity.DeadBand,

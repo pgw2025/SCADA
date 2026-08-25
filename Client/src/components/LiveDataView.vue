@@ -61,7 +61,8 @@ const renderedVariables = computed(() => {
     return {
       key: v.key,
       name: v.name || '未定义系统点位',
-      address: v.address || `REG_${v.key.toUpperCase()}`,
+      // 地址已下放至设备实例级（DeviceVariable），模板变量不再持有地址，此处用 Key 派生占位
+      address: `REG_${v.key.toUpperCase()}`,
       type: v.type || 'analog',
       dataType: v.dataType || '',
       unit: v.unit || '',
