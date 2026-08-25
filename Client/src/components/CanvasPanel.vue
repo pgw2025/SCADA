@@ -21,6 +21,7 @@ const props = defineProps<{
   componentValues: Record<string, number | boolean>;
   canvasWidth: number;
   canvasHeight: number;
+  canControlWrite?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -115,6 +116,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
 // Pointer Events callbacks
 const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
+    // 阶段6-2：非授权角色（非 Operator/Admin）在运行模式禁止下发写指令，
+    // 控件仅作只读展示；后端 [Authorize(Roles)] 仍兜底返回 403。
+    if (props.canControlWrite === false) return;
     if (component.bindVariableKey || component.bindField) {
       const devId = component.bindDeviceId ?? null;
       const varKey = component.bindVariableKey ?? component.bindField ?? '';
@@ -723,6 +727,7 @@ onUnmounted(() => {
             :component="component"
             :value="componentValues[component.id] ?? 0"
             :isActiveMode="isActiveMode"
+            :control-locked="props.isActiveMode && props.canControlWrite === false"
           />
 
           <!-- Editable labels in component container -->

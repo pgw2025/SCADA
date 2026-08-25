@@ -30,6 +30,7 @@ import {
   persistDuplicatePage
 } from '../services/scadaService';
 import { devices } from '../store/deviceStore';
+import { loginUser } from '../store/userStore';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { showToast } from '../services/toastService';
@@ -177,6 +178,13 @@ const componentValues = computed(() => {
 // 阶段5-3：画布分辨率（由页面属性驱动，回退默认 1100×700）
 const pageWidth = computed(() => currentPage.value.width ?? 1100);
 const pageHeight = computed(() => currentPage.value.height ?? 700);
+
+// 阶段6-2：写控制角色权限。仅 Operator/Admin 可在运行模式下发写指令；
+// 其它角色（如 Viewer）即便已通过 JWT 认证，前端也拦截写控件、后端以 [Authorize(Roles)] 兜底 403。
+const canControlWrite = computed(() => {
+  const r = loginUser.value?.role;
+  return r === 'Operator' || r === 'Admin';
+});
 const handleUpdateCanvasSize = (w: number, h: number) => {
   const pg = currentPage.value;
   pg.width = w;
@@ -716,6 +724,7 @@ const selectedCompObj = computed(() => {
               :component-values="componentValues"
               :canvas-width="pageWidth"
               :canvas-height="pageHeight"
+              :can-control-write="canControlWrite"
               @select-components="handleSelectComponents"
               @updateComponent="handleUpdateComponent"
               @update-components="handleUpdateComponents"

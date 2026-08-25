@@ -6,7 +6,13 @@ const props = defineProps<{
   component: HMIComponent;
   value: number | boolean;
   isActiveMode: boolean;
+  controlLocked?: boolean;
 }>();
+
+// 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件
+const isLockedControl = computed(() =>
+  !!props.controlLocked && !!(props.component.bindVariableKey || props.component.bindField)
+);
 
 const numValue = computed(() => {
   return typeof props.value === 'number' ? props.value : props.value ? 100 : 0;
@@ -571,6 +577,15 @@ const mappedStateText = computed(() => {
           boxShadow: boolValue ? '0 0 6px #22c55e' : 'none'
         }"
       />
+      <!-- 阶段6-2：运行模式无写权限时，绑定按钮显示只读锁标记 -->
+      <span
+        v-if="isLockedControl"
+        class="absolute bottom-1 left-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
+        title="当前角色无写权限，控件为只读"
+      >
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z"/></svg>
+        只读
+      </span>
       <!-- Label -->
       <span 
         class="text-center font-mono pointer-events-none px-1 truncate max-w-full"
@@ -589,7 +604,16 @@ const mappedStateText = computed(() => {
 
   <!-- 15. TOGGLE SWITCH -->
   <div v-else-if="component.type === 'switch'" class="w-full h-full flex flex-col items-center justify-center p-1 font-mono text-[9px] select-none">
-    <div class="w-full h-full bg-[#1e293b] border border-slate-700 rounded p-1.5 flex flex-col items-center justify-between shadow-md">
+    <div class="w-full h-full bg-[#1e293b] border border-slate-700 rounded p-1.5 flex flex-col items-center justify-between shadow-md relative">
+      <!-- 阶段6-2：运行模式无写权限时，绑定开关显示只读锁标记 -->
+      <span
+        v-if="isLockedControl"
+        class="absolute top-1 right-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
+        title="当前角色无写权限，控件为只读"
+      >
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z"/></svg>
+        只读
+      </span>
       <!-- Top State Label -->
       <span class="text-slate-400 font-bold uppercase text-[8px] tracking-tight text-center truncate max-w-full">
         {{ boolValue ? 'RUN / 开启' : 'STOP / 二位' }}
