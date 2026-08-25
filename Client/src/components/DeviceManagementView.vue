@@ -152,9 +152,8 @@ const handleDeleteArea = async (id: number, name: string) => {
   const result = await deleteAreaAndSync(id, name);
   if (result.success) {
     addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
-  } else if (result.error) {
-    alert(result.error.message);
   }
+  // 失败提示由 http 拦截器统一 Toast 弹出
 };
 
 // 初始化时从后端获取区域数据
@@ -367,9 +366,8 @@ const handleDeleteDevice = async (id: number, name: string) => {
   const result = await deleteDeviceAndSync(id, name);
   if (result.success) {
     addLog('设备管理', `删除了工业网络网关 [${name}]`, 'warning');
-  } else if (result.error) {
-    alert(result.error.message);
   }
+  // 失败提示由 http 拦截器统一 Toast 弹出
 };
 
 const toggleDeviceStateInGrid = (device: Device) => {

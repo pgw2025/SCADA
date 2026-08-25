@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { addLog } from '../services/logService';
+import { showToast } from '../services/toastService';
 import { isAuthenticated, loginUser } from '../store/userStore';
 
 export const TOKEN_KEY = 'scada_access_token';
@@ -47,7 +48,7 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截：Token 失效（401）时清除凭证回到登录态
+// 响应拦截：统一弹出后端错误提示；Token 失效（401）时清除凭证回到登录态
 http.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -58,6 +59,10 @@ http.interceptors.response.use(
       isAuthenticated.value = false;
       loginUser.value = null;
       addLog('安全认证', '登录状态已失效，请重新登录', 'warning');
+      showToast('登录状态已失效，请重新登录', 'warning');
+    } else if (!isLoginRequest) {
+      // 登录失败由登录页内联错误框展示，其余失败统一弹 Toast（含后端 message / 校验 errors）
+      showToast(extractApiError(error), 'error');
     }
     return Promise.reject(error);
   }

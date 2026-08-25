@@ -17,6 +17,7 @@ import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
 import { syncDevices } from './services/deviceService';
+import ToastContainer from './components/ToastContainer.vue';
 
 import { 
   LayoutDashboard, 
@@ -119,8 +120,9 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
 </script>
 
 <template>
-  <div 
-    v-if="!isAuthenticated" 
+  <ToastContainer />
+  <div
+    v-if="!isAuthenticated"
     :class="currentTheme === 'dark' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'" 
     class="h-screen w-screen flex items-center justify-center p-4 relative overflow-hidden font-sans select-none transition-colors duration-200"
   >

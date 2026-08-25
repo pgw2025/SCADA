@@ -1,4 +1,4 @@
-import { http } from './http';
+import { http, extractApiError } from './http';
 import { DataModel } from '../types';
 import { dataModels } from '../store/modelStore';
 import { addLog, systemConfig } from '../store/index';
@@ -25,7 +25,7 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
     addLog('数据模型', `已在后端创建模型: ${modelData.name}`, 'normal');
     return dataModels.value[dataModels.value.length - 1];
   } catch (err: any) {
-    addLog('数据模型', `创建模型失败: ${err.message}`, 'warning');
+    addLog('数据模型', `创建模型失败: ${extractApiError(err)}`, 'warning');
     return null;
   }
 };
@@ -75,7 +75,7 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
       addLog('数据模型', `已从后端同步 ${data.length} 个模型`, 'normal');
     }
   } catch (err: any) {
-    addLog('数据模型', `无法同步模型列表: ${err.message}`, 'warning');
+    addLog('数据模型', `无法同步模型列表: ${extractApiError(err)}`, 'warning');
   }
 };
 
@@ -106,7 +106,7 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
     addLog('数据模型', `已更新数据模型配置: ${modelData.name || modelId}`, 'normal');
     return true;
   } catch (err: any) {
-    addLog('数据模型', `更新模型失败 [${modelId}]: ${err.message}`, 'warning');
+    addLog('数据模型', `更新模型失败 [${modelId}]: ${extractApiError(err)}`, 'warning');
     return false;
   }
 };
@@ -125,7 +125,7 @@ export const deleteDataModelOnBackend = async (id: string): Promise<boolean> => 
     addLog('数据模型', `已删除数据模型 [${id}]`, 'warning');
     return true;
   } catch (err: any) {
-    addLog('数据模型', `删除模型失败 [${id}]: ${err.message}`, 'warning');
+    addLog('数据模型', `删除模型失败 [${id}]: ${extractApiError(err)}`, 'warning');
     return false;
   }
 };

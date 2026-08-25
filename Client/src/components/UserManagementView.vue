@@ -98,8 +98,8 @@ const handleSaveUser = async () => {
     }
     await loadSystemUsers();
     showModal.value = false;
-  } catch (error: any) {
-    alert('保存用户失败: ' + (error.response?.data?.message || error.message));
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出（含后端具体 message）
   }
 };
 
@@ -114,8 +114,8 @@ const handleDeleteUser = async (id: number, name: string) => {
       await deleteSystemUser(id);
       await loadSystemUsers();
       addLog('用户管理', `注销了系统登录帐户 [${name}]`, 'warning');
-    } catch (error: any) {
-      alert('删除用户失败: ' + (error.response?.data?.message || error.message));
+    } catch {
+      // 失败提示由 http 拦截器统一 Toast 弹出（含后端具体 message）
     }
   }
 };

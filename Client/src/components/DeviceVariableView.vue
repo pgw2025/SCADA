@@ -18,6 +18,7 @@ import { dataModels, addLog, systemConfig } from '../store/index';
 import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, DeviceVariable, ModelVariable } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
+import { extractApiError } from '../api/http';
 import {
   fetchDeviceVariables,
   createDeviceVariable,
@@ -71,7 +72,8 @@ const loadVariables = async () => {
   try {
     deviceVariables.value = await fetchDeviceVariables(selectedDevice.value.id);
   } catch (e: any) {
-    loadError.value = e.message;
+    // extractApiError 提取后端 message，避免只显示 axios 泛泛的 "Request failed with status code xxx"
+    loadError.value = extractApiError(e);
   } finally {
     isLoading.value = false;
   }

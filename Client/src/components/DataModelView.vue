@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable } from '../store/index';
-import { extractApiError } from '../api/http';
 import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
 
 onMounted(() => {
@@ -274,9 +273,8 @@ const handleSaveVariable = async () => {
         type: String(created.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
       } as ModelVariable);
     }
-  } catch (err: any) {
-    // 透传后端具体错误信息（BusinessException 文案 / 模型校验 errors），避免只显示 400 状态码
-    alert('保存变量到服务器失败: ' + extractApiError(err));
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出（含 BusinessException 文案 / 校验 errors）
     return;
   }
 

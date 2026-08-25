@@ -4,6 +4,7 @@ import { addLog, systemConfig } from '../store/index';
 import { Device } from '../types';
 import { parseApiError, ErrorResult } from '../utils/errorHandler';
 import { normalizeDevices } from '../utils/deviceStatus';
+import { extractApiError } from '../api/http';
 
 export interface DeviceOperationResult<T = any> {
   success: boolean;
@@ -20,7 +21,7 @@ export const syncDevices = async () => {
     store.setDevices(normalized);
     addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
   } catch (err: any) {
-    addLog('设备管理', `无法同步设备列表: ${err.message}`, 'warning');
+    addLog('设备管理', `无法同步设备列表: ${extractApiError(err)}`, 'warning');
   }
 };
 
@@ -150,7 +151,7 @@ export const getDeviceById = async (id: number): Promise<Device | null> => {
     const { data } = await api.fetchDeviceById(id);
     return data;
   } catch (err: any) {
-    addLog('设备管理', `获取设备详情失败 [${id}]: ${err.message}`, 'warning');
+    addLog('设备管理', `获取设备详情失败 [${id}]: ${extractApiError(err)}`, 'warning');
     return null;
   }
 };
