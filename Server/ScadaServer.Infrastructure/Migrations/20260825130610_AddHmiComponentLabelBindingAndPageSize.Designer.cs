@@ -437,14 +437,12 @@ namespace ScadaServer.Infrastructure.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<string>("BindVariableKey")
-                        .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<int>("Height")
                         .HasColumnType("int");
 
                     b.Property<string>("Label")
-                        .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<string>("Name")
