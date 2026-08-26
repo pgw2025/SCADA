@@ -114,8 +114,8 @@ export const deleteComponent = async (id: number): Promise<void> => {
 // ---- 前端 -> 后端 DTO ----
 export const toProjectDto = (p: ScadaScreenProject) => ({
   id: p.serverId ?? 0,
-  name: p.name,
-  description: p.description,
+  name: p.name?.trim() || '未命名工程',
+  description: p.description ?? '',
 });
 
 export const toPageDto = (pg: ScadaPage, projectId: number) => ({

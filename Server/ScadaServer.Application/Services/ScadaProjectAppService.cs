@@ -38,7 +38,7 @@ namespace ScadaServer.Application.Services
 
         public async Task<int> CreateAsync(ScadaProjectDto dto)
         {
-            var entity = new ScadaProject { Name = dto.Name, Description = dto.Description, CreatedAt = DateTime.Now };
+            var entity = new ScadaProject { Name = dto.Name, Description = dto.Description ?? string.Empty, CreatedAt = DateTime.Now };
             await _repository.InsertAsync(entity);
             return entity.Id;
         }
@@ -49,7 +49,7 @@ namespace ScadaServer.Application.Services
             if (entity == null) return false;
 
             entity.Name = dto.Name;
-            entity.Description = dto.Description;
+            entity.Description = dto.Description ?? string.Empty;
             await _repository.UpdateAsync(entity);
             return true;
         }
