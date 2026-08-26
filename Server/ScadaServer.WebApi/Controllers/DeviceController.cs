@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Application.DTOs;
 
@@ -55,7 +56,7 @@ namespace ScadaServer.WebApi.Controllers
         /// 阶段6-2：控制写入（物理下发强制/控制命令）仅授权 Operator/Admin 角色，
         /// 其它角色（如 Viewer）即使通过全局 JWT 认证也被拒绝（403）。
         [HttpPost("{id}/variables/{variableKey}/write")]
-        [Authorize(Roles = "Operator,Admin")]
+        [Authorize(Roles = $"{SystemRoles.Operator},{SystemRoles.Admin}")]
         public async Task<IActionResult> WriteVariable(int id, string variableKey, [FromBody] WriteVariableRequestDto dto)
         {
             await _deviceAppService.WriteVariableAsync(id, variableKey, dto.Value!);

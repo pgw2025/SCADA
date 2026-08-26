@@ -114,6 +114,14 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<SystemLog>().ToTable("SystemLogs");
             modelBuilder.Entity<SystemScript>().ToTable("SystemScripts");
             modelBuilder.Entity<SystemUser>().ToTable("SystemUsers");
+            // 用户名唯一（P0 修复：收窄列宽为 varchar(64) 以支撑唯一索引，杜绝重名登录歧义）
+            modelBuilder.Entity<SystemUser>()
+                .Property(u => u.Username)
+                .HasMaxLength(64);
+            modelBuilder.Entity<SystemUser>()
+                .HasIndex(u => u.Username)
+                .IsUnique()
+                .HasDatabaseName("ix_systemusers_username");
             modelBuilder.Entity<VariableTrigger>().ToTable("VariableTriggers");
 
             // 变量历史数据表：按 变量键 + 时间 建复合索引，支撑历史趋势查询。

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -143,7 +144,7 @@ public class DatabaseInitializer
         var admin = new SystemUser
         {
             Username = "admin",
-            Role = "Admin",
+            Role = SystemRoles.Admin,
             Status = "Active"
         };
 

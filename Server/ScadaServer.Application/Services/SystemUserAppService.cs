@@ -1,5 +1,6 @@
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Domain.Exceptions;
@@ -119,8 +120,8 @@ namespace ScadaServer.Application.Services
             var entity = new SystemUser
             {
                 Username = dto.Username,
-                Role = string.IsNullOrWhiteSpace(dto.Role) ? "Operator" : dto.Role,
-                Status = string.IsNullOrWhiteSpace(dto.Status) ? "Active" : dto.Status
+                Role = NormalizeRole(dto.Role, SystemRoles.Operator),
+                Status = NormalizeStatus(dto.Status, "Active")
             };
 
             // 使用 PasswordHasher 哈希初始密码（与登录校验一致），保证 API 创建的用户可正常登录。
@@ -140,8 +141,8 @@ namespace ScadaServer.Application.Services
             }
 
             entity.Username = dto.Username;
-            entity.Role = dto.Role;
-            entity.Status = dto.Status;
+            entity.Role = NormalizeRole(dto.Role, defaultValue: null);
+            entity.Status = NormalizeStatus(dto.Status, defaultValue: null);
             await _repository.UpdateAsync(entity);
         }
 
@@ -152,6 +153,45 @@ namespace ScadaServer.Application.Services
             {
                 await _repository.DeleteAsync(entity);
             }
+        }
+
+        /// <summary>
+        /// 规范化角色值：必须位于 SystemRoles.All 白名单内，否则抛业务异常。
+        /// <paramref name="defaultValue"/> 用于新建场景（空值回退到默认角色），更新场景传 null 强制必填。
+        /// </summary>
+        private static string NormalizeRole(string? role, string? defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(role))
+            {
+                if (defaultValue != null) return defaultValue;
+                throw new BusinessException("角色不能为空");
+            }
+
+            var normalized = role.Trim();
+            if (!SystemRoles.All.Contains(normalized))
+            {
+                throw new BusinessException($"无效的角色值: '{normalized}'，可选值: {string.Join("/", SystemRoles.All)}");
+            }
+            return normalized;
+        }
+
+        /// <summary>
+        /// 规范化用户状态为 Active/Inactive。<paramref name="defaultValue"/> 语义同 <see cref="NormalizeRole"/>。
+        /// </summary>
+        private static string NormalizeStatus(string? status, string? defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                if (defaultValue != null) return defaultValue;
+                throw new BusinessException("用户状态不能为空");
+            }
+
+            var normalized = status.Trim();
+            if (normalized is not ("Active" or "Inactive"))
+            {
+                throw new BusinessException($"无效的用户状态: '{normalized}'，可选值: Active/Inactive");
+            }
+            return normalized;
         }
     }
 }

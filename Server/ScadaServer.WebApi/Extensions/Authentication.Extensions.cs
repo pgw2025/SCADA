@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Converters;
 using ScadaServer.Application.Options;
+using ScadaServer.Domain.Constants;
 using System.Text;
 
 namespace ScadaServer.WebApi.Extensions
@@ -103,7 +104,7 @@ namespace ScadaServer.WebApi.Extensions
                     .RequireAuthenticatedUser()
                     .Build();
 
-                options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
+                options.AddPolicy("RequireAdmin", policy => policy.RequireRole(SystemRoles.Admin));
             });
 
             services.AddSignalR();

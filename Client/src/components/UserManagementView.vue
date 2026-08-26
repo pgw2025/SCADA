@@ -27,14 +27,23 @@ import {
 const showModal = ref(false);
 const isEditing = ref(false);
 const editingUserId = ref<number | null>(null);
+// 编辑时记录原始用户名，用于判定内置 admin 锁定保护（不能依赖可编辑的 uName 实时值）
+const editingOriginalName = ref('');
 
 // Form Fields
 const uName = ref('');
-const uRole = ref<string>('操作员');
-const uStatus = ref<string>('active');
+const uRole = ref<string>('Operator');
+const uStatus = ref<string>('Active');
 const uPassword = ref('');
 
 const filterQuery = ref('');
+
+// 角色值 -> 中文显示名（与后端统一值域：Admin/Operator/Viewer）
+const ROLE_LABELS: Record<string, string> = {
+  Admin: '管理员',
+  Operator: '操作员',
+  Viewer: '观察员'
+};
 
 onMounted(async () => {
   try {
@@ -48,15 +57,20 @@ onMounted(async () => {
 const filteredUsers = computed(() => {
   const query = filterQuery.value.trim().toLowerCase();
   if (!query) return systemUsers.value;
-  return systemUsers.value.filter(u => u.username.toLowerCase().includes(query) || u.role.toLowerCase().includes(query));
+  return systemUsers.value.filter(u =>
+    u.username.toLowerCase().includes(query) ||
+    u.role.toLowerCase().includes(query) ||
+    (ROLE_LABELS[u.role] || '').toLowerCase().includes(query)
+  );
 });
 
 const openNewUserModal = () => {
   isEditing.value = false;
   editingUserId.value = null;
+  editingOriginalName.value = '';
   uName.value = '';
-  uRole.value = '操作员';
-  uStatus.value = 'active';
+  uRole.value = 'Operator';
+  uStatus.value = 'Active';
   uPassword.value = '';
   showModal.value = true;
 };
@@ -64,6 +78,7 @@ const openNewUserModal = () => {
 const openEditUserModal = (user: SystemUser) => {
   isEditing.value = true;
   editingUserId.value = user.id;
+  editingOriginalName.value = user.username;
   uName.value = user.username;
   uRole.value = user.role;
   uStatus.value = user.status;
@@ -152,7 +167,7 @@ const handleDeleteUser = async (id: number, name: string) => {
           用户总数: <b class="text-indigo-600 dark:text-indigo-400 text-sm font-mono">{{ systemUsers.length }}</b>
         </span>
         <span class="inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-4">
-          已启用: <b class="text-emerald-600 dark:text-emerald-400 text-sm font-mono">{{ systemUsers.filter(u => u.status==='active').length }}</b>
+          已启用: <b class="text-emerald-600 dark:text-emerald-400 text-sm font-mono">{{ systemUsers.filter(u => u.status === 'Active').length }}</b>
         </span>
       </div>
 
@@ -211,19 +226,13 @@ const handleDeleteUser = async (id: number, name: string) => {
             <!-- Role security category with specific visual badges -->
             <td class="px-6 py-4 font-sans font-bold">
               <span 
-                v-if="u.role === '超级管理员'"
-                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 uppercase"
-              >
-                🛡️ 超级管理员
-              </span>
-              <span 
-                v-else-if="u.role === '管理员'"
+                v-if="u.role === 'Admin'"
                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 uppercase"
               >
                 🔐 管理员
               </span>
               <span 
-                v-else-if="u.role === '操作员'"
+                v-else-if="u.role === 'Operator'"
                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 uppercase"
               >
                 ⚡ 操作员
@@ -243,10 +252,10 @@ const handleDeleteUser = async (id: number, name: string) => {
             <td class="px-6 py-4 text-left">
               <span 
                 class="font-sans font-bold text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
-                :class="u.status === 'active' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500'"
+                :class="u.status === 'Active' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500'"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="u.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'" />
-                {{ u.status === 'active' ? '已启用' : '已停用' }}
+                <span class="w-1.5 h-1.5 rounded-full" :class="u.status === 'Active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'" />
+                {{ u.status === 'Active' ? '已启用' : '已停用' }}
               </span>
             </td>
 
@@ -304,7 +313,7 @@ const handleDeleteUser = async (id: number, name: string) => {
               v-model="uName"
               type="text"
               placeholder="请输入用户名"
-              :disabled="isEditing && uName === 'admin'"
+              :disabled="isEditing && editingOriginalName === 'admin'"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-sky-500 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
             />
           </div>
@@ -323,25 +332,24 @@ const handleDeleteUser = async (id: number, name: string) => {
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">角色</label>
             <select 
               v-model="uRole"
-              :disabled="isEditing && uName === 'admin'"
+              :disabled="isEditing && editingOriginalName === 'admin'"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-sky-500 font-sans font-semibold disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
             >
-              <option value="超级管理员">超级管理员 - 系统全部权限</option>
-              <option value="管理员">管理员 - 设备控制与配置权限</option>
-              <option value="操作员">操作员 - 设备操作权限</option>
-              <option value="观察员">观察员 - 只读权限</option>
+              <option value="Admin">管理员 - 设备控制与配置权限</option>
+              <option value="Operator">操作员 - 设备操作权限</option>
+              <option value="Viewer">观察员 - 只读权限</option>
             </select>
           </div>
 
-          <div v-if="uName !== 'admin'">
+          <div v-if="editingOriginalName !== 'admin'">
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">状态</label>
             <div class="flex items-center gap-4 py-1">
               <label class="flex items-center gap-1.5 font-mono font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
-                <input type="radio" value="active" v-model="uStatus" class="text-slate-800 dark:text-sky-500 focus:ring-0" />
+                <input type="radio" value="Active" v-model="uStatus" class="text-slate-800 dark:text-sky-500 focus:ring-0" />
                 启用
               </label>
               <label class="flex items-center gap-1.5 font-mono font-bold text-slate-400 dark:text-slate-500 cursor-pointer text-xs">
-                <input type="radio" value="inactive" v-model="uStatus" class="text-rose-500 focus:ring-0" />
+                <input type="radio" value="Inactive" v-model="uStatus" class="text-rose-500 focus:ring-0" />
                 停用
               </label>
             </div>

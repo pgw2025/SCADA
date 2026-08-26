@@ -26,8 +26,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/user-management', component: () => import('../components/UserManagementView.vue'), meta: { roles: ADMIN } },
   { path: '/database-management', component: () => import('../components/DatabaseManagementView.vue'), meta: { roles: ADMIN } },
   { path: '/settings-center', component: () => import('../components/SettingsCenterView.vue'), meta: { roles: ADMIN } },
-  // 阶段4：组态运行画面——普通用户与管理员均可访问（普通用户登录后的唯一入口）
-  { path: '/scada-view', component: () => import('../components/ScadaRuntimeView.vue'), meta: { roles: ['Admin', 'Operator'] } }
+  // 阶段4：组态运行画面——所有已登录角色均可访问（Admin/Operator/Viewer）
+  { path: '/scada-view', component: () => import('../components/ScadaRuntimeView.vue'), meta: { roles: ['Admin', 'Operator', 'Viewer'] } }
 ];
 
 const router = createRouter({

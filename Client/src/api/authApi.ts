@@ -9,12 +9,20 @@ export const initializeAuth = () => {
   const token = localStorage.getItem(TOKEN_KEY);
   if (token) {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      // JWT payload 使用 base64url 编码，atob 不识别 '-'/'_'，需先还原为标准 base64 并补齐填充
+      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded));
       if (payload.exp * 1000 > Date.now()) {
+        // 无有效 role/username 的 token 视为无效会话，不能默认授予管理员身份
+        if (!payload.role || !payload.username) {
+          localStorage.removeItem(TOKEN_KEY);
+          return;
+        }
         isAuthenticated.value = true;
         loginUser.value = {
-          username: payload.username || 'admin',
-          role: payload.role || '系统管理员'
+          username: payload.username,
+          role: payload.role
         };
         addLog('安全认证', 'Token 自动登录成功', 'normal');
       } else {
@@ -35,13 +43,19 @@ export const performLogin = async (username: string, passwordString: string): Pr
     });
 
     if (response.data && response.data.success) {
+      const role = response.data.user?.role;
+      const userName = response.data.user?.username;
+      // 角色信息缺失视为异常响应，不授予任何身份（避免默认管理员风险）
+      if (!role || !userName) {
+        return { success: false, errorMessage: '登录响应缺少用户信息' };
+      }
       const token = response.data.token;
       localStorage.setItem(TOKEN_KEY, token);
 
       isAuthenticated.value = true;
       loginUser.value = {
-        username: response.data.user?.username || username,
-        role: response.data.user?.role || '系统管理员'
+        username: userName,
+        role
       };
 
       addLog('安全认证', `用户 [${username}] 通过API登录系统成功`, 'normal');
