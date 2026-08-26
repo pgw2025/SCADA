@@ -8,7 +8,7 @@ import { isAuthenticated, loginUser } from '../store/userStore';
 const ADMIN = ['Admin'];
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/dashboard' },
+  { path: '/', component: () => import('../components/DashboardView.vue'), meta: { public: true } },
   { path: '/dashboard', component: () => import('../components/DashboardView.vue'), meta: { roles: ADMIN } },
   { path: '/live-data', component: () => import('../components/LiveDataView.vue'), meta: { roles: ADMIN } },
   { path: '/device-management', component: () => import('../components/DeviceManagementView.vue'), meta: { roles: ADMIN } },
@@ -35,13 +35,24 @@ const router = createRouter({
   routes
 });
 
-// 阶段5：全局前置守卫——角色隔离。
-//  - 未登录 → 回到登录页（App.vue 在未认证时渲染登录界面）。
+// 阶段5：全局前置守卫——角色隔离与登录拦截。
+//  - 未登录 → 允许停留在 '/'（App.vue 会渲染登录界面），若访问其他受限页面则重定向至 '/'。
+//  - 已登录若访问 '/' → 根据角色跳转到对应首页（Admin -> /dashboard, 其他 -> /scada-view）。
 //  - 已登录但目标路由 roles 不含当前角色 → 普通用户落到 /scada-view（组态运行），
 //    管理员落到 /dashboard，避免普通用户误入组态设计/管理后台。
 router.beforeEach((to, _from, next) => {
-  if (to.meta.public) return next();
-  if (!isAuthenticated.value) return next('/');
+  if (!isAuthenticated.value) {
+    if (to.path === '/' || to.meta.public) {
+      return next();
+    }
+    return next('/');
+  }
+
+  // 已登录状态下访问根路径，自动跳转到角色默认首页
+  if (to.path === '/') {
+    const role = loginUser.value?.role;
+    return next(role === 'Admin' ? '/dashboard' : '/scada-view');
+  }
 
   const roles = (to.meta.roles as string[] | undefined) ?? [];
   if (roles.length > 0) {
