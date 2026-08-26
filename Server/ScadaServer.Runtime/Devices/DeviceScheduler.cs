@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Runtime.Events;
 
 namespace ScadaServer.Runtime.Devices
 {
@@ -32,6 +33,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly ILogger<DeviceWorker> _workerLogger;
         private readonly IScadaNotificationService _notificationService;
         private readonly IHistoryRecorder _historyRecorder;
+        private readonly IVariableChangeBus _changeBus;
 
         // 调度器自身的取消源：由 StopAsync 触发，独立于宿主的 stoppingToken，
         // 确保在应用退出时调度循环与已派发的 worker 都能干净退出。
@@ -58,13 +60,15 @@ namespace ScadaServer.Runtime.Devices
             ILogger<DeviceScheduler> logger,
             ILogger<DeviceWorker> workerLogger,
             IScadaNotificationService notificationService,
-            IHistoryRecorder historyRecorder)
+            IHistoryRecorder historyRecorder,
+            IVariableChangeBus changeBus)
         {
             _runtimeManager = runtimeManager;
             _logger = logger;
             _workerLogger = workerLogger;
             _notificationService = notificationService;
             _historyRecorder = historyRecorder;
+            _changeBus = changeBus;
         }
 
         /// <summary>
@@ -152,7 +156,7 @@ namespace ScadaServer.Runtime.Devices
                 try
                 {
                     var worker = new DeviceWorker(
-                        runtime, _workerLogger, _notificationService, _historyRecorder);
+                        runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus);
                     await worker.WorkerAsync(workerToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

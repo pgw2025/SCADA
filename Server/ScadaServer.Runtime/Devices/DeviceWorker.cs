@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
+using ScadaServer.Runtime.Events;
 
 namespace ScadaServer.Runtime.Devices
 {
@@ -25,6 +26,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly ILogger<DeviceWorker> _logger;
         private readonly IScadaNotificationService _notificationService;
         private readonly IHistoryRecorder _historyRecorder;
+        private readonly IVariableChangeBus _changeBus;
 
         /// <summary>
         /// 变量越界报警去重状态：key = 变量Key，值 = (是否超上限, 是否低于限)。
@@ -40,12 +42,13 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="notificationService">变量更新通知服务（SignalR / MQTT）</param>
         /// <param name="historyRecorder">历史数据记录器（异步落库）</param>
         /// <exception cref="ArgumentNullException">runtime 或 logger 为 null 时抛出</exception>
-        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder)
+        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder, IVariableChangeBus changeBus)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
             _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+            _changeBus = changeBus ?? throw new ArgumentNullException(nameof(changeBus));
         }
 
         /// <summary>
@@ -140,6 +143,18 @@ namespace ScadaServer.Runtime.Devices
                             if (vr.IsChanged && vr.Value != null)
                             {
                                 changed.Add((vr.Key, vr.Value));
+
+                                // 发布进程内变量变化事件（非阻塞），供绑定引擎等订阅者消费。
+                                _changeBus.Publish(new VariableChangeEvent
+                                {
+                                    DeviceId = _runtime.Device.Id,
+                                    VariableKey = vr.Key,
+                                    Value = vr.Value,
+                                    PreviousValue = vr.PreviousValue,
+                                    Quality = vr.Quality,
+                                    UpdateTime = vr.UpdateTime,
+                                    Source = VariableChangeSource.Polling
+                                });
                             }
 
                             // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）

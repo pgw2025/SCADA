@@ -13,6 +13,8 @@ using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Runtime.Devices;
+using ScadaServer.Runtime.Bindings;
+using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Interface;
 
 namespace ScadaServer.Runtime
@@ -34,6 +36,8 @@ namespace ScadaServer.Runtime
         private readonly IScadaNotificationService _notificationService;
         private readonly IHistoryRecorder _historyRecorder;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IVariableChangeBus _changeBus;
+        private readonly IVariableBindingEngine _bindingEngine;
         private DeviceScheduler? _scheduler;
 
         /// <summary>
@@ -56,7 +60,9 @@ namespace ScadaServer.Runtime
             DeviceRegistry deviceRegistry,
             IScadaNotificationService notificationService,
             IHistoryRecorder historyRecorder,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+            IVariableChangeBus changeBus,
+            IVariableBindingEngine bindingEngine)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -65,6 +71,8 @@ namespace ScadaServer.Runtime
             _notificationService = notificationService;
             _historyRecorder = historyRecorder;
             _scopeFactory = scopeFactory;
+            _changeBus = changeBus;
+            _bindingEngine = bindingEngine;
         }
 
         /// <inheritdoc/>
@@ -140,6 +148,9 @@ namespace ScadaServer.Runtime
             {
                 await BuildAndRegisterDeviceAsync(device);
             }
+
+            // 所有设备注册完成后加载变量绑定索引，避免设备未就绪即触发转发写入。
+            await _bindingEngine.LoadAsync();
         }
 
         /// <inheritdoc/>
@@ -339,7 +350,8 @@ namespace ScadaServer.Runtime
                 _loggerFactory.CreateLogger<DeviceScheduler>(),
                 _loggerFactory.CreateLogger<DeviceWorker>(),
                 _notificationService,
-                _historyRecorder);
+                _historyRecorder,
+                _changeBus);
 
             await _scheduler.StartAsync(token);
         }
@@ -367,6 +379,9 @@ namespace ScadaServer.Runtime
                     _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
                 }
             }
+
+            // 清空变量绑定索引，避免停止后残留映射在重启前被误触发。
+            _bindingEngine.Clear();
         }
 
         /// <inheritdoc/>
@@ -430,6 +445,18 @@ namespace ScadaServer.Runtime
             {
                 _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入回拨通知失败。", deviceId, variableKey);
             }
+
+            // 发布进程内变量变化事件（非阻塞），供绑定引擎等订阅者消费。
+            _changeBus.Publish(new VariableChangeEvent
+            {
+                DeviceId = deviceId,
+                VariableKey = variableKey,
+                Value = vr.Value,
+                PreviousValue = vr.PreviousValue,
+                Quality = vr.Quality,
+                UpdateTime = vr.UpdateTime,
+                Source = VariableChangeSource.UserWrite
+            });
 
             return (true, null);
         }
