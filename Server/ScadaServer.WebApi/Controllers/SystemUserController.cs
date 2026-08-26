@@ -46,5 +46,13 @@ namespace ScadaServer.WebApi.Controllers
             await _appService.DeleteAsync(id);
             return Ok();
         }
+
+        // 管理员重置他人密码（RequireAdmin 已由控制器类级约束）
+        [HttpPost("{id}/reset-password")]
+        public async Task<IActionResult> ResetPassword(int id, [FromBody] ResetPasswordDto dto)
+        {
+            await _appService.ResetPasswordAsync(id, dto.NewPassword);
+            return Ok(new { Success = true, Message = "密码已重置" });
+        }
     }
 }

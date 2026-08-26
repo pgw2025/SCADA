@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 
@@ -35,6 +36,19 @@ namespace ScadaServer.WebApi.Controllers
             var result = await _userService.LoginAsync(loginDto);
             if (!result.Success) return Unauthorized(result);
             return Ok(result);
+        }
+
+        // 用户自主修改密码（任意已登录用户，当前用户 id 取自 JWT；依赖全局认证兜底策略）
+        [HttpPost("change-password")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            var idClaim = User.FindFirst("id")?.Value;
+            if (!int.TryParse(idClaim, out var userId))
+            {
+                return Unauthorized(new { Message = "无法识别当前用户" });
+            }
+            await _userService.ChangePasswordAsync(userId, dto.OldPassword, dto.NewPassword);
+            return Ok(new { Success = true, Message = "密码修改成功" });
         }
     }
 }

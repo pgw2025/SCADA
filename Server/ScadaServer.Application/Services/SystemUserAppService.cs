@@ -36,10 +36,19 @@ namespace ScadaServer.Application.Services
                 return new LoginResponseDto { Success = false, Message = "Invalid username or password" };
             }
 
+            // P1：账号被停用时禁止登录（置于密码校验之后，避免暴露账号是否存在）
+            if (user.Status != "Active")
+            {
+                return new LoginResponseDto { Success = false, Message = "该账号已被停用，请联系管理员" };
+            }
+
             var tokenHandler = new JwtSecurityTokenHandler();
             // 与 WebApi 端一致：密钥必须来自配置（Jwt__Key），缺失即快速失败，禁止硬编码默认密钥。
             var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException("未配置 Jwt:Key 签名密钥，无法签发 Token。"));
+            // Token 有效期来自配置 Jwt:ExpireHours（小时），未配置/非法时默认 8 小时
+            var expireRaw = _configuration["Jwt:ExpireHours"];
+            var expireHours = double.TryParse(expireRaw, System.Globalization.CultureInfo.InvariantCulture, out var eh) ? eh : 8d;
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new[]
@@ -52,7 +61,7 @@ namespace ScadaServer.Application.Services
                     new Claim("username", user.Username),
                     new Claim("role", user.Role)
                 }),
-                Expires = DateTime.UtcNow.AddDays(7),
+                Expires = DateTime.UtcNow.AddHours(expireHours),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
                 Issuer = _configuration["Jwt:Issuer"],
                 Audience = _configuration["Jwt:Audience"]
@@ -100,26 +109,30 @@ namespace ScadaServer.Application.Services
 
         public async Task CreateAsync(CreateUserDto dto)
         {
-            // 用户名与初始密码校验
-            if (string.IsNullOrWhiteSpace(dto.Username))
+            // 用户名校验（去空格 + 长度约束，与 DB varchar(64)/唯一索引对应）
+            var username = dto.Username?.Trim();
+            if (string.IsNullOrWhiteSpace(username))
             {
                 throw new BusinessException("用户名不能为空");
             }
-            if (string.IsNullOrWhiteSpace(dto.Password))
+            if (username.Length > 64)
             {
-                throw new BusinessException("新建用户必须设置初始密码");
+                throw new BusinessException("用户名长度不能超过64个字符");
             }
 
+            // 密码策略校验（长度 + 组成）
+            ValidatePassword(dto.Password);
+
             // 用户名唯一性
-            var exists = await _repository.AnyAsync(u => u.Username == dto.Username);
+            var exists = await _repository.AnyAsync(u => u.Username == username);
             if (exists)
             {
-                throw new BusinessException($"用户名 '{dto.Username}' 已存在");
+                throw new BusinessException($"用户名 '{username}' 已存在");
             }
 
             var entity = new SystemUser
             {
-                Username = dto.Username,
+                Username = username,
                 Role = NormalizeRole(dto.Role, SystemRoles.Operator),
                 Status = NormalizeStatus(dto.Status, "Active")
             };
@@ -140,19 +153,104 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.Id} 的用户不存在");
             }
 
-            entity.Username = dto.Username;
-            entity.Role = NormalizeRole(dto.Role, defaultValue: null);
-            entity.Status = NormalizeStatus(dto.Status, defaultValue: null);
+            var username = dto.Username?.Trim();
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                throw new BusinessException("用户名不能为空");
+            }
+            if (username.Length > 64)
+            {
+                throw new BusinessException("用户名长度不能超过64个字符");
+            }
+
+            // 内置超级管理员保护：用户名与角色不可修改（即便绕过前端直接调 API 也被拒绝）
+            if (entity.Username == "admin" && (username != "admin" || dto.Role != SystemRoles.Admin))
+            {
+                throw new BusinessException("内置管理员 admin 的用户名与角色不可修改");
+            }
+
+            // 用户名唯一性（排除自身）
+            var dup = await _repository.AnyAsync(u => u.Username == username && u.Id != entity.Id);
+            if (dup)
+            {
+                throw new BusinessException($"用户名 '{username}' 已存在");
+            }
+
+            entity.Username = username;
+            var newRole = NormalizeRole(dto.Role, defaultValue: null);
+            var newStatus = NormalizeStatus(dto.Status, defaultValue: null);
+
+            // 最后管理员保护：将该用户从 Admin 降级前，须确保仍保留至少一名启用的管理员
+            if (entity.Role == SystemRoles.Admin && newRole != SystemRoles.Admin)
+            {
+                var otherActiveAdmin = await _repository.AnyAsync(
+                    u => u.Role == SystemRoles.Admin && u.Status == "Active" && u.Id != entity.Id);
+                if (!otherActiveAdmin)
+                {
+                    throw new BusinessException("系统必须至少保留一名启用的管理员");
+                }
+            }
+
+            entity.Role = newRole;
+            entity.Status = newStatus;
             await _repository.UpdateAsync(entity);
         }
 
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
-            if (entity != null)
+            if (entity == null)
             {
-                await _repository.DeleteAsync(entity);
+                // P1：删除不存在的用户不再静默成功，与 UpdateAsync 语义对齐
+                throw new BusinessException($"ID 为 {id} 的用户不存在");
             }
+
+            // 最后管理员保护：删除 Admin 前，须确保仍保留至少一名启用的管理员
+            if (entity.Role == SystemRoles.Admin)
+            {
+                var otherActiveAdmin = await _repository.AnyAsync(
+                    u => u.Role == SystemRoles.Admin && u.Status == "Active" && u.Id != entity.Id);
+                if (!otherActiveAdmin)
+                {
+                    throw new BusinessException("系统必须至少保留一名启用的管理员，禁止删除最后一名管理员");
+                }
+            }
+
+            await _repository.DeleteAsync(entity);
+        }
+
+        public async Task ResetPasswordAsync(int id, string newPassword)
+        {
+            var entity = await _repository.GetByIdAsync(id);
+            if (entity == null)
+            {
+                throw new BusinessException($"ID 为 {id} 的用户不存在");
+            }
+
+            ValidatePassword(newPassword);
+            entity.PasswordHash = new PasswordHasher<SystemUser>().HashPassword(entity, newPassword);
+            await _repository.UpdateAsync(entity);
+        }
+
+        public async Task ChangePasswordAsync(int userId, string oldPassword, string newPassword)
+        {
+            var entity = await _repository.GetByIdAsync(userId);
+            if (entity == null)
+            {
+                throw new BusinessException("用户不存在");
+            }
+
+            // 先验证旧密码
+            var passwordHasher = new PasswordHasher<SystemUser>();
+            var verify = passwordHasher.VerifyHashedPassword(entity, entity.PasswordHash, oldPassword);
+            if (verify == PasswordVerificationResult.Failed)
+            {
+                throw new BusinessException("原密码不正确");
+            }
+
+            ValidatePassword(newPassword);
+            entity.PasswordHash = passwordHasher.HashPassword(entity, newPassword);
+            await _repository.UpdateAsync(entity);
         }
 
         /// <summary>
@@ -192,6 +290,21 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"无效的用户状态: '{normalized}'，可选值: Active/Inactive");
             }
             return normalized;
+        }
+
+        /// <summary>
+        /// 密码策略校验：至少 8 位且同时包含字母与数字。新建、重置、自主修改共用同一规则。
+        /// </summary>
+        private static void ValidatePassword(string? password)
+        {
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+            {
+                throw new BusinessException("密码长度至少为 8 位");
+            }
+            if (!password.Any(char.IsLetter) || !password.Any(char.IsDigit))
+            {
+                throw new BusinessException("密码必须同时包含字母和数字");
+            }
         }
     }
 }

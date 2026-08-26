@@ -160,7 +160,7 @@ public class DatabaseInitializer
         await _db.SaveChangesAsync();
 
         _logger.LogWarning(
-            "默认管理员账号已创建: admin/123456");
+            "默认管理员账号已创建: admin/123456。此为开发占位弱口令，请立即修改，避免尚未改密即接入生产。");
     }
 
     /// <summary>
