@@ -24,7 +24,7 @@ import {
 } from 'lucide-vue-next';
 
 // Selection and query states
-const selectedDevId = ref<string>(devices.value[0]?.id || '');
+const selectedDevId = ref<string>(devices.value[0]?.id != null ? String(devices.value[0].id) : '');
 const searchQuery = ref<string>('');
 const selectedTypeFilter = ref<string>('ALL');
 
@@ -275,9 +275,9 @@ watch(selectedDevId, (id) => {
         <div 
           v-for="dev in filteredDevices" 
           :key="dev.id"
-          @click="selectedDevId = dev.id"
+          @click="selectedDevId = String(dev.id)"
           class="p-3.5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all text-left flex items-start gap-2.5 relative"
-          :class="selectedDevId === dev.id ? 'bg-sky-50/50 dark:bg-sky-950/30 border-r-4 border-r-[#1890ff]' : ''"
+          :class="selectedDevId === String(dev.id) ? 'bg-sky-50/50 dark:bg-sky-950/30 border-r-4 border-r-[#1890ff]' : ''"
         >
           <!-- Online status dot -->
           <span 
