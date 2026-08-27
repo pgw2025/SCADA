@@ -6,7 +6,9 @@ import {
   loadSystemUsers, 
   createSystemUser, 
   updateSystemUser, 
-  deleteSystemUser 
+  deleteSystemUser,
+  resetSystemUserPassword,
+  loginUser
 } from '../store/index';
 import { SystemUser } from '../types';
 import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
@@ -92,6 +94,20 @@ const handleSaveUser = async () => {
 
   try {
     if (isEditing.value && editingUserId.value !== null) {
+      // 后台管理员自降级确认：编辑的是当前登录账号且把角色从 Admin 降为非 Admin 时二次确认
+      if (
+        editingUserId.value === loginUser.value?.id &&
+        editingOriginalName.value !== 'admin' &&
+        uRole.value !== ROLE_ADMIN
+      ) {
+        const originalUser = systemUsers.value.find(u => u.id === editingUserId.value);
+        if (originalUser?.role === ROLE_ADMIN) {
+          if (!confirm(`您正在降级自己的账号 [${editingOriginalName.value}]。降级后您将失去后台管理功能入口，确定继续吗？`)) {
+            return;
+          }
+        }
+      }
+
       await updateSystemUser({
         id: editingUserId.value,
         username: uName.value.trim(),
@@ -135,6 +151,46 @@ const handleDeleteUser = async (id: number, name: string) => {
     }
   }
 };
+
+// ---- 管理员重置他人密码 ----
+const showResetPwModal = ref(false);
+const resetPwUserId = ref<number | null>(null);
+const resetPwName = ref('');
+const resetPwPass = ref('');
+
+const openResetPwModal = (user: SystemUser) => {
+  resetPwUserId.value = user.id;
+  resetPwName.value = user.username;
+  resetPwPass.value = '';
+  showResetPwModal.value = true;
+};
+
+const handleResetPassword = async () => {
+  if (resetPwUserId.value === null) return;
+  if (!resetPwPass.value.trim() || resetPwPass.value.length < 8) {
+    alert('新密码长度至少为 8 位');
+    return;
+  }
+  try {
+    await resetSystemUserPassword(resetPwUserId.value, resetPwPass.value);
+    addLog('用户管理', `管理员重置了用户 [${resetPwName.value}] 的密码`, 'warning');
+    showResetPwModal.value = false;
+    alert(`已重置用户 [${resetPwName.value}] 的密码`);
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出（含后端具体 message）
+  }
+};
+
+// ---- 创建时间格式化：后端统一以 UTC 存储，无时区后缀时补齐 'Z' 按 UTC 解析为本地，避免时差 ----
+const formatCreatedAt = (raw?: string): string => {
+  if (!raw) return '--';
+  const hasZone = raw.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(raw);
+  const iso = hasZone ? raw : raw + 'Z';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '--';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 </script>
 
 <template>
@@ -148,7 +204,7 @@ const handleDeleteUser = async (id: number, name: string) => {
           <span>用户权限管理</span>
         </h1>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          管理系统用户账户，分配角色权限。支持超级管理员、管理员、操作员、观察员四种角色。
+          管理系统用户账户，分配角色权限。支持管理员、操作员、观察员三种角色。
         </p>
       </div>
 
@@ -247,7 +303,7 @@ const handleDeleteUser = async (id: number, name: string) => {
             </td>
 
             <!-- Created At -->
-            <td class="px-6 py-4 text-slate-400 dark:text-slate-500 text-[11px] font-bold leading-none">--</td>
+            <td class="px-6 py-4 text-slate-400 dark:text-slate-500 text-[11px] font-bold leading-none">{{ formatCreatedAt(u.createdAt) }}</td>
 
             <!-- System status toggles -->
             <td class="px-6 py-4 text-left">
@@ -269,6 +325,13 @@ const handleDeleteUser = async (id: number, name: string) => {
                 >
                   <Edit3 class="w-3.5 h-3.5" />
                   编辑
+                </button>
+                <button 
+                  @click="openResetPwModal(u)"
+                  class="text-[#722ed1] dark:text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 cursor-pointer font-bold inline-flex items-center gap-0.5 ml-1"
+                >
+                  <Lock class="w-3.5 h-3.5" />
+                  重置密码
                 </button>
                 <button 
                   v-if="u.username !== 'admin'"
@@ -369,6 +432,51 @@ const handleDeleteUser = async (id: number, name: string) => {
             class="px-4 py-1.5 bg-slate-900 dark:bg-sky-600 border border-slate-900 dark:border-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white rounded-lg cursor-pointer"
           >
             保存
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MODAL: RESET USER PASSWORD -->
+    <div v-if="showResetPwModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
+          <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest text-violet-400">
+            <Lock class="w-4 h-4" />
+            <span>重置密码</span>
+          </div>
+          <button @click="showResetPwModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+        </div>
+
+        <div class="p-5 space-y-4 text-xs">
+          <p class="text-slate-500 dark:text-slate-400 font-bold">
+            为用户 <span class="text-slate-800 dark:text-white font-mono">{{ resetPwName }}</span> 设置新密码
+          </p>
+          <div>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">新密码</label>
+            <input 
+              v-model="resetPwPass"
+              type="password"
+              placeholder="至少 8 位，包含字母和数字"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-violet-500"
+            />
+          </div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
+          <button 
+            @click="showResetPwModal = false"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
+          >
+            取消
+          </button>
+          <button 
+            @click="handleResetPassword"
+            class="px-4 py-1.5 bg-slate-900 dark:bg-violet-600 border border-slate-900 dark:border-violet-600 hover:bg-slate-800 dark:hover:bg-violet-500 font-bold text-xs text-white rounded-lg cursor-pointer"
+          >
+            确认重置
           </button>
         </div>
 

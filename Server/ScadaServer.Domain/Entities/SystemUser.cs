@@ -28,5 +28,10 @@ namespace ScadaServer.Domain.Entities
         /// 用户状态（如：Active、Inactive）
         /// </summary>
         public string Status { get; set; }
+
+        /// <summary>
+        /// 创建时间（UTC）。新建时由服务层写入，供前端口令审计展示。
+        /// </summary>
+        public DateTime CreatedAt { get; set; }
     }
 }

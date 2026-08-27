@@ -301,9 +301,9 @@ export interface DataConversion {
 export interface SystemUser {
   id: number;
   username: string;
-  passwordHash?: string;
   role: string;
   status: string;
+  createdAt?: string;
 }
 
 export interface CreateUserDto {
@@ -318,6 +318,10 @@ export interface UpdateUserDto {
   username?: string;
   role?: string;
   status?: string;
+}
+
+export interface ResetPasswordDto {
+  newPassword: string;
 }
 
 export interface LoginDto {

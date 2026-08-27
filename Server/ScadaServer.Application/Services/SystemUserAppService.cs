@@ -91,7 +91,8 @@ namespace ScadaServer.Application.Services
                 Id = entity.Id,
                 Username = entity.Username,
                 Role = entity.Role,
-                Status = entity.Status
+                Status = entity.Status,
+                CreatedAt = entity.CreatedAt
             };
         }
 
@@ -103,7 +104,8 @@ namespace ScadaServer.Application.Services
                 Id = entity.Id,
                 Username = entity.Username,
                 Role = entity.Role,
-                Status = entity.Status
+                Status = entity.Status,
+                CreatedAt = entity.CreatedAt
             }).ToList();
         }
 
@@ -134,7 +136,8 @@ namespace ScadaServer.Application.Services
             {
                 Username = username,
                 Role = NormalizeRole(dto.Role, SystemRoles.Operator),
-                Status = NormalizeStatus(dto.Status, "Active")
+                Status = NormalizeStatus(dto.Status, "Active"),
+                CreatedAt = DateTime.UtcNow
             };
 
             // 使用 PasswordHasher 哈希初始密码（与登录校验一致），保证 API 创建的用户可正常登录。
@@ -163,10 +166,11 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException("用户名长度不能超过64个字符");
             }
 
-            // 内置超级管理员保护：用户名与角色不可修改（即便绕过前端直接调 API 也被拒绝）
-            if (entity.Username == "admin" && (username != "admin" || dto.Role != SystemRoles.Admin))
+            // 内置超级管理员保护：用户名、角色、状态三者均不可修改（即便绕过前端直接调 API 也被拒绝）
+            if (entity.Username == "admin"
+                && (username != "admin" || dto.Role != SystemRoles.Admin || dto.Status == "Inactive"))
             {
-                throw new BusinessException("内置管理员 admin 的用户名与角色不可修改");
+                throw new BusinessException("内置管理员 admin 的用户名、角色与状态不可修改");
             }
 
             // 用户名唯一性（排除自身）
@@ -203,6 +207,12 @@ namespace ScadaServer.Application.Services
             {
                 // P1：删除不存在的用户不再静默成功，与 UpdateAsync 语义对齐
                 throw new BusinessException($"ID 为 {id} 的用户不存在");
+            }
+
+            // 内置超级管理员保护：内置 admin 不可删除（即便前端兜底绕过直接调 API 也被拒绝）
+            if (entity.Username == "admin")
+            {
+                throw new BusinessException("内置管理员 admin 不可删除");
             }
 
             // 最后管理员保护：删除 Admin 前，须确保仍保留至少一名启用的管理员

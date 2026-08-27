@@ -131,6 +131,16 @@ export const deleteSystemUser = async (id: number): Promise<void> => {
   await http.delete(`${systemConfig.value.backendApiUrl}/api/SystemUser/${id}`);
 };
 
+export const resetSystemUserPassword = async (id: number, newPassword: string): Promise<void> => {
+  // 后端路由为 POST /api/SystemUser/{id}/reset-password（管理员重置他人密码）
+  await http.post(`${systemConfig.value.backendApiUrl}/api/SystemUser/${id}/reset-password`, { newPassword });
+};
+
+export const changeMyPassword = async (oldPassword: string, newPassword: string): Promise<void> => {
+  // 后端路由为 POST /api/Auth/change-password（任意已登录用户自主改密，需验证原密码）
+  await http.post(`${systemConfig.value.backendApiUrl}/api/Auth/change-password`, { oldPassword, newPassword });
+};
+
 export const loadSystemUsers = async (): Promise<SystemUser[]> => {
   try {
     const users = await fetchSystemUsers();

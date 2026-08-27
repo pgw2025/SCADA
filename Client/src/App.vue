@@ -6,6 +6,7 @@ import {
   loginUser,
   performLogin,
   performLogout,
+  changeMyPassword,
   systemConfig,
   currentTheme,
   toggleTheme,
@@ -131,6 +132,44 @@ const isActive = (path: string) => router.currentRoute.value.path === path;
 
 // 阶段5：角色隔离——仅管理员可见后台导航；普通用户（Operator）仅见「组态运行」入口
 const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
+
+// ---- 自主修改密码（所有已登录用户可见，入口在侧边栏用户区）----
+const showChangePwModal = ref(false);
+const changePwOld = ref('');
+const changePwNew = ref('');
+const changePwConfirm = ref('');
+const changePwError = ref('');
+const changePwSuccess = ref('');
+
+const openChangePwModal = () => {
+  changePwOld.value = '';
+  changePwNew.value = '';
+  changePwConfirm.value = '';
+  changePwError.value = '';
+  changePwSuccess.value = '';
+  showChangePwModal.value = true;
+};
+
+const handleChangeMyPassword = async () => {
+  changePwError.value = '';
+  changePwSuccess.value = '';
+  // 前端预校验，减少无效请求（与后端策略一致：≥8 位且含字母与数字）
+  if (!changePwOld.value.trim()) { changePwError.value = '请输入原密码'; return; }
+  if (!changePwNew.value || changePwNew.value.length < 8) { changePwError.value = '新密码长度至少为 8 位'; return; }
+  if (!/[A-Za-z]/.test(changePwNew.value) || !/\d/.test(changePwNew.value)) { changePwError.value = '新密码必须同时包含字母和数字'; return; }
+  if (changePwNew.value !== changePwConfirm.value) { changePwError.value = '两次输入的新密码不一致'; return; }
+  if (changePwNew.value === changePwOld.value) { changePwError.value = '新密码不能与原密码相同'; return; }
+
+  try {
+    await changeMyPassword(changePwOld.value.trim(), changePwNew.value);
+    changePwSuccess.value = '密码修改成功，下次登录请使用新密码';
+    changePwOld.value = '';
+    changePwNew.value = '';
+    changePwConfirm.value = '';
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出（含后端具体 message，如"原密码不正确"）
+  }
+};
 </script>
 
 <template>
@@ -549,6 +588,11 @@ const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
               }}</span>
             </div>
           </div>
+          <button v-if="!isSidebarCollapsed" @click="openChangePwModal"
+            class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+            title="修改密码">
+            <Lock class="w-4 h-4" />
+          </button>
           <button v-if="!isSidebarCollapsed" @click="performLogout"
             class="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
             title="退出">
@@ -562,6 +606,11 @@ const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
               <span
                 class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-950"></span>
             </div>
+            <button @click="openChangePwModal"
+              class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+              title="修改密码">
+              <Lock class="w-4 h-4" />
+            </button>
             <button @click="performLogout"
               class="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/20 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-[#ef4444] transition-colors cursor-pointer"
               title="退出">
@@ -714,6 +763,51 @@ const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
       <main class="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#070b12] overflow-hidden relative">
         <router-view />
       </main>
+    </div>
+  </div>
+
+  <!-- MODAL: 自主修改密码（所有已登录用户可用） -->
+  <div v-if="showChangePwModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest text-emerald-400">
+          <Lock class="w-4 h-4" />
+          <span>修改密码</span>
+        </div>
+        <button @click="showChangePwModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+      </div>
+
+      <div class="p-5 space-y-4 text-xs">
+        <div>
+          <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">原密码</label>
+          <input v-model="changePwOld" type="password" placeholder="请输入原密码"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">新密码</label>
+          <input v-model="changePwNew" type="password" placeholder="至少 8 位，包含字母和数字"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">确认新密码</label>
+          <input v-model="changePwConfirm" type="password" placeholder="再次输入新密码"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 dark:focus:border-emerald-500" />
+        </div>
+
+        <p v-if="changePwError" class="text-xs font-bold text-rose-500">{{ changePwError }}</p>
+        <p v-if="changePwSuccess" class="text-xs font-bold text-emerald-500">{{ changePwSuccess }}</p>
+      </div>
+
+      <div class="bg-slate-50 dark:bg-slate-950 p-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
+        <button @click="showChangePwModal = false"
+          class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+          取消
+        </button>
+        <button @click="handleChangeMyPassword"
+          class="px-4 py-1.5 bg-slate-900 dark:bg-emerald-600 border border-slate-900 dark:border-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 font-bold text-xs text-white rounded-lg cursor-pointer">
+          确认修改
+        </button>
+      </div>
     </div>
   </div>
 </template>
