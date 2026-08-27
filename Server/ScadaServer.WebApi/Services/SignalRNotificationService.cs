@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Enums;
 using ScadaServer.WebApi.Hubs;
@@ -58,6 +59,14 @@ namespace ScadaServer.WebApi.Services
             // SignalR通知：向所有连接的客户端广播系统报警（前端 ReceiveSystemAlarm 监听展示）。
             // MQTT通知：当前 MQTT 管理器未实现报警发布，静默忽略。
             await _hubContext.Clients.All.SendAsync("ReceiveSystemAlarm", deviceId, variableKey, variableName, message, level);
+        }
+
+        /// <inheritdoc/>
+        public async Task NotifyAlarmAsync(AlarmEvent evt)
+        {
+            // 结构化报警事件推送：整对象序列化（SignalR 默认协议会把枚举序列化为数字，
+            // 与 REST 接口的字符串枚举不一致，此处显式按对象推送，前端据此做列表/角标/确认态）。
+            await _hubContext.Clients.All.SendAsync("ReceiveAlarm", evt);
         }
     }
 }

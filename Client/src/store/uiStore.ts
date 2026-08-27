@@ -7,7 +7,6 @@ export const activeTab = ref<
     | 'data-models'
     | 'scada-editor'
     | 'system-logs'
-    | 'trigger-management'
     | 'task-management'
     | 'system-scripts'
     | 'data-interfaces'

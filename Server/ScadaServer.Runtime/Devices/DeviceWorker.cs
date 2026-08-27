@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
+using ScadaServer.Runtime.Alarms;
 using ScadaServer.Runtime.Events;
 
 namespace ScadaServer.Runtime.Devices
@@ -27,6 +30,8 @@ namespace ScadaServer.Runtime.Devices
         private readonly IScadaNotificationService _notificationService;
         private readonly IHistoryRecorder _historyRecorder;
         private readonly IVariableChangeBus _changeBus;
+        private readonly IAlarmRuleEngine _alarmRuleEngine;
+        private readonly IAlarmRecorder _alarmRecorder;
 
         /// <summary>
         /// 变量越界报警去重状态：key = 变量Key，值 = (是否超上限, 是否低于限)。
@@ -35,20 +40,30 @@ namespace ScadaServer.Runtime.Devices
         private readonly Dictionary<string, (bool High, bool Low)> _alarmStates = new();
 
         /// <summary>
+        /// 规则报警去重/防抖状态：key = "$variableKey#$ruleId"（或 "$variableKey#" 表示兜底）。
+        /// </summary>
+        private readonly Dictionary<string, AlarmRuleState> _ruleStates = new();
+
+        /// <summary>
         /// 初始化设备工作器
         /// </summary>
         /// <param name="runtime">设备运行时，包含设备配置、驱动实例和变量集合</param>
         /// <param name="logger">日志记录器</param>
         /// <param name="notificationService">变量更新通知服务（SignalR / MQTT）</param>
         /// <param name="historyRecorder">历史数据记录器（异步落库）</param>
+        /// <param name="changeBus">变量变化事件总线</param>
+        /// <param name="alarmRuleEngine">报警规则引擎（规则命中判定）</param>
+        /// <param name="alarmRecorder">报警记录器（异步落库）</param>
         /// <exception cref="ArgumentNullException">runtime 或 logger 为 null 时抛出</exception>
-        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder, IVariableChangeBus changeBus)
+        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder, IVariableChangeBus changeBus, IAlarmRuleEngine alarmRuleEngine, IAlarmRecorder alarmRecorder)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
             _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
             _changeBus = changeBus ?? throw new ArgumentNullException(nameof(changeBus));
+            _alarmRuleEngine = alarmRuleEngine ?? throw new ArgumentNullException(nameof(alarmRuleEngine));
+            _alarmRecorder = alarmRecorder ?? throw new ArgumentNullException(nameof(alarmRecorder));
         }
 
         /// <summary>
@@ -297,37 +312,159 @@ namespace ScadaServer.Runtime.Devices
         }
 
         /// <summary>
-        /// 检测变量上下限越界并推送系统报警（SignalR ReceiveSystemAlarm）。
+        /// 检测变量报警（SignalR ReceiveAlarm + 异步落库 AlarmRecorder）。
         /// <list type="bullet">
-        /// <item>仅当模型变量配置了数值上下限（Min / Max）时检测；数字量 / 非数值型不参与；</item>
-        /// <item>进入越界时推送一次，持续越界不重复推送；恢复在限内后自动复位，允许下次越界再次报警。</item>
+        /// <item>该设备+变量配置了活跃报警规则时，由规则引擎求值（支持防抖与去重），规则为权威；</item>
+        /// <item>未配置规则时，回退到模型变量的数值上下限（Min / Max）兜底报警，来源标记为 MinMaxLimit；</item>
+        /// <item>进入报警态推送一次触发事件，恢复后推送恢复事件，均经 AlarmRecorder 异步落库。</item>
         /// </list>
         /// </summary>
         private void TryCheckAlarm(VariableRuntime vr)
         {
-            var definition = vr.Definition;
-            if (definition.Min == null && definition.Max == null)
-            {
-                return;
-            }
             if (vr.Value == null)
             {
                 return;
             }
 
-            double numeric;
-            try
+            var rules = _alarmRuleEngine.GetRules(_runtime.Device.Id, vr.Key);
+            if (rules.Count > 0)
             {
-                numeric = Convert.ToDouble(vr.Value);
-            }
-            catch
-            {
-                // 非数值型（如字符串）不参与上下限报警
+                // 已配置规则：规则为权威，兜底不再参与，避免双报。
+                var numeric = TryToNumber(vr.Value);
+                if (numeric == null)
+                {
+                    return; // 非数值型变量不参与数值规则
+                }
+
+                foreach (var rule in rules)
+                {
+                    EvaluateRule(vr, rule, numeric.Value);
+                }
                 return;
             }
 
-            var high = definition.Max != null && numeric > definition.Max.Value;
-            var low = definition.Min != null && numeric < definition.Min.Value;
+            // 未配置规则：Min/Max 上下限兜底。
+            CheckMinMaxLimit(vr);
+        }
+
+        /// <summary>
+        /// 逐条规则求值并驱动报警状态机（触发/恢复/防抖/去重）。
+        /// </summary>
+        private void EvaluateRule(VariableRuntime vr, AlarmRuleSnapshot rule, double value)
+        {
+            var matched = MatchesCondition(rule.Condition, value, rule.Threshold);
+            var key = BuildRuleStateKey(vr.Key, rule.Id);
+            _ruleStates.TryGetValue(key, out var state);
+            state ??= new AlarmRuleState { RuleId = rule.Id };
+
+            if (matched)
+            {
+                if (state.IsActive)
+                {
+                    return; // 已报警且持续命中，不重复推送
+                }
+
+                if (rule.DebounceSeconds > 0)
+                {
+                    // 防抖观察：首次命中记录起点，持续命中超过防抖窗口才正式报警。
+                    if (state.DebouncePending)
+                    {
+                        if ((DateTime.Now - state.TriggerTime) >= TimeSpan.FromSeconds(rule.DebounceSeconds))
+                        {
+                            state.DebouncePending = false;
+                            state.IsActive = true;
+                            FireEvent(vr, rule, value, AlarmEventType.Triggered);
+                        }
+                    }
+                    else
+                    {
+                        state.DebouncePending = true;
+                        state.TriggerTime = DateTime.Now;
+                    }
+                }
+                else
+                {
+                    state.IsActive = true;
+                    FireEvent(vr, rule, value, AlarmEventType.Triggered);
+                }
+
+                _ruleStates[key] = state;
+            }
+            else
+            {
+                if (state.IsActive)
+                {
+                    // 退出报警态：推送恢复事件。
+                    state.IsActive = false;
+                    state.DebouncePending = false;
+                    FireEvent(vr, rule, value, AlarmEventType.Recovered);
+                    _ruleStates[key] = state;
+                }
+                else if (state.DebouncePending)
+                {
+                    // 防抖观察期内恢复：视为抖动，取消本次报警。
+                    state.DebouncePending = false;
+                    _ruleStates[key] = state;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 条件比较，浮点相等使用容差避免精度抖动。
+        /// </summary>
+        private static bool MatchesCondition(TriggerConditionEnum condition, double value, double threshold)
+        {
+            const double epsilon = 1e-9;
+            return condition switch
+            {
+                TriggerConditionEnum.GreaterThan => value > threshold,
+                TriggerConditionEnum.GreaterOrEqual => value >= threshold,
+                TriggerConditionEnum.LessThan => value < threshold,
+                TriggerConditionEnum.LessOrEqual => value <= threshold,
+                TriggerConditionEnum.EqualTo => Math.Abs(value - threshold) <= epsilon,
+                TriggerConditionEnum.NotEqualTo => Math.Abs(value - threshold) > epsilon,
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// 构造规则报警状态键（保证同变量多规则状态互不干扰；兜底用 "$Key#"）。
+        /// </summary>
+        private static string BuildRuleStateKey(string variableKey, long ruleId) => variableKey + "#" + ruleId.ToString();
+
+        /// <summary>
+        /// 将条件枚举映射为可读文本（用于默认报警文案）。
+        /// </summary>
+        private static string ConditionText(TriggerConditionEnum condition) => condition switch
+        {
+            TriggerConditionEnum.GreaterThan => "大于",
+            TriggerConditionEnum.GreaterOrEqual => "大于等于",
+            TriggerConditionEnum.LessThan => "小于",
+            TriggerConditionEnum.LessOrEqual => "小于等于",
+            TriggerConditionEnum.EqualTo => "等于",
+            TriggerConditionEnum.NotEqualTo => "不等于",
+            _ => condition.ToString()
+        };
+
+        /// <summary>
+        /// Min/Max 数值上下限兜底报警（保持原去重语义，事件来源标记为 MinMaxLimit）。
+        /// </summary>
+        private void CheckMinMaxLimit(VariableRuntime vr)
+        {
+            var definition = vr.Definition;
+            if (vr.Value == null || (definition.Min == null && definition.Max == null))
+            {
+                return;
+            }
+
+            var numeric = TryToNumber(vr.Value);
+            if (numeric == null)
+            {
+                return; // 非数值型不参与上下限报警
+            }
+
+            var high = definition.Max != null && numeric.Value > definition.Max.Value;
+            var low = definition.Min != null && numeric.Value < definition.Min.Value;
 
             if (!_alarmStates.TryGetValue(vr.Key, out var last))
             {
@@ -336,35 +473,81 @@ namespace ScadaServer.Runtime.Devices
 
             if (high && !last.High)
             {
-                // 进入上限越界：推送一次
                 _alarmStates[vr.Key] = (true, low);
-                FireAlarm(vr, $"变量值 {numeric} 超过上限 {definition.Max}", "High");
+                FireEvent(vr, null, numeric.Value, AlarmEventType.Triggered,
+                    $"变量值 {numeric.Value} 超过上限 {definition.Max}", AlarmLevelEnum.High);
             }
             else if (low && !last.Low)
             {
-                // 进入下限越界：推送一次
                 _alarmStates[vr.Key] = (high, true);
-                FireAlarm(vr, $"变量值 {numeric} 低于下限 {definition.Min}", "Low");
+                FireEvent(vr, null, numeric.Value, AlarmEventType.Triggered,
+                    $"变量值 {numeric.Value} 低于下限 {definition.Min}", AlarmLevelEnum.Medium);
             }
             else if (!high && !low && (last.High || last.Low))
             {
-                // 恢复在限内：复位状态，允许下次越界再次报警
+                // 恢复在限内：复位状态 + 推送恢复事件
                 _alarmStates[vr.Key] = (false, false);
+                FireEvent(vr, null, numeric.Value, AlarmEventType.Recovered, string.Empty, AlarmLevelEnum.High);
             }
         }
 
         /// <summary>
-        /// 推送系统报警（fire-and-forget，不阻塞采集循环）。
+        /// 构造报警事件并推送（fire-and-forget 通知）+ 异步落库（AlarmRecorder）。
+        /// 规则告警传 rule；兜底告警 rule 传 null 并用 levelOverride 指定级别。
         /// </summary>
-        private void FireAlarm(VariableRuntime vr, string message, string level)
+        private void FireEvent(VariableRuntime vr, AlarmRuleSnapshot? rule, double value, AlarmEventType type, string? message = null, AlarmLevelEnum? levelOverride = null)
         {
             try
             {
-                _ = _notificationService.NotifySystemAlarmAsync(_runtime.Device.Id, vr.Key, vr.Name, message, level);
+                var level = levelOverride ?? (rule?.Level ?? AlarmLevelEnum.High);
+                var actualValue = value.ToString(CultureInfo.InvariantCulture);
+
+                var evt = new AlarmEvent
+                {
+                    EventType = type,
+                    DeviceId = _runtime.Device.Id,
+                    DeviceKey = _runtime.Device.Key,
+                    VariableKey = vr.Key,
+                    VariableName = vr.Name,
+                    RuleId = rule?.Id,
+                    RuleName = rule?.Name,
+                    Level = level,
+                    Condition = rule?.Condition,
+                    Threshold = rule?.Threshold,
+                    ActualValue = actualValue,
+                    Message = !string.IsNullOrEmpty(message)
+                                ? message
+                                : (rule != null
+                                    ? $"{vr.Name} {ConditionText(rule.Condition)} {rule.Threshold.ToString(CultureInfo.InvariantCulture)}"
+                                    : $"{vr.Name} 越界报警"),
+                    Source = rule != null ? AlarmSourceEnum.Rule : AlarmSourceEnum.MinMaxLimit,
+                    TriggeredAt = DateTime.Now
+                };
+
+                // 通知（SignalR）与落库均为异步安全路径：fire-and-forget 通知 + 非阻塞入队落库。
+                _ = _notificationService.NotifyAlarmAsync(evt);
+                _alarmRecorder.Record(evt);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "推送系统报警失败: {VariableKey}", vr.Key);
+                _logger.LogWarning(ex, "推送/记录报警失败: {VariableKey}", vr.Key);
+            }
+        }
+
+        /// <summary>
+        /// 尝试将变量值转为数值；非数值（布尔/字符串等按 0/1 或失败跳过）。
+        /// </summary>
+        private static double? TryToNumber(object value)
+        {
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                // 布尔/字符串：统一按 0/1 参与（约定 true=1, false=0），无法转换则跳过。
+                if (value is bool b) return b ? 1.0 : 0.0;
+                return null;
             }
         }
 
@@ -384,6 +567,17 @@ namespace ScadaServer.Runtime.Devices
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 单条规则的报警状态机（内存态，不持久化）。
+        /// </summary>
+        private class AlarmRuleState
+        {
+            public long RuleId { get; init; }
+            public bool IsActive { get; set; }
+            public bool DebouncePending { get; set; }
+            public DateTime TriggerTime { get; set; }
         }
     }
 }

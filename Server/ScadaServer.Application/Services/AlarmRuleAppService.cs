@@ -45,6 +45,8 @@ namespace ScadaServer.Application.Services
             entity.Threshold = dto.Threshold;
             entity.Level = dto.Level;
             entity.Active = dto.Active;
+            entity.Message = dto.Message;
+            entity.DebounceSeconds = dto.DebounceSeconds;
             await _repository.UpdateAsync(entity);
         }
 
@@ -66,7 +68,9 @@ namespace ScadaServer.Application.Services
             Condition = entity.Condition,
             Threshold = entity.Threshold,
             Level = entity.Level,
-            Active = entity.Active
+            Active = entity.Active,
+            Message = entity.Message,
+            DebounceSeconds = entity.DebounceSeconds
         };
 
         private static AlarmRule MapToEntity(AlarmRuleDto dto) => new()
@@ -77,7 +81,9 @@ namespace ScadaServer.Application.Services
             Condition = dto.Condition,
             Threshold = dto.Threshold,
             Level = dto.Level,
-            Active = dto.Active
+            Active = dto.Active,
+            Message = dto.Message,
+            DebounceSeconds = dto.DebounceSeconds
         };
     }
 }

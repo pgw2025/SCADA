@@ -32,5 +32,15 @@ namespace ScadaServer.Application.Interfaces
         /// <param name="message">报警描述</param>
         /// <param name="level">报警级别（如 High / Low / Error）</param>
         Task NotifySystemAlarmAsync(int deviceId, string variableKey, string variableName, string message, string level);
+
+        /// <summary>
+        /// 通知结构化报警事件（触发/恢复）。
+        /// <para>
+        /// 供运行时报警检测（规则引擎命中或 Min/Max 兜底、系统级）调用，
+        /// 前端通过 SignalR "ReceiveAlarm" 接收同构对象做实时列表、角标与确认态展示。
+        /// </para>
+        /// </summary>
+        /// <param name="evt">报警事件（含设备/变量/级别/数值/来源等信息）</param>
+        Task NotifyAlarmAsync(DTOs.AlarmEvent evt);
     }
 }

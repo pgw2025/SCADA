@@ -28,5 +28,11 @@ namespace ScadaServer.Application.DTOs
         public AlarmLevelEnum Level { get; set; }
 
         public bool Active { get; set; } = true;
+
+        [StringLength(500, ErrorMessage = "报警文案不能超过500个字符")]
+        public string? Message { get; set; }
+
+        [Range(0, 86400, ErrorMessage = "防抖秒数需在 0-86400 之间")]
+        public int DebounceSeconds { get; set; }
     }
 }

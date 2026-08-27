@@ -30,7 +30,7 @@ import {
   Terminal,
   Clock,
   UserCheck,
-  ShieldAlert,
+  Bell,
   Server,
   Calendar,
   FileCode,
@@ -457,15 +457,15 @@ const handleChangeMyPassword = async () => {
               class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 py-1 select-none text-left block">自动化</span>
             <div v-else class="h-px bg-slate-200 dark:bg-slate-800/40 mx-2 my-1" />
             <nav class="space-y-0.5 px-2">
-              <button @click="navigate('/trigger-management')" :class="[
-                isActive('/trigger-management')
+              <button @click="navigate('/alarm-management')" :class="[
+                isActive('/alarm-management')
                   ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]'
                   : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent',
                 isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
               ]" class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full">
-                <ShieldAlert class="w-4 h-4 shrink-0 transition-colors"
-                  :class="isActive('/trigger-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
-                <span v-if="!isSidebarCollapsed" class="truncate">告警管理</span>
+                <Bell class="w-4 h-4 shrink-0 transition-colors"
+                  :class="isActive('/alarm-management') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
+                <span v-if="!isSidebarCollapsed" class="truncate">报警管理</span>
               </button>
 
               <button @click="navigate('/task-management')" :class="[
@@ -694,12 +694,6 @@ const handleChangeMyPassword = async () => {
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
               <Terminal class="w-4 h-4" />
               <span>系统日志</span>
-            </button>
-            <button @click="navigate('/trigger-management'); isMobileSidebarOpen = false;"
-              :class="[isActive('/trigger-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
-              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
-              <ShieldAlert class="w-4 h-4" />
-              <span>告警管理</span>
             </button>
             <button @click="navigate('/task-management'); isMobileSidebarOpen = false;"
               :class="[isActive('/task-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"

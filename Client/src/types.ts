@@ -400,6 +400,97 @@ export interface SystemLogPagedResult {
   items: SystemLogRecord[];
 }
 
+// ===== 报警管理（AlarmRule 规则 + AlarmRecord 记录），对应后端 AlarmRule/ AlarmRecord=====
+
+/** 报警级别枚举（与后端 ScadaServer.Domain.Enums.AlarmLevelEnum 对齐） */
+export type AlarmLevel = 'Low' | 'Medium' | 'High' | 'Critical';
+
+/** 报警条件枚举（与后端 TriggerConditionEnum 对齐） */
+export type TriggerCondition =
+  | 'GreaterThan' | 'GreaterOrEqual'
+  | 'LessThan' | 'LessOrEqual'
+  | 'EqualTo' | 'NotEqualTo';
+
+/** 报警来源（与后端 AlarmSourceEnum 对齐） */
+export type AlarmSource = 'Rule' | 'MinMaxLimit' | 'System';
+
+/** 报警规则（GET /api/AlarmRule） */
+export interface AlarmRule {
+  id: number;
+  name: string;
+  deviceId: number;
+  variableKey: string;
+  condition: TriggerCondition;
+  threshold: number;
+  level: AlarmLevel;
+  active: boolean;
+  message?: string | null;
+  debounceSeconds: number;
+}
+
+/** 报警记录（GET /api/AlarmRecord） */
+export interface AlarmRecord {
+  id: number;
+  deviceId: number;
+  deviceKey: string;
+  variableKey: string;
+  variableName: string;
+  ruleId?: number | null;
+  ruleName?: string | null;
+  level: AlarmLevel;
+  condition?: TriggerCondition | null;
+  threshold?: number | null;
+  actualValue?: string | null;
+  message: string;
+  source: AlarmSource;
+  triggeredAt: string;
+  recoveredAt?: string | null;
+  recoveryValue?: string | null;
+  acked: boolean;
+  ackedAt?: string | null;
+  ackedBy?: string | null;
+}
+
+/** 报警记录查询条件（GET /api/AlarmRecord） */
+export interface AlarmRecordQuery {
+  deviceId?: number | null;
+  level?: AlarmLevel | null;
+  unacked?: boolean | null;
+  unrecovered?: boolean | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+/** 报警记录分页查询结果 */
+export interface AlarmRecordPagedResult {
+  total: number;
+  items: AlarmRecord[];
+}
+
+/**
+ * 实时报警事件（SignalR "ReceiveAlarm" 载荷，对应后端 AlarmEvent）。
+ * SignalR 默认 JSON 协议把枚举序列化为数字（与 REST 的字符串枚举不同），
+ * 故 Level / Condition / Source 使用 string | number，由 alarmStore 归一化处理。
+ */
+export interface AlarmEventPayload {
+  eventType?: string | number;
+  deviceId: number;
+  deviceKey?: string | null;
+  variableKey: string;
+  variableName?: string | null;
+  ruleId?: number | null;
+  ruleName?: string | null;
+  level?: string | number | null;
+  condition?: string | number | null;
+  threshold?: number | null;
+  actualValue?: string | null;
+  message?: string | null;
+  source?: string | number | null;
+  triggeredAt?: string | null;
+}
+
 export interface ServerStatus {
   cpuUsage: number;
   memUsage: number;

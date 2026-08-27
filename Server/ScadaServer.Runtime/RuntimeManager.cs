@@ -15,6 +15,7 @@ using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Runtime.Devices;
 using ScadaServer.Runtime.Bindings;
 using ScadaServer.Runtime.Events;
+using ScadaServer.Runtime.Alarms;
 using ScadaServer.Runtime.Interface;
 
 namespace ScadaServer.Runtime
@@ -38,6 +39,8 @@ namespace ScadaServer.Runtime
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IVariableChangeBus _changeBus;
         private readonly IVariableBindingEngine _bindingEngine;
+        private readonly IAlarmRuleEngine _alarmRuleEngine;
+        private readonly IAlarmRecorder _alarmRecorder;
         private DeviceScheduler? _scheduler;
 
         /// <summary>
@@ -62,7 +65,9 @@ namespace ScadaServer.Runtime
             IHistoryRecorder historyRecorder,
             IServiceScopeFactory scopeFactory,
             IVariableChangeBus changeBus,
-            IVariableBindingEngine bindingEngine)
+            IVariableBindingEngine bindingEngine,
+            IAlarmRuleEngine alarmRuleEngine,
+            IAlarmRecorder alarmRecorder)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -73,6 +78,8 @@ namespace ScadaServer.Runtime
             _scopeFactory = scopeFactory;
             _changeBus = changeBus;
             _bindingEngine = bindingEngine;
+            _alarmRuleEngine = alarmRuleEngine;
+            _alarmRecorder = alarmRecorder;
         }
 
         /// <inheritdoc/>
@@ -147,6 +154,16 @@ namespace ScadaServer.Runtime
             foreach (var device in devices)
             {
                 await BuildAndRegisterDeviceAsync(device);
+            }
+
+            // 同步加载报警规则快照，保证设备采集首轮即可命中规则报警。
+            try
+            {
+                await _alarmRuleEngine.ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "启动时加载报警规则失败（引擎周期刷新将自动重试）。");
             }
 
             // 所有设备注册完成后加载变量绑定索引，避免设备未就绪即触发转发写入。
@@ -351,7 +368,9 @@ namespace ScadaServer.Runtime
                 _loggerFactory.CreateLogger<DeviceWorker>(),
                 _notificationService,
                 _historyRecorder,
-                _changeBus);
+                _changeBus,
+                _alarmRuleEngine,
+                _alarmRecorder);
 
             await _scheduler.StartAsync(token);
         }

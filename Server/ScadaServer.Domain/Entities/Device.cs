@@ -83,11 +83,6 @@ namespace ScadaServer.Domain.Entities
         public DeviceConfig? Config { get; set; }
 
         /// <summary>
-        /// 该设备下的触发器
-        /// </summary>
-        public List<VariableTrigger>? Triggers { get; set; }
-
-        /// <summary>
         /// 该设备下的设备变量实例（变量在设备上的具体实现）。
         /// <para>
         /// 一台设备可包含多条 <see cref="DeviceVariable"/>，每条对应其模型 <see cref="DataModel"/> 中

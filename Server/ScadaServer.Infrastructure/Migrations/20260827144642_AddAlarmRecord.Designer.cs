@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    partial class ScadaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827144642_AddAlarmRecord")]
+    partial class AddAlarmRecord
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1132,6 +1135,58 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.ToTable("VariableHistory", (string)null);
                 });
 
+            modelBuilder.Entity("ScadaServer.Domain.Entities.VariableTrigger", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("AlarmLevel")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LinkageValue")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("LinkageVariableKey")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<double>("Threshold")
+                        .HasColumnType("double");
+
+                    b.Property<string>("VariableKey")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("VariableTriggers", (string)null);
+                });
+
             modelBuilder.Entity("ScadaServer.Domain.Entities.DataModel", b =>
                 {
                     b.HasOne("ScadaServer.Domain.Entities.Protocol", "Protocol")
@@ -1233,11 +1288,22 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.Navigation("Device");
                 });
 
+            modelBuilder.Entity("ScadaServer.Domain.Entities.VariableTrigger", b =>
+                {
+                    b.HasOne("ScadaServer.Domain.Entities.Device", null)
+                        .WithMany("Triggers")
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScadaServer.Domain.Entities.Device", b =>
                 {
                     b.Navigation("Config");
 
                     b.Navigation("DeviceVariables");
+
+                    b.Navigation("Triggers");
                 });
 
             modelBuilder.Entity("ScadaServer.Domain.Entities.ModelVariable", b =>

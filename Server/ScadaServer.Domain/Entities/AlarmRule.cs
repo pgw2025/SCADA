@@ -46,5 +46,16 @@ namespace ScadaServer.Domain.Entities
         /// 是否启用
         /// </summary>
         public bool Active { get; set; } = true;
+
+        /// <summary>
+        /// 报警文案（为空时使用默认模板"变量名 条件 阈值"）
+        /// </summary>
+        [MaxLength(500)]
+        public string? Message { get; set; }
+
+        /// <summary>
+        /// 防抖秒数（默认 0）：进入报警后该秒数内恢复视为抖动，不产生报警事件。
+        /// </summary>
+        public int DebounceSeconds { get; set; }
     }
 }

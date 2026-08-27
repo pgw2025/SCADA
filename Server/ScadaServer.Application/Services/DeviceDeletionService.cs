@@ -7,31 +7,31 @@ namespace ScadaServer.Application.Services
 {
     /// <summary>
     /// 设备删除服务实现：删除设备前检查对外接口引用，并在同一事务内级联清理
-    /// 传感器、变量触发器、协议配置后再删除设备本身。
+    /// 传感器、协议配置后再删除设备本身。
     /// <para>注：设备变量（DeviceVariable）随设备删除由数据库外键级联清理（ON DELETE CASCADE），无需在此显式删除。</para>
     /// </summary>
     public class DeviceDeletionService : IDeviceDeletionService
     {
         private readonly IDeviceRepository _repository;
         private readonly ISensorRepository _sensorRepository;
-        private readonly IVariableTriggerRepository _triggerRepository;
         private readonly IExposedInterfaceRepository _interfaceRepository;
         private readonly IRepository<DeviceConfig, int> _configRepository;
+        private readonly IAlarmRuleRepository _alarmRuleRepository;
         private readonly IUnitOfWork _uow;
 
         public DeviceDeletionService(
             IDeviceRepository repository,
             ISensorRepository sensorRepository,
-            IVariableTriggerRepository triggerRepository,
             IExposedInterfaceRepository interfaceRepository,
             IRepository<DeviceConfig, int> configRepository,
+            IAlarmRuleRepository alarmRuleRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
             _sensorRepository = sensorRepository;
-            _triggerRepository = triggerRepository;
             _interfaceRepository = interfaceRepository;
             _configRepository = configRepository;
+            _alarmRuleRepository = alarmRuleRepository;
             _uow = uow;
         }
 
@@ -51,7 +51,7 @@ namespace ScadaServer.Application.Services
             {
                 // 删除级联数据
                 await _sensorRepository.DeleteRangeAsync(s => s.DeviceId == deviceId);
-                await _triggerRepository.DeleteRangeAsync(tr => tr.DeviceId == deviceId);
+                await _alarmRuleRepository.DeleteRangeAsync(ar => ar.DeviceId == deviceId);
 
                 await _configRepository.DeleteRangeAsync(c => c.DeviceId == deviceId);
 

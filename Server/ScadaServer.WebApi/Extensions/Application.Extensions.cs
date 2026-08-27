@@ -19,6 +19,7 @@ namespace ScadaServer.WebApi.Extensions
         public static IServiceCollection AddApplicationServices(this IServiceCollection services)
         {
             services.AddScoped<IAlarmRuleAppService, AlarmRuleAppService>();
+            services.AddScoped<IAlarmRecordAppService, AlarmRecordAppService>();
             services.AddScoped<ILinkageRuleAppService, LinkageRuleAppService>();
             services.AddScoped<IAreaAppService, AreaAppService>();
             services.AddScoped<IConfigLogAppService, ConfigLogAppService>();
@@ -42,13 +43,17 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<ISystemLogAppService, SystemLogAppService>();
             services.AddScoped<ISystemScriptAppService, SystemScriptAppService>();
             services.AddScoped<ISystemUserAppService, SystemUserAppService>();
-            services.AddScoped<IVariableTriggerAppService, VariableTriggerAppService>();
             services.AddScoped<IHistoryAppService, HistoryAppService>();
 
             // 历史数据记录器：采集线程异步入队，后台批量落库（单例 + IHostedService 常驻）。
             services.AddSingleton<HistoryRecorder>();
             services.AddSingleton<IHistoryRecorder>(sp => sp.GetRequiredService<HistoryRecorder>());
             services.AddHostedService(sp => sp.GetRequiredService<HistoryRecorder>());
+
+            // 报警记录器：运行时报警事件异步入队，后台批量落库（单例 + IHostedService 常驻）。
+            services.AddSingleton<AlarmRecorder>();
+            services.AddSingleton<IAlarmRecorder>(sp => sp.GetRequiredService<AlarmRecorder>());
+            services.AddHostedService(sp => sp.GetRequiredService<AlarmRecorder>());
 
             // 系统日志记录器：运行日志（有界可丢）+ 操作/安全日志（无界不丢）统一批量落库 + SignalR 广播。
             services.AddSingleton<SystemLogRecorder>();

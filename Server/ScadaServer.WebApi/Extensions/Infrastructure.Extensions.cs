@@ -7,6 +7,7 @@ using ScadaServer.Runtime;
 using ScadaServer.Runtime.Interface;
 using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Bindings;
+using ScadaServer.Runtime.Alarms;
 using ScadaServer.WebApi.Services;
 
 namespace ScadaServer.WebApi.Extensions
@@ -35,6 +36,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IRuntimeStatusProvider, RuntimeStatusProviderAdapter>();
             services.AddSingleton<IVariableChangeBus, VariableChangeBus>();
             services.AddSingleton<IVariableBindingEngine, VariableBindingEngine>();
+            services.AddSingleton<IAlarmRuleEngine, AlarmRuleEngine>();
             services.AddHostedService<ScadaServer.WebApi.HostedServices.RuntimeHostedService>();
 
             // MQTT 服务（MqttHandler 当前为占位实现）

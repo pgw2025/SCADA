@@ -1,4 +1,5 @@
 using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Interfaces.Repositories
 {
@@ -134,11 +135,6 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface ISystemUserRepository : IRepository<SystemUser, int> { }
 
     /// <summary>
-    /// 变量触发器仓储接口
-    /// </summary>
-    public interface IVariableTriggerRepository : IRepository<VariableTrigger, int> { }
-
-    /// <summary>
     /// 变量历史数据仓储接口（主键为 long，历史数据量大）
     /// </summary>
     public interface IVariableHistoryRepository : IRepository<VariableHistory, long>
@@ -147,5 +143,29 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         /// 查询指定变量的最近 limit 条记录（按采样时间倒序，SQL 下推取数，避免全表回拉）。
         /// </summary>
         Task<List<VariableHistory>> GetLatestAsync(string variableKey, int limit);
+    }
+
+    /// <summary>
+    /// 报警记录仓储接口（主键为 long，数据量大）。
+    /// </summary>
+    public interface IAlarmRecordRepository : IRepository<AlarmRecord, long>
+    {
+        /// <summary>
+        /// 按复合条件分页查询报警记录（设备/级别/未确认/未恢复/时间段），返回总数与当前页数据。
+        /// </summary>
+        Task<(int Total, List<AlarmRecord> Items)> QueryAsync(
+            int? deviceId,
+            AlarmLevelEnum? level,
+            bool? unacked,
+            bool? unrecovered,
+            DateTime? startTime,
+            DateTime? endTime,
+            int pageIndex,
+            int pageSize);
+
+        /// <summary>
+        /// 查询最近一条"同键未恢复"的记录ID（用于恢复事件关联）。找不到返回 null。
+        /// </summary>
+        Task<long?> FindUnrecoveredIdAsync(int deviceId, string variableKey, long? ruleId);
     }
 }

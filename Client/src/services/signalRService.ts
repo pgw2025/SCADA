@@ -6,6 +6,8 @@ import { setDevices } from '../store/deviceStore';
 import { normalizeDevices } from '../utils/deviceStatus';
 import { isBackendConnected, signalRConnection } from './socketService';
 import { mapRuntimeStatusToStatus } from '../utils/deviceStatus';
+import { pushAlarmEvent, refreshActiveAlarms } from '../store/alarmStore';
+import { AlarmEventPayload } from '../types';
 
 // 拉取设备列表并写回全局 store。包装 fetchDevicesFromBackend + normalizeDevices，
 // 修复 SignalR 握手成功/重连后设备拉取结果被丢弃、设备列表从未进入 store 的问题。
@@ -87,11 +89,17 @@ export const initializeRealtimeSignals = () => {
             }
         });
 
+        // 结构化报警事件实时推送：归一化后进入报警 Store（当前报警 / 未确认角标 / 最近事件）。
+        connection.on("ReceiveAlarm", (payload: AlarmEventPayload) => {
+            pushAlarmEvent(payload ?? ({} as AlarmEventPayload));
+        });
+
         connection.start()
             .then(() => {
                 isBackendConnected.value = true;
                 addLog('后端对接', `SignalR 通信链路握手建立成功！桥接工业控制链网关。`, 'normal');
                 refreshDevices();
+                refreshActiveAlarms();
             })
             .catch((err) => {
                 isBackendConnected.value = false;
@@ -107,6 +115,7 @@ export const initializeRealtimeSignals = () => {
             isBackendConnected.value = true;
             addLog('后端对接', `SignalR 物理转发信道自动重连成功！ID: ${connectionId}`, 'normal');
             refreshDevices();
+            refreshActiveAlarms();
         });
 
         connection.onclose((error) => {

@@ -38,6 +38,7 @@ namespace ScadaServer.Infrastructure.Persistence
         #region DbSet
 
         public DbSet<AlarmRule> AlarmRules => Set<AlarmRule>();
+        public DbSet<AlarmRecord> AlarmRecords => Set<AlarmRecord>();
         public DbSet<LinkageRule> LinkageRules => Set<LinkageRule>();
         public DbSet<Area> Areas => Set<Area>();
         public DbSet<ConfigLog> ConfigLogs => Set<ConfigLog>();
@@ -62,7 +63,6 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<SystemLog> SystemLogs => Set<SystemLog>();
         public DbSet<SystemScript> SystemScripts => Set<SystemScript>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
-        public DbSet<VariableTrigger> VariableTriggers => Set<VariableTrigger>();
         public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
 
         #endregion
@@ -71,6 +71,25 @@ namespace ScadaServer.Infrastructure.Persistence
         {
             // 表名（与现有库一致，显式声明避免 EF 复数约定差异）
             modelBuilder.Entity<AlarmRule>().ToTable("AlarmRules");
+
+            // 报警记录表：索引支撑「列表/确认/清理/按设备」查询。
+            // 数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能（同 VariableHistory 设计）。
+            modelBuilder.Entity<AlarmRecord>().ToTable("AlarmRecords");
+            modelBuilder.Entity<AlarmRecord>()
+                .Property(r => r.Level).HasMaxLength(16).HasConversion<string>();
+            modelBuilder.Entity<AlarmRecord>()
+                .Property(r => r.Condition).HasMaxLength(16).HasConversion<string>();
+            modelBuilder.Entity<AlarmRecord>()
+                .Property(r => r.Source).HasMaxLength(16).HasConversion<string>();
+            modelBuilder.Entity<AlarmRecord>()
+                .HasIndex(r => r.TriggeredAt)
+                .HasDatabaseName("ix_alarmrecord_triggeredat");
+            modelBuilder.Entity<AlarmRecord>()
+                .HasIndex(r => new { r.Acked, r.RecoveredAt })
+                .HasDatabaseName("ix_alarmrecord_acked_recovered");
+            modelBuilder.Entity<AlarmRecord>()
+                .HasIndex(r => r.DeviceId)
+                .HasDatabaseName("ix_alarmrecord_deviceid");
             modelBuilder.Entity<LinkageRule>().ToTable("LinkageRules");
             modelBuilder.Entity<Area>().ToTable("Areas");
             modelBuilder.Entity<ConfigLog>().ToTable("ConfigLog");
@@ -152,7 +171,6 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasIndex(u => u.Username)
                 .IsUnique()
                 .HasDatabaseName("ix_systemusers_username");
-            modelBuilder.Entity<VariableTrigger>().ToTable("VariableTriggers");
 
             // 变量历史数据表：按 变量键 + 时间 建复合索引，支撑历史趋势查询。
             // 历史数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能。
@@ -186,11 +204,6 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasOne(d => d.Config)
                 .WithOne()
                 .HasForeignKey<DeviceConfig>(c => c.DeviceId);
-
-            modelBuilder.Entity<Device>()
-                .HasMany(d => d.Triggers)
-                .WithOne()
-                .HasForeignKey(nameof(VariableTrigger.DeviceId));
 
             modelBuilder.Entity<ExposedInterface>()
                 .HasOne(x => x.Device)

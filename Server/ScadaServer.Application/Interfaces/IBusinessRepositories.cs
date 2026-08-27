@@ -20,7 +20,6 @@ namespace ScadaServer.Application.Interfaces
 
     public interface IAutomationRepository
     {
-        Task<List<VariableTrigger>> GetTriggersByDeviceAsync(int deviceId);
         Task<List<DataConversion>> GetActiveConversionsAsync();
     }
 }
