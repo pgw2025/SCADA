@@ -148,8 +148,73 @@ export const initializeScada = async () => {
     scadaProjects.value = projects;
     selectedProjectId.value = projects[0].id;
     selectedPageId.value = projects[0].pages[0]?.id || '';
+    // 同步维护摘要列表（供工程卡片页使用）
+    projectSummaries.value = summaries.map(s => ({ id: s.id, name: s.name, description: s.description }));
   } catch {
     // 后端不可用 / 未认证：静默回退到本地模板
     _scadaInitialized = false; // 允许下次重试
+  }
+};
+
+// ===== 组态运行多工程（方案B：路由两级）=====
+// 一级卡片列表页只拉摘要；进入具体工程才按 id 懒加载完整树。
+
+/** 工程摘要列表（卡片页数据源，只含 id/name/description） */
+export const projectSummaries = ref<{ id: number; name: string; description: string }[]>([]);
+
+/**
+ * 加载工程摘要（轻量，供工程卡片列表页使用）。
+ *  - 向后端拉取摘要；后端不可用 / 未认证时回退用已带 serverId 的完整工程映射。
+ */
+let _summariesInitialized = false;
+export const initializeProjectSummaries = async () => {
+  if (_summariesInitialized) return;
+  try {
+    const list = await api.loadProjectSummaries();
+    if (list && list.length > 0) {
+      projectSummaries.value = list.map(s => ({ id: s.id, name: s.name, description: s.description }));
+      _summariesInitialized = true;
+      return;
+    }
+  } catch {
+    // 后端不可用 / 未认证：落到下方回退
+  }
+  const fallback = scadaProjects.value
+    .filter(p => p.serverId != null)
+    .map(p => ({ id: p.serverId!, name: p.name, description: p.description }));
+  if (fallback.length > 0) {
+    projectSummaries.value = fallback;
+    _summariesInitialized = true;
+  }
+};
+
+/** 按后端数值 id 或前端字符串 id 定位工程；未加载则返回 undefined */
+const findProject = (rawId: string | number) =>
+  scadaProjects.value.find(p => p.serverId === Number(rawId))
+  || scadaProjects.value.find(p => p.id === String(rawId));
+
+/**
+ * 选中具体工程（组态画布页）：
+ *  - 已有完整树 → 直接使用；
+ *  - 否则按后端 id 懒加载完整树并 upsert 到本地工程列表；
+ *  - 非法 id 或请求失败 → 返回 null，由页面决定空态。
+ */
+export const selectProject = async (rawId: string | number): Promise<ScadaScreenProject | null> => {
+  const existing = findProject(rawId);
+  if (existing) {
+    selectedProjectId.value = existing.id;
+    return existing;
+  }
+  const num = Number(rawId);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  try {
+    const proj = api.fromProjectFullDto(await api.loadProjectFull(num));
+    const idx = scadaProjects.value.findIndex(p => p.serverId === num);
+    if (idx >= 0) scadaProjects.value.splice(idx, 1, proj);
+    else scadaProjects.value.push(proj);
+    selectedProjectId.value = proj.id;
+    return proj;
+  } catch {
+    return null;
   }
 };

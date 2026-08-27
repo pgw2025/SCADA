@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   currentProject,
   desktopPages,
   mobilePages,
-  initializeScada,
+  selectProject,
 } from '../store/scadaStore';
 import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
@@ -14,10 +14,11 @@ import { isAuthenticated, performLogout } from '../store';
 import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { showToast } from '../services/toastService';
-import { MonitorPlay, LogOut, Smartphone, Monitor, Home, Pencil } from 'lucide-vue-next';
+import { MonitorPlay, LogOut, Smartphone, Monitor, Home, Pencil, ArrowLeft, RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
 
 const router = useRouter();
+const route = useRoute();
 
 // 阶段4：运行时按访问设备判定默认端；手机/小屏 → 移动端，桌面/大屏 → 桌面端。
 // 同时提供手动切换，便于在桌面浏览器中预览移动端组态。
@@ -31,10 +32,19 @@ const switchRuntimePlatform = (p: 'Desktop' | 'Mobile') => {
   selectedRuntimePageId.value = '';
 };
 
-// 挂载时加载整树（后端优先，离线回退本地模板）
-onMounted(() => {
-  initializeScada();
-});
+// 挂载时从路由参数懒加载具体工程（方案B：/scada-view/:projectId）
+const loadingProject = ref(true);
+const projectError = ref(false);
+
+const loadFromParam = async () => {
+  loadingProject.value = true;
+  projectError.value = false;
+  selectedRuntimePageId.value = '';
+  const proj = await selectProject(route.params.projectId as string);
+  loadingProject.value = false;
+  if (!proj) projectError.value = true;
+};
+watch(() => route.params.projectId, loadFromParam, { immediate: true });
 
 // 当前端可见画面列表（同端）
 const runtimePages = computed(() =>
@@ -196,6 +206,12 @@ const onLogout = () => {
         </span>
 
         <button
+          @click="router.push('/scada-view')"
+          class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 cursor-pointer"
+          title="返回工程列表"
+        ><ArrowLeft class="w-3.5 h-3.5" /> 返回</button>
+
+        <button
           v-if="isAdmin"
           @click="router.push('/scada-editor')"
           class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 cursor-pointer"
@@ -212,8 +228,26 @@ const onLogout = () => {
 
     <!-- Canvas area -->
     <main class="flex-1 flex items-center justify-center overflow-auto bg-slate-200 dark:bg-[#0b1220] p-4">
-      <div
-        v-if="currentPage"
+      <!-- 加载中 -->
+      <div v-if="loadingProject" class="text-center text-slate-500 dark:text-slate-400">
+        <RefreshCw class="w-8 h-8 mx-auto mb-2 animate-spin opacity-40" />
+        <p class="text-sm">正在加载工程组态…</p>
+      </div>
+
+      <!-- 空态 / 工程加载失败 / 当前端无画面 -->
+      <div v-else-if="projectError || !currentPage" class="text-center text-slate-500 dark:text-slate-400">
+        <MonitorPlay class="w-10 h-10 mx-auto mb-2 opacity-40" />
+        <p v-if="projectError" class="text-sm">工程加载失败或不存在</p>
+        <p v-else class="text-sm">当前工程暂无「{{ runtimePlatform === 'Mobile' ? '移动端' : '桌面端' }}」组态画面</p>
+        <p class="text-[11px] mt-1">请在组态设计中为该端新增画面并发布。</p>
+        <button
+          @click="router.push('/scada-view')"
+          class="mt-4 inline-flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+        ><ArrowLeft class="w-3.5 h-3.5" /> 返回工程列表</button>
+      </div>
+
+      <!-- 组态画布 -->
+      <div v-else
         class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden ring-1 ring-slate-300 dark:ring-slate-800"
         :class="runtimePlatform === 'Mobile' ? 'rounded-[2rem] p-2 bg-neutral-900' : ''"
       >
@@ -232,13 +266,6 @@ const onLogout = () => {
             @navigateToPage="handleNavigate"
           />
         </div>
-      </div>
-
-      <!-- 空状态降级 -->
-      <div v-else class="text-center text-slate-500 dark:text-slate-400">
-        <MonitorPlay class="w-10 h-10 mx-auto mb-2 opacity-40" />
-        <p class="text-sm">当前工程暂无「{{ runtimePlatform === 'Mobile' ? '移动端' : '桌面端' }}」组态画面</p>
-        <p class="text-[11px] mt-1">请在组态设计中为该端新增画面并发布。</p>
       </div>
     </main>
 

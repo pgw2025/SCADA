@@ -128,7 +128,13 @@ const navigate = (path: string) => {
 };
 
 // Helper for active class
-const isActive = (path: string) => router.currentRoute.value.path === path;
+// 组态运行采用两级路由（/scada-view 列表 + /scada-view/:projectId 画布），
+// 对 /scada-view 做前缀匹配，保证进入具体工程时侧边栏高亮不丢失。
+const isActive = (path: string) =>
+  path === '/scada-view'
+    ? router.currentRoute.value.path === '/scada-view'
+      || router.currentRoute.value.path.startsWith('/scada-view/')
+    : router.currentRoute.value.path === path;
 
 // 阶段5：角色隔离——仅管理员可见后台导航；普通用户（Operator）仅见「组态运行」入口
 const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);

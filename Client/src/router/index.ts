@@ -28,8 +28,10 @@ const routes: RouteRecordRaw[] = [
   { path: '/user-management', component: () => import('../components/UserManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/database-management', component: () => import('../components/DatabaseManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/settings-center', component: () => import('../components/SettingsCenterView.vue'), meta: { roles: ADMIN_ROLES } },
-  // 阶段4：组态运行画面——所有已登录角色均可访问（Admin/Operator/Viewer）
-  { path: '/scada-view', component: () => import('../components/ScadaRuntimeView.vue'), meta: { roles: [ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER] } }
+  // 阶段4/方案B：组态运行画面——所有已登录角色均可访问（Admin/Operator/Viewer）。
+  // 一级：/scada-view 工程卡片列表；二级：/scada-view/:projectId 具体工程组态画布。
+  { path: '/scada-view', component: () => import('../components/ProjectPickerView.vue'), meta: { roles: [ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER] } },
+  { path: '/scada-view/:projectId', component: () => import('../components/ScadaRuntimeView.vue'), meta: { roles: [ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER] } }
 ];
 
 const router = createRouter({
