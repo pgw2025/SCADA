@@ -401,6 +401,8 @@ export interface ScheduledTask {
   params: {
     variableKey?: string;
     newValue?: number;
+    /** 严格模式：set_value 任务的目标设备（禁止裸 key）。 */
+    deviceId?: number | null;
     scriptId?: string;
     retentionDays?: number;
   };
@@ -415,6 +417,8 @@ export interface SystemScript {
   code: string;
   triggerType: 'auto' | 'manual';
   intervalSeconds?: number;
+  /** 严格模式：脚本写操作的目标设备（禁止裸 key）。未配置时写操作将报错。 */
+  deviceId?: number | null;
   lastExecuted?: string;
   executionStatus?: 'idle' | 'success' | 'error';
   logOutput?: string;

@@ -42,6 +42,7 @@ import { HMIComponent, ComponentType } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
+import BindingCheckPanel from './BindingCheckPanel.vue';
 import ConfirmModal from './ConfirmModal.vue';
 import { getWidgetDef } from '../widgetRegistry';
 import { 
@@ -58,7 +59,8 @@ import {
   Activity,
   Undo2,
   Redo2,
-  Home
+  Home,
+  AlertTriangle
 } from 'lucide-vue-next';
 
 // Editor settings
@@ -68,6 +70,13 @@ const selectedId = computed<string | null>(() =>
   selectedIds.value.length === 1 ? selectedIds.value[0] : null
 );
 const isActiveMode = ref<boolean>(false);
+
+// 阶段6：绑定检查面板（严格模式：组件必须绑定设备维度）
+const showBindingCheck = ref<boolean>(false);
+function onLocateComponent(id: string) {
+  selectedIds.value = [id];
+  showBindingCheck.value = false;
+}
 
 // Modal state for custom screen creation
 const showProjectModal = ref<boolean>(false);
@@ -145,16 +154,15 @@ const onHistoryKey = (e: KeyboardEvent) => {
   }
 };
 
-// 阶段3：按组件解析实时值（复合绑定 deviceId+variableKey 优先，遗留 bindField 兜底）
+// 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
+const warnedUnboundIds = new Set<string>();
 const componentValues = computed(() => {
   const composite: Record<string, number | boolean> = {};
-  const flat: Record<string, number | boolean> = {};
   devices.value.forEach((d) => {
     // 兼容字符串 'online'（模拟态）与数字 1（P0-1 修复后 mapRuntimeStatusToStatus 产出 0–4）
     if (d.status === 'online' || d.status === 1) {
       Object.keys(d.variables).forEach((key) => {
         composite[`${d.id}:${key}`] = d.variables[key];
-        flat[key] = d.variables[key];
       });
     }
   });
@@ -168,12 +176,10 @@ const componentValues = computed(() => {
         return;
       }
     }
-    if (c.bindField) {
-      const v = flat[c.bindField];
-      if (v !== undefined) {
-        result[c.id] = v;
-        return;
-      }
+    // 严格模式：未绑定设备/变量的组件禁止裸 key 取值，显示 0 并给出一次性警告
+    if (!warnedUnboundIds.has(c.id)) {
+      warnedUnboundIds.add(c.id);
+      addLog('组态拓扑', `组件 [${c.id}] 未绑定设备/变量（bindDeviceId=${c.bindDeviceId}），禁止裸 key 取值，显示 0`, 'warning');
     }
     result[c.id] = 0;
   });
@@ -340,20 +346,24 @@ const handleClearCanvas = () => {
 // Toggle or forces live registries value on active devices
 const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, legacyKey: string, actionType?: string, val?: any) => {
   const key = variableKey || legacyKey;
-  if (!key && deviceId == null) return;
+  if (!key) return;
 
-  // 阶段4-4 只读拦截：设备级有效只读权限优先于写操作（后端 RuntimeManager 仍会兜底校验 IsReadOnly）。
-  // 命中只读时直接拦截，不发起乐观更新与 REST 写，仅提示不可写。
-  if (deviceId != null) {
-    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
-    const meta = dev?.variableMeta?.[key];
-    // 后端未配置 camelCase，DTO 默认 PascalCase；两种命名均兼容读取。
-    const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
-    if (isReadOnly) {
-      showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
-      addLog('SCADA 写控', `写拦截：变量 [设备${deviceId}.${key}] 为只读`, 'warning');
-      return;
-    }
+  // 严格模式：控件未绑定设备 → 禁止裸 key 写指令
+  if (deviceId == null) {
+    showToast('该控件未绑定设备，禁止写入（请到编辑器补全绑定）', 'warning');
+    addLog('SCADA 写控', `写指令被拒绝：组件未绑定设备 (key=${key})`, 'warning');
+    return;
+  }
+
+  // 只读拦截：设备级有效只读权限优先于写操作（后端 RuntimeManager 仍会兜底校验 IsReadOnly）。
+  const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+  const meta = dev?.variableMeta?.[key];
+  // 后端未配置 camelCase，DTO 默认 PascalCase；两种命名均兼容读取。
+  const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+  if (isReadOnly) {
+    showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
+    addLog('SCADA 写控', `写拦截：变量 [设备${deviceId}.${key}] 为只读`, 'warning');
+    return;
   }
 
   const current = getDeviceVariableValue(deviceId, key);
@@ -634,8 +644,19 @@ const selectedCompObj = computed(() => {
       </div>
 
       <!-- Subpages Directory explorer：按归属端分「桌面端 / 移动端」两组 -->
-      <div class="p-4 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100/60 dark:border-slate-800">
-        画面列表
+      <div class="flex items-center justify-between px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100/60 dark:border-slate-800">
+        <span>画面列表</span>
+        <button
+          @click="showBindingCheck = !showBindingCheck"
+          class="flex items-center gap-1 normal-case font-semibold text-[11px] px-2 py-1 rounded border transition-colors"
+          :class="showBindingCheck
+            ? 'bg-amber-500 text-white border-amber-500'
+            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'"
+          title="检查当前画面中未绑定设备的组件（裸 Key 风险）"
+        >
+          <AlertTriangle class="w-3.5 h-3.5" />
+          绑定检查
+        </button>
       </div>
 
       <!-- 桌面端分组 -->
@@ -873,6 +894,11 @@ const selectedCompObj = computed(() => {
         />
       </div>
 
+    </div>
+
+    <!-- 绑定检查浮动面板（严格模式：组件必须绑定设备维度） -->
+    <div v-if="showBindingCheck" class="fixed top-16 right-4 z-40">
+      <BindingCheckPanel @locate="onLocateComponent" />
     </div>
 
     <!-- MODAL: ADD SCADA PROJECT ENGINEERING -->

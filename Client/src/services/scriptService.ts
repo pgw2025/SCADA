@@ -11,12 +11,22 @@ export const runScriptEngine = (script: SystemScript) => {
 
   const sandbox = {
     getVal: (key: string) => {
-      const val = getDeviceVariableValue(null, key);
+      if (script.deviceId == null) {
+        const msg = `读取绑定键失败 [${key}]：脚本未配置目标设备（禁止裸 key）`;
+        logFormatter(msg);
+        return 0;
+      }
+      const val = getDeviceVariableValue(script.deviceId, key);
       logFormatter(`读取绑定键 [${key}] = ${val}`);
       return val;
     },
     setVal: (key: string, val: any) => {
-      setDeviceVariableValue(null, key, val);
+      if (script.deviceId == null) {
+        const msg = `脚本 [${script.name}] 未配置目标设备，禁止裸 key 写入`;
+        logFormatter(msg);
+        throw new Error(msg);
+      }
+      setDeviceVariableValue(script.deviceId, key, val);
       logFormatter(`命令写入 [${key}] = ${val}`);
     },
     log: (msg: string) => {

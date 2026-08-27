@@ -41,12 +41,8 @@ const bindingVariableOptions = computed(() => {
   if (dev && dev.variables) {
     return Object.keys(dev.variables).map((k) => ({ key: k }));
   }
-  // 未选设备：汇总所有设备变量键，兼容遗留 bindField
-  const all = new Set<string>();
-  devices.value.forEach((d) => {
-    if (d.variables) Object.keys(d.variables).forEach((k) => all.add(k));
-  });
-  return Array.from(all).map((k) => ({ key: k }));
+  // 严格模式：必须先选设备，禁止裸 key 汇总全部变量键
+  return [];
 });
 
 const onBindDeviceChange = (val: string) => {
@@ -187,9 +183,12 @@ const navTargetOptions = computed(() => {
             @change="onBindDeviceChange(($event.target as HTMLSelectElement).value)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs"
           >
-            <option value="">-- 无设备（按变量名全局匹配）--</option>
+            <option value="">-- 未绑定设备（禁止裸 key）--</option>
             <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
           </select>
+          <p v-if="selectedComponent?.bindDeviceId == null" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 leading-relaxed">
+            未绑定设备：运行态将无法定位变量值，且禁止裸 key 写入。请先选择设备。
+          </p>
         </div>
         <div>
           <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定变量</label>

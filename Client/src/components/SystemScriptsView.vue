@@ -29,6 +29,7 @@ const showAddModal = ref(false);
 const newScriptName = ref('');
 const newScriptTriggerType = ref<'auto' | 'manual'>('manual');
 const newScriptInterval = ref(5);
+const newScriptDeviceId = ref<number | null>(null);
 const newScriptCode = ref(`// 双联PLC逻辑连锁脚本模板
 let tempVal = getVal('boiler_temp');
 if (tempVal > 92) {
@@ -60,6 +61,7 @@ const handleCreateScript = () => {
     code: newScriptCode.value,
     triggerType: newScriptTriggerType.value,
     intervalSeconds: newScriptTriggerType.value === 'auto' ? Number(newScriptInterval.value) : undefined,
+    deviceId: newScriptDeviceId.value ?? undefined,
     executionStatus: 'idle',
     logOutput: '等待手工运行或内部时序轮询...'
   };
@@ -70,6 +72,7 @@ const handleCreateScript = () => {
 
   // Reset
   newScriptName.value = '';
+  newScriptDeviceId.value = null;
   showAddModal.value = false;
 };
 
@@ -303,6 +306,17 @@ const handleUpdateCode = (evt: Event) => {
                 min="1"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white font-mono outline-none font-bold"
               />
+            </div>
+
+            <div>
+              <label class="font-bold text-slate-500 dark:text-slate-400 block mb-1">目标设备（写操作必填）</label>
+              <select
+                v-model="newScriptDeviceId"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white focus:outline-none font-mono"
+              >
+                <option :value="null">-- 未指定（脚本写操作将报错）--</option>
+                <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
+              </select>
             </div>
           </div>
 

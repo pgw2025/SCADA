@@ -5,7 +5,8 @@ import {
   executeTask, 
   systemScripts, 
   addLog, 
-  dataModels 
+  dataModels,
+  devices
 } from '../store/index';
 import { 
   Calendar, 
@@ -31,6 +32,7 @@ const newTaskName = ref('');
 const taskTypeSelected = ref<'set_value' | 'backup' | 'execute_script' | 'clear_history'>('backup');
 const cronInput = ref('每分钟');
 const selectedVarKey = ref('');
+const selectedDeviceId = ref<number | null>(null);
 const targetWriteVal = ref(0);
 const selectedScriptId = ref('');
 const retentionDaysInput = ref(30);
@@ -52,6 +54,11 @@ const handleCreateTask = () => {
     return;
   }
 
+  if (taskTypeSelected.value === 'set_value' && selectedDeviceId.value == null) {
+    alert('变量写入任务必须选择目标设备！');
+    return;
+  }
+
   const newTask: ScheduledTask = {
     id: `task-${Date.now()}`,
     name: newTaskName.value.trim(),
@@ -60,6 +67,7 @@ const handleCreateTask = () => {
     params: {
       variableKey: taskTypeSelected.value === 'set_value' ? selectedVarKey.value : undefined,
       newValue: taskTypeSelected.value === 'set_value' ? Number(targetWriteVal.value) : undefined,
+      deviceId: taskTypeSelected.value === 'set_value' ? selectedDeviceId.value ?? undefined : undefined,
       scriptId: taskTypeSelected.value === 'execute_script' ? selectedScriptId.value : undefined,
       retentionDays: taskTypeSelected.value === 'clear_history' ? Number(retentionDaysInput.value) : undefined
     },
@@ -72,6 +80,7 @@ const handleCreateTask = () => {
 
   // Reset
   newTaskName.value = '';
+  selectedDeviceId.value = null;
   showAddModal.value = false;
 };
 
@@ -321,6 +330,16 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
                   type="number"
                   class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white p-1 rounded font-bold"
                 />
+              </div>
+              <div class="col-span-2">
+                <label class="text-[10px] text-slate-400 dark:text-slate-500 block mb-0.5">目标设备 *</label>
+                <select
+                  v-model="selectedDeviceId"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white p-1 rounded font-mono"
+                >
+                  <option :value="null">-- 请选择设备（必填）--</option>
+                  <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
+                </select>
               </div>
             </div>
           </div>

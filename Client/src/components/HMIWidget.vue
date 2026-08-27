@@ -11,7 +11,7 @@ const props = defineProps<{
 
 // 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件
 const isLockedControl = computed(() =>
-  !!props.controlLocked && !!(props.component.bindVariableKey || props.component.bindField)
+  !!props.controlLocked && !!props.component.bindVariableKey
 );
 
 const numValue = computed(() => {

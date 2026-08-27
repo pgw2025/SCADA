@@ -64,15 +64,14 @@ const currentPage = computed(
 const pageWidth = computed(() => currentPage.value?.width ?? (runtimePlatform.value === 'Mobile' ? 375 : 1100));
 const pageHeight = computed(() => currentPage.value?.height ?? (runtimePlatform.value === 'Mobile' ? 812 : 700));
 
-// 阶段4：运行时实时值解析（复合绑定 deviceId+variableKey 优先，遗留 bindField 兜底）
+// 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
+const warnedUnboundIds = new Set<string>();
 const componentValues = computed(() => {
   const composite: Record<string, number | boolean> = {};
-  const flat: Record<string, number | boolean> = {};
   devices.value.forEach((d) => {
     if (d.status === 'online' || d.status === 1) {
       Object.keys(d.variables).forEach((k) => {
         composite[`${d.id}:${k}`] = d.variables[k];
-        flat[k] = d.variables[k];
       });
     }
   });
@@ -85,12 +84,10 @@ const componentValues = computed(() => {
         return;
       }
     }
-    if (c.bindField) {
-      const v = flat[c.bindField];
-      if (v !== undefined) {
-        result[c.id] = v;
-        return;
-      }
+    // 严格模式：未绑定设备/变量的组件禁止裸 key 取值，显示 0 并给出一次性警告
+    if (!warnedUnboundIds.has(c.id)) {
+      warnedUnboundIds.add(c.id);
+      addLog('组态运行', `组件 [${c.id}] 未绑定设备/变量（bindDeviceId=${c.bindDeviceId}），禁止裸 key 取值，显示 0`, 'warning');
     }
     result[c.id] = 0;
   });
@@ -120,16 +117,21 @@ const handleTriggerToggleValue = (
   val?: any
 ) => {
   const key = variableKey || legacyKey;
-  if (!key && deviceId == null) return;
+  if (!key) return;
 
-  if (deviceId != null) {
-    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
-    const meta = dev?.variableMeta?.[key];
-    const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
-    if (isReadOnly) {
-      showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
-      return;
-    }
+  // 严格模式：控件未绑定设备 → 禁止裸 key 写指令
+  if (deviceId == null) {
+    showToast('该控件未绑定设备，禁止写入（请到编辑器补全绑定）', 'warning');
+    addLog('组态运行', `写指令被拒绝：组件未绑定设备 (key=${key})`, 'warning');
+    return;
+  }
+
+  const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+  const meta = dev?.variableMeta?.[key];
+  const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+  if (isReadOnly) {
+    showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
+    return;
   }
 
   const current = getDeviceVariableValue(deviceId, key);

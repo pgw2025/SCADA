@@ -23,10 +23,16 @@ namespace ScadaServer.Infrastructure.Communication
         private VirtualConfig _config = new();
 
         /// <summary>
-        /// 写入值存储（key = 变量Key）。写入后 ReadAsync 优先返回该值，
+        /// 写入值存储（键 = "设备Id:变量Key"）。写入后 ReadAsync / ReadBatchAsync 优先返回该值，
         /// 使虚拟设备在刷新后仍能"读回"最后一次写入的值，贴近真实链路。
+        /// 键带设备维度：即便将来驱动改为单例/共享实例，也不会跨设备串值。
         /// </summary>
+        private int? _deviceId;
+
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _writtenValues = new();
+
+        /// <summary>为写入值缓存生成带设备维度的复合键。</summary>
+        private string KeyOf(string key) => _deviceId.HasValue ? $"{_deviceId}:{key}" : key;
 
         public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
@@ -55,6 +61,9 @@ namespace ScadaServer.Infrastructure.Communication
             // 区间合法性兜底，避免后续 GenerateValue 除零或负区间。
             if (_config.IntervalMs < 10) _config.IntervalMs = 10;
 
+            // 记录设备维度，用于写入值缓存的复合键（防御未来驱动单例化串值）。
+            _deviceId = device.Id;
+
             _connected = true;
             await Task.Delay(10);
             return true;
@@ -64,7 +73,7 @@ namespace ScadaServer.Infrastructure.Communication
         {
             if (!_connected) return null;
             // 写入过的变量优先返回最后一次写入值，否则生成模拟值。
-            if (_writtenValues.TryGetValue(variable.Key, out var written))
+            if (_writtenValues.TryGetValue(KeyOf(variable.Key), out var written))
             {
                 return await Task.FromResult(written);
             }
@@ -75,8 +84,8 @@ namespace ScadaServer.Infrastructure.Communication
         {
             if (!_connected) throw new InvalidOperationException("虚拟设备未连接");
 
-            // 落库写入值（原始值即可），供后续 ReadAsync 读回。
-            _writtenValues[variable.Key] = value;
+            // 落库写入值（原始值即可），供后续 ReadAsync / ReadBatchAsync 读回。
+            _writtenValues[KeyOf(variable.Key)] = value;
             await Task.CompletedTask;
         }
 
@@ -87,6 +96,12 @@ namespace ScadaServer.Infrastructure.Communication
 
             foreach (var v in variables)
             {
+                // 与 ReadAsync 对齐：写入过的值优先返回，再退化到模拟生成。
+                if (_writtenValues.TryGetValue(KeyOf(v.Key), out var written))
+                {
+                    results[v.Key] = written;
+                    continue;
+                }
                 var value = GenerateValue(v);
                 if (value != null) results[v.Key] = value;
             }

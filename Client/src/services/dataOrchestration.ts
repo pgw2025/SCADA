@@ -5,7 +5,7 @@ import { writeDeviceVariable } from '../api/deviceApi';
 import { showToast } from '../services/toastService';
 
 export const setDeviceVariableValue = (
-  deviceId: number | null,
+  deviceId: number,
   variableKey: string,
   newValue: number | boolean
 ) => {
@@ -29,21 +29,16 @@ export const setDeviceVariableValue = (
     addLog('核心控制器', `写变量 [设备${dev.id}.${key}] -> ${value} (${typeof value === 'boolean' ? (value ? 'ON/合闸' : 'OFF/开路') : value})`, 'info');
   };
 
-  if (deviceId != null) {
-    // 阶段3：复合绑定（deviceId + variableKey），精准写入指定设备
-    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
-    applyOptimistic(dev, variableKey, newValue);
-  } else {
-    // 遗留：仅按变量名跨设备写入（兼容未绑定设备的旧调用方）
-    devices.value.forEach((dev) => {
-      if (dev.status === 'online' || dev.status === 1) {
-        applyOptimistic(dev, variableKey, newValue);
-      }
-    });
+  // 严格模式：deviceId 必填，精准写入指定设备（禁止裸 key 跨设备广播）
+  const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+  if (!dev) {
+    addLog('核心控制器', `写变量被忽略：未找到设备#${deviceId} (key=${variableKey})`, 'warning');
+    return;
   }
+  applyOptimistic(dev, variableKey, newValue);
 
-  // 真机模式：经 REST 下发写指令（仅单设备绑定场景；遗留裸 key 无单设备目标，跳过 REST）
-  if (!systemConfig.value.isSimulationActive && deviceId != null) {
+  // 真机模式：经 REST 下发写指令（deviceId 已必填）
+  if (!systemConfig.value.isSimulationActive) {
     writeVariableToBackend(deviceId, variableKey, newValue).catch((err: any) => {
       // 写失败：回滚本次乐观更新，避免 UI 与设备实际值不一致（后端 RuntimeManager 已拒绝写入）
       snapshots.forEach((s) => { if (s.dev.variables) s.dev.variables[s.key] = s.val; });
@@ -98,15 +93,11 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
 };
 
 export const writeVariableToBackend = async (
-  deviceId: number | null,
+  deviceId: number,
   variableKey: string,
   value: any
 ) => {
   if (systemConfig.value.isSimulationActive) return;
-  if (deviceId == null) {
-    addLog('SCADA 写控', `REST 写入跳过：未绑定设备，无法定位写目标 (${variableKey})`, 'warning');
-    return;
-  }
 
   // 阶段4（方案 A · 仅 REST）：统一走 DeviceController 写端点（POST /api/Device/{id}/variables/{key}/write），
   // 全局 JWT FallbackPolicy 鉴权零成本；RuntimeManager 完成校验链
@@ -117,20 +108,11 @@ export const writeVariableToBackend = async (
 };
 
 // Synchronize all dev/custom simulator variables back to the active HMI components values!
-export const getDeviceVariableValue = (deviceId: number | null, variableKey: string): number | boolean => {
-  if (deviceId != null) {
-    // 阶段3：复合绑定，精准读取指定设备的变量
-    const dev = devices.value.find((d) => String(d.id) === String(deviceId));
-    if (dev && dev.variables && dev.variables[variableKey] !== undefined) {
-      return dev.variables[variableKey];
-    }
-    return 0;
-  }
-  // 遗留：按变量名跨设备查找第一个在线设备
-  for (const dev of devices.value) {
-    if ((dev.status === 'online' || dev.status === 1) && dev.variables && dev.variables[variableKey] !== undefined) {
-      return dev.variables[variableKey];
-    }
+export const getDeviceVariableValue = (deviceId: number, variableKey: string): number | boolean => {
+  // 严格模式：deviceId 必填，精准读取指定设备的变量（禁止裸 key 跨设备查找）
+  const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+  if (dev && dev.variables && dev.variables[variableKey] !== undefined) {
+    return dev.variables[variableKey];
   }
   return 0;
 };

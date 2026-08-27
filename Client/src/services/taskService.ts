@@ -17,11 +17,16 @@ export const executeTask = (taskId: string) => {
 
       if (task.type === 'set_value') {
         if (task.params.variableKey && task.params.newValue !== undefined) {
-          const valToWrite = task.params.variableKey === 'pump_state' || task.params.variableKey === 'valve_state'
-            ? !!task.params.newValue
-            : task.params.newValue;
-          setDeviceVariableValue(null, task.params.variableKey, valToWrite);
-          addLog('调度执行', `计划任务 [${task.name}] 写入 [${task.params.variableKey}] = ${task.params.newValue} 成功`, 'normal');
+          if (task.params.deviceId == null) {
+            task.status = 'failed';
+            addLog('调度执行', `计划任务 [${task.name}] 写入失败：未配置目标设备 (key=${task.params.variableKey})，禁止裸 key`, 'warning');
+          } else {
+            const valToWrite = task.params.variableKey === 'pump_state' || task.params.variableKey === 'valve_state'
+              ? !!task.params.newValue
+              : task.params.newValue;
+            setDeviceVariableValue(task.params.deviceId, task.params.variableKey, valToWrite);
+            addLog('调度执行', `计划任务 [${task.name}] 写入 [${task.params.variableKey}] = ${task.params.newValue} 成功`, 'normal');
+          }
         }
       } else if (task.type === 'backup') {
         addLog('系统内核', `计划任务 [${task.name}]：已成功压缩主数据库并导出 iota_scada_v6_dump_${Date.now()}.sql.gz`, 'normal');
