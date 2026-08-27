@@ -127,6 +127,7 @@ namespace ScadaServer.Application.Services
                     ProjectId = page.ProjectId,
                     Name = page.Name,
                     IsHome = page.IsHome,
+                    Platform = page.Platform,
                     Width = page.Width,
                     Height = page.Height,
                     Components = pageComponents

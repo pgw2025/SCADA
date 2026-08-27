@@ -23,9 +23,7 @@ export interface ProjectSummaryDto {
   description: string;
 }
 export interface ProjectFullDto {
-  id: number;
-  name: string;
-  description: string;
+  project: ProjectSummaryDto;
   pages: PageWithComponentsDto[];
 }
 export interface PageWithComponentsDto {
@@ -175,10 +173,10 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
 });
 
 export const fromProjectFullDto = (d: ProjectFullDto): ScadaScreenProject => ({
-  id: `srv-${d.id}`,
-  serverId: d.id,
-  name: d.name,
-  description: d.description,
+  id: `srv-${d.project.id}`,
+  serverId: d.project.id,
+  name: d.project.name,
+  description: d.project.description,
   pages: (d.pages || []).map(fromPageDto),
 });
 
