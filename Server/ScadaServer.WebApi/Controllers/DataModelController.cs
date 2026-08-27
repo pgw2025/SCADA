@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Application.DTOs;
+using ScadaServer.WebApi.Filters;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -30,6 +31,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
 
         [HttpPost]
+        [AuditLog("数据模型", "CREATE")]
         public async Task<IActionResult> Create([FromBody] CreateDataModelDto dto)
         {
             var result = await _appService.CreateAsync(dto);
@@ -37,6 +39,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut("{id}")]
+        [AuditLog("数据模型", "UPDATE")]
         public async Task<IActionResult> Update(int id, [FromBody] DataModelDto dto)
         {
             dto.Id = id;
@@ -45,6 +48,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpDelete("{id}")]
+        [AuditLog("数据模型", "DELETE")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);

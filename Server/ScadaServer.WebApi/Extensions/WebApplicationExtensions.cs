@@ -37,6 +37,8 @@ namespace ScadaServer.WebApi.Extensions
 
             app.MapControllers();
             app.MapHub<ScadaHub>("/hubs/scada");
+            // 系统日志推送 Hub（[Authorize]：仅登录客户端可连接，避免匿名泄露运行日志）
+            app.MapHub<SystemLogHub>("/hubs/systemlog");
 
             return app;
         }

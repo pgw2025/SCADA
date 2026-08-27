@@ -4,6 +4,7 @@ using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Application.DTOs;
+using ScadaServer.WebApi.Filters;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -70,6 +71,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <returns>创建结果</returns>
         [HttpPost]
         [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "CREATE")]
         public async Task<IActionResult> Create([FromBody] CreateDeviceDto dto)
         {
             var result = await _deviceAppService.CreateAsync(dto);
@@ -83,6 +85,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <returns>更新结果</returns>
         [HttpPut]
         [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "UPDATE")]
         public async Task<IActionResult> Update([FromBody] DeviceDto dto)
         {
             var result = await _deviceAppService.UpdateAsync(dto);
@@ -96,6 +99,7 @@ namespace ScadaServer.WebApi.Controllers
         /// <returns>删除结果</returns>
         [HttpDelete("{id}")]
         [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "DELETE")]
         public async Task<IActionResult> Delete(int id)
         {
             await _deviceAppService.DeleteAsync(id);

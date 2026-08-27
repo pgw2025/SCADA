@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
-using System.Security.Claims;
+using ScadaServer.WebApi.Services;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -11,34 +11,19 @@ namespace ScadaServer.WebApi.Controllers
     public class ScadaPageController : ControllerBase
     {
         private readonly IScadaPageAppService _appService;
-        private readonly IConfigLogAppService _configLogAppService;
+        private readonly IOperationAuditService _auditService;
 
-        public ScadaPageController(IScadaPageAppService appService, IConfigLogAppService configLogAppService)
+        public ScadaPageController(IScadaPageAppService appService, IOperationAuditService auditService)
         {
             _appService = appService;
-            _configLogAppService = configLogAppService;
+            _auditService = auditService;
         }
 
         /// <summary>
-        /// 阶段6-1：取当前操作用户名（来自 JWT 的 Name claim）。
+        /// 写一条组态页面审计日志（统一表 SystemLogs，Category=Operation）。
         /// </summary>
-        private string GetOperator()
-            => User.FindFirst(ClaimTypes.Name)?.Value ?? User.Identity?.Name ?? "anonymous";
-
-        /// <summary>
-        /// 阶段6-1：写一条组态审计日志。复用现有 ConfigLog 表，
-        /// DeviceId=0 作为「非设备对象（组态工程/页面）」哨兵，避免引入新表/迁移。
-        /// </summary>
-        private async Task AuditAsync(string changeDesc)
-        {
-            await _configLogAppService.CreateAsync(new ConfigLogDto
-            {
-                DeviceId = 0,
-                Operator = GetOperator(),
-                ChangeDesc = changeDesc,
-                CreateTime = DateTime.Now
-            });
-        }
+        private Task AuditAsync(string operation, string? relatedId, string description)
+            => _auditService.RecordAsync("组态页面", operation, relatedId, description);
 
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] int? projectId, [FromQuery] string? platform)
@@ -59,7 +44,7 @@ namespace ScadaServer.WebApi.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var id = await _appService.CreateAsync(dto);
             dto.Id = id;
-            await AuditAsync($"创建组态页面 [id={id}] 名称「{dto.Name}」(工程 {dto.ProjectId})");
+            await AuditAsync("CREATE", id.ToString(), $"创建组态页面 [id={id}] 名称「{dto.Name}」(工程 {dto.ProjectId})");
             return CreatedAtAction(nameof(GetById), new { id }, dto);
         }
 
@@ -70,7 +55,7 @@ namespace ScadaServer.WebApi.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var updated = await _appService.UpdateAsync(dto);
             if (!updated) return NotFound();
-            await AuditAsync($"修改组态页面 [id={dto.Id}] 名称「{dto.Name}」");
+            await AuditAsync("UPDATE", dto.Id.ToString(), $"修改组态页面 [id={dto.Id}] 名称「{dto.Name}」");
             return NoContent();
         }
 
@@ -79,7 +64,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);
-            await AuditAsync($"删除组态页面 [id={id}]");
+            await AuditAsync("DELETE", id.ToString(), $"删除组态页面 [id={id}]");
             return NoContent();
         }
 
@@ -100,7 +85,7 @@ namespace ScadaServer.WebApi.Controllers
             {
                 return StatusCode(ex.StatusCode, new { message = ex.Message });
             }
-            await AuditAsync($"保存页面布局 [pageId={id}] 共 {list.Count} 个组件");
+            await AuditAsync("EXECUTE", id.ToString(), $"保存页面布局 [pageId={id}] 共 {list.Count} 个组件");
             return NoContent();
         }
     }

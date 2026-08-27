@@ -50,8 +50,15 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IHistoryRecorder>(sp => sp.GetRequiredService<HistoryRecorder>());
             services.AddHostedService(sp => sp.GetRequiredService<HistoryRecorder>());
 
+            // 系统日志记录器：运行日志（有界可丢）+ 操作/安全日志（无界不丢）统一批量落库 + SignalR 广播。
+            services.AddSingleton<SystemLogRecorder>();
+            services.AddHostedService(sp => sp.GetRequiredService<SystemLogRecorder>());
+
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();
+
+            // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）
+            services.AddScoped<IOperationAuditService, OperationAuditService>();
 
             // 设备状态持久化订阅者（构造时订阅运行时状态变更事件，Singleton 常驻）
             services.AddSingleton<DeviceStatusPersistenceSubscriber>();

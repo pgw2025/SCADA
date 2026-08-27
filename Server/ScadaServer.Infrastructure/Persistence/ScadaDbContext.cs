@@ -111,8 +111,38 @@ namespace ScadaServer.Infrastructure.Persistence
                 .IsUnique()
                 .HasDatabaseName("ix_devicevariable_device_model");
             modelBuilder.Entity<SystemConfig>().ToTable("SystemConfig");
-            modelBuilder.Entity<SystemLog>().ToTable("SystemLogs");
             modelBuilder.Entity<SystemScript>().ToTable("SystemScripts");
+
+            // 系统日志表：统一承载运行/操作/安全日志。
+            // 需索引或精确匹配的列显式限制长度映射为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引）；
+            // Content/Operator 为自由文本，Content 保持 longtext。
+            modelBuilder.Entity<SystemLog>().ToTable("SystemLogs");
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Category).HasMaxLength(16);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Level).HasMaxLength(16);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Source).HasMaxLength(64);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Operation).HasMaxLength(16);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Operator).HasMaxLength(64);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.IpAddress).HasMaxLength(45);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.RelatedId).HasMaxLength(64);
+            modelBuilder.Entity<SystemLog>()
+                .Property(l => l.Content).HasColumnType("longtext");
+
+            // 日志查询主索引：分类 + 时间（支撑「分类 Tab + 时间段 + 关键字」组合查询，先按索引收窄再 LIKE）；
+            // 独立时间索引供「全部分类 + 时间段」与清理任务使用。
+            modelBuilder.Entity<SystemLog>()
+                .HasIndex(l => new { l.Category, l.Timestamp })
+                .HasDatabaseName("ix_systemlog_category_timestamp");
+            modelBuilder.Entity<SystemLog>()
+                .HasIndex(l => l.Timestamp)
+                .HasDatabaseName("ix_systemlog_timestamp");
+
             modelBuilder.Entity<SystemUser>().ToTable("SystemUsers");
             // 用户名唯一（P0 修复：收窄列宽为 varchar(64) 以支撑唯一索引，杜绝重名登录歧义）
             modelBuilder.Entity<SystemUser>()

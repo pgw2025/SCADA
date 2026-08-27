@@ -167,7 +167,7 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   id: `srv-${d.id}`,
   serverId: d.id,
   name: d.name,
-  platform: d.platform ?? 'Desktop',
+  platform: d.platform === 'Mobile' ? 'Mobile' : 'Desktop',
   isHome: d.isHome,
   width: d.width,
   height: d.height,

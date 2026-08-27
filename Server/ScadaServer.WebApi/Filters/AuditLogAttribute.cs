@@ -1,0 +1,121 @@
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc;
+using ScadaServer.WebApi.Services;
+
+namespace ScadaServer.WebApi.Filters
+{
+    /// <summary>
+    /// 操作日志审计特性：标注在控制器写方法上，方法执行后自动记录一条操作日志。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 使用 [AttributeUsage(Method)] + TypeFilterAttribute，使 <see cref="AuditLogActionFilter"/>
+    /// 从 DI 容器按请求解析（依赖 IOperationAuditService / ILogger，非单例特性）。
+    /// </para>
+    /// <para>
+    /// 审计判定口径：命中特性的写请求【一律记录】，级别按结果分档：
+    /// 异常 → Error；2xx → Information；其他（4xx/5xx 业务失败）→ Warning。
+    /// </para>
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Method)]
+    public class AuditLogAttribute : TypeFilterAttribute
+    {
+        /// <summary>
+        /// 初始化审计特性。
+        /// </summary>
+        /// <param name="module">业务模块名（来源），如「设备管理」</param>
+        /// <param name="operation">动作类型，如 CREATE/UPDATE/DELETE</param>
+        /// <param name="category">日志分类，默认 Operation</param>
+        public AuditLogAttribute(string module, string operation, string category = "Operation")
+            : base(typeof(AuditLogActionFilter))
+        {
+            Arguments = new object[] { module, operation, category };
+        }
+    }
+
+    /// <summary>
+    /// 审计过滤器实现。
+    /// </summary>
+    public class AuditLogActionFilter : IAsyncActionFilter
+    {
+        private readonly IOperationAuditService _audit;
+        private readonly Microsoft.Extensions.Logging.ILogger<AuditLogActionFilter> _logger;
+        private readonly string _module;
+        private readonly string _operation;
+        private readonly string _category;
+
+        public AuditLogActionFilter(
+            IOperationAuditService audit,
+            Microsoft.Extensions.Logging.ILogger<AuditLogActionFilter> logger,
+            string module,
+            string operation,
+            string category)
+        {
+            _audit = audit;
+            _logger = logger;
+            _module = module;
+            _operation = operation;
+            _category = category;
+        }
+
+        public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+        {
+            // 先记录动作描述（方法名 + 关键路由参数），供结果分档后随日志输出
+            var relatedId = ExtractRelatedId(context);
+            var actionName = context.ActionDescriptor.RouteValues.TryGetValue("action", out var action)
+                ? action
+                : context.ActionDescriptor.DisplayName ?? "action";
+
+            ActionExecutedContext executed;
+            try
+            {
+                executed = await next();
+            }
+            catch (Exception ex)
+            {
+                // 异常：记 Error 级审计（异常仍向上抛，由全局异常中间件处理）
+                await TryRecordAsync(relatedId, $"操作异常：{actionName} {ex.Message}", "Error");
+                throw;
+            }
+
+            if (executed.Exception != null)
+            {
+                await TryRecordAsync(relatedId, $"操作异常：{actionName} {executed.Exception.Message}", "Error");
+                return;
+            }
+
+            // 2xx 视为成功（Information），其余（4xx/5xx 业务失败）记为 Warning
+            var statusCode = executed.HttpContext.Response.StatusCode;
+            var level = statusCode is >= 200 and < 300 ? "Information" : "Warning";
+            await TryRecordAsync(relatedId, $"操作完成：{actionName}（HTTP {statusCode}）", level);
+        }
+
+        /// <summary>
+        /// 从路由值中提取关联对象 ID（常见 id / 数字路由参数），无则空。
+        /// </summary>
+        private static string? ExtractRelatedId(ActionExecutingContext context)
+        {
+            foreach (var key in new[] { "id", "deviceId", "userId", "pageId", "projectId" })
+            {
+                if (context.RouteData.Values.TryGetValue(key, out var value) && value != null)
+                {
+                    return value.ToString();
+                }
+            }
+            return null;
+        }
+
+        private async Task TryRecordAsync(string? relatedId, string description, string level)
+        {
+            try
+            {
+                await _audit.RecordAsync(_module, _operation, relatedId, description, level, _category);
+            }
+            catch (Exception ex)
+            {
+                // 审计失败不影响主业务
+                _logger.LogError(ex, "操作日志审计写入失败（module={Module}, operation={Operation}）。", _module, _operation);
+            }
+        }
+    }
+}

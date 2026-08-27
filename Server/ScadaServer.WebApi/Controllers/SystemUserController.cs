@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
+using ScadaServer.WebApi.Filters;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -24,6 +25,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
 
         [HttpPost]
+        [AuditLog("用户管理", "CREATE")]
         public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
         {
             // 透传 dto（含 Password），由应用服务完成哈希与校验
@@ -32,6 +34,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut("{id}")]
+        [AuditLog("用户管理", "UPDATE")]
         public async Task<IActionResult> Update(int id, [FromBody] SystemUserDto dto)
         {
             // 从路由取 id，避免前端漏传时静默更新失败（实体不存在会抛业务异常）
@@ -41,6 +44,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpDelete("{id}")]
+        [AuditLog("用户管理", "DELETE")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);

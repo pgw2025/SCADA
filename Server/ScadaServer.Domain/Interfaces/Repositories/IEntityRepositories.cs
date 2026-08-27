@@ -102,7 +102,26 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     /// <summary>
     /// 系统日志仓储接口
     /// </summary>
-    public interface ISystemLogRepository : IRepository<SystemLog, int> { }
+    public interface ISystemLogRepository : IRepository<SystemLog, int>
+    {
+        /// <summary>
+        /// 按查询条件分页查询系统日志（分类/级别/关键字/时间段 + 分页），返回总数与当前页数据。
+        /// </summary>
+        Task<(int Total, List<SystemLog> Items)> QueryAsync(
+            string? category,
+            List<string>? levels,
+            string? keyword,
+            string? source,
+            DateTime? startTime,
+            DateTime? endTime,
+            int pageIndex,
+            int pageSize);
+
+        /// <summary>
+        /// 按分类/时间段批量清理日志，返回删除条数。
+        /// </summary>
+        Task<int> ClearAsync(string? category, DateTime? startTime, DateTime? endTime);
+    }
 
     /// <summary>
     /// 系统脚本仓储接口

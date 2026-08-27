@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
+using ScadaServer.WebApi.Filters;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -24,6 +25,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
 
         [HttpPost]
+        [AuditLog("系统配置", "CREATE")]
         public async Task<IActionResult> Create([FromBody] SystemConfigDto dto)
         {
             await _appService.CreateAsync(dto);
@@ -31,6 +33,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut]
+        [AuditLog("系统配置", "UPDATE")]
         public async Task<IActionResult> Update([FromBody] SystemConfigDto dto)
         {
             await _appService.UpdateAsync(dto);
@@ -38,6 +41,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpDelete("{id}")]
+        [AuditLog("系统配置", "DELETE")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);

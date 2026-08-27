@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
+using ScadaServer.WebApi.Services;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -14,14 +15,17 @@ namespace ScadaServer.WebApi.Controllers
     public class AuthController : ControllerBase
     {
         private readonly ISystemUserAppService _userService;
+        private readonly IOperationAuditService _auditService;
 
         /// <summary>
         /// 初始化认证控制器
         /// </summary>
         /// <param name="userService">用户服务</param>
-        public AuthController(ISystemUserAppService userService)
+        /// <param name="auditService">操作日志审计服务（登录/登出留痕）</param>
+        public AuthController(ISystemUserAppService userService, IOperationAuditService auditService)
         {
             _userService = userService;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -33,9 +37,34 @@ namespace ScadaServer.WebApi.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
+            // 登录接口为 [AllowAnonymous]（无 JWT），操作人显式取请求体用户名，IP 由服务取连接信息。
+            var username = loginDto.Username ?? "unknown";
             var result = await _userService.LoginAsync(loginDto);
-            if (!result.Success) return Unauthorized(result);
+
+            if (!result.Success)
+            {
+                // 登录失败留痕（安全审计，Warning）
+                await _auditService.RecordAsync(
+                    "认证", "LOGIN", username, $"登录失败：{result.Message}", "Warning", username, "Security");
+                return Unauthorized(result);
+            }
+
+            await _auditService.RecordAsync(
+                "认证", "LOGIN", username, $"用户登录成功", "Information", username, "Security");
             return Ok(result);
+        }
+
+        /// <summary>
+        /// 用户登出：JWT 无状态，仅做审计留痕。
+        /// </summary>
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            var username = User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value
+                ?? "anonymous";
+            await _auditService.RecordAsync("认证", "LOGOUT", username, "用户登出", "Information", username, "Security");
+            return Ok(new { Success = true });
         }
 
         /// <summary>

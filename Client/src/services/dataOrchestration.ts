@@ -44,7 +44,7 @@ export const setDeviceVariableValue = (
       snapshots.forEach((s) => { if (s.dev.variables) s.dev.variables[s.key] = s.val; });
       const msg = err?.response?.data?.message || err?.message || '未知错误';
       showToast(`变量 [${variableKey}] 写入失败，已回滚：${msg}`, 'error');
-      addLog('REST 写入', `写入失败并回滚: ${msg}`, 'error');
+      addLog('REST 写入', `写入失败并回滚: ${msg}`, 'warning');
     });
   }
 };

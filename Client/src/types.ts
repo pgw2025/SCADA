@@ -357,6 +357,45 @@ export interface SystemLog {
   content: string;
 }
 
+// ===== 后端统一系统日志（运行/操作/安全），对应 GET /api/SystemLog =====
+export interface SystemLogRecord {
+  id: number;
+  timestamp: string;
+  /** 日志分类：Runtime（运行）/ Operation（操作审计）/ Security（安全审计） */
+  category: 'Runtime' | 'Operation' | 'Security';
+  /** 日志级别：Trace/Debug/Information/Warning/Error/Critical */
+  level: string;
+  /** 日志来源 */
+  source: string;
+  /** 动作类型（仅操作/安全日志） */
+  operation?: string | null;
+  /** 操作人（仅操作/安全日志） */
+  operator?: string | null;
+  /** 客户端 IP（仅操作/安全日志） */
+  ipAddress?: string | null;
+  /** 关联对象标识 */
+  relatedId?: string | null;
+  content: string;
+}
+
+/** 系统日志分页查询条件（GET /api/SystemLog 查询参数） */
+export interface SystemLogQuery {
+  category?: string;
+  levels?: string[];
+  keyword?: string;
+  source?: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+/** 系统日志分页查询结果 */
+export interface SystemLogPagedResult {
+  total: number;
+  items: SystemLogRecord[];
+}
+
 export interface ServerStatus {
   cpuUsage: number;
   memUsage: number;

@@ -10,6 +10,17 @@ var builder = WebApplication.CreateBuilder(args);
 // 配置系统数据库选项
 builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(SystemDbOptions.SectionName));
 
+// 配置系统日志选项（写库门槛 / 黑名单 / 保留期）
+builder.Services.Configure<SystemLogOptions>(builder.Configuration.GetSection(SystemLogOptions.SectionName));
+
+// 将 ILogger 运行日志写入数据库的 Provider：
+// 以单例注册（不经 builder.Logging.AddProvider），由 LoggerFactory 延迟解析，
+// 保证依赖链（SystemLogRecorder 单例）完整后再实例化，避免 Host 构建期提前创建导致解析失败。
+builder.Services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider, ScadaServer.WebApi.Logging.DatabaseLoggerProvider>();
+
+// 供操作日志审计取当前用户/客户端 IP
+builder.Services.AddHttpContextAccessor();
+
 // 优雅关闭配置：给后台服务 30 秒完成关闭（等待 PLC 断开、MQTT 停止、后台轮询任务退出）
 builder.Services.Configure<HostOptions>(options =>
 {
@@ -42,6 +53,9 @@ builder.Services.AddHostedService<StartupHostedService>();
 // 运行时托管服务：注册顺序在 StartupHostedService 之后（双重保险），
 // 且内部仍显式 await 数据库就绪信号，确保查询前表结构已就位。
 builder.Services.AddHostedService<RuntimeHostedService>();
+
+// 系统日志自动清理托管服务（每天 3 点按分类保留期分批清理 SystemLogs）
+builder.Services.AddHostedService<SystemLogCleanupHostedService>();
 
 // ========== 2. 构建应用 ==========
 using var app = builder.Build();

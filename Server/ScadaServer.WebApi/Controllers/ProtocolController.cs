@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.WebApi.Filters;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -43,16 +44,19 @@ namespace ScadaServer.WebApi.Controllers
 
         /// <summary>创建协议。</summary>
         [HttpPost]
+        [AuditLog("通信协议", "CREATE")]
         public async Task<IActionResult> Create([FromBody] CreateProtocolDto dto)
             => Ok(await _appService.CreateAsync(dto));
 
         /// <summary>更新协议。</summary>
         [HttpPut("{id}")]
+        [AuditLog("通信协议", "UPDATE")]
         public async Task<IActionResult> Update(int id, [FromBody] ProtocolDto dto)
             => Ok(await _appService.UpdateAsync(id, dto));
 
         /// <summary>删除协议（已被数据模型绑定的协议不可删除）。</summary>
         [HttpDelete("{id}")]
+        [AuditLog("通信协议", "DELETE")]
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);
