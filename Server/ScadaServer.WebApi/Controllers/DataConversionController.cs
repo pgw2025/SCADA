@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.WebApi.Filters;
+using ScadaServer.Runtime.Bindings;
 
 namespace ScadaServer.WebApi.Controllers
 {
@@ -12,10 +13,13 @@ namespace ScadaServer.WebApi.Controllers
     public class DataConversionController : ControllerBase
     {
         private readonly IDataConversionAppService _appService;
+        private readonly IVariableBindingEngine _bindingEngine;
 
-        public DataConversionController(IDataConversionAppService appService)
+        public DataConversionController(IDataConversionAppService appService,
+            IVariableBindingEngine bindingEngine)
         {
             _appService = appService;
+            _bindingEngine = bindingEngine;
         }
 
         [HttpGet]
@@ -29,6 +33,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> Create([FromBody] DataConversionDto dto)
         {
             await _appService.CreateAsync(dto);
+            await _bindingEngine.LoadAsync();
             return Ok(dto);
         }
 
@@ -37,6 +42,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> Update([FromBody] DataConversionDto dto)
         {
             await _appService.UpdateAsync(dto);
+            await _bindingEngine.LoadAsync();
             return Ok();
         }
 
@@ -45,6 +51,7 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             await _appService.DeleteAsync(id);
+            await _bindingEngine.LoadAsync();
             return Ok();
         }
     }

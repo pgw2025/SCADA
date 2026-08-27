@@ -62,7 +62,7 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
 
     // Find active conversions that take current node as source
     const matched = dataConversions.value.filter(
-      c => c.active && c.sourceDeviceId === current.deviceId && c.sourceVariableKey === current.variableKey
+      c => c.active && String(c.sourceDeviceId) === String(current.deviceId) && c.sourceVariableKey === current.variableKey
     );
 
     for (const conv of matched) {
@@ -82,7 +82,7 @@ export const propagateDataLinkages = (startDeviceId: string, startVariableKey: s
           targetDev.variableTimestamps[conv.targetVariableKey] = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 
           queue.push({
-            deviceId: conv.targetDeviceId,
+            deviceId: String(conv.targetDeviceId),
             variableKey: conv.targetVariableKey,
             value: current.value
           });

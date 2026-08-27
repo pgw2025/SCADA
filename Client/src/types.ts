@@ -289,11 +289,11 @@ export interface MqttServer {
 }
 
 export interface DataConversion {
-  id: string;
+  id: number;
   name: string;
-  sourceDeviceId: string;
+  sourceDeviceId: number;
   sourceVariableKey: string;
-  targetDeviceId: string;
+  targetDeviceId: number;
   targetVariableKey: string;
   active: boolean;
 }

@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { dataConversions, devices, addLog } from '../store/index';
 import { checkCycleInConversions } from '../utils/algo';
 import { DataConversion } from '../types';
+import { 
+  fetchDataConversions,
+  createDataConversion,
+  updateDataConversion,
+  deleteDataConversion
+} from '../api/dataConversionApi';
 import { 
   Plus, 
   Trash2, 
@@ -19,17 +25,24 @@ import {
 
 const showModal = ref(false);
 const isEditing = ref(false);
-const editingId = ref<string | null>(null);
+const editingId = ref<number | null>(null);
 
 // Form Fields
 const linkageName = ref('');
-const sourceDevId = ref('');
+const sourceDevId = ref(0);
 const sourceVarKey = ref('');
-const targetDevId = ref('');
+const targetDevId = ref(0);
 const targetVarKey = ref('');
 const isActiveState = ref(true);
 
 const filterQuery = ref('');
+
+// 页面加载：从后端拉取全部规则，实现持久化
+onMounted(async () => {
+  try {
+    dataConversions.value = await fetchDataConversions();
+  } catch { /* 拦截器已弹 toast，此处静默 */ }
+});
 
 // Filtered conversions
 const filteredConversions = computed(() => {
@@ -67,9 +80,9 @@ const openNewLinkageModal = () => {
   isEditing.value = false;
   editingId.value = null;
   linkageName.value = `联动规则-${Date.now().toString().slice(-4)}`;
-  sourceDevId.value = devices.value[0]?.id || '';
+  sourceDevId.value = devices.value[0]?.id ?? 0;
   sourceVarKey.value = sourceVariables.value[0] || '';
-  targetDevId.value = devices.value[1]?.id || devices.value[0]?.id || '';
+  targetDevId.value = devices.value[1]?.id ?? devices.value[0]?.id ?? 0;
   targetVarKey.value = targetVariables.value[0] || '';
   isActiveState.value = true;
   showModal.value = true;
@@ -86,7 +99,7 @@ const onTargetDeviceChange = () => {
 };
 
 // Save custom linkage
-const handleSaveLinkage = () => {
+const handleSaveLinkage = async () => {
   if (!linkageName.value.trim() || !sourceDevId.value || !sourceVarKey.value || !targetDevId.value || !targetVarKey.value) {
     alert('请填写完整所有的设备变量映射字段。');
     return;
@@ -116,7 +129,7 @@ const handleSaveLinkage = () => {
     }
   } else {
     tentative.push({
-      id: `conv-temp-${Date.now()}`,
+      id: 0,
       name: linkageName.value,
       sourceDeviceId: sourceDevId.value,
       sourceVariableKey: sourceVarKey.value,
@@ -133,56 +146,73 @@ const handleSaveLinkage = () => {
     return;
   }
 
-  // Save changes if no cycles detected
-  if (isEditing.value && editingId.value) {
-    const idx = dataConversions.value.findIndex(c => c.id === editingId.value);
-    if (idx !== -1) {
-      dataConversions.value[idx] = {
-        ...dataConversions.value[idx],
+  try {
+    // Persist changes if no cycles detected
+    if (isEditing.value && editingId.value) {
+      const idx = dataConversions.value.findIndex(c => c.id === editingId.value);
+      if (idx !== -1) {
+        await updateDataConversion({
+          ...dataConversions.value[idx],
+          name: linkageName.value,
+          sourceDeviceId: sourceDevId.value,
+          sourceVariableKey: sourceVarKey.value,
+          targetDeviceId: targetDevId.value,
+          targetVariableKey: targetVarKey.value,
+          active: isActiveState.value
+        });
+        dataConversions.value[idx] = {
+          ...dataConversions.value[idx],
+          name: linkageName.value,
+          sourceDeviceId: sourceDevId.value,
+          sourceVariableKey: sourceVarKey.value,
+          targetDeviceId: targetDevId.value,
+          targetVariableKey: targetVarKey.value,
+          active: isActiveState.value
+        };
+        addLog('数据转换', `修改了数据转换规则 [${linkageName.value}]`, 'normal');
+      }
+    } else {
+      const created = await createDataConversion({
         name: linkageName.value,
         sourceDeviceId: sourceDevId.value,
         sourceVariableKey: sourceVarKey.value,
         targetDeviceId: targetDevId.value,
         targetVariableKey: targetVarKey.value,
         active: isActiveState.value
-      };
-      addLog('数据转换', `修改了数据转换规则 [${linkageName.value}]`, 'normal');
+      });
+      dataConversions.value.push(created);
+      addLog('数据转换', `创建了数据联动转换规则 [${linkageName.value}]`, 'normal');
     }
-  } else {
-    dataConversions.value.push({
-      id: `conv-${Date.now()}`,
-      name: linkageName.value,
-      sourceDeviceId: sourceDevId.value,
-      sourceVariableKey: sourceVarKey.value,
-      targetDeviceId: targetDevId.value,
-      targetVariableKey: targetVarKey.value,
-      active: isActiveState.value
-    });
-    addLog('数据转换', `创建了数据联动转换规则 [${linkageName.value}]`, 'normal');
-  }
 
-  showModal.value = false;
+    showModal.value = false;
+  } catch { /* 拦截器已弹 toast，失败保留弹窗供重试 */ }
 };
 
-const handleDeleteLinkage = (id: string, name: string) => {
-  if (confirm(`确定删除数据联动转换规则 [${name}] 吗？`)) {
+const handleDeleteLinkage = async (id: number, name: string) => {
+  if (!confirm(`确定删除数据联动转换规则 [${name}] 吗？`)) return;
+  try {
+    await deleteDataConversion(id, name);
     dataConversions.value = dataConversions.value.filter(c => c.id !== id);
     addLog('数据转换', `删除了数据转换规则 [${name}]`, 'warning');
-  }
+  } catch { /* 失败不删内存，保持与库一致 */ }
 };
 
-const toggleLinkStatus = (c: DataConversion) => {
-  c.active = !c.active;
-  // If enabling again, run cycle checks
-  if (c.active) {
-    const hasCycle = checkCycleInConversions(dataConversions.value);
-    if (hasCycle) {
-      c.active = false;
+const toggleLinkStatus = async (c: DataConversion) => {
+  const next = !c.active;
+  // 若为启用：按翻转后的状态构造临时数组做环检，通过后才提交
+  if (next) {
+    const tentative = dataConversions.value.map(x =>
+      x.id === c.id ? { ...x, active: true } : x);
+    if (checkCycleInConversions(tentative)) {
       alert('无法激活此关联: 启动后会形成数据回环死循环！已自动拦截并关闭。');
       return;
     }
   }
-  addLog('数据转换', `联动规则 [${c.name}] 切换为 ${c.active ? '已启用 (Active)' : '已停用 (Passive)'}`, c.active ? 'normal' : 'warning');
+  try {
+    await updateDataConversion({ ...c, active: next });
+    c.active = next;
+    addLog('数据转换', `联动规则 [${c.name}] 切换为 ${next ? '已启用 (Active)' : '已停用 (Passive)'}`, next ? 'normal' : 'warning');
+  } catch { /* 拦截器已弹 toast，状态保持不变 */ }
 };
 </script>
 

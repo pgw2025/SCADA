@@ -52,6 +52,8 @@ namespace ScadaServer.Application.Services
                 Active = dto.Active
             };
             await _repository.InsertAsync(entity);
+            // InsertAsync 内部 SaveChangesAsync 后自增 Id 已回填到实体，同步回写 DTO 供接口返回
+            dto.Id = entity.Id;
         }
 
         public async Task UpdateAsync(DataConversionDto dto)
