@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { devices } from '../store/deviceStore';
-import { dataModels } from '../store/index';
-import { addLog } from '../store/index';
+import { dataModels, addLog, systemConfig } from '../store/index';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { writeDeviceVariable, fetchDeviceRealtime } from '../api/deviceApi';
+import { fetchDeviceVariables } from '../api/deviceVariableApi';
 import { extractApiError } from '../api/http';
-import { DEVICE_TYPES } from '../types';
+import { DEVICE_TYPES, type DeviceVariable } from '../types';
 import {
   Database, 
   Search, 
@@ -54,44 +54,79 @@ const currentModel = computed(() => {
 // Simulated variable values storage
 const simulatedValues = ref<Record<string, number | boolean>>({});
 
-// Compile active variables array with models mapping
+// 设备变量实例列表（获取自 /api/DeviceVariable/by-device/{id}，与"设备变量"页同源）。
+// 实时监控页以此作为列表数据源头：只会展示该设备真正实例化的变量，
+// 而非数据模型里的全部模板（修复"数量=模型变量数而非设备变量数"的问题）。
+const deviceVariables = ref<DeviceVariable[]>([]);
+const isLoadingVars = ref(false);
+
+const loadDeviceVariables = async () => {
+  if (!selectedDevice.value || systemConfig.value.isSimulationActive) {
+    deviceVariables.value = [];
+    return;
+  }
+  isLoadingVars.value = true;
+  try {
+    deviceVariables.value = await fetchDeviceVariables(selectedDevice.value.id);
+  } catch (e: any) {
+    deviceVariables.value = [];
+    addLog('实时监控', `获取设备变量列表失败: ${extractApiError(e)}`, 'warning');
+  } finally {
+    isLoadingVars.value = false;
+  }
+};
+
+// 模板元数据兜底 map（DeviceVariableDto 未携带 min/max/type/description，从当前模型模板按 key 补齐，
+// 仅用于默认值、显示范围与 digital/analog 判定，不参与列表数量）。
+const templateByKey = computed(() => {
+  const map = new Map<string, any>();
+  for (const mv of currentModel.value?.variables ?? []) {
+    map.set(mv.key, mv);
+  }
+  return map;
+});
+
+// Compile active variables array: 以设备变量实例为源头，结合模板元数据与实时遥测值渲染
 const renderedVariables = computed(() => {
-  if (!selectedDevice.value || !currentModel.value) return [];
-  
-  const modelVars = currentModel.value.variables || [];
-  
-  return modelVars.map((v) => {
+  if (!selectedDevice.value) return [];
+
+  return deviceVariables.value.map((dv) => {
+    const tpl = templateByKey.value.get(dv.key);
+    // digital/analog 判定：模板 type 优先，缺省按 dataType 派生
+    const type: 'digital' | 'analog' = tpl?.type
+      ? (tpl.type as 'digital' | 'analog')
+      : (/BOOL/i.test(String(dv.dataType)) ? 'digital' : 'analog');
+
     // 取值优先级：① 本地强制值（simulatedValues，写入后的即时反馈）
     //            → ② SignalR/轮询写入设备的真实遥测值（selectedDevice.variables[key]）
     //            → ③ 默认值（digital 反 false，analog 反 min）
-    const forcedValue = simulatedValues.value[v.key];
-    const liveValue = selectedDevice.value?.variables?.[v.key];
+    const forcedValue = simulatedValues.value[dv.key];
+    const liveValue = selectedDevice.value?.variables?.[dv.key];
     const value = forcedValue !== undefined
       ? forcedValue
       : (liveValue !== undefined && liveValue !== null
           ? liveValue
-          : (v.type === 'digital' ? false : v.min ?? 0));
+          : (type === 'digital' ? false : tpl?.min ?? 0));
 
     return {
-      key: v.key,
-      name: v.name || '未定义系统点位',
-      // 地址已下放至设备实例级（DeviceVariable），模板变量不再持有地址，此处用 Key 派生占位
-      address: `REG_${v.key.toUpperCase()}`,
-      type: v.type || 'analog',
-      dataType: v.dataType || '',
-      unit: v.unit || '',
-      min: v.min ?? 0,
-      max: v.max ?? 100,
-      description: v.description || '现场控制元件回写值',
-      value: value,
-      // 读写权限：优先取设备实例级有效权限（variableMeta.effectiveIsReadOnly，
-      // 含设备级 IsReadOnlyOverride 覆盖结果），后端未下发时回退模板 isReadOnly。
-      // 这样用户在"设备变量"视图把变量覆盖为可写后，实时监控页写入按钮即可显示。
-      isReadOnly: selectedDevice.value?.variableMeta?.[v.key]?.effectiveIsReadOnly
-        ?? v.isReadOnly
-        ?? true,
+      key: dv.key,
+      name: tpl?.name || dv.name || '未定义系统点位',
+      // 真实实例级地址（模板变量不再持有地址），不需要地址的协议可留空
+      address: dv.address || '',
+      type,
+      dataType: dv.dataType || '',
+      unit: dv.unit || tpl?.unit || '',
+      min: tpl?.min ?? 0,
+      max: tpl?.max ?? 100,
+      description: tpl?.description || '现场控制元件回写值',
+      value,
+      // 是否为该实例启用采集（isEnabled=false 时交由页面置灰/标停用）
+      isEnabled: dv.isEnabled,
+      // 读写权限：优先取设备实例级有效权限（effectiveIsReadOnly，含 IsReadOnlyOverride 覆盖结果），
+      // 缺省回退模板 isReadOnly，保证"设备变量"页覆盖为可写后此处可写。
+      isReadOnly: dv.effectiveIsReadOnly ?? tpl?.isReadOnly ?? true,
       // 优先展示变量级实时推送时间戳，无推送时回退设备更新时间
-      updatedAt: selectedDevice.value?.variableTimestamps?.[v.key]
+      updatedAt: selectedDevice.value?.variableTimestamps?.[dv.key]
         || selectedDevice.value?.lastUpdated
         || new Date().toISOString().replace('T', ' ').slice(0, 19)
     };
@@ -206,6 +241,8 @@ onMounted(() => {
   fetchDataModelsFromBackend();
   // 主动拉取当前选中设备实时值回填（刷新后手动写入值不丢失）
   loadRealtime(selectedDevId.value);
+  // 拉取设备变量实例作为实时监控列表源头（与设备变量表同源）
+  loadDeviceVariables();
 });
 
 // selectedDevId 在 setup 时一次性取 devices[0]，若挂载时 store 为空会停在空串。
@@ -216,9 +253,10 @@ watch(() => devices.value.length, (len) => {
   }
 });
 
-// 切换设备时拉取该设备实时值回填
+// 切换设备时拉取该设备实时值与变量实例回填
 watch(selectedDevId, (id) => {
   loadRealtime(id);
+  loadDeviceVariables();
 });
 </script>
 
