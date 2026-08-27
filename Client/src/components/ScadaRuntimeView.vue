@@ -9,6 +9,7 @@ import {
 } from '../store/scadaStore';
 import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
+import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { isAuthenticated, performLogout } from '../store';
 import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
@@ -99,7 +100,7 @@ const componentValues = computed(() => {
 // 阶段5：控制下发权限——仅 Operator/Admin 可下发写指令
 const canControlWrite = computed(() => {
   const r = loginUser.value?.role;
-  return r === 'Operator' || r === 'Admin';
+  return r === ROLE_OPERATOR || r === ROLE_ADMIN;
 });
 
 // 阶段3：导航按钮跳转（同端切换，跨端不允许）
@@ -145,7 +146,7 @@ const handleTriggerToggleValue = (
   setDeviceVariableValue(deviceId, key, targetVal);
 };
 
-const isAdmin = computed(() => loginUser.value?.role === 'Admin');
+const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
 
 const onLogout = () => {
   performLogout();

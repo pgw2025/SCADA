@@ -52,15 +52,19 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 登录接口自身的 401 属于"用户名或密码错误"，不属于凭证失效，跳过强制登出
-    const isLoginRequest = error.config?.url?.includes('/api/Auth/login');
-    if (error.response?.status === 401 && !isLoginRequest && getToken()) {
+    // 登录接口自身的 401 属于"用户名或密码错误"，不属于凭证失效，跳过强制登出；
+    // /api/Auth/me 的 401 由 initializeAuth 统一裁决（会话无效→清 token，网络错误→沿用本地快照），
+    // 此处必须静默，避免与 initializeAuth 双清竞态，也避免刷新启动期弹出"登录失效"toast 噪音。
+    const url = error.config?.url;
+    const isAuthFlowRequest = url?.includes('/api/Auth/login') || url?.includes('/api/Auth/me');
+
+    if (error.response?.status === 401 && !isAuthFlowRequest && getToken()) {
       localStorage.removeItem(TOKEN_KEY);
       isAuthenticated.value = false;
       loginUser.value = null;
       addLog('安全认证', '登录状态已失效，请重新登录', 'warning');
       showToast('登录状态已失效，请重新登录', 'warning');
-    } else if (!isLoginRequest) {
+    } else if (!isAuthFlowRequest) {
       // 登录失败由登录页内联错误框展示，其余失败统一弹 Toast（含后端 message / 校验 errors）
       showToast(extractApiError(error), 'error');
     }

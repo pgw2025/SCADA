@@ -9,6 +9,7 @@ import {
   deleteSystemUser 
 } from '../store/index';
 import { SystemUser } from '../types';
+import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { 
   Plus, 
   Trash2, 
@@ -32,7 +33,7 @@ const editingOriginalName = ref('');
 
 // Form Fields
 const uName = ref('');
-const uRole = ref<string>('Operator');
+const uRole = ref<string>(ROLE_OPERATOR);
 const uStatus = ref<string>('Active');
 const uPassword = ref('');
 
@@ -69,7 +70,7 @@ const openNewUserModal = () => {
   editingUserId.value = null;
   editingOriginalName.value = '';
   uName.value = '';
-  uRole.value = 'Operator';
+  uRole.value = ROLE_OPERATOR;
   uStatus.value = 'Active';
   uPassword.value = '';
   showModal.value = true;
@@ -226,13 +227,13 @@ const handleDeleteUser = async (id: number, name: string) => {
             <!-- Role security category with specific visual badges -->
             <td class="px-6 py-4 font-sans font-bold">
               <span 
-                v-if="u.role === 'Admin'"
+                v-if="u.role === ROLE_ADMIN"
                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 uppercase"
               >
                 🔐 管理员
               </span>
               <span 
-                v-else-if="u.role === 'Operator'"
+                v-else-if="u.role === ROLE_OPERATOR"
                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 uppercase"
               >
                 ⚡ 操作员

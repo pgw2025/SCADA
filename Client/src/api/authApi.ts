@@ -1,36 +1,68 @@
 import { addLog } from '../services/logService';
 import { systemConfig } from '../store/configStore';
-import { isAuthenticated, loginUser, systemUsers } from '../store/userStore';
+import { isAuthenticated, loginUser, systemUsers, authInitialized } from '../store/userStore';
 import { SystemUser, CreateUserDto, UpdateUserDto } from '../types';
 import { http, TOKEN_KEY } from './http';
 
-// 初始化认证状态
-export const initializeAuth = () => {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token) {
+// 初始化认证状态（异步：本地校验 token 后回源 /api/Auth/me 取权威角色/状态）
+export const initializeAuth = async (): Promise<void> => {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    // 1) 本地快速校验（不发请求）：结构 + exp
+    let payload: any;
     try {
       // JWT payload 使用 base64url 编码，atob 不识别 '-'/'_'，需先还原为标准 base64 并补齐填充
       const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-      const payload = JSON.parse(atob(padded));
-      if (payload.exp * 1000 > Date.now()) {
-        // 无有效 role/username 的 token 视为无效会话，不能默认授予管理员身份
-        if (!payload.role || !payload.username) {
-          localStorage.removeItem(TOKEN_KEY);
-          return;
-        }
-        isAuthenticated.value = true;
-        loginUser.value = {
-          username: payload.username,
-          role: payload.role
-        };
-        addLog('安全认证', 'Token 自动登录成功', 'normal');
-      } else {
-        localStorage.removeItem(TOKEN_KEY);
-      }
+      // TextDecoder 正确处理非 ASCII 用户名（替代已废弃的 escape/atob 组合）
+      const json = new TextDecoder().decode(Uint8Array.from(atob(padded), c => c.charCodeAt(0)));
+      payload = JSON.parse(json);
+      if (!payload.exp || payload.exp * 1000 <= Date.now()) throw new Error('expired');
+      // 无有效 role/username 的 token 视为无效会话，不能默认授予管理员身份
+      if (!payload.role || !payload.username) throw new Error('no identity');
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY); // 过期/结构异常 → 清除（不发 /me）
+      return;
     }
+
+    // 2) 临时态：token 快照，用于防闪屏，以及回源失败时的降级身份
+    isAuthenticated.value = true;
+    loginUser.value = { username: payload.username, role: payload.role };
+    addLog('安全认证', 'Token 自动登录成功（待回源校验）', 'normal');
+
+    // 3) 回源：用数据库中最新角色/状态覆盖 token 快照
+    try {
+      const res = await http.get(`${systemConfig.value.backendApiUrl}/api/Auth/me`, { timeout: 5000 });
+      const u = res.data;
+      if (u && u.status === 'Active') {
+        loginUser.value = { username: u.username, role: u.role };
+      } else {
+        // 账号不存在/已停用/角色被收回 → 会话确认无效，清理
+        localStorage.removeItem(TOKEN_KEY);
+        isAuthenticated.value = false;
+        loginUser.value = null;
+      }
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        // 签名无效/被吊销等 → 会话确认无效，清理
+        localStorage.removeItem(TOKEN_KEY);
+        isAuthenticated.value = false;
+        loginUser.value = null;
+      } else {
+        // 网络错误/超时/后端不可达 → 保留会话，沿用 token 快照（与现状同等降级，绝不误杀）
+        addLog('安全认证', '回源校验暂不可用，沿用本地会话', 'warning');
+      }
+    }
+  } catch {
+    // 最后兜底：任何未预见异常按未登录处理，绝不让异常向外抛出阻塞应用启动
+    isAuthenticated.value = false;
+    loginUser.value = null;
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+  } finally {
+    // 无论成败必须置位，否则路由守卫会一直等待初始化
+    authInitialized.value = true;
   }
 };
 

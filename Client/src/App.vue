@@ -7,12 +7,12 @@ import {
   performLogin,
   performLogout,
   systemConfig,
-  initializeAuth,
   currentTheme,
   toggleTheme,
   initTheme
 } from './store';
 import { initializeRealtimeSignals } from './services/signalRService';
+import { ROLE_ADMIN } from './constants/roles';
 import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
@@ -71,7 +71,7 @@ const triggerFormLogin = async () => {
     loginErrorMessage.value = result.errorMessage || '登录失败，请检查网络连接';
   } else {
     // 阶段5：登录成功按角色落地——管理员进仪表盘，普通用户（Operator）进组态运行画面
-    router.push(loginUser.value?.role === 'Admin' ? '/dashboard' : '/scada-view');
+    router.push(loginUser.value?.role === ROLE_ADMIN ? '/dashboard' : '/scada-view');
   }
 };
 
@@ -91,7 +91,6 @@ const startClock = () => {
 
 onMounted(async () => {
   initTheme();
-  initializeAuth();
   startClock();
   await initializeRealtimeSignals();
 });
@@ -131,7 +130,7 @@ const navigate = (path: string) => {
 const isActive = (path: string) => router.currentRoute.value.path === path;
 
 // 阶段5：角色隔离——仅管理员可见后台导航；普通用户（Operator）仅见「组态运行」入口
-const isAdmin = computed(() => loginUser.value?.role === 'Admin');
+const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
 </script>
 
 <template>

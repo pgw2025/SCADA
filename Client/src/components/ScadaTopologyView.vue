@@ -34,6 +34,7 @@ import {
 } from '../services/scadaService';
 import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
+import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { showToast } from '../services/toastService';
@@ -187,7 +188,7 @@ const pageHeight = computed(() => currentPage.value.height ?? 700);
 // 其它角色（如 Viewer）即便已通过 JWT 认证，前端也拦截写控件、后端以 [Authorize(Roles)] 兜底 403。
 const canControlWrite = computed(() => {
   const r = loginUser.value?.role;
-  return r === 'Operator' || r === 'Admin';
+  return r === ROLE_OPERATOR || r === ROLE_ADMIN;
 });
 const handleUpdateCanvasSize = (w: number, h: number) => {
   const pg = currentPage.value;
