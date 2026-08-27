@@ -420,6 +420,12 @@ namespace ScadaServer.Runtime
             try
             {
                 await runtime.Driver.WriteAsync(vr, value);
+
+                // 写成功后立即在临界区内同步运行时内存态，与采集调度（DeviceWorker 同样持 Lock 更新）串行化，消除竞态。
+                vr.PreviousValue = vr.Value;
+                vr.Value = value;
+                vr.UpdateTime = DateTime.Now;
+                vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
             }
             catch (Exception ex)
             {
@@ -431,12 +437,7 @@ namespace ScadaServer.Runtime
                 runtime.Lock.Release();
             }
 
-            // 写成功后同步运行时内存值，并经 SignalR 广播，使所有客户端刷新后能看到新值。
-            vr.PreviousValue = vr.Value;
-            vr.Value = value;
-            vr.UpdateTime = DateTime.Now;
-            vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
-
+            // 写成功后已在临界区内同步运行时内存值（见上）。此处经 SignalR 广播，使所有客户端刷新后能看到新值。
             try
             {
                 await _notificationService.NotifyVariableUpdateAsync(deviceId, variableKey, value);

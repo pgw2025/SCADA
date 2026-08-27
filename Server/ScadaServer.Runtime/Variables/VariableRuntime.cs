@@ -88,4 +88,16 @@ public class VariableRuntime : IRuntimeVariable
 
     /// <summary>值是否发生变化。</summary>
     public bool IsChanged { get; set; }
+
+    /// <summary>
+    /// 绑定引擎最近一次写入本变量的期望值（运行时字段，不持久化）。
+    /// 用于回声抑制：采集回读若等于该值且落在 <see cref="LastBindingWriteTime"/> 窗口内，
+    /// 视为绑定写入的回显，不发布变化事件（历史/报警维持现状，由 IsChanged=false 自然生效）。
+    /// </summary>
+    public object? LastBindingWriteValue { get; set; }
+
+    /// <summary>
+    /// 绑定写入期望值的时间戳（运行时字段）。与 <see cref="LastBindingWriteValue"/> 配合判定回声窗口，超时后失效。
+    /// </summary>
+    public DateTime LastBindingWriteTime { get; set; }
 }

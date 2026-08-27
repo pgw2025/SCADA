@@ -132,14 +132,29 @@ namespace ScadaServer.Runtime.Devices
                                 continue;
                             }
 
-                            // 更新变量值和状态
-                            vr.PreviousValue = vr.Value;
-                            vr.Value = newValue;
-                            vr.UpdateTime = now;
-                            vr.Quality = VariableQuality.Good;
+                            // 在设备级锁内更新内存态，与 WriteVariableAsync（绑定写入/用户写入）临界区串行化，消除并发读写竞态。
+                            await _runtime.Lock.WaitAsync();
+                            try
+                            {
+                                vr.PreviousValue = vr.Value;
+                                vr.Value = newValue;
+                                vr.UpdateTime = now;
+                                vr.Quality = VariableQuality.Good;
 
-                            // 检测值是否发生变化
-                            vr.IsChanged = !Equals(vr.Value, vr.PreviousValue);
+                                // 回声抑制：若本次回读值等于绑定引擎最近一次写入的期望值且落在窗口内，
+                                // 视为绑定写入的回显，不发布变化事件。
+                                var echoWindowMs = Math.Max(vr.PollingIntervalMs, 1000) * 2;
+                                var isEcho = vr.LastBindingWriteValue != null
+                                             && (now - vr.LastBindingWriteTime).TotalMilliseconds <= echoWindowMs
+                                             && ValueEquals(newValue, vr.LastBindingWriteValue);
+
+                                vr.IsChanged = !Equals(vr.Value, vr.PreviousValue) && !isEcho;
+                            }
+                            finally
+                            {
+                                _runtime.Lock.Release();
+                            }
+
                             if (vr.IsChanged && vr.Value != null)
                             {
                                 changed.Add((vr.Key, vr.Value));
@@ -350,6 +365,24 @@ namespace ScadaServer.Runtime.Devices
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "推送系统报警失败: {VariableKey}", vr.Key);
+            }
+        }
+
+        /// <summary>
+        /// 值相等比较，优先引用/类型相等，其次按数值相等（覆盖 int/long/double 同值但类型不同的场景），用于回声抑制判定。
+        /// </summary>
+        private static bool ValueEquals(object? a, object? b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            if (a.Equals(b)) return true;
+            try
+            {
+                return Convert.ToDouble(a) == Convert.ToDouble(b);
+            }
+            catch
+            {
+                return false;
             }
         }
     }
