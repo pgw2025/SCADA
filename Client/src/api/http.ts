@@ -21,6 +21,29 @@ const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const http = axios.create();
 
 /**
+ * 数组参数按 ASP.NET Core 约定序列化为"裸键重复"（levels=Error&levels=Critical）。
+ *
+ * 原因：axios 默认会把数组序列化为 levels[]=Error&levels[]=Critical（方括号格式），
+ * 而 ASP.NET Core 的 `List<string>` 模型绑定只认裸键重复写法，不识别方括号，
+ * 会导致后端收到的集合参数为 null、过滤条件整段失效（系统日志级别筛选即此坑）。
+ * 用 URLSearchParams 显式 append 即可产出后端可绑定的格式；对 Date/对象也做安全兜底。
+ */
+http.defaults.paramsSerializer = {
+  serialize: (params) => {
+    const search = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null) return;
+      if (v instanceof Date) search.append(k, v.toISOString());
+      else if (Array.isArray(v)) v.forEach((item) => append(k, item));
+      else if (typeof v === 'object') search.append(k, JSON.stringify(v));
+      else search.append(k, String(v));
+    };
+    Object.entries(params ?? {}).forEach(([k, v]) => append(k, v));
+    return search.toString();
+  }
+};
+
+/**
  * 从 axios 错误中提取后端 ApiResponse 的具体错误信息，供 UI 直接展示。
  * 后端统一返回 { success, message, errors }：
  *  - BusinessException：message 即业务错误文案

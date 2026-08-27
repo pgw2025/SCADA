@@ -97,10 +97,17 @@ const resetFilters = () => {
   applyQuery();
 };
 
+// 分类切换：直接选中并立即重查（重置到第 1 页）
+const selectCategory = (v: string) => {
+  category.value = v;
+  applyQuery();
+};
+
 const toggleLevel = (lv: string) => {
   const idx = selectedLevels.value.indexOf(lv);
   if (idx >= 0) selectedLevels.value.splice(idx, 1);
   else selectedLevels.value.push(lv);
+  applyQuery(); // 多选切换后立即重查
 };
 
 const changePage = (delta: number) => {
@@ -294,7 +301,7 @@ onBeforeUnmount(() => { stopLive(); });
         <button
           v-for="c in categories"
           :key="c.value"
-          @click="category = c.value"
+          @click="selectCategory(c.value)"
           class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border"
           :class="category === c.value
             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
