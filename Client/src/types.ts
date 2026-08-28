@@ -570,22 +570,76 @@ export interface ExposedDataInterface {
 
 export interface HistoricalRecord {
   id: string;
+  /** 所属设备标识（区分不同设备的同名变量，可为空=无设备上下文） */
+  deviceKey?: string;
   variableKey: string;
   variableName: string;
   value: number;
   timestamp: string;
 }
 
+export type DatabaseBackendType = 'MySQL' | 'PostgreSQL' | 'SQLite' | 'InfluxDB' | 'TimescaleDB';
+
+// 与后端 DatabaseConfigDto 对齐
 export interface DatabaseConfig {
-  id: string;
+  id: number;
   name: string;
-  type: 'realtime' | 'historical';
-  backendType: 'MySQL' | 'PostgreSQL' | 'SQLite' | 'InfluxDB' | 'ClickHouse' | 'TimescaleDB';
+  type: 'Realtime' | 'Historical';
+  backendType: DatabaseBackendType;
   host: string;
   port: number;
   username: string;
+  /** 回显为掩码；保存时掩码/空 = 不改密 */
+  password?: string | null;
+  hasPassword?: boolean;
   databaseName: string;
-  status: 'connected' | 'disconnected' | 'testing';
+  /** 回显为掩码（InfluxDB） */
+  token?: string | null;
+  hasToken?: boolean;
+  org?: string | null;
+  bucket?: string | null;
+  isActive: boolean;
+  /** 最近连接测试结果（Ok/Failed/出错信息） */
+  status?: string | null;
+  lastStatus?: string | null;
+  lastCheckedAt?: string | null;
+}
+
+// 主库（MySQL，自举依赖）配置 DTO
+export interface MainDatabaseConfig {
+  host: string;
+  port: number;
+  databaseName: string;
+  username: string;
+  password?: string | null;
+  hasPassword?: boolean;
+}
+
+// 数据库连接测试请求/结果
+export interface TestConnectionRequest {
+  backendType: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  databaseName: string;
+  token?: string | null;
+  org?: string | null;
+  bucket?: string | null;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  latencyMs: number;
+  message: string;
+}
+
+// 历史数据迁移结果
+export interface HistoryMigrationResult {
+  isRunning: boolean;
+  total: number;
+  migrated: number;
+  message: string;
 }
 
 export interface SystemConfig {

@@ -15,12 +15,31 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<List<VariableHistory>> GetLatestAsync(string variableKey, int limit)
+        public async Task<List<VariableHistory>> GetLatestAsync(string deviceKey, string variableKey, int limit)
         {
-            return await Db.VariableHistories
+            var query = Db.VariableHistories.AsNoTracking();
+
+            // 按设备区分同名变量：有设备上下文时限定 device_key，避免跨设备数据混入。
+            if (!string.IsNullOrWhiteSpace(deviceKey))
+            {
+                query = query.Where(h => h.DeviceKey == deviceKey);
+            }
+
+            return await query
                 .Where(h => h.VariableKey == variableKey)
                 .OrderByDescending(h => h.Timestamp)
                 .Take(limit)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<VariableHistory>> GetBatchAfterIdAsync(long afterId, int size)
+        {
+            return await Db.VariableHistories
+                .AsNoTracking()
+                .Where(h => h.Id > afterId)
+                .OrderBy(h => h.Id)
+                .Take(size)
                 .ToListAsync();
         }
     }

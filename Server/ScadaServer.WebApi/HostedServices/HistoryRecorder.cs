@@ -31,6 +31,7 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<HistoryRecorder> _logger;
         private readonly DatabaseInitializationStatus _dbReady;
+        private readonly IInfluxStore _influxStore;
         private readonly CancellationTokenSource _cts = new();
 
         private long _droppedCount;
@@ -38,11 +39,13 @@ namespace ScadaServer.WebApi.HostedServices
         public HistoryRecorder(
             IServiceScopeFactory scopeFactory,
             ILogger<HistoryRecorder> logger,
-            DatabaseInitializationStatus dbReady)
+            DatabaseInitializationStatus dbReady,
+            IInfluxStore influxStore)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
             _dbReady = dbReady;
+            _influxStore = influxStore;
             _channel = Channel.CreateBounded<VariableHistory>(new BoundedChannelOptions(ChannelCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropWrite,
@@ -186,6 +189,25 @@ namespace ScadaServer.WebApi.HostedServices
 
             try
             {
+                // 优先写 InfluxDB（已配置且写入成功）时不再落 MySQL，减少冗余。
+                if (_influxStore.IsConfigured)
+                {
+                    try
+                    {
+                        var influxOk = await _influxStore.WriteAsync(batch);
+                        if (influxOk)
+                        {
+                            _logger.LogDebug("已写入 InfluxDB {Count} 条历史记录。", batch.Count);
+                            return;
+                        }
+                        _logger.LogWarning("InfluxDB 写入失败，回退写入 MySQL（{Count} 条）。", batch.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "InfluxDB 写入异常，回退写入 MySQL（{Count} 条）。", batch.Count);
+                    }
+                }
+
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
                 db.VariableHistories.AddRange(batch);

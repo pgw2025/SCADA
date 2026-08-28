@@ -32,6 +32,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly IVariableChangeBus _changeBus;
         private readonly IAlarmRuleEngine _alarmRuleEngine;
         private readonly IAlarmRecorder _alarmRecorder;
+        private readonly IRealtimeSnapshotService _realtimeSnapshot;
 
         /// <summary>
         /// 变量越界报警去重状态：key = 变量Key，值 = (是否超上限, 是否低于限)。
@@ -54,8 +55,9 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="changeBus">变量变化事件总线</param>
         /// <param name="alarmRuleEngine">报警规则引擎（规则命中判定）</param>
         /// <param name="alarmRecorder">报警记录器（异步落库）</param>
+        /// <param name="realtimeSnapshot">实时快照服务（MySQL 实时库）</param>
         /// <exception cref="ArgumentNullException">runtime 或 logger 为 null 时抛出</exception>
-        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder, IVariableChangeBus changeBus, IAlarmRuleEngine alarmRuleEngine, IAlarmRecorder alarmRecorder)
+        public DeviceWorker(DeviceRuntime runtime, ILogger<DeviceWorker> logger, IScadaNotificationService notificationService, IHistoryRecorder historyRecorder, IVariableChangeBus changeBus, IAlarmRuleEngine alarmRuleEngine, IAlarmRecorder alarmRecorder, IRealtimeSnapshotService realtimeSnapshot)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -64,6 +66,7 @@ namespace ScadaServer.Runtime.Devices
             _changeBus = changeBus ?? throw new ArgumentNullException(nameof(changeBus));
             _alarmRuleEngine = alarmRuleEngine ?? throw new ArgumentNullException(nameof(alarmRuleEngine));
             _alarmRecorder = alarmRecorder ?? throw new ArgumentNullException(nameof(alarmRecorder));
+            _realtimeSnapshot = realtimeSnapshot ?? throw new ArgumentNullException(nameof(realtimeSnapshot));
         }
 
         /// <summary>
@@ -190,6 +193,9 @@ namespace ScadaServer.Runtime.Devices
                             // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）
                             TryRecordHistory(vr);
 
+                            // 更新实时快照（内存态，后台批量 Upsert 到 MySQL 实时库），不阻塞采集
+                            TryUpdateRealtime(vr);
+
                             // 检测变量上下限越界并推送系统报警（仅进入越界时推送一次）
                             TryCheckAlarm(vr);
                         }
@@ -309,6 +315,46 @@ namespace ScadaServer.Runtime.Devices
                 numericValue,
                 rawValue,
                 vr.Quality.ToString());
+        }
+
+        /// <summary>
+        /// 更新变量实时快照（MySQL 实时库）。每次成功读取都刷新，
+        /// 不依赖存储策略，保证实时表始终反映最新采集值/质量/时间。
+        /// </summary>
+        private void TryUpdateRealtime(VariableRuntime vr)
+        {
+            if (vr.Value == null)
+            {
+                return;
+            }
+
+            double numericValue = 0;
+            string? rawValue = vr.Value?.ToString();
+            if (vr.Value is bool flag)
+            {
+                numericValue = flag ? 1 : 0;
+            }
+            else
+            {
+                try
+                {
+                    numericValue = Convert.ToDouble(vr.Value);
+                }
+                catch
+                {
+                    numericValue = 0;
+                }
+            }
+
+            _realtimeSnapshot.Update(
+                _runtime.Device.Id,
+                _runtime.Device.Key,
+                vr.Key,
+                vr.Name,
+                numericValue,
+                rawValue,
+                vr.Quality.ToString(),
+                vr.UpdateTime);
         }
 
         /// <summary>

@@ -4,73 +4,81 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 数据库配置应用服务。
+    /// <para>
+    /// 统一以 <c>DatabaseConfigs</c> 表为事实源（替代原 databases.json 双轨）。
+    /// 处理：字段映射、密码/令牌掩码回显与“掩码不改密”、同 Type 生效唯一性。
+    /// </para>
+    /// </summary>
     public class DatabaseConfigAppService : IDatabaseConfigAppService
     {
+        private const string SecretMask = "******";
+
         private readonly IDatabaseConfigRepository _repository;
-        public DatabaseConfigAppService(IDatabaseConfigRepository repository) { _repository = repository; }
+
+        public DatabaseConfigAppService(IDatabaseConfigRepository repository)
+        {
+            _repository = repository;
+        }
 
         public async Task<DatabaseConfigDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
-            if (entity == null) return null;
-            return new DatabaseConfigDto
-            {
-                Id = entity.Id,
-                Name = entity.Name,
-                Type = entity.Type,
-                BackendType = entity.BackendType,
-                Host = entity.Host,
-                Port = entity.Port,
-                Username = entity.Username,
-                DatabaseName = entity.DatabaseName
-            };
+            return entity == null ? null : ToDto(entity);
         }
 
         public async Task<List<DatabaseConfigDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(entity => new DatabaseConfigDto
-            {
-                Id = entity.Id,
-                Name = entity.Name,
-                Type = entity.Type,
-                BackendType = entity.BackendType,
-                Host = entity.Host,
-                Port = entity.Port,
-                Username = entity.Username,
-                DatabaseName = entity.DatabaseName
-            }).ToList();
+            return list.Select(ToDto).ToList();
         }
 
         public async Task CreateAsync(DatabaseConfigDto dto)
         {
-            var entity = new DatabaseConfig
+            Validate(dto);
+
+            var entity = FromDto(new DatabaseConfig(), dto);
+
+            // 创建即启用时，同 Type 其它生效配置降级为备用
+            if (entity.IsActive)
             {
-                Name = dto.Name,
-                Type = dto.Type,
-                BackendType = dto.BackendType,
-                Host = dto.Host,
-                Port = dto.Port,
-                Username = dto.Username,
-                DatabaseName = dto.DatabaseName
-            };
+                await DeactivateOthersAsync(entity.Type, excludeId: null);
+            }
+
             await _repository.InsertAsync(entity);
         }
 
         public async Task UpdateAsync(DatabaseConfigDto dto)
         {
+            Validate(dto);
+
             var entity = await _repository.GetByIdAsync(dto.Id);
-            if (entity != null)
+            if (entity == null)
             {
-                entity.Name = dto.Name;
-                entity.Type = dto.Type;
-                entity.BackendType = dto.BackendType;
-                entity.Host = dto.Host;
-                entity.Port = dto.Port;
-                entity.Username = dto.Username;
-                entity.DatabaseName = dto.DatabaseName;
-                await _repository.UpdateAsync(entity);
+                return;
             }
+
+            // 密码/令牌传掩码或空 => 视为“保持原值不修改”
+            if (string.IsNullOrEmpty(dto.Password) || dto.Password == SecretMask)
+            {
+                dto.Password = entity.Password;
+            }
+            if (string.IsNullOrEmpty(dto.Token) || dto.Token == SecretMask)
+            {
+                dto.Token = entity.Token;
+            }
+
+            var wasActive = entity.IsActive;
+            FromDto(entity, dto);
+
+            // 由备用切换为生效时，同 Type 其它生效配置降级
+            if (entity.IsActive && !wasActive)
+            {
+                await DeactivateOthersAsync(entity.Type, entity.Id);
+            }
+
+            await _repository.UpdateAsync(entity);
         }
 
         public async Task DeleteAsync(int id)
@@ -81,6 +89,85 @@ namespace ScadaServer.Application.Services
                 await _repository.DeleteAsync(entity);
             }
         }
+
+        /// <summary>
+        /// 将同一 Type 下其它生效配置置为非生效，保证同 Type 仅一条 <see cref="DatabaseConfig.IsActive"/>。
+        /// </summary>
+        private async Task DeactivateOthersAsync(string type, int? excludeId)
+        {
+            var actives = await _repository.GetListAsync(c => c.Type == type && c.IsActive);
+            foreach (var item in actives)
+            {
+                if (excludeId.HasValue && item.Id == excludeId.Value)
+                {
+                    continue;
+                }
+                item.IsActive = false;
+                await _repository.UpdateAsync(item);
+            }
+        }
+
+        /// <summary>
+        /// 基础校验：名称/后端类型必填，端口合法；InfluxDB 场景要求 Bucket（或 DatabaseName 兜底）。
+        /// </summary>
+        private static void Validate(DatabaseConfigDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Name))
+            {
+                throw new Domain.Exceptions.BusinessException("配置名称不能为空。");
+            }
+            if (string.IsNullOrWhiteSpace(dto.BackendType))
+            {
+                throw new Domain.Exceptions.BusinessException("后端类型不能为空。");
+            }
+            if (dto.Port <= 0)
+            {
+                throw new Domain.Exceptions.BusinessException("端口号必须为正整数。");
+            }
+        }
+
+        /// <summary>
+        /// 实体 → DTO（敏感字段回显为掩码）。
+        /// </summary>
+        private static DatabaseConfigDto ToDto(DatabaseConfig e) => new()
+        {
+            Id = e.Id,
+            Name = e.Name,
+            Type = e.Type,
+            BackendType = e.BackendType,
+            Host = e.Host,
+            Port = e.Port,
+            Username = e.Username,
+            Password = string.IsNullOrEmpty(e.Password) ? null : SecretMask,
+            HasPassword = !string.IsNullOrEmpty(e.Password),
+            DatabaseName = e.DatabaseName,
+            Token = string.IsNullOrEmpty(e.Token) ? null : SecretMask,
+            HasToken = !string.IsNullOrEmpty(e.Token),
+            Org = e.Org,
+            Bucket = e.Bucket,
+            IsActive = e.IsActive,
+            LastStatus = e.LastStatus,
+            LastCheckedAt = e.LastCheckedAt
+        };
+
+        /// <summary>
+        /// DTO → 实体（仅覆盖可写字段；敏感字段由调用方预处理“掩码不改密”）。
+        /// </summary>
+        private static DatabaseConfig FromDto(DatabaseConfig e, DatabaseConfigDto dto)
+        {
+            e.Name = dto.Name;
+            e.Type = dto.Type;
+            e.BackendType = dto.BackendType;
+            e.Host = dto.Host;
+            e.Port = dto.Port;
+            e.Username = dto.Username;
+            e.Password = dto.Password ?? string.Empty;
+            e.DatabaseName = dto.DatabaseName;
+            e.Token = dto.Token;
+            e.Org = dto.Org;
+            e.Bucket = dto.Bucket;
+            e.IsActive = dto.IsActive;
+            return e;
+        }
     }
 }
-

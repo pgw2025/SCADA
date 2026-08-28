@@ -37,6 +37,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly IVariableChangeBus _changeBus;
         private readonly IAlarmRuleEngine _alarmRuleEngine;
         private readonly IAlarmRecorder _alarmRecorder;
+        private readonly IRealtimeSnapshotService _realtimeSnapshot;
 
         // 调度器自身的取消源：由 StopAsync 触发，独立于宿主的 stoppingToken，
         // 确保在应用退出时调度循环与已派发的 worker 都能干净退出。
@@ -58,6 +59,7 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="workerLogger">Worker 日志</param>
         /// <param name="notificationService">设备/变量更新通知服务</param>
         /// <param name="historyRecorder">历史数据记录服务</param>
+        /// <param name="realtimeSnapshot">实时快照服务（MySQL 实时库）</param>
         public DeviceScheduler(
             RuntimeManager runtimeManager,
             ILogger<DeviceScheduler> logger,
@@ -66,7 +68,8 @@ namespace ScadaServer.Runtime.Devices
             IHistoryRecorder historyRecorder,
             IVariableChangeBus changeBus,
             IAlarmRuleEngine alarmRuleEngine,
-            IAlarmRecorder alarmRecorder)
+            IAlarmRecorder alarmRecorder,
+            IRealtimeSnapshotService realtimeSnapshot)
         {
             _runtimeManager = runtimeManager;
             _logger = logger;
@@ -76,6 +79,7 @@ namespace ScadaServer.Runtime.Devices
             _changeBus = changeBus;
             _alarmRuleEngine = alarmRuleEngine;
             _alarmRecorder = alarmRecorder;
+            _realtimeSnapshot = realtimeSnapshot;
         }
 
         /// <summary>
@@ -163,7 +167,7 @@ namespace ScadaServer.Runtime.Devices
                 try
                 {
                     var worker = new DeviceWorker(
-                        runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus, _alarmRuleEngine, _alarmRecorder);
+                        runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus, _alarmRuleEngine, _alarmRecorder, _realtimeSnapshot);
                     await worker.WorkerAsync(workerToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

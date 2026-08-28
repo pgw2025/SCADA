@@ -140,9 +140,33 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IVariableHistoryRepository : IRepository<VariableHistory, long>
     {
         /// <summary>
-        /// 查询指定变量的最近 limit 条记录（按采样时间倒序，SQL 下推取数，避免全表回拉）。
+        /// 查询指定设备下某变量的最近 limit 条记录（按采样时间倒序，SQL 下推取数，避免全表回拉）。
+        /// <para>deviceKey 可为空，空时按全设备查询（兼容无设备上下文的历史查询）。</para>
         /// </summary>
-        Task<List<VariableHistory>> GetLatestAsync(string variableKey, int limit);
+        Task<List<VariableHistory>> GetLatestAsync(string deviceKey, string variableKey, int limit);
+
+        /// <summary>
+        /// 按主键升序分页拉取历史原始数据（历史迁移用，AsNoTracking 大页读取）。
+        /// <paramref name="afterId"/> 为“跳过 ≤ 该 Id 的行”；连续调用传上一批末条 Id 即可全表游标遍历。
+        /// </summary>
+        Task<List<VariableHistory>> GetBatchAfterIdAsync(long afterId, int size);
+    }
+
+    /// <summary>
+    /// 变量实时快照仓储接口（复合主键 DeviceId+VariableKey）。
+    /// 用于从 MySQL 实时库读取各设备各变量的最新快照。
+    /// </summary>
+    public interface IVariableRealtimeRepository
+    {
+        /// <summary>
+        /// 查询指定设备下某变量的最新实时快照；未找到返回 null。
+        /// </summary>
+        Task<VariableRealtime?> GetByDeviceAndKeyAsync(int deviceId, string variableKey);
+
+        /// <summary>
+        /// 查询指定设备（deviceKey 匹配）下所有变量的最新实时快照。
+        /// </summary>
+        Task<List<VariableRealtime>> GetAllByDeviceAsync(string deviceKey);
     }
 
     /// <summary>

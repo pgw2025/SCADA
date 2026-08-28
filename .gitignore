@@ -22,3 +22,7 @@ desktop.ini
 # ── Environment ──
 .env*
 !.env.example
+
+# ── Runtime-generated config ──
+# 数据库管理页运行时生成的主库覆盖文件（含数据库密码），不入库
+appsettings.dboverride.json

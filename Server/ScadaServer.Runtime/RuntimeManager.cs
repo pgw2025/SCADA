@@ -41,6 +41,7 @@ namespace ScadaServer.Runtime
         private readonly IVariableBindingEngine _bindingEngine;
         private readonly IAlarmRuleEngine _alarmRuleEngine;
         private readonly IAlarmRecorder _alarmRecorder;
+        private readonly IRealtimeSnapshotService _realtimeSnapshot;
         private DeviceScheduler? _scheduler;
 
         /// <summary>
@@ -67,7 +68,8 @@ namespace ScadaServer.Runtime
             IVariableChangeBus changeBus,
             IVariableBindingEngine bindingEngine,
             IAlarmRuleEngine alarmRuleEngine,
-            IAlarmRecorder alarmRecorder)
+            IAlarmRecorder alarmRecorder,
+            IRealtimeSnapshotService realtimeSnapshot)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -80,6 +82,7 @@ namespace ScadaServer.Runtime
             _bindingEngine = bindingEngine;
             _alarmRuleEngine = alarmRuleEngine;
             _alarmRecorder = alarmRecorder;
+            _realtimeSnapshot = realtimeSnapshot;
         }
 
         /// <inheritdoc/>
@@ -370,7 +373,8 @@ namespace ScadaServer.Runtime
                 _historyRecorder,
                 _changeBus,
                 _alarmRuleEngine,
-                _alarmRecorder);
+                _alarmRecorder,
+                _realtimeSnapshot);
 
             await _scheduler.StartAsync(token);
         }

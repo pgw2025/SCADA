@@ -64,6 +64,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<SystemScript> SystemScripts => Set<SystemScript>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
         public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
+        public DbSet<VariableRealtime> VariableRealtimes => Set<VariableRealtime>();
 
         #endregion
 
@@ -178,6 +179,15 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<VariableHistory>()
                 .HasIndex(h => new { h.VariableKey, h.Timestamp })
                 .HasDatabaseName("ix_variablehistory_key_timestamp");
+
+            // 变量实时快照表：每设备每变量一行，复合主键 (DeviceId, VariableKey)，
+            // 由实时快照服务批量 Upsert，无需自增主键。
+            modelBuilder.Entity<VariableRealtime>().ToTable("VariableRealtime");
+            modelBuilder.Entity<VariableRealtime>()
+                .HasKey(r => new { r.DeviceId, r.VariableKey });
+            modelBuilder.Entity<VariableRealtime>()
+                .HasIndex(r => new { r.DeviceKey, r.VariableKey })
+                .HasDatabaseName("ix_variablerealtime_devicekey_variablekey");
 
             // 主键（DeviceConfig 使用 DeviceId 作为主键，非自增）
             modelBuilder.Entity<DeviceConfig>()

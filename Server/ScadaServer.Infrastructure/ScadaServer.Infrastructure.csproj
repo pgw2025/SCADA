@@ -7,7 +7,11 @@
 
   <ItemGroup>
 
+    <PackageReference Include="InfluxDB.Client" Version="5.1.0" />
+
     <PackageReference Include="MQTTnet" Version="5.1.0.1559" />
+
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua" Version="1.5.378.145" />
     <PackageReference Include="S7netplus" Version="0.20.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />

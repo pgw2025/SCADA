@@ -20,18 +20,19 @@ import { HistoricalRecord } from '../types';
 // Query trigger from backend DB
 const executeHistoryQuery = () => {
   if (!systemConfig.value.isSimulationActive) {
-    fetchHistoryFromBackend(activeVariableKey.value);
+    const current = availableVariables.find(v => v.key === activeVariableKey.value);
+    fetchHistoryFromBackend(current?.deviceKey || '', activeVariableKey.value);
   }
 };
 
-// Autocomplete list
+// Autocomplete list（deviceKey 区分不同设备的同名变量，避免跨设备数据混入）
 const availableVariables = [
-  { key: 'tank_level', label: '核心储水罐液位指标 (tank_level)', unit: '%' },
-  { key: 'purified_level', label: '二级过滤沉淀池水位 (purified_level)', unit: '%' },
-  { key: 'flow_rate', label: '总干线多相流瞬时流阻 (flow_rate)', unit: 'm³/h' },
-  { key: 'boiler_temp', label: '热能锅炉受热壁核心温度 (boiler_temp)', unit: '℃' },
-  { key: 'boiler_press', label: '汽包炉高压阻抗安全压力 (boiler_press)', unit: 'kPa' },
-  { key: 'conveyor_speed', label: '物料流至分拣轮转速设定 (conveyor_speed)', unit: 'rpm' }
+  { key: 'tank_level', deviceKey: 'demo_water_treatment', label: '核心储水罐液位指标 (tank_level)', unit: '%' },
+  { key: 'purified_level', deviceKey: 'demo_water_treatment', label: '二级过滤沉淀池水位 (purified_level)', unit: '%' },
+  { key: 'flow_rate', deviceKey: 'demo_water_treatment', label: '总干线多相流瞬时流阻 (flow_rate)', unit: 'm³/h' },
+  { key: 'boiler_temp', deviceKey: 'demo_thermal_plant', label: '热能锅炉受热壁核心温度 (boiler_temp)', unit: '℃' },
+  { key: 'boiler_press', deviceKey: 'demo_thermal_plant', label: '汽包炉高压阻抗安全压力 (boiler_press)', unit: 'kPa' },
+  { key: 'conveyor_speed', deviceKey: 'demo_material_line', label: '物料流至分拣轮转速设定 (conveyor_speed)', unit: 'rpm' }
 ];
 
 // Query state parameters
@@ -70,8 +71,10 @@ onMounted(() => {
 
 // Filter dataset criteria
 const filteredHistoricalRecords = computed(() => {
+  const current = availableVariables.find(v => v.key === activeVariableKey.value);
+  const currentDevice = current?.deviceKey || '';
   let list = historicalRecords.value.filter(
-    r => r.variableKey === activeVariableKey.value
+    r => r.variableKey === activeVariableKey.value && (r.deviceKey || '') === currentDevice
   );
 
   const nowMills = Date.now();

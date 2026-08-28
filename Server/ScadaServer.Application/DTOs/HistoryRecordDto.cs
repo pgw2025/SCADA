@@ -8,6 +8,12 @@ namespace ScadaServer.Application.DTOs
         /// <summary>记录ID</summary>
         public long Id { get; set; }
 
+        /// <summary>所属设备ID（冗余，前端区分同名变量）</summary>
+        public int DeviceId { get; set; }
+
+        /// <summary>所属设备标识（冗余，前端区分同名变量）</summary>
+        public string DeviceKey { get; set; } = string.Empty;
+
         /// <summary>变量业务键</summary>
         public string VariableKey { get; set; } = string.Empty;
 

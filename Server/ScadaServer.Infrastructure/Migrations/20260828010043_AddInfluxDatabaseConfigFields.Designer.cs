@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    partial class ScadaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828010043_AddInfluxDatabaseConfigFields")]
+    partial class AddInfluxDatabaseConfigFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1148,42 +1151,6 @@ namespace ScadaServer.Infrastructure.Migrations
                         .HasDatabaseName("ix_variablehistory_key_timestamp");
 
                     b.ToTable("VariableHistory", (string)null);
-                });
-
-            modelBuilder.Entity("ScadaServer.Domain.Entities.VariableRealtime", b =>
-                {
-                    b.Property<int>("DeviceId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("VariableKey")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("DeviceKey")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("Quality")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("RawValue")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<double>("Value")
-                        .HasColumnType("double");
-
-                    b.Property<string>("VariableName")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.HasKey("DeviceId", "VariableKey");
-
-                    b.HasIndex("DeviceKey", "VariableKey")
-                        .HasDatabaseName("ix_variablerealtime_devicekey_variablekey");
-
-                    b.ToTable("VariableRealtime", (string)null);
                 });
 
             modelBuilder.Entity("ScadaServer.Domain.Entities.DataModel", b =>

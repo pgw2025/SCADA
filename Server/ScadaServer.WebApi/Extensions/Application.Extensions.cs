@@ -59,6 +59,11 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<SystemLogRecorder>();
             services.AddHostedService(sp => sp.GetRequiredService<SystemLogRecorder>());
 
+            // 实时快照服务：采集循环更新内存快照，后台周期性 Upsert 到 VariableRealtime（MySQL 实时库）。
+            services.AddSingleton<RealtimeSnapshotService>();
+            services.AddSingleton<IRealtimeSnapshotService>(sp => sp.GetRequiredService<RealtimeSnapshotService>());
+            services.AddHostedService(sp => sp.GetRequiredService<RealtimeSnapshotService>());
+
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();
 

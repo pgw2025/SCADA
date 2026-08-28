@@ -689,6 +689,12 @@ const handleChangeMyPassword = async () => {
               <MonitorPlay class="w-4 h-4" />
               <span>组态设计</span>
             </button>
+            <button @click="navigate('/alarm-management'); isMobileSidebarOpen = false;"
+              :class="[isActive('/alarm-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+              <Bell class="w-4 h-4" />
+              <span>报警管理</span>
+            </button>
             <button @click="navigate('/system-logs'); isMobileSidebarOpen = false;"
               :class="[isActive('/system-logs') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
