@@ -7,6 +7,7 @@ using ScadaServer.Runtime.Interface;
 using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Bindings;
 using ScadaServer.Runtime.Alarms;
+using ScadaServer.Runtime.Scripting;
 using ScadaServer.WebApi.Services;
 
 namespace ScadaServer.WebApi.Extensions
@@ -47,6 +48,11 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IVariableBindingEngine, VariableBindingEngine>();
             services.AddSingleton<IAlarmRuleEngine, AlarmRuleEngine>();
             services.AddHostedService<ScadaServer.WebApi.HostedServices.RuntimeHostedService>();
+
+            // 系统脚本引擎宿主：调度（周期/Cron）+ 变量变化订阅 + Jint 沙箱 + 熔断 + 执行记录 + SignalR 回推。
+            services.AddSingleton<ScriptEngineHost>();
+            services.AddSingleton<IScriptEngineHost>(sp => sp.GetRequiredService<ScriptEngineHost>());
+            services.AddHostedService(sp => sp.GetRequiredService<ScriptEngineHost>());
 
             // MQTT 服务（MqttHandler 当前为占位实现）
             services.AddSingleton<IMqttService, MqttHandler>();

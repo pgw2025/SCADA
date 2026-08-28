@@ -62,6 +62,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
         public DbSet<SystemLog> SystemLogs => Set<SystemLog>();
         public DbSet<SystemScript> SystemScripts => Set<SystemScript>();
+        public DbSet<ScriptExecutionRecord> ScriptExecutionRecords => Set<ScriptExecutionRecord>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
         public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
         public DbSet<VariableRealtime> VariableRealtimes => Set<VariableRealtime>();
@@ -132,6 +133,13 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasDatabaseName("ix_devicevariable_device_model");
             modelBuilder.Entity<SystemConfig>().ToTable("SystemConfig");
             modelBuilder.Entity<SystemScript>().ToTable("SystemScripts");
+
+            // 脚本执行记录表：索引支撑「按脚本控制台追溯」与「按时间清理」。
+            // 数据量大，不建外键，避免级联删除/迁移开销影响运行时写入性能（同 AlarmRecord/VariableHistory 设计）。
+            modelBuilder.Entity<ScriptExecutionRecord>().ToTable("ScriptExecutionRecords");
+            modelBuilder.Entity<ScriptExecutionRecord>()
+                .HasIndex(r => new { r.ScriptId, r.StartedAt })
+                .HasDatabaseName("ix_scriptexecrecord_script_started");
 
             // 系统日志表：统一承载运行/操作/安全日志。
             // 需索引或精确匹配的列显式限制长度映射为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引）；

@@ -12,6 +12,7 @@ export * from '../api/modelApi';
 export * from '../api/protocolApi';
 export * from '../api/variableApi';
 export * from './alarmStore';
+export * from './scriptStore';
 export * from '../services/logService';
 export * from '../api/authApi';
 export * from '../services/taskService';

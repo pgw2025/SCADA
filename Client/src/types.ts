@@ -546,16 +546,84 @@ export interface ScheduledTask {
 }
 
 export interface SystemScript {
-  id: string;
+  id: number;
+  /** 脚本名称 */
   name: string;
+  /** 脚本代码（仅含逻辑函数声明 run/onChange，在服务端沙箱执行） */
   code: string;
-  triggerType: 'auto' | 'manual';
-  intervalSeconds?: number;
-  /** 严格模式：脚本写操作的目标设备（禁止裸 key）。未配置时写操作将报错。 */
-  deviceId?: number | null;
-  lastExecuted?: string;
-  executionStatus?: 'idle' | 'success' | 'error';
-  logOutput?: string;
+  /** 触发类型：Manual / Periodic / Schedule / OnChange */
+  triggerType: 'Manual' | 'Periodic' | 'Schedule' | 'OnChange';
+  /** 执行间隔（秒），Periodic 触发时使用 */
+  intervalSeconds?: number | null;
+  /** Cron 表达式，Schedule 触发时使用 */
+  cronExpression?: string | null;
+  /** 监听设备键，OnChange 触发时使用 */
+  watchDeviceKey?: string | null;
+  /** 监听变量键，OnChange 触发时使用 */
+  watchVariableKey?: string | null;
+  /** OnChange 死区阈值：|new-old| > DeadBand 才触发 */
+  deadBand?: number | null;
+  /** OnChange 触发冷却时间（毫秒） */
+  cooldownMs: number;
+  /** 单次执行超时（毫秒） */
+  timeoutMs: number;
+  /** 读授权：分号分隔的设备键列表（设备级） */
+  scopeRead?: string | null;
+  /** 写授权：分号分隔的 "设备键.变量键" 列表（变量级） */
+  scopeWrite?: string | null;
+  /** 是否启用（调度器仅执行已启用脚本） */
+  active: boolean;
+  /** 脚本版本，保存时自动 +1 */
+  version: number;
+  /** 连续失败计数（成功清零），达到阈值触发熔断 */
+  failureCount: number;
+  /** 熔断标记：连续失败达阈值时为 true，人工复位后恢复 */
+  tripped: boolean;
+  /** 最近一次执行错误信息 */
+  lastError?: string | null;
+  /** 最近一次执行开始时间（ISO 字符串，服务端 UTC） */
+  lastExecutedAt?: string | null;
+  /** 最近一次执行耗时（毫秒） */
+  lastDurationMs?: number | null;
+}
+
+/** 脚本单次执行记录（控制台追溯）。与后端 ScriptExecutionRecord 对齐。 */
+export interface ScriptExecutionRecord {
+  id: number;
+  scriptId: number;
+  scriptVersion: number;
+  triggerSource: string;
+  result: string;
+  startedAt: string;
+  durationMs?: number | null;
+  error?: string | null;
+  output?: string | null;
+  executedBy?: string | null;
+}
+
+/** 脚本执行事件（SignalR ReceiveScriptExecution 载荷）。与后端 ScriptExecutionEvent 对齐。 */
+export interface ScriptExecutionEvent {
+  scriptId: number;
+  scriptVersion: number;
+  triggerSource: string;
+  result: string;
+  startedAt: string;
+  durationMs?: number | null;
+  error?: string | null;
+  output?: string | null;
+  executedBy?: string | null;
+}
+
+/** 脚本校验问题条目。 */
+export interface ScriptValidationIssue {
+  level: 'Error' | 'Warning';
+  message: string;
+}
+
+/** 脚本校验结果。 */
+export interface ScriptValidationResult {
+  valid: boolean;
+  issues: ScriptValidationIssue[];
 }
 
 export interface ExposedDataInterface {

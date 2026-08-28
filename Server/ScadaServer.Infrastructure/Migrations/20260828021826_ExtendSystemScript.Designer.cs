@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    partial class ScadaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828021826_ExtendSystemScript")]
+    partial class ExtendSystemScript
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -917,56 +920,6 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ScheduledTasks", (string)null);
-                });
-
-            modelBuilder.Entity("ScadaServer.Domain.Entities.ScriptExecutionRecord", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int?>("DurationMs")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
-
-                    b.Property<string>("ExecutedBy")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("Output")
-                        .HasMaxLength(8000)
-                        .HasColumnType("varchar(8000)");
-
-                    b.Property<string>("Result")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("varchar(16)");
-
-                    b.Property<int>("ScriptId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ScriptVersion")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("TriggerSource")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("varchar(16)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ScriptId", "StartedAt")
-                        .HasDatabaseName("ix_scriptexecrecord_script_started");
-
-                    b.ToTable("ScriptExecutionRecords", (string)null);
                 });
 
             modelBuilder.Entity("ScadaServer.Domain.Entities.Sensor", b =>

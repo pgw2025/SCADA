@@ -2,7 +2,7 @@ import { addLog } from './logService';
 import { setDeviceVariableValue } from '../services/dataOrchestration';
 import { scheduledTasks, systemScripts } from '../store/configStore';
 import { historicalRecords } from '../store/historyStore';
-import { runScriptEngine } from './scriptService';
+import { runScript } from './scriptService';
 
 export const executeTask = (taskId: string) => {
   const task = scheduledTasks.value.find((t) => t.id === taskId);
@@ -32,10 +32,15 @@ export const executeTask = (taskId: string) => {
         addLog('系统内核', `计划任务 [${task.name}]：已成功压缩主数据库并导出 iota_scada_v6_dump_${Date.now()}.sql.gz`, 'normal');
       } else if (task.type === 'execute_script') {
         if (task.params.scriptId) {
-          const targetScr = systemScripts.value.find(s => s.id === task.params.scriptId);
+          const targetScr = systemScripts.value.find(s => String(s.id) === String(task.params.scriptId));
           if (targetScr) {
-            runScriptEngine(targetScr);
-            addLog('调度执行', `计划任务 [${task.name}] 执行脚本 [${targetScr.name}] 成功`, 'info');
+            // 交由服务端 Jint 沙箱执行（不再本地 new Function）
+            runScript(targetScr.id)
+              .then((res) => {
+                const ok = res?.result === 'Success' || res?.result === 'Skipped';
+                addLog('调度执行', `计划任务 [${task.name}] 执行脚本 [${targetScr.name}] ${ok ? '成功' : '失败'}`, ok ? 'info' : 'warning');
+              })
+              .catch((err) => addLog('调度执行', `计划任务 [${task.name}] 执行脚本 [${targetScr.name}] 失败: ${err.message}`, 'warning'));
           }
         }
       } else if (task.type === 'clear_history') {

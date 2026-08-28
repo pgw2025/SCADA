@@ -130,6 +130,26 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface ISystemScriptRepository : IRepository<SystemScript, int> { }
 
     /// <summary>
+    /// 脚本执行记录仓储接口（主键为 long，数据量大）。
+    /// </summary>
+    public interface IScriptExecutionRecordRepository : IRepository<ScriptExecutionRecord, long>
+    {
+        /// <summary>
+        /// 按脚本分页查询执行记录（结果筛选可选），返回总数与当前页数据。
+        /// </summary>
+        Task<(int Total, List<ScriptExecutionRecord> Items)> QueryByScriptAsync(
+            int scriptId,
+            string? result,
+            int pageIndex,
+            int pageSize);
+
+        /// <summary>
+        /// 删除指定时间之前的执行记录（按 StartedAt），返回删除条数；供清理服务分批调用。
+        /// </summary>
+        Task<int> DeleteOlderThanAsync(DateTime cutoff, int batchSize);
+    }
+
+    /// <summary>
     /// 系统用户仓储接口
     /// </summary>
     public interface ISystemUserRepository : IRepository<SystemUser, int> { }
@@ -191,5 +211,10 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         /// 查询最近一条"同键未恢复"的记录ID（用于恢复事件关联）。找不到返回 null。
         /// </summary>
         Task<long?> FindUnrecoveredIdAsync(int deviceId, string variableKey, long? ruleId);
+
+        /// <summary>
+        /// 恢复指定设备上所有未恢复的报警记录（设备删除联动兜底），返回恢复条数。
+        /// </summary>
+        Task<int> RecoverByDeviceAsync(int deviceId, DateTime recoverAt);
     }
 }

@@ -42,5 +42,10 @@ namespace ScadaServer.Application.Interfaces
         /// </summary>
         /// <param name="evt">报警事件（含设备/变量/级别/数值/来源等信息）</param>
         Task NotifyAlarmAsync(DTOs.AlarmEvent evt);
+
+        /// <summary>
+        /// 通知脚本执行事件（前端控制台 + 状态角标实时刷新）。SignalR "ReceiveScriptExecution"。
+        /// </summary>
+        Task NotifyScriptExecutionAsync(DTOs.ScriptExecutionEvent evt);
     }
 }

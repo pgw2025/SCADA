@@ -42,6 +42,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<ISystemConfigAppService, SystemConfigAppService>();
             services.AddScoped<ISystemLogAppService, SystemLogAppService>();
             services.AddScoped<ISystemScriptAppService, SystemScriptAppService>();
+            services.AddScoped<IScriptValidationService, ScriptValidationService>();
             services.AddScoped<ISystemUserAppService, SystemUserAppService>();
             services.AddScoped<IHistoryAppService, HistoryAppService>();
 

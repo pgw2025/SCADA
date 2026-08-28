@@ -68,6 +68,9 @@ builder.Services.AddHostedService<SystemLogCleanupHostedService>();
 // 报警记录自动清理托管服务（每天 3 点按系统配置保留期分批清理 AlarmRecords）
 builder.Services.AddHostedService<AlarmRecordCleanupHostedService>();
 
+// 脚本执行记录自动清理托管服务（每天 3 点按系统配置保留期分批清理 ScriptExecutionRecords）
+builder.Services.AddHostedService<ScriptExecutionRecordCleanupHostedService>();
+
 // ========== 2. 构建应用 ==========
 using var app = builder.Build();
 

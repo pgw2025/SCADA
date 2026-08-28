@@ -26,6 +26,10 @@ import {
 } from 'lucide-vue-next';
 import { ScheduledTask } from '../types';
 
+// 脚本触发类型 -> 中文标签（脚本列表中展示）。
+const triggerTypeLabel = (t: string) =>
+  t === 'Periodic' ? '周期' : t === 'Schedule' ? '定时' : t === 'OnChange' ? '变量变化' : '手动';
+
 // Popup dialog form bindings
 const showAddModal = ref(false);
 const newTaskName = ref('');
@@ -351,7 +355,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
               class="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-white p-2 rounded-lg font-bold outline-none"
             >
               <option v-for="scr in systemScripts" :key="scr.id" :value="scr.id">
-                {{ scr.name }} ({{ scr.triggerType === 'auto' ? '定时' : '手动' }})
+                {{ scr.name }} ({{ triggerTypeLabel(scr.triggerType) }})
               </option>
               <option v-if="systemScripts.length === 0" disabled>暂无可用脚本</option>
             </select>

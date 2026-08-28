@@ -7,7 +7,8 @@ import { normalizeDevices } from '../utils/deviceStatus';
 import { isBackendConnected, signalRConnection } from './socketService';
 import { mapRuntimeStatusToStatus } from '../utils/deviceStatus';
 import { pushAlarmEvent, refreshActiveAlarms } from '../store/alarmStore';
-import { AlarmEventPayload } from '../types';
+import { pushScriptExecutionEvent } from '../store/scriptStore';
+import { AlarmEventPayload, ScriptExecutionEvent } from '../types';
 
 // 拉取设备列表并写回全局 store。包装 fetchDevicesFromBackend + normalizeDevices，
 // 修复 SignalR 握手成功/重连后设备拉取结果被丢弃、设备列表从未进入 store 的问题。
@@ -92,6 +93,11 @@ export const initializeRealtimeSignals = () => {
         // 结构化报警事件实时推送：归一化后进入报警 Store（当前报警 / 未确认角标 / 最近事件）。
         connection.on("ReceiveAlarm", (payload: AlarmEventPayload) => {
             pushAlarmEvent(payload ?? ({} as AlarmEventPayload));
+        });
+
+        // 脚本执行事件实时推送（手动 / 周期 / Cron / OnChange / 试运行）：进入脚本事件缓冲供控制台实时刷新。
+        connection.on("ReceiveScriptExecution", (payload: ScriptExecutionEvent) => {
+            pushScriptExecutionEvent(payload ?? ({} as ScriptExecutionEvent));
         });
 
         connection.start()

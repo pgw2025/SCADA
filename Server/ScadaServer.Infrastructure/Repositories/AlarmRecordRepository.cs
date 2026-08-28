@@ -90,5 +90,15 @@ namespace ScadaServer.Infrastructure.Repositories
                 .Select(r => (long?)r.Id)
                 .FirstOrDefaultAsync();
         }
+
+        /// <inheritdoc/>
+        public async Task<int> RecoverByDeviceAsync(int deviceId, DateTime recoverAt)
+        {
+            // 设备删除联动兜底：设备将被删除，其所有未恢复报警不可能再收到"真实恢复"事件，
+            // 一次性批量标记为已恢复，避免遗留幽灵未恢复告警（确认状态保持不动）。
+            var affected = await Db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE `AlarmRecords` SET `RecoveredAt` = {recoverAt} WHERE `DeviceId` = {deviceId} AND `RecoveredAt` IS NULL");
+            return affected;
+        }
     }
 }

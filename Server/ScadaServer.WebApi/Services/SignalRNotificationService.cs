@@ -68,5 +68,11 @@ namespace ScadaServer.WebApi.Services
             // 与 REST 接口的字符串枚举不一致，此处显式按对象推送，前端据此做列表/角标/确认态）。
             await _hubContext.Clients.All.SendAsync("ReceiveAlarm", evt);
         }
+
+        /// <inheritdoc/>
+        public async Task NotifyScriptExecutionAsync(ScriptExecutionEvent evt)
+        {
+            await _hubContext.Clients.All.SendAsync("ReceiveScriptExecution", evt);
+        }
     }
 }

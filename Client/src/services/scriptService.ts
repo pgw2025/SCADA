@@ -1,54 +1,80 @@
-import { addLog } from './logService';
-import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
-import { SystemScript } from '../types';
+import { systemScripts } from '../store/configStore';
+import {
+  fetchSystemScripts,
+  createSystemScript,
+  updateSystemScript,
+  deleteSystemScript,
+  validateSystemScript,
+  runSystemScript,
+  testSystemScript,
+  resetSystemScriptTripped,
+  fetchSystemScriptRecords
+} from '../api/systemScriptApi';
+import { SystemScript, ScriptValidationResult, ScriptExecutionRecord } from '../types';
 
-export const runScriptEngine = (script: SystemScript) => {
-  script.executionStatus = 'running' as any;
-  const executionLogs: string[] = [];
-  const logFormatter = (msg: string) => {
-    executionLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
-  };
+/**
+ * 系统脚本服务端门面。
+ * 执行一律走服务端 Jint 沙箱（不再在浏览器用 new Function 本地运行），
+ * 本文件只负责：刷新列表 + 包装 CRUD / 校验 / 运行 / 试运行 API。
+ */
 
-  const sandbox = {
-    getVal: (key: string) => {
-      if (script.deviceId == null) {
-        const msg = `读取绑定键失败 [${key}]：脚本未配置目标设备（禁止裸 key）`;
-        logFormatter(msg);
-        return 0;
-      }
-      const val = getDeviceVariableValue(script.deviceId, key);
-      logFormatter(`读取绑定键 [${key}] = ${val}`);
-      return val;
-    },
-    setVal: (key: string, val: any) => {
-      if (script.deviceId == null) {
-        const msg = `脚本 [${script.name}] 未配置目标设备，禁止裸 key 写入`;
-        logFormatter(msg);
-        throw new Error(msg);
-      }
-      setDeviceVariableValue(script.deviceId, key, val);
-      logFormatter(`命令写入 [${key}] = ${val}`);
-    },
-    log: (msg: string) => {
-      logFormatter(`[用户输出] ${msg}`);
-    }
-  };
-
-  try {
-    const executor = new Function('sandbox', `
-      with (sandbox) {
-        ${script.code}
-      }
-    `);
-    executor(sandbox);
-    script.executionStatus = 'success';
-    script.logOutput = executionLogs.join('\n');
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const d = new Date();
-    script.lastExecuted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  } catch (e: any) {
-    script.executionStatus = 'error';
-    executionLogs.push(`[编译执行故障] -> ${e.message}`);
-    script.logOutput = executionLogs.join('\n');
-  }
+/** 从后端拉取全部脚本并写回全局 store（TaskManagementView 的脚本下拉框也读它）。 */
+export const loadSystemScripts = async (): Promise<SystemScript[]> => {
+  const { data } = await fetchSystemScripts();
+  systemScripts.value = data ?? [];
+  return systemScripts.value;
 };
+
+/** 新建脚本。 */
+export const saveNewScript = async (dto: SystemScript): Promise<SystemScript> => {
+  const { data } = await createSystemScript(dto);
+  await loadSystemScripts();
+  return data ?? dto;
+};
+
+/** 更新已有脚本（保存时后端版本 +1 并复位熔断）。 */
+export const persistScript = async (dto: SystemScript): Promise<void> => {
+  await updateSystemScript(dto);
+  await loadSystemScripts();
+};
+
+/** 删除脚本。 */
+export const removeScript = async (id: number): Promise<void> => {
+  await deleteSystemScript(id);
+  await loadSystemScripts();
+};
+
+/** 静态校验（不落库不执行）。 */
+export const validateScript = (dto: SystemScript): Promise<ScriptValidationResult> =>
+  validateSystemScript(dto).then(r => r.data);
+
+/** 手动执行脚本（服务端沙箱）。返回后端 ScriptEngineResult。 */
+export const runScript = async (id: number): Promise<any> => {
+  const { data } = await runSystemScript(id);
+  return data;
+};
+
+/** 试运行（dry-run）。返回后端 ScriptEngineResult。 */
+export const testScript = async (
+  dto: SystemScript,
+  deviceKey?: string | null,
+  variableKey?: string | null
+): Promise<any> => {
+  const { data } = await testSystemScript(dto, deviceKey, variableKey);
+  return data;
+};
+
+/** 人工复位熔断状态。 */
+export const resetScriptTripped = async (id: number): Promise<void> => {
+  await resetSystemScriptTripped(id);
+  await loadSystemScripts();
+};
+
+/** 按脚本分页查询执行记录。返回 { total, items }。 */
+export const queryScriptRecords = (
+  id: number,
+  result?: string,
+  pageIndex = 1,
+  pageSize = 20
+): Promise<{ total: number; items: ScriptExecutionRecord[] }> =>
+  fetchSystemScriptRecords(id, result, pageIndex, pageSize).then(r => r.data);
