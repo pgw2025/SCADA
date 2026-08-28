@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable } from '../store/index';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable, updateVariable, deleteVariable } from '../store/index';
 import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
 
 onMounted(() => {
@@ -17,6 +17,7 @@ import {
   Cpu, 
   Trash2, 
   Plus, 
+  Pencil,
   Tag, 
   Sliders, 
   X,
@@ -51,6 +52,8 @@ const modelProtocolId = ref<number>(0);
 
 // Create variable form state Inside Model
 const showVarModal = ref<boolean>(false);
+// 正在编辑的变量 ID（null = 创建模式）；编辑模式禁止修改 Key（DeviceKey+VariableKey 全局身份元组的一部分）
+const editingVariableId = ref<number | null>(null);
 const varKey = ref<string>('');
 const varName = ref<string>('');
 const varType = ref<'analog' | 'digital'>('analog');
@@ -107,8 +110,9 @@ const dataTypeOptions = computed(() => {
 });
 
 // Watch showVarModal or currentModel changes to initialize matching dataType and type
+// 仅创建模式重置默认数据类型；编辑模式须保留 openEditVariable 预填值不被覆盖
 watch([showVarModal, currentModel], () => {
-  if (showVarModal.value && currentModel.value) {
+  if (showVarModal.value && currentModel.value && editingVariableId.value === null) {
     const opts = dataTypeOptions.value;
     if (opts.length > 0) {
       // Find a datatype that fits current simulated values if switching
@@ -208,6 +212,61 @@ const handleDeleteModel = async (id: string, name: string) => {
 // 与后端 ModelVariableDto 的 DataAnnotations 保持一致的前端校验
 const KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
 
+// 打开编辑弹窗：将既有变量各字段回填至表单（含协议专属/存储/工业级字段）
+const openEditVariable = (v: ModelVariable) => {
+  editingVariableId.value = v.id;
+  varKey.value = v.key;
+  varName.value = v.name;
+  varDataType.value = v.dataType;
+  varType.value = v.type === 'digital' ? 'digital' : 'analog';
+  varUnit.value = v.unit || '';
+  varMin.value = v.min ?? '';
+  varMax.value = v.max ?? '';
+  varDesc.value = v.description || '';
+  // S7 专属（extensionData）
+  varAccessLevel.value = (v.extensionData?.accessLevel as 'RO' | 'RW') || 'RW';
+  varScaleExpr.value = v.extensionData?.scaleExpr || 'x * 1.0';
+  // 历史存储
+  varIsStored.value = v.isStored !== false && v.storeMode !== 'None';
+  varStoreMode.value = v.storeMode && v.storeMode !== 'None' ? v.storeMode : 'Change';
+  varStoreIntervalMs.value = v.storeIntervalMs ?? 300000;
+  // OPCUA / MQTT
+  varUpdateMode.value = v.updateMode || 'subscription';
+  // 工业级参数
+  varScaleSlope.value = v.scaleSlope ?? 1.0;
+  varScaleOffset.value = v.scaleOffset ?? 0.0;
+  varDeadBand.value = v.deadBand ?? null;
+  varIsReadOnly.value = v.isReadOnly ?? true;
+  showVarModal.value = true;
+};
+
+// 重置表单为创建模式默认值
+const resetVarForm = () => {
+  varKey.value = '';
+  varName.value = '';
+  varUnit.value = '';
+  varDesc.value = '';
+  varMin.value = 0;
+  varMax.value = 100;
+  varAccessLevel.value = 'RW';
+  varScaleExpr.value = 'x * 1.0';
+  varIsStored.value = true;
+  varStoreMode.value = 'Change';
+  varStoreIntervalMs.value = 300000;
+  varUpdateMode.value = 'subscription';
+  varScaleSlope.value = 1.0;
+  varScaleOffset.value = 0.0;
+  varDeadBand.value = null;
+  varIsReadOnly.value = true;
+};
+
+// 关闭变量弹窗：清空编辑态并复位表单，避免下次"添加变量"残留编辑预填值
+const closeVarModal = () => {
+  showVarModal.value = false;
+  editingVariableId.value = null;
+  resetVarForm();
+};
+
 // Append tag to current selected model variables
 const handleSaveVariable = async () => {
   // 统一 trim，避免首尾空格在本地查重与后端正则间产生不一致
@@ -215,7 +274,10 @@ const handleSaveVariable = async () => {
   const name = varName.value.trim();
   if (!key || !name) return;
 
+  const isEditing = editingVariableId.value !== null;
+
   // 前置校验（与后端 [RegularExpression] / [StringLength] 对齐），拦截非法字符避免 400
+  // 编辑模式 Key 输入框已禁用，此处对创建模式生效
   if (!KEY_PATTERN.test(key)) {
     alert('变量 Key 只能包含字母、数字和下划线（不能用中文、空格、连字符、点号）');
     return;
@@ -228,8 +290,8 @@ const handleSaveVariable = async () => {
   const model = currentModel.value;
   if (!model) return;
 
-  // Check unique key
-  if (model.variables.some(v => v.key === key)) {
+  // Check unique key（编辑模式排除自身，与后端 UpdateAsync 查重口径一致）
+  if (model.variables.some(v => v.key === key && v.id !== editingVariableId.value)) {
     alert('变量 Key 在该数据模型中已存在, 请确认后再试。');
     return;
   }
@@ -238,6 +300,8 @@ const handleSaveVariable = async () => {
   // 已下放至设备实例级 DeviceVariable，由运行时按设备实例配置采集细节。
 
   const newVar: ModelVariable = {
+    // 创建模式 id=0 占位（后端 CreateAsync 忽略入参 Id）；编辑模式为真实主键
+    id: editingVariableId.value ?? 0,
     modelId: Number(model.id),
     key,
     name,
@@ -263,72 +327,74 @@ const handleSaveVariable = async () => {
     }
   };
 
-  // Persist to server using new variable API
+  // Persist to server using variable API
   try {
-    const created = await createVariable(newVar);
-    // 增量并入当前模型,避免无脑全量重拉(fetchDataModelsFromBackend)导致
-    // 视图跳回第一个模型、选中态丢失以及大量模型时的卡顿。
-    if (created && currentModel.value) {
-      currentModel.value.variables.push({
-        ...created,
-        // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
-        type: String(created.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
-      } as ModelVariable);
+    if (isEditing) {
+      // 更新：后端返回更新后的 DTO，就地替换当前模型中的条目
+      const updated = await updateVariable(newVar);
+      const idx = model.variables.findIndex(v => v.id === editingVariableId.value);
+      if (idx !== -1 && currentModel.value) {
+        currentModel.value.variables[idx] = {
+          ...updated,
+          // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
+          type: String(updated.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
+        } as ModelVariable;
+      }
+      addLog('模型建立', `模型 [${model.name}] 更新变量 [${name}]`, 'normal');
+    } else {
+      const created = await createVariable(newVar);
+      // 增量并入当前模型,避免无脑全量重拉(fetchDataModelsFromBackend)导致
+      // 视图跳回第一个模型、选中态丢失以及大量模型时的卡顿。
+      if (created && currentModel.value) {
+        currentModel.value.variables.push({
+          ...created,
+          // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
+          type: String(created.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
+        } as ModelVariable);
+      }
+
+      // Synchronize new variable in all existing online devices relying on this model!
+      devices.value.forEach((d) => {
+        if (d.modelId === model.id) {
+          if (d.variables[key] === undefined) {
+            d.variables[key] = varType.value === 'digital' ? false : (newVar.min ?? 0);
+          }
+        }
+      });
+
+      addLog('模型建立', `模型 [${model.name}] 添加变量 [${name}]`, 'normal');
     }
   } catch {
     // 失败提示由 http 拦截器统一 Toast 弹出（含 BusinessException 文案 / 校验 errors）
     return;
   }
 
-  // Synchronize new variable in all existing online devices relying on this model!
-  devices.value.forEach((d) => {
-    if (d.modelId === model.id) {
-      if (d.variables[key] === undefined) {
-        d.variables[key] = varType.value === 'digital' ? false : (newVar.min ?? 0);
-      }
-    }
-  });
-
-  addLog('模型建立', `模型 [${model.name}] 添加变量 [${name}]`, 'normal');
-
-  // Clear states
-  varKey.value = '';
-  varName.value = '';
-  varUnit.value = '';
-  varDesc.value = '';
-  
-  // Clear advanced connection details
-  varAccessLevel.value = 'RW';
-  varScaleExpr.value = 'x * 1.0';
-  varIsStored.value = true;
-  varStoreMode.value = 'Change';
-  varStoreIntervalMs.value = 300000;
-  varUpdateMode.value = 'subscription';
-  
-  // Clear industrial-grade fields
-  varScaleSlope.value = 1.0;
-  varScaleOffset.value = 0.0;
-  varDeadBand.value = null;
-  varIsReadOnly.value = true;
-  
-  showVarModal.value = false;
+  // 关闭弹窗并复位表单与编辑态
+  closeVarModal();
 };
 
-// Delete a variable mapping from the active data blueprint
-const handleDeleteVariable = (key: string, name: string) => {
+// Delete a variable mapping from the active data blueprint（先落库再改本地，失败则中止）
+const handleDeleteVariable = async (v: ModelVariable) => {
   const model = currentModel.value;
   if (!model) return;
 
-  model.variables = model.variables.filter(v => v.key !== key);
-  
+  try {
+    await deleteVariable(v.id);
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出
+    return;
+  }
+
+  model.variables = model.variables.filter(x => x.key !== v.key);
+
   // Clean up in device instances
   devices.value.forEach((d) => {
     if (d.modelId === model.id) {
-      delete d.variables[key];
+      delete d.variables[v.key];
     }
   });
 
-  addLog('模型建立', `模型 [${model.name}] 删除变量 [${name}]`, 'warning');
+  addLog('模型建立', `模型 [${model.name}] 删除变量 [${v.name}]`, 'warning');
 };
 </script>
 
@@ -502,13 +568,22 @@ const handleDeleteVariable = (key: string, name: string) => {
                   </td>
                   <td class="px-4 py-4 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
                   <td class="px-4 py-4 text-right">
-                    <button 
-                      @click="handleDeleteVariable(v.key, v.name)"
-                      class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all cursor-pointer"
-                      title="删除此字段"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="inline-flex items-center gap-1">
+                      <button
+                        @click="openEditVariable(v)"
+                        class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer"
+                        title="编辑此字段"
+                      >
+                        <Pencil class="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        @click="handleDeleteVariable(v)"
+                        class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all cursor-pointer"
+                        title="删除此字段"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
 
@@ -601,24 +676,28 @@ const handleDeleteVariable = (key: string, name: string) => {
         <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Tag class="w-4 h-4 text-[#1890ff]" />
-            <span>添加变量</span>
+            <span>{{ editingVariableId !== null ? '编辑变量' : '添加变量' }}</span>
           </div>
-          <button @click="showVarModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+          <button @click="closeVarModal" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[400px]">
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">变量标识</label>
-              <input 
+              <input
                 v-model="varKey"
                 type="text"
                 maxlength="50"
                 pattern="[a-zA-Z0-9_]+"
                 title="仅限字母、数字和下划线，最多50个字符"
                 placeholder="例如: boiler_temp"
-                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
+                :disabled="editingVariableId !== null"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed"
               />
+              <p v-if="editingVariableId !== null" class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                变量 Key 是全局身份标识（DeviceKey + VariableKey），编辑时不可修改
+              </p>
             </div>
             <div>
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">变量名称</label>
@@ -843,13 +922,13 @@ const handleDeleteVariable = (key: string, name: string) => {
         </div>
 
         <div class="bg-slate-50 dark:bg-slate-950 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
-          <button 
-            @click="showVarModal = false"
+          <button
+            @click="closeVarModal"
             class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
-          <button 
+          <button
             @click="handleSaveVariable"
             class="px-4 py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer"
           >
