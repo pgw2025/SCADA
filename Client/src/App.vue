@@ -628,7 +628,7 @@ const handleChangeMyPassword = async () => {
 
       <!-- Mobile drawer sidebar -->
       <div v-if="isMobileSidebarOpen" @click="isMobileSidebarOpen = false"
-        class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden" />
+        class="fixed inset-0 bg-slate-950/70 z-40 lg:hidden" />
       <aside
         class="fixed inset-y-0 left-0 w-64 bg-white dark:bg-[#0f172a] text-slate-700 dark:text-slate-300 z-50 flex flex-col justify-between transition-transform duration-300 lg:hidden select-none border-r border-slate-200 dark:border-slate-800"
         :class="isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'">
@@ -773,7 +773,7 @@ const handleChangeMyPassword = async () => {
   </div>
 
   <!-- MODAL: 自主修改密码（所有已登录用户可用） -->
-  <div v-if="showChangePwModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+  <div v-if="showChangePwModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
     <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
       <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
         <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest text-emerald-400">

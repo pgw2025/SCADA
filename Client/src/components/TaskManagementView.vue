@@ -259,7 +259,7 @@ const handleToggleActiveTask = (task: ScheduledTask) => {
     </div>
 
     <!-- ADD TIMING CRON JOB DIALOG MODAL -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+    <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
       <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         <!-- Header -->
         <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">

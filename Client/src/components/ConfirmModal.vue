@@ -19,7 +19,7 @@ const emit = defineEmits<{
 <template>
   <div
     v-if="open"
-    class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
+    class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-[60] p-4"
     @click.self="emit('cancel')"
   >
     <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
