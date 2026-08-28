@@ -226,7 +226,7 @@ const handleChangeMyPassword = async () => {
         </div>
         <div>
           <h1 class="text-base font-extrabold tracking-wider uppercase"
-            :class="currentTheme === 'dark' ? 'text-white' : 'text-slate-900'">IOTA-SCADA 系统</h1>
+            :class="currentTheme === 'dark' ? 'text-white' : 'text-slate-900'">晋鑫设备管理系统</h1>
           <span class="text-xs font-medium tracking-wide mt-1 block"
             :class="currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'">工业控制与数据采集平台</span>
         </div>
@@ -306,8 +306,7 @@ const handleChangeMyPassword = async () => {
               class="text-[9px] bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-[#38bdf8] font-bold px-1.5 py-0.5 rounded border border-sky-200 dark:border-slate-700 select-none font-mono hidden sm:inline-block">V6.0</span>
           </h1>
           <span
-            class="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 leading-none mt-1 inline-block select-all">SCADA
-            控制中心</span>
+            class="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 leading-none mt-1 inline-block select-all">设备管理控制中心</span>
         </div>
       </div>
       <div class="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs font-mono">

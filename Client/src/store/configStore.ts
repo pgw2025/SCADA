@@ -17,7 +17,7 @@ export const exposedApis = ref<ExposedDataInterface[]>([]);
 export const databaseConfigs = ref<DatabaseConfig[]>([]);
 
 export const systemConfig = ref<SystemConfig>({
-  systemTitle: 'IOTA-SCADA 工业物联大脑',
+  systemTitle: '晋鑫设备管理系统',
   pollIntervalMs: 1200,
   mqttBrokerHost: '10.120.44.15',
   mqttBrokerPort: 1883,
