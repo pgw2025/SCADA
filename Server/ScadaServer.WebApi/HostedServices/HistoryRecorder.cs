@@ -61,7 +61,8 @@ namespace ScadaServer.WebApi.HostedServices
             string variableName,
             double value,
             string? rawValue,
-            string? quality)
+            string? quality,
+            DateTime sampleTime)
         {
             var point = new VariableHistory
             {
@@ -71,7 +72,7 @@ namespace ScadaServer.WebApi.HostedServices
                 VariableName = variableName,
                 Value = value,
                 RawValue = rawValue,
-                Timestamp = DateTime.Now,
+                Timestamp = sampleTime,
                 Quality = quality
             };
 

@@ -51,6 +51,12 @@ public class ModelVariableDto
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public StoreModeEnum StoreMode { get; set; } = StoreModeEnum.Change;
 
+    /// <summary>
+    /// 历史存储周期（毫秒）。Change 模式作为超时兜底周期，Cycle 模式作为定时采样周期。
+    /// 下限 1000ms，默认 300000ms（5 分钟）。
+    /// </summary>
+    public int StoreIntervalMs { get; set; } = 300000;
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public UpdateMode UpdateMode { get; set; }
 

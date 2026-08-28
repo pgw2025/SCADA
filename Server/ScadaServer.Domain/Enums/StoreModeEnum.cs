@@ -23,11 +23,13 @@ namespace ScadaServer.Domain.Enums
 
         /// <summary>
         /// 压缩存储（历史趋势压缩）
+        /// <para>当前实现暂等同 <see cref="Cycle"/>：按 <c>StoreIntervalMs</c> 周期写入原始点，真正的压缩算法留待后续。</para>
         /// </summary>
         Compressed,
 
         /// <summary>
         /// 聚合存储（按时间窗口聚合后写入）
+        /// <para>当前实现暂等同 <see cref="Cycle"/>：按 <c>StoreIntervalMs</c> 周期写入原始点，真正的窗口聚合留待后续。</para>
         /// </summary>
         Aggregated
     }

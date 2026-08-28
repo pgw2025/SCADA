@@ -19,6 +19,7 @@ namespace ScadaServer.Application.Interfaces
         /// <param name="value">数值化后的值（非数值型变量按 0/1 处理）</param>
         /// <param name="rawValue">原始值字符串</param>
         /// <param name="quality">采样质量（如 Good / CommunicationError）</param>
+        /// <param name="sampleTime">采样时刻（设备采集时间，而非入队/落库时间）</param>
         void Record(
             int deviceId,
             string deviceKey,
@@ -26,7 +27,8 @@ namespace ScadaServer.Application.Interfaces
             string variableName,
             double value,
             string? rawValue,
-            string? quality);
+            string? quality,
+            DateTime sampleTime);
 
         /// <summary>
         /// 标记不再有新数据（关闭通道，触发后台排空剩余数据）。

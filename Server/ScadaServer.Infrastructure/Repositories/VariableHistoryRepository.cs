@@ -15,7 +15,12 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<List<VariableHistory>> GetLatestAsync(string deviceKey, string variableKey, int limit)
+        public async Task<List<VariableHistory>> GetLatestAsync(
+            string deviceKey,
+            string variableKey,
+            int limit,
+            DateTime? start = null,
+            DateTime? end = null)
         {
             var query = Db.VariableHistories.AsNoTracking();
 
@@ -25,8 +30,18 @@ namespace ScadaServer.Infrastructure.Repositories
                 query = query.Where(h => h.DeviceKey == deviceKey);
             }
 
+            query = query.Where(h => h.VariableKey == variableKey);
+
+            if (start.HasValue)
+            {
+                query = query.Where(h => h.Timestamp >= start.Value);
+            }
+            if (end.HasValue)
+            {
+                query = query.Where(h => h.Timestamp <= end.Value);
+            }
+
             return await query
-                .Where(h => h.VariableKey == variableKey)
                 .OrderByDescending(h => h.Timestamp)
                 .Take(limit)
                 .ToListAsync();

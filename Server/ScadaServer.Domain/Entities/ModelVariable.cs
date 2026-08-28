@@ -76,6 +76,18 @@ namespace ScadaServer.Domain.Entities
         public StoreModeEnum StoreMode { get; set; } = StoreModeEnum.Change;
 
         /// <summary>
+        /// 历史存储周期（毫秒）。与 <see cref="StoreMode"/> 配合决定"何时写入"一条历史采样点：
+        /// <para>
+        /// - Change（变化存储）：作为"超时兜底"周期——值变化即写入（含死区去抖），
+        ///   若值长时间未变化，超过本周期也强制写入一条，避免趋势曲线断档；
+        /// - Cycle/Compressed/Aggregated（周期类存储）：作为定时采样周期，按本间隔周期写入原始点，与轮询间隔解耦；
+        /// - None：不启用历史存储，本字段无意义。
+        /// </para>
+        /// <para>默认 300000ms（5 分钟）。下限 1000ms，由应用层与前端共同校验。</para>
+        /// </summary>
+        public int StoreIntervalMs { get; set; } = 300000;
+
+        /// <summary>
         /// 更新模式
         /// </summary>
         public UpdateMode UpdateMode { get; set; }

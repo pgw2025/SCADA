@@ -163,7 +163,12 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         /// 查询指定设备下某变量的最近 limit 条记录（按采样时间倒序，SQL 下推取数，避免全表回拉）。
         /// <para>deviceKey 可为空，空时按全设备查询（兼容无设备上下文的历史查询）。</para>
         /// </summary>
-        Task<List<VariableHistory>> GetLatestAsync(string deviceKey, string variableKey, int limit);
+        Task<List<VariableHistory>> GetLatestAsync(
+            string deviceKey,
+            string variableKey,
+            int limit,
+            DateTime? start = null,
+            DateTime? end = null);
 
         /// <summary>
         /// 按主键升序分页拉取历史原始数据（历史迁移用，AsNoTracking 大页读取）。

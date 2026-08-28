@@ -157,7 +157,8 @@ namespace ScadaServer.Infrastructure.Influx
             string variableKey,
             int limit,
             DateTime? start = null,
-            DateTime? end = null)
+            DateTime? end = null,
+            long? aggregateWindowMs = null)
         {
             if (limit <= 0)
             {
@@ -185,7 +186,7 @@ namespace ScadaServer.Infrastructure.Influx
 
             try
             {
-                var query = BuildQuery(bucket, deviceKey, variableKey, limit, start, end);
+                var query = BuildQuery(bucket, deviceKey, variableKey, limit, start, end, aggregateWindowMs);
                 var tables = client.GetQueryApiSync().QuerySync(query, org);
 
                 foreach (var table in tables)
@@ -288,7 +289,8 @@ namespace ScadaServer.Infrastructure.Influx
         }
 
         /// <summary>
-        /// 组装 FLUX 查询：双 tag 过滤 + pivot 合并字段 + 倒序取 limit 再升序返回。
+        /// 组装 FLUX 查询：双 tag 过滤 + （可选）窗口聚合 + pivot 合并字段 + 倒序取 limit 再升序返回。
+        /// <paramref name="aggregateWindowMs"/> 大于 0 时插入 aggregateWindow（均值），用于大时间范围降采样。
         /// </summary>
         private static string BuildQuery(
             string bucket,
@@ -296,15 +298,21 @@ namespace ScadaServer.Infrastructure.Influx
             string variableKey,
             int limit,
             DateTime? start,
-            DateTime? end)
+            DateTime? end,
+            long? aggregateWindowMs = null)
         {
             var startExpr = start.HasValue ? $"'{start.Value:O}'" : "-30d";
             var stopExpr = end.HasValue ? $", stop: '{end.Value:O}'" : string.Empty;
+
+            var aggregate = aggregateWindowMs is > 0
+                ? $"  |> aggregateWindow(every: {aggregateWindowMs}ms, fn: mean, createEmpty: false)\n"
+                : string.Empty;
 
             return $"from(bucket: \"{Escape(bucket)}\")\n" +
                    $"  |> range(start: {startExpr}{stopExpr})\n" +
                    $"  |> filter(fn: (r) => r._measurement == \"{MeasurementName}\" " +
                    $"and r.device_key == '{Escape(deviceKey)}' and r.variable_key == '{Escape(variableKey)}')\n" +
+                   aggregate +
                    "  |> pivot(rowKey:[\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n" +
                    "  |> sort(columns: [\"_time\"], desc: true)\n" +
                    $"  |> limit(n: {limit})\n" +

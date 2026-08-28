@@ -3,17 +3,25 @@ import { addLog, systemConfig } from '../store/index';
 import { historicalRecords } from '../store/historyStore';
 import { http } from './http';
 
-export const fetchHistoryFromBackend = async (deviceKey: string, variableKey: string, limit: number = 80) => {
+export const fetchHistoryFromBackend = async (
+    deviceKey: string,
+    variableKey: string,
+    limit: number = 80,
+    start?: string,
+    end?: string,
+    aggregateWindowMs?: number
+) => {
     if (systemConfig.value.isSimulationActive) return;
 
     try {
         addLog('历史查询', `正在向后端调取时间曲线. 变量: ${variableKey}, 长度: ${limit}...`, 'info');
-        // 统一走 http 实例（自动附加 JWT），stage-3 认证收紧后原生 fetch 会因缺 Token 返回 401
         // deviceKey 区分不同设备的同名变量：带设备上下文时后端按 device_key 精确过滤。
         const deviceQuery = deviceKey ? `&deviceKey=${encodeURIComponent(deviceKey)}` : '';
-        const res = await http.get(
-            `${systemConfig.value.backendApiUrl}/api/scada/history?variableKey=${encodeURIComponent(variableKey)}${deviceQuery}&limit=${limit}`
-        );
+        let url = `${systemConfig.value.backendApiUrl}/api/scada/history?variableKey=${encodeURIComponent(variableKey)}${deviceQuery}&limit=${limit}`;
+        if (start) url += `&start=${encodeURIComponent(start)}`;
+        if (end) url += `&end=${encodeURIComponent(end)}`;
+        if (aggregateWindowMs) url += `&aggregateWindowMs=${aggregateWindowMs}`;
+        const res = await http.get(url);
         const data = res.data;
         if (Array.isArray(data)) {
             const otherRecords = historicalRecords.value.filter(r => r.variableKey !== variableKey || r.deviceKey !== deviceKey);

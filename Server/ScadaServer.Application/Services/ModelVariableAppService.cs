@@ -132,6 +132,12 @@ namespace ScadaServer.Application.Services
             {
                 throw new BusinessException("已勾选\"存储历史\"但存储模式为 None，请选择 Change/Cycle 等具体模式");
             }
+
+            // D. 存储周期下限校验（避免误配为极小值导致海量写入）
+            if (dto.StoreMode != StoreModeEnum.None && dto.StoreIntervalMs < 1000)
+            {
+                throw new BusinessException("历史存储周期不能小于 1000ms（1 秒）");
+            }
         }
 
         private static ModelVariableDto MapToDto(ModelVariable entity) => new()
@@ -148,6 +154,7 @@ namespace ScadaServer.Application.Services
             Description = entity.Description,
             IsStored = entity.IsStored,
             StoreMode = entity.StoreMode,
+            StoreIntervalMs = entity.StoreIntervalMs,
             UpdateMode = entity.UpdateMode,
             ScaleSlope = entity.ScaleSlope,
             ScaleOffset = entity.ScaleOffset,
@@ -170,6 +177,7 @@ namespace ScadaServer.Application.Services
             // 模板层不再写回；地址、采集周期等采集细节统一在设备实例层维护。
             entity.Description = dto.Description;
             entity.StoreMode = dto.StoreMode;
+            entity.StoreIntervalMs = dto.StoreIntervalMs;
             entity.UpdateMode = dto.UpdateMode;
             entity.ScaleSlope = dto.ScaleSlope;
             entity.ScaleOffset = dto.ScaleOffset;

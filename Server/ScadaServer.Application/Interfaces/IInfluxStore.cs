@@ -22,15 +22,17 @@ namespace ScadaServer.Application.Interfaces
         Task<bool> WriteAsync(List<VariableHistory> points);
 
         /// <summary>
-        /// 查询指定设备+变量的历史记录（按时间升序返回 limit 条）。
+        /// 查询指定设备+变量的历史记录（按时间升序返回）。
         /// <paramref name="start"/>/<paramref name="end"/> 为空时取最近 limit 条。
+        /// <paramref name="aggregateWindowMs"/> 大于 0 时，按时间窗口对 value 取均值聚合降采样（适合大范围趋势）。
         /// </summary>
         Task<List<HistoryRecordDto>> QueryLatestAsync(
             string deviceKey,
             string variableKey,
             int limit,
             DateTime? start = null,
-            DateTime? end = null);
+            DateTime? end = null,
+            long? aggregateWindowMs = null);
 
         /// <summary>健康探测（连接测试）</summary>
         Task<(bool Success, long LatencyMs, string Message)> PingAsync();

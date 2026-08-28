@@ -21,18 +21,25 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         /// <summary>
-        /// 查询指定设备下某变量的最近历史记录（默认最近 100 条）。
+        /// 查询指定设备下某变量的历史记录（默认最近 100 条；支持时间范围与聚合降采样）。
         /// </summary>
         /// <param name="deviceKey">设备标识（可选，区分不同设备的同名变量）</param>
         /// <param name="variableKey">变量业务键</param>
-        /// <param name="limit">返回条数上限</param>
+        /// <param name="limit">返回条数上限（默认 100）</param>
+        /// <param name="start">起始时间（ISO 8601，可选）</param>
+        /// <param name="end">结束时间（ISO 8601，可选）</param>
+        /// <param name="aggregateWindowMs">聚合窗口（毫秒，可选）。>0 时按窗口均值聚合降采样，适合大时间范围趋势。</param>
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory(
             [FromQuery] string? deviceKey,
             [FromQuery] string variableKey,
-            [FromQuery] int? limit = 100)
+            [FromQuery] int? limit = 100,
+            [FromQuery] DateTime? start = null,
+            [FromQuery] DateTime? end = null,
+            [FromQuery] long? aggregateWindowMs = null)
         {
-            var records = await _appService.GetHistoryAsync(deviceKey ?? string.Empty, variableKey, limit ?? 100);
+            var records = await _appService.GetHistoryAsync(
+                deviceKey ?? string.Empty, variableKey, limit ?? 100, start, end, aggregateWindowMs);
             return Ok(records);
         }
 

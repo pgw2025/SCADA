@@ -70,10 +70,14 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>有效读写权限。来源：DeviceVariable.IsReadOnlyOverride 优先，否则模板 IsReadOnly。</summary>
     public bool IsReadOnly => Instance?.IsReadOnlyOverride ?? Definition.IsReadOnly;
 
+    /// <summary>历史存储模式（来自 ModelVariable 模板）。</summary>
+    public StoreModeEnum StoreMode => Definition.StoreMode;
+
+    /// <summary>历史存储周期（毫秒，来自 ModelVariable 模板；为将来 DeviceVariable 覆盖预留扩展口子）。</summary>
+    public int StoreIntervalMs => Definition.StoreIntervalMs;
+
     /// <summary>下一次应执行轮询的时间点（由采集调度维护）。</summary>
     public DateTime NextPollTime { get; set; } = DateTime.MinValue;
-
-    // ===================== 运行时状态（采集结果） =====================
     /// <summary>当前值。</summary>
     public object? Value { get; set; }
 
@@ -100,4 +104,23 @@ public class VariableRuntime : IRuntimeVariable
     /// 绑定写入期望值的时间戳（运行时字段）。与 <see cref="LastBindingWriteValue"/> 配合判定回声窗口，超时后失效。
     /// </summary>
     public DateTime LastBindingWriteTime { get; set; }
+
+    // ===================== 历史存储状态（运行时字段，不持久化） =====================
+
+    /// <summary>
+    /// 该变量最近一次"实际写入历史"的时间。运行时维护，用于判定"定时/兜底"是否到期。
+    /// <para>
+    /// 初始为 <see cref="DateTime.MinValue"/>：首次成功采集后立即写入一条"种子点"，
+    /// 同时保证服务重启后每个启用变量各补一个点，避免趋势曲线在重启附近断档。
+    /// 写入入口（DeviceWorker.TryRecordHistory）在每次成功落库后推进本字段。
+    /// </para>
+    /// </summary>
+    public DateTime LastHistoryTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>
+    /// 该变量最近一次写入历史的数值（运行时字段）。供 Change 模式的死区判定使用：
+    /// 仅当 |当前值 - LastHistoryWrittenValue| 超过 <see cref="Definition.DeadBand"/> 时视为"有效变化"，
+    /// 从而抑制微小抖动反复写库。非数值型变量不使用本字段（直接按 Equals 判定）。
+    /// </summary>
+    public double? LastHistoryWrittenValue { get; set; }
 }

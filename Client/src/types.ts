@@ -119,6 +119,8 @@ export interface ModelVariable {
   description?: string;
   isStored: boolean;
   storeMode: 'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated';
+  /** 历史存储周期（毫秒）。Change 作为超时兜底周期，Cycle 作为定时采样周期。 */
+  storeIntervalMs: number;
   updateMode: UpdateMode;
   
   // 工业级增强字段

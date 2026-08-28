@@ -138,6 +138,7 @@ const varAccessLevel = ref<'RO' | 'RW'>('RW');
 const varScaleExpr = ref<string>('x * 1.0');
 const varIsStored = ref<boolean>(true);
 const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated'>('Change');
+const varStoreIntervalMs = ref<number | ''>(300000);
 
 // OPCUA custom state properties
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
@@ -250,6 +251,7 @@ const handleSaveVariable = async () => {
     isStored: varIsStored.value,
     // 未勾选"存储历史"时显式发 None,后端据此派生 IsStored=false,不写时序库
     storeMode: varIsStored.value ? varStoreMode.value : 'None',
+    storeIntervalMs: varIsStored.value ? (varStoreIntervalMs.value === '' ? 300000 : varStoreIntervalMs.value) : 300000,
     updateMode: varUpdateMode.value,
     scaleSlope: varScaleSlope.value === '' ? 1.0 : varScaleSlope.value,
     scaleOffset: varScaleOffset.value === '' ? 0.0 : varScaleOffset.value,
@@ -300,6 +302,7 @@ const handleSaveVariable = async () => {
   varScaleExpr.value = 'x * 1.0';
   varIsStored.value = true;
   varStoreMode.value = 'Change';
+  varStoreIntervalMs.value = 300000;
   varUpdateMode.value = 'subscription';
   
   // Clear industrial-grade fields
@@ -714,6 +717,20 @@ const handleDeleteVariable = (key: string, name: string) => {
                 <option value="Cycle">定时存储</option>
               </select>
             </div>
+            <div v-if="varIsStored" class="flex items-center justify-between py-1">
+              <label class="text-indigo-700 dark:text-indigo-300 font-bold text-xs">存储周期</label>
+              <input
+                v-model="varStoreIntervalMs"
+                type="number"
+                min="1000"
+                step="1000"
+                class="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 focus:outline-none w-24 text-right"
+              />
+              <span class="text-[9px] text-slate-500 dark:text-slate-400">ms</span>
+            </div>
+            <p v-if="varIsStored" class="text-[9px] text-slate-400 dark:text-slate-500">
+              {{ varStoreMode === 'Change' ? '值变化即存；长时间不变超过周期也存一条' : '按设定周期定时存储' }}
+            </p>
           </div>
 
           <!-- OPCUA Specific Variable Fields -->

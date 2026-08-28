@@ -21,7 +21,13 @@ namespace ScadaServer.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task<List<HistoryRecordDto>> GetHistoryAsync(string deviceKey, string variableKey, int limit)
+        public async Task<List<HistoryRecordDto>> GetHistoryAsync(
+            string deviceKey,
+            string variableKey,
+            int limit,
+            DateTime? start = null,
+            DateTime? end = null,
+            long? aggregateWindowMs = null)
         {
             if (string.IsNullOrWhiteSpace(variableKey))
             {
@@ -38,7 +44,8 @@ namespace ScadaServer.Application.Services
             // 无配置或无数据时回退 MySQL，保证迁移期/未配置时序库时仍可读到存量数据。
             if (_influxStore.IsConfigured)
             {
-                var influxRecords = await _influxStore.QueryLatestAsync(normalizedDevice, normalizedKey, limit);
+                var influxRecords = await _influxStore.QueryLatestAsync(
+                    normalizedDevice, normalizedKey, limit, start, end, aggregateWindowMs);
                 if (influxRecords.Count > 0)
                 {
                     return influxRecords
@@ -47,8 +54,8 @@ namespace ScadaServer.Application.Services
                 }
             }
 
-            // 取最近 limit 条（倒序），转升序返回，便于前端按时间顺序绘制曲线。
-            var records = await _repository.GetLatestAsync(normalizedDevice, normalizedKey, limit);
+            // 取最近 limit 条（倒序，按时间范围过滤），转升序返回，便于前端按时间顺序绘制曲线。
+            var records = await _repository.GetLatestAsync(normalizedDevice, normalizedKey, limit, start, end);
 
             return records
                 .OrderBy(r => r.Timestamp)

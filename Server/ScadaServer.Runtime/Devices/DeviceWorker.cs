@@ -191,7 +191,7 @@ namespace ScadaServer.Runtime.Devices
                             }
 
                             // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）
-                            TryRecordHistory(vr);
+                            TryRecordHistory(vr, now);
 
                             // 更新实时快照（内存态，后台批量 Upsert 到 MySQL 实时库），不阻塞采集
                             TryUpdateRealtime(vr);
@@ -267,20 +267,44 @@ namespace ScadaServer.Runtime.Devices
         /// 按变量存储策略决定是否记录历史采样点并异步入队。
         /// <list type="bullet">
         /// <item>None：不存储；</item>
-        /// <item>Change：值变化时记录；</item>
-        /// <item>Cycle / Compressed / Aggregated：本阶段统一按采集周期记录原始点。</item>
+        /// <item>
+        /// Change（变化存储）：值发生"有效变化"即写入（死区 <c>DeadBand</c> 抑制微小抖动）；
+        /// 同时具备"超时兜底"——若值长时间未变化，超过 <c>StoreIntervalMs</c> 也强制写入一条，
+        /// 避免趋势曲线断档。两者取"先到先写"。
+        /// </item>
+        /// <item>
+        /// Cycle / Compressed / Aggregated（周期类存储）：按 <c>StoreIntervalMs</c> 定时写入原始点，
+        /// 与轮询间隔解耦。
+        /// </item>
         /// </list>
+        /// <para>
+        /// 判定基于运行时字段 <see cref="VariableRuntime.LastHistoryTime"/>：首次采集（MinValue）
+        /// 必写一条"种子点"，并用于判定后续是否到期。采样时间戳取变量采集时刻 <c>vr.UpdateTime</c>，
+        /// 而非入队/落库时间，避免队列积压导致时间戳整体偏移。
+        /// </para>
         /// </summary>
-        private void TryRecordHistory(VariableRuntime vr)
+        private void TryRecordHistory(VariableRuntime vr, DateTime now)
         {
-            var storeMode = vr.Definition.StoreMode;
-            if (storeMode == StoreModeEnum.None)
+            if (vr.StoreMode == StoreModeEnum.None)
             {
                 return;
             }
 
-            // Change 模式仅在值变化时记录；周期类模式每轮采集都记录。
-            if (storeMode == StoreModeEnum.Change && !vr.IsChanged)
+            // 安全保护：周期异常（<1s）按每轮都写处理，避免配置损坏时静默停写。
+            var intervalMs = vr.StoreIntervalMs > 0 ? vr.StoreIntervalMs : 1000;
+
+            // 定时/兜底是否到期。vr.LastHistoryTime 初始为 MinValue，首次必写种子点。
+            var due = (now - vr.LastHistoryTime).TotalMilliseconds >= intervalMs;
+
+            var shouldWrite = due;
+
+            // Change 模式额外支持"变化触发"：值有效变化且未到写库时也写。
+            if (!shouldWrite && vr.StoreMode == StoreModeEnum.Change && vr.IsChanged)
+            {
+                shouldWrite = IsEffectiveChange(vr);
+            }
+
+            if (!shouldWrite)
             {
                 return;
             }
@@ -314,7 +338,38 @@ namespace ScadaServer.Runtime.Devices
                 vr.Name,
                 numericValue,
                 rawValue,
-                vr.Quality.ToString());
+                vr.Quality.ToString(),
+                vr.UpdateTime);
+
+            // 推进"最后写入"状态，供下次定时/兜底与死区判定使用。
+            vr.LastHistoryTime = now;
+            vr.LastHistoryWrittenValue = numericValue;
+        }
+
+        /// <summary>
+        /// 判定"值变化"是否为一次有效的历史写入（Change 模式）。
+        /// <para>
+        /// 使用死区 <c>DeadBand</c> 抑制微小抖动：数值型变量且配置了死区时，
+        /// 仅当 |当前值 - 最近一次写入值| 大于死区才视为有效变化；未配死区或非数值型变量，
+        /// 直接按变量变化标志（IsChanged）判定。全局 <see cref="VariableRuntime.IsChanged"/>
+        /// 仍用于驱动 SignalR/MQTT/绑定事件，此处只影响历史写入，互不影响。
+        /// </para>
+        /// </summary>
+        private static bool IsEffectiveChange(VariableRuntime vr)
+        {
+            var deadBand = vr.DeadBand;
+            if (deadBand is null || deadBand <= 0 || vr.LastHistoryWrittenValue is null || vr.Value is null)
+            {
+                return true;
+            }
+
+            var current = TryToNumber(vr.Value);
+            if (current is null)
+            {
+                return true; // 非数值型变量不使用死区
+            }
+
+            return Math.Abs(current.Value - vr.LastHistoryWrittenValue.Value) > deadBand.Value;
         }
 
         /// <summary>
