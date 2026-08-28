@@ -35,6 +35,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IDeviceVariableAppService, DeviceVariableAppService>();
             services.AddScoped<IProtocolAppService, ProtocolAppService>();
             services.AddScoped<IMqttServerAppService, MqttServerAppService>();
+            services.AddScoped<IMqttVariableConfigAppService, MqttVariableConfigAppService>();
             services.AddScoped<IScadaPageAppService, ScadaPageAppService>();
             services.AddScoped<IScadaProjectAppService, ScadaProjectAppService>();
             services.AddScoped<IScheduledTaskAppService, ScheduledTaskAppService>();
@@ -66,6 +67,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddHostedService(sp => sp.GetRequiredService<RealtimeSnapshotService>());
 
             services.AddSingleton<IMqttManager, MqttManager>();
+            services.AddHostedService<MqttReconnectHostedService>();
             services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();
 
             // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）

@@ -122,6 +122,12 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasConstraintName("FK_DataModels_Protocols_ProtocolId");
             modelBuilder.Entity<MqttServer>().ToTable("MqttServers");
             modelBuilder.Entity<MqttVariableConfig>().ToTable("MqttVariableConfigs");
+            // MQTT 变量映射唯一约束：同一服务器下同一设备同一变量仅能关联一次，
+            // 从数据库层面防重复关联（别名可不同服务器各自独立）。
+            modelBuilder.Entity<MqttVariableConfig>()
+                .HasIndex(m => new { m.MqttServerId, m.DeviceId, m.VariableKey })
+                .IsUnique()
+                .HasDatabaseName("ix_mqttvariableconfig_server_device_var");
             modelBuilder.Entity<ScadaPage>().ToTable("ScadaPages");
             modelBuilder.Entity<ScadaProject>().ToTable("ScadaProjects");
             modelBuilder.Entity<ScheduledTask>().ToTable("ScheduledTasks");

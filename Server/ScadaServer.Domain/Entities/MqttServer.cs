@@ -43,5 +43,10 @@ namespace ScadaServer.Domain.Entities
         /// 主题前缀
         /// </summary>
         public string TopicPrefix { get; set; }
+
+        /// <summary>
+        /// 是否启用：停用时断开连接且不再发布，默认 true。
+        /// </summary>
+        public bool IsEnabled { get; set; } = true;
     }
 }

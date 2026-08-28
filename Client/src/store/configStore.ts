@@ -1,6 +1,5 @@
 import { ref } from 'vue';
 import {
-  MqttServer,
   DataConversion,
   VariableTrigger,
   SystemScript,
@@ -10,7 +9,6 @@ import {
   SystemConfig
 } from '../types';
 
-export const mqttServers = ref<MqttServer[]>([]);
 export const dataConversions = ref<DataConversion[]>([]);
 export const triggers = ref<VariableTrigger[]>([]);
 export const systemScripts = ref<SystemScript[]>([]);

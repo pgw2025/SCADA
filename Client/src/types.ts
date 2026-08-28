@@ -275,17 +275,61 @@ export interface Device {
   configJson?: string;
 }
 
+// 后端 MqttServerDto
 export interface MqttServer {
-  id: string;
+  id: number;
   name: string;
   brokerUrl: string;
   port: number;
   clientId: string;
   username?: string;
+  // 密码仅写入用；列表/详情接口不回传明文（空串）。编辑时留空=保持原密码。
   password?: string;
   topicPrefix?: string;
-  status: 'connected' | 'disconnected';
-  associatedVariables: { deviceId: string; variableKey: string }[];
+  isEnabled: boolean;
+  // 该服务器下已关联的变量数量（后端填充）
+  variableCount: number;
+}
+
+// 后端 MqttServerStatusDto（卡片状态展示，由 MqttManager 维护动态状态）
+export interface MqttServerStatus {
+  id: number;
+  name: string;
+  status: 'Connected' | 'Connecting' | 'Disconnected' | 'Error' | 'Disabled';
+  lastError: string;
+  lastConnectedUtc: string | null;
+  reconnectAttempts: number;
+  variableCount: number;
+}
+
+// 后端 MqttVariableConfigDto（服务器关联变量）
+export interface MqttVariableConfig {
+  id: number;
+  mqttServerId: number;
+  deviceId: number;
+  deviceName: string;
+  variableKey: string;
+  variableName: string;
+  alias: string;
+  customTopic?: string | null;
+  isEnabled: boolean;
+  topicPreview: string;
+  realtimeValue?: unknown;
+}
+
+// 新增映射请求体（MqttVariableConfigCreateDto）
+export interface MqttVariableConfigCreate {
+  deviceId: number;
+  variableKey: string;
+  alias: string;
+  customTopic?: string;
+}
+
+// 更新映射请求体（MqttVariableConfigUpdateDto）
+export interface MqttVariableConfigUpdate {
+  alias: string;
+  customTopic?: string;
+  isEnabled: boolean;
 }
 
 export interface DataConversion {
