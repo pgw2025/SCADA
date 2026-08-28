@@ -155,6 +155,7 @@ export interface DeviceVariable {
   isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板
   templateIsReadOnly?: boolean;         // 回显：模板定义的只读权限
   effectiveIsReadOnly?: boolean;        // 回显：有效权限（Override ?? 模板）
+  quality?: string;                     // 运行期实时值质量（Good/Bad/Uncertain/CommunicationError/…），组态运行端分级显示
 }
 
 export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BACnet' | 'DNP3';

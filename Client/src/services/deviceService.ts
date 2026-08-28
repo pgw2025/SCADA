@@ -12,14 +12,53 @@ export interface DeviceOperationResult<T = any> {
   error?: ErrorResult;
 }
 
-export const syncDevices = async () => {
+/**
+ * 同步设备列表到全局 store。
+ *
+ * - 传入上一次 devices 做实时值继承（normalizeDevices），避免轮询/全量刷新把 SignalR 已推送、
+ *   且之后不再变化的值抹回 null 导致运行画面闪零。
+ * - 当 options.realtime 为 true（登录、SignalR 握手成功/重连等显式全量刷新场景）时，
+ *   额外逐设备拉取 /api/TelemetryData/{id}/realtime 回填最新实时值；轮询路径不传该参数，
+ *   以免每 5 秒对全部设备发一轮 realtime 请求。
+ */
+export const syncDevices = async (options?: { realtime?: boolean }) => {
   if (systemConfig.value.isSimulationActive) return;
 
   try {
     const { data } = await api.fetchDevicesFromBackend();
-    const normalized = normalizeDevices(data);
+    const normalized = normalizeDevices(data, store.devices.value);
     store.setDevices(normalized);
     addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
+
+    if (options?.realtime) {
+      await Promise.all((data ?? []).map(async (d: any) => {
+        const id = Number(d?.id);
+        if (!id) return;
+        try {
+          const { data: rt }: any = await api.fetchDeviceRealtime(id);
+          const dev = store.devices.value.find(x => String(x.id) === String(rt?.deviceId));
+          if (!dev || !Array.isArray(rt?.variables)) return;
+          if (!dev.variables) dev.variables = {};
+          rt.variables.forEach((v: any) => {
+            const key = v?.key ?? v?.Key;
+            if (key == null) return;
+            dev.variables[key] = v?.value ?? v?.Value;
+            // 质量分级显示：从实时端点回填变量质量（Good/Bad/Uncertain/CommunicationError/…），
+            // 存入 variableMeta 供组态运行端按质量分级叠加角标。
+            if (dev.variableMeta) {
+              const quality = v?.quality ?? v?.Quality;
+              if (dev.variableMeta[key]) {
+                dev.variableMeta[key].quality = quality;
+              } else if (quality) {
+                dev.variableMeta[key] = { key, quality } as any;
+              }
+            }
+          });
+        } catch {
+          /* 单设备实时值拉取失败静默，不影响设备列表 */
+        }
+      }));
+    }
   } catch (err: any) {
     addLog('设备管理', `无法同步设备列表: ${extractApiError(err)}`, 'warning');
   }

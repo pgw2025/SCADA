@@ -87,8 +87,10 @@ http.interceptors.response.use(
       loginUser.value = null;
       addLog('安全认证', '登录状态已失效，请重新登录', 'warning');
       showToast('登录状态已失效，请重新登录', 'warning');
-    } else if (!isAuthFlowRequest) {
-      // 登录失败由登录页内联错误框展示，其余失败统一弹 Toast（含后端 message / 校验 errors）
+    } else if (!isAuthFlowRequest && !((error.config as any)?.silent && error.response?.status === 404)) {
+      // 登录失败由登录页内联错误框展示，其余失败统一弹 Toast（含后端 message / 校验 errors）。
+      // silent + 404：撤销对账等「预期内记录不存在」场景（如重做已删除的组件）静默处理，
+      // 由调用方降级为重建；真实网络/5xx 错误仍照常提示。
       showToast(extractApiError(error), 'error');
     }
     return Promise.reject(error);

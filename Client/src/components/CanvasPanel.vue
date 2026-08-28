@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { HMIComponent } from '../types';
 import HMIWidget from './HMIWidget.vue';
 import {
@@ -19,6 +19,8 @@ const props = defineProps<{
   selectedIds: string[];
   isActiveMode: boolean;
   componentValues: Record<string, number | boolean>;
+  /** 阶段2-2：组件级变量质量分级（非 Good 质量叠加角标），由运行端/编辑器预览传入 */
+  componentQualities?: Record<string, string>;
   canvasWidth: number;
   canvasHeight: number;
   canControlWrite?: boolean;
@@ -41,6 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
+const workspaceRef = ref<HTMLDivElement | null>(null);
 const zoom = ref<number>(1);
 const showGrid = ref<boolean>(true);
 const snapToGrid = ref<boolean>(true);
@@ -464,13 +467,43 @@ const onDrop = (e: DragEvent) => {
   emit('addComponentAt', parsed.type, parsed.w, parsed.h, parsed.name, x, y);
 };
 
+// 阶段5-7：运行端响应式——只读（运行时）模式自动缩放画布以适配可视区，上限 100%（不放大）。
+let fitObserver: ResizeObserver | null = null;
+
+const applyFitZoom = () => {
+  if (!props.readonly) return;
+  const el = workspaceRef.value;
+  if (!el) return;
+  const pad = 16; // 与只读模式 p-2 对应
+  const availW = el.clientWidth - pad * 2;
+  const availH = el.clientHeight - pad * 2;
+  if (availW <= 0 || availH <= 0) return;
+  const fit = Math.min(1, availW / props.canvasWidth, availH / props.canvasHeight);
+  zoom.value = Math.max(0.2, Math.round(fit * 100) / 100);
+};
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('mouseup', handleMouseUp);
   window.addEventListener('mouseup', handleStageMouseUp);
+  // 阶段5-7：只读模式监听工作区尺寸变化，画布自动适配
+  if (props.readonly && workspaceRef.value) {
+    fitObserver = new ResizeObserver(applyFitZoom);
+    fitObserver.observe(workspaceRef.value);
+    applyFitZoom();
+  }
 });
 
+watch(
+  () => [props.readonly, props.canvasWidth, props.canvasHeight],
+  () => {
+    if (props.readonly) applyFitZoom();
+  }
+);
+
 onUnmounted(() => {
+  fitObserver?.disconnect();
+  fitObserver = null;
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('mouseup', handleMouseUp);
   window.removeEventListener('mouseup', handleStageMouseUp);
@@ -656,12 +689,24 @@ onUnmounted(() => {
 
     <!-- Editor Inner Stage workspace -->
     <div
-      class="flex-1 overflow-auto p-8 relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
+      ref="workspaceRef"
+      class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
+      :class="readonly ? 'p-2' : 'p-8'"
       @mousedown="handleStageMouseDown"
       @mousemove="handleMouseMove"
       @mouseup="handleStageMouseUp"
     >
       <!-- Canvas bounding card container -->
+      <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
+      <!-- 阶段5-7：只读模式 m-auto 安全居中（适配时居中，溢出时回退左顶对齐可滚动） -->
+      <div
+        class="relative shrink-0"
+        :class="readonly ? 'm-auto' : ''"
+        :style="{
+          width: canvasWidth * zoom + 'px',
+          height: canvasHeight * zoom + 'px'
+        }"
+      >
       <div
         ref="canvasRef"
         class="bg-white border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
@@ -692,7 +737,7 @@ onUnmounted(() => {
           {{ isActiveMode ? 'HMI 实时监控' : 'HMI 设计中心' }}
         </div>
 
-        <div class="absolute bottom-3 left-4 font-mono text-[9px] text-gray-400 pointer-events-none select-none">
+        <div v-if="!readonly" class="absolute bottom-3 left-4 font-mono text-[9px] text-gray-400 pointer-events-none select-none">
           画布尺寸: {{ canvasWidth }} × {{ canvasHeight }} 像素
         </div>
 
@@ -740,6 +785,16 @@ onUnmounted(() => {
             :control-locked="props.isActiveMode && props.canControlWrite === false"
           />
 
+          <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->
+          <div
+            v-if="componentQualities && componentQualities[component.id]"
+            class="absolute top-0.5 right-0.5 z-30 flex items-center gap-0.5 rounded bg-amber-500/90 text-white text-[7px] font-bold px-1 py-px pointer-events-none select-none leading-none shadow-sm"
+            :title="`变量质量异常: ${componentQualities[component.id]}`"
+          >
+            <span class="w-1 h-1 rounded-full bg-white animate-pulse" />
+            {{ componentQualities[component.id] }}
+          </div>
+
           <!-- Editable labels in component container -->
           <div
             v-if="!component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
@@ -782,6 +837,7 @@ onUnmounted(() => {
             />
           </template>
         </div>
+      </div>
       </div>
     </div>
   </div>

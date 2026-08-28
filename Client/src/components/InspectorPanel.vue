@@ -7,6 +7,7 @@ import { Settings, Tag, Sliders, Layout, Hash } from 'lucide-vue-next';
 
 const props = defineProps<{
   selectedComponent: HMIComponent | null;
+  currentPageId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -49,6 +50,7 @@ const onBindDeviceChange = (val: string) => {
   const id = val === '' ? null : Number(val);
   updateComponentField('bindDeviceId', id);
   updateComponentField('bindVariableKey', ''); // 设备变更后清空变量
+  updateComponentField('bindField', ''); // 同时清除遗留 bindField，防止运行态拿旧值下发写指令
 };
 
 const onBindVariableChange = (val: string) => {
@@ -61,7 +63,8 @@ const onBindVariableChange = (val: string) => {
 const navTargetOptions = computed(() => {
   const list = currentPlatform.value === 'Mobile' ? mobilePages.value : desktopPages.value;
   return list
-    .filter(p => p.id !== props.selectedComponent?.id)
+    // 排除「当前页面」本身：页面 id 与组件 id 不可比，须用父级传入的 currentPageId
+    .filter(p => p.id !== props.currentPageId)
     .map(p => ({ id: p.id, name: p.name }));
 });
 </script>
@@ -258,6 +261,30 @@ const navTargetOptions = computed(() => {
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none"
               />
             </div>
+          </div>
+        </div>
+
+        <!-- 阶段5-6：状态文本解耦——阀/数显/开关等有状态控件的开/关文案可配置，去除硬编码英/中文 -->
+        <div v-if="['valve', 'digital-val', 'switch'].includes(selectedComponent.type)" class="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">开启状态文本</label>
+            <input
+              type="text"
+              :value="componentProps.onText ?? '开启'"
+              @input="updateProp('onText', ($event.target as HTMLInputElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+              placeholder="默认: 开启"
+            />
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">关闭状态文本</label>
+            <input
+              type="text"
+              :value="componentProps.offText ?? '关闭'"
+              @input="updateProp('offText', ($event.target as HTMLInputElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+              placeholder="默认: 关闭"
+            />
           </div>
         </div>
 

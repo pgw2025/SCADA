@@ -110,6 +110,21 @@ const canControlWrite = computed(() => {
   return r === ROLE_OPERATOR || r === ROLE_ADMIN;
 });
 
+// 阶段2-2：质量分级显示——按组件绑定（deviceId+variableKey）回读变量质量，
+// 非 Good 质量（Bad/Uncertain/CommunicationError/…）在画布组件上叠加角标，提示数据不可信。
+const componentQualities = computed(() => {
+  const result: Record<string, string> = {};
+  const devIndex = new Map<number | string, any>();
+  devices.value.forEach((d) => devIndex.set(d.id, d));
+  (currentPage.value?.components ?? []).forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const q = devIndex.get(c.bindDeviceId)?.variableMeta?.[c.bindVariableKey]?.quality;
+      if (q && q !== 'Good') result[c.id] = String(q);
+    }
+  });
+  return result;
+});
+
 // 阶段3：导航按钮跳转（同端切换，跨端不允许）
 const handleNavigate = (pageId: string) => {
   const target = runtimePages.value.find((p) => p.id === pageId);
@@ -248,16 +263,18 @@ const onLogout = () => {
 
       <!-- 组态画布 -->
       <div v-else
-        class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden ring-1 ring-slate-300 dark:ring-slate-800"
+        class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden ring-1 ring-slate-300 dark:ring-slate-800 flex flex-col max-h-full min-w-0"
         :class="runtimePlatform === 'Mobile' ? 'rounded-[2rem] p-2 bg-neutral-900' : ''"
       >
-        <div :class="runtimePlatform === 'Mobile' ? 'rounded-[1.6rem] overflow-hidden' : ''">
+        <div :class="runtimePlatform === 'Mobile' ? 'rounded-[1.6rem] overflow-hidden flex flex-col flex-1 min-h-0' : 'flex flex-col flex-1 min-h-0'">
           <CanvasPanel
+            class="min-h-0"
             :components="currentPage.components"
             :selectedId="null"
             :selectedIds="[]"
             :isActiveMode="true"
             :component-values="componentValues"
+            :component-qualities="componentQualities"
             :canvas-width="pageWidth"
             :canvas-height="pageHeight"
             :can-control-write="canControlWrite"

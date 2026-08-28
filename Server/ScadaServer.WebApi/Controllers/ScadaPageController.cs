@@ -67,26 +67,5 @@ namespace ScadaServer.WebApi.Controllers
             await AuditAsync("DELETE", id.ToString(), $"删除组态页面 [id={id}]");
             return NoContent();
         }
-
-        /// <summary>
-        /// 全量保存页面布局：请求体为该页全部组件（删旧全量 + 批量插入，事务内完成）
-        /// </summary>
-        [HttpPut("{id}/layout")]
-        [Authorize(Policy = "RequireAdmin")]
-        public async Task<IActionResult> SaveLayout(int id, [FromBody] List<HmiComponentDto> components)
-        {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-            var list = components ?? new List<HmiComponentDto>();
-            try
-            {
-                await _appService.SaveLayoutAsync(id, list);
-            }
-            catch (ScadaServer.Domain.Exceptions.BusinessException ex)
-            {
-                return StatusCode(ex.StatusCode, new { message = ex.Message });
-            }
-            await AuditAsync("EXECUTE", id.ToString(), $"保存页面布局 [pageId={id}] 共 {list.Count} 个组件");
-            return NoContent();
-        }
     }
 }

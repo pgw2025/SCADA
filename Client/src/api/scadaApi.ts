@@ -102,8 +102,8 @@ export const createComponent = async (dto: Partial<ComponentDto>): Promise<numbe
   const r = await http.post<ComponentDto>(`${API()}/HmiComponent`, dto);
   return r.data.id;
 };
-export const updateComponent = async (dto: Partial<ComponentDto>): Promise<void> => {
-  await http.put(`${API()}/HmiComponent`, dto);
+export const updateComponent = async (dto: Partial<ComponentDto>, opts?: { silent?: boolean }): Promise<void> => {
+  await http.put(`${API()}/HmiComponent`, dto, { silent: opts?.silent } as any);
 };
 export const deleteComponent = async (id: number): Promise<void> => {
   await http.delete(`${API()}/HmiComponent/${id}`);
@@ -136,7 +136,9 @@ export const toComponentDto = (c: HMIComponent, pageId: number) => ({
   width: c.width,
   height: c.height,
   zIndex: c.zIndex,
-  bindField: c.bindField || '',
+  // bindVariableKey 非空时强制置空 bindField，逐步清理历史遗留的同值冗余字段，
+  // 避免运行态误用 bindField 作为兜底写指令键（界面显示未绑定、实际写旧变量）。
+  bindField: c.bindVariableKey ? '' : (c.bindField || ''),
   label: c.label || '',
   bindDeviceId: c.bindDeviceId ?? null,
   bindVariableKey: c.bindVariableKey ?? null,

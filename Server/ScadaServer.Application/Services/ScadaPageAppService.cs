@@ -1,7 +1,6 @@
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
-using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
@@ -97,54 +96,6 @@ namespace ScadaServer.Application.Services
                 // 删除页面
                 var entity = await _repository.GetByIdAsync(id);
                 if (entity != null) await _repository.DeleteAsync(entity);
-
-                return true;
-            });
-        }
-
-        public async Task SaveLayoutAsync(int pageId, List<HmiComponentDto> components)
-        {
-            // 页面必须存在
-            var page = await _repository.GetByIdAsync(pageId);
-            if (page == null)
-                throw new BusinessException($"页面不存在：{pageId}", 404);
-
-            // 参数校验：组件类型/名称为必填，且 PageId 必须与路由一致
-            for (var i = 0; i < components.Count; i++)
-            {
-                var c = components[i];
-                if (string.IsNullOrWhiteSpace(c.Type))
-                    throw new BusinessException($"第 {i + 1} 个组件类型不能为空", 400);
-                if (string.IsNullOrWhiteSpace(c.Name))
-                    throw new BusinessException($"第 {i + 1} 个组件名称不能为空", 400);
-                c.PageId = pageId; // 以路由为准，忽略请求体中的 PageId
-            }
-
-            await _uow.ExecuteInTransactionAsync(async transaction =>
-            {
-                // 删旧全量
-                await _componentRepository.DeleteRangeAsync(c => c.PageId == pageId);
-
-                // 批量插入（Id 重新生成，忽略请求体中的 Id）
-                var entities = components.Select(c => new HmiComponent
-                {
-                    PageId = pageId,
-                    Type = c.Type,
-                    Name = c.Name,
-                    X = c.X,
-                    Y = c.Y,
-                    Width = c.Width,
-                    Height = c.Height,
-                    ZIndex = c.ZIndex,
-                    BindField = c.BindField,
-                    Label = c.Label,
-                    BindDeviceId = c.BindDeviceId,
-                    BindVariableKey = c.BindVariableKey,
-                    PropsJson = c.PropsJson
-                }).ToList();
-
-                if (entities.Count > 0)
-                    await _componentRepository.InsertRangeAsync(entities);
 
                 return true;
             });

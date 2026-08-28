@@ -91,10 +91,28 @@ namespace ScadaServer.WebApi.Extensions
                     ValidAudience = configuration["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
                 };
+
+                // SignalR 走 WebSocket 传输时浏览器无法设置 Authorization 头，
+                // @microsoft/signalr 的 accessTokenFactory 会把 JWT 放到 access_token 查询参数。
+                // 对 /hubs 路径从查询参数读取并注入 context.Token，使 [Authorize] Hub 握手鉴权生效。
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken)
+                            && path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
-            // 全局授权策略：除显式标记 [AllowAnonymous] 的端点（登录、SignalR Hub）外，
-            // 所有 API 默认必须携带有效 JWT 才能访问，避免“忘了加 [Authorize] 就裸奔”。
+            // 全局授权策略：除显式标记 [AllowAnonymous] 的端点（登录）外，
+            // 所有 API 与 SignalR Hub 默认必须携带有效 JWT 才能访问，避免“忘了加 [Authorize] 就裸奔”。
             services.AddAuthorization(options =>
             {
                 // 阶段5：管理员专属策略。仅 Admin 角色可访问组态/配置/管理类写接口；

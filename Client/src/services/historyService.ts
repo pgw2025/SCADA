@@ -86,5 +86,19 @@ export function redo(current: HMIComponent[]): HMIComponent[] | null {
   return clone(future.value.shift()!);
 }
 
+/**
+ * 撤销对账：切换工程/页面时清空命令栈。
+ * 命令栈是全局单栈，若不清空，会把上一页的组件快照撤销到当前页（跨页污染）。
+ * 切换文档（页面）后历史即失效，故直接重置为干净状态。
+ */
+export function resetHistory() {
+  flushPending();
+  past.value = [];
+  future.value = [];
+  _pending = null;
+  _lastId = '';
+  _lastStamp = 0;
+}
+
 export const undoAvailable = computed(() => past.value.length > 0);
 export const redoAvailable = computed(() => future.value.length > 0);

@@ -1,42 +1,13 @@
 import { HubConnectionBuilder } from '@microsoft/signalr';
 import { addLog, systemConfig } from '../store/index';
 import { devices } from '../store/deviceStore';
-import { fetchDevicesFromBackend, fetchDeviceRealtime } from '../api/deviceApi';
-import { setDevices } from '../store/deviceStore';
-import { normalizeDevices } from '../utils/deviceStatus';
+import { syncDevices } from './deviceService';
 import { isBackendConnected, signalRConnection } from './socketService';
 import { mapRuntimeStatusToStatus } from '../utils/deviceStatus';
 import { pushAlarmEvent, refreshActiveAlarms } from '../store/alarmStore';
 import { pushScriptExecutionEvent } from '../store/scriptStore';
 import { AlarmEventPayload, ScriptExecutionEvent } from '../types';
-
-// 拉取设备列表并写回全局 store。包装 fetchDevicesFromBackend + normalizeDevices，
-// 修复 SignalR 握手成功/重连后设备拉取结果被丢弃、设备列表从未进入 store 的问题。
-const refreshDevices = async () => {
-    try {
-        const { data } = await fetchDevicesFromBackend();
-        setDevices(normalizeDevices(data));
-        // 回填运行时实时值：DeviceDto.Variables 仅含配置不含实时值（normalizeDevices 已预置 null 占位），
-        // 主动拉取 /api/TelemetryData/{id}/realtime 写回 store，否则刷新/重连后变量值显示为默认值。
-        (data ?? []).forEach((d: any) => {
-            const id = Number(d?.id);
-            if (!id) return;
-            fetchDeviceRealtime(id)
-                .then(({ data: rt }: any) => {
-                    const dev = devices.value.find(x => String(x.id) === String(rt?.deviceId));
-                    if (!dev || !Array.isArray(rt?.variables)) return;
-                    if (!dev.variables) dev.variables = {};
-                    rt.variables.forEach((v: any) => {
-                        const key = v?.key ?? v?.Key;
-                        if (key != null) dev.variables[key] = v?.value ?? v?.Value;
-                    });
-                })
-                .catch(() => { /* 单设备实时值拉取失败静默，不影响设备列表 */ });
-        });
-    } catch (err: any) {
-        addLog('后端对接', `同步设备列表失败: ${err.message}`, 'warning');
-    }
-};
+import { TOKEN_KEY } from '../api/http';
 
 export const initializeRealtimeSignals = () => {
     if (systemConfig.value.isSimulationActive) {
@@ -53,8 +24,13 @@ export const initializeRealtimeSignals = () => {
     addLog('后端对接', `正在构建 ASP.NET Core SignalR 信道 (网关: ${systemConfig.value.backendApiUrl})...`, 'info');
 
     try {
+        // 阶段2-1：ScadaHub 已由 [AllowAnonymous] 收紧为 [Authorize]，
+        // 客户端经 accessTokenFactory 携带 JWT（WebSocket 走 access_token 查询参数，
+        // 后端 JwtBearerEvents 从查询串注入鉴权）；未登录时连接会被 401 拒绝并由自动重连在登录后恢复。
         const connection = new HubConnectionBuilder()
-            .withUrl(`${systemConfig.value.backendApiUrl}/hubs/scada`)
+            .withUrl(`${systemConfig.value.backendApiUrl}/hubs/scada`, {
+                accessTokenFactory: () => localStorage.getItem(TOKEN_KEY) || ''
+            })
             .withAutomaticReconnect()
             .build();
 
@@ -104,7 +80,8 @@ export const initializeRealtimeSignals = () => {
             .then(() => {
                 isBackendConnected.value = true;
                 addLog('后端对接', `SignalR 通信链路握手建立成功！桥接工业控制链网关。`, 'normal');
-                refreshDevices();
+                // 显式全量刷新 + realtime 回填（SignalR 握手成功即拿到最新实时值）
+                syncDevices({ realtime: true });
                 refreshActiveAlarms();
             })
             .catch((err) => {
@@ -120,7 +97,7 @@ export const initializeRealtimeSignals = () => {
         connection.onreconnected((connectionId) => {
             isBackendConnected.value = true;
             addLog('后端对接', `SignalR 物理转发信道自动重连成功！ID: ${connectionId}`, 'normal');
-            refreshDevices();
+            syncDevices({ realtime: true });
             refreshActiveAlarms();
         });
 

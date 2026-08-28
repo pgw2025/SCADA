@@ -18,6 +18,7 @@ import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
 import { syncDevices } from './services/deviceService';
+import { startBackendPolling, stopBackendPolling } from './services/pollService';
 import ToastContainer from './components/ToastContainer.vue';
 
 import {
@@ -102,7 +103,14 @@ onMounted(async () => {
 watch(
   isAuthenticated,
   (authed) => {
-    if (!authed) return;
+    if (!authed) {
+      // 登出时停止轮询兜底，避免未登录状态持续打后端接口
+      stopBackendPolling();
+      return;
+    }
+
+    // 登录成功后轮询兜底对所有角色生效（SignalR 断连时 HTTP 降级刷新设备列表）
+    startBackendPolling();
 
     Promise.all([
       syncAreas(),

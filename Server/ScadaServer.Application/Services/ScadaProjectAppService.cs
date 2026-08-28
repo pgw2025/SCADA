@@ -85,7 +85,13 @@ namespace ScadaServer.Application.Services
             if (project == null) return null;
 
             var pages = await _pageRepository.GetListAsync(p => p.ProjectId == id);
-            var allComponents = await _componentRepository.GetListAsync();
+            var pageIds = pages.Select(p => p.Id).ToList();
+
+            // 阶段4 整树查询优化：仅拉取本工程页面下的组件（SQL 下推过滤），
+            // 替代原先「全表拉取组件 → 内存逐页过滤」的 O(全量组件) 做法。
+            var allComponents = pageIds.Count == 0
+                ? new List<HmiComponent>()
+                : await _componentRepository.GetListAsync(c => pageIds.Contains(c.PageId));
 
             var result = new ScadaProjectFullDto
             {

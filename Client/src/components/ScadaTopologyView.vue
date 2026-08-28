@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import {
   beginChange,
   endChange,
@@ -8,6 +8,7 @@ import {
   redo,
   undoAvailable,
   redoAvailable,
+  resetHistory,
 } from '../services/historyService';
 import { 
   scadaProjects,
@@ -18,11 +19,11 @@ import {
   currentPlatform,
   desktopPages,
   mobilePages,
+  scadaLoading,
   initializeScada
 } from '../store/scadaStore';
 import { 
   updateCurrentPageComponents,
-  ensureProjectSaved,
   ensurePageSaved,
   persistNewComponent,
   persistComponentUpdate,
@@ -30,7 +31,8 @@ import {
   persistPageUpdate,
   persistPageDelete,
   persistProjectUpdate,
-  persistDuplicatePage
+  persistDuplicatePage,
+  reconcileComponents
 } from '../services/scadaService';
 import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
@@ -38,7 +40,7 @@ import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { showToast } from '../services/toastService';
-import { HMIComponent, ComponentType } from '../types';
+import { HMIComponent, ComponentType, ScadaScreenProject } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
@@ -60,7 +62,9 @@ import {
   Undo2,
   Redo2,
   Home,
-  AlertTriangle
+  AlertTriangle,
+  Loader2,
+  LayoutGrid
 } from 'lucide-vue-next';
 
 // Editor settings
@@ -120,7 +124,7 @@ function genComponentId(type: string): string {
   return `${type}-${Date.now()}-${_componentSeq}`;
 }
 
-// 阶段2：挂载时从后端整树加载组态（后端为空则保留本地模板）
+// 阶段2：挂载时从后端整树加载组态（后端为空则显示空态，引导新建工程）
 onMounted(() => {
   initializeScada();
   window.addEventListener('keydown', onHistoryKey);
@@ -130,10 +134,20 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onHistoryKey);
 });
 
-// 阶段5-1：撤销/重做（纯前端快照栈，不影响后端持久化）
+// 阶段3 撤销对账：切换工程/页面时清空全局命令栈，
+// 避免把上一页的组件快照撤销到当前页（跨页污染）。
+watch([selectedProjectId, selectedPageId], () => {
+  resetHistory();
+  selectedIds.value = [];
+});
+
+// 阶段5-1：撤销/重做（纯前端快照栈 + 阶段3 后端对账）
 const applyRestored = (restored: HMIComponent[] | null) => {
   if (!restored) return;
+  const before = currentPage.value.components;
   updateCurrentPageComponents(restored.map((c) => ({ ...c })));
+  // 阶段3 撤销对账：撤销/重做后补齐与后端差异（清孤儿/重建丢失/静默校正属性）
+  reconcileComponents(currentPage.value, currentProject.value, before, restored).catch(() => {});
   if (selectedId.value && !restored.find((c) => c.id === selectedId.value)) {
     selectedIds.value = [];
   }
@@ -417,8 +431,8 @@ const handleCreateProject = () => {
   newProjectDesc.value = '';
   showProjectModal.value = false;
 
-  // 阶段2：落库并回填 serverId
-  ensureProjectSaved(newProj).catch(() => {});
+  // 阶段2：落库工程 + 初始页面并回填 serverId（避免「空工程的首个画面」刷新即丢失，与新增画面行为一致）
+  ensurePageSaved(newProj.pages[0], newProj).catch(() => {});
 };
 
 // Add child page to active screen project.
@@ -496,7 +510,13 @@ const handleDuplicatePage = (page: { id: string; name: string; components: any[]
     platform: page.platform ?? 'Desktop',
     width: page.width,
     height: page.height,
-    components: JSON.parse(JSON.stringify(page.components))
+    // 深拷贝后重新生成组件 uid 并清空 serverId：
+    // 若保留源组件 id，两页同 id 组件会在切换页面时「幻影选中」、防抖落库互相顶掉。
+    components: (JSON.parse(JSON.stringify(page.components)) as HMIComponent[]).map((c) => ({
+      ...c,
+      id: genComponentId(c.type),
+      serverId: undefined,
+    }))
   };
   proj.pages.push(newPage);
   selectedPageId.value = newPageId;
@@ -749,8 +769,29 @@ const selectedCompObj = computed(() => {
 
     </div>
 
+    <!-- 加载态：整树拉取中 -->
+    <div v-if="scadaLoading" class="flex-1 flex items-center justify-center bg-slate-50 dark:bg-transparent">
+      <div class="text-center text-slate-400 dark:text-slate-500">
+        <Loader2 class="w-8 h-8 mx-auto mb-2 animate-spin" />
+        <p class="text-xs">正在加载组态工程…</p>
+      </div>
+    </div>
+
+    <!-- 空态：无工程，引导新建（D1=方案B 消除模板后不再内置示例） -->
+    <div v-else-if="!currentPage" class="flex-1 flex items-center justify-center bg-slate-50 dark:bg-transparent">
+      <div class="text-center text-slate-500 dark:text-slate-400">
+        <LayoutGrid class="w-12 h-12 mx-auto mb-3 opacity-40" />
+        <p class="text-sm font-bold">暂无组态工程</p>
+        <p class="text-[11px] mt-1">点击下方按钮创建第一个工程，再拖入组件开始设计。</p>
+        <button
+          @click="showProjectModal = true"
+          class="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-[#1890ff] text-white hover:bg-[#40a9ff] cursor-pointer"
+        ><Plus class="w-3.5 h-3.5" /> 新建工程</button>
+      </div>
+    </div>
+
     <!-- MAIN CO-WORKING VISUAL BUILDER WORKSPACE -->
-    <div v-if="currentPage" class="flex-1 flex flex-col md:flex-row min-w-0">
+    <div v-else class="flex-1 flex flex-col md:flex-row min-w-0">
       
       <!-- Center section: WidgetLibrary shelf (left nested) + Dragging HMI canvas (middle) -->
       <div class="flex-1 flex flex-col min-w-0 relative">
@@ -890,6 +931,7 @@ const selectedCompObj = computed(() => {
         <!-- Render Inspector Panel directly targeting chosen component -->
         <InspectorPanel 
           :selectedComponent="selectedCompObj"
+          :current-page-id="currentPage.id"
           @updateComponent="handleUpdateComponent"
         />
       </div>

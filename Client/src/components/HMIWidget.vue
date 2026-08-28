@@ -75,6 +75,15 @@ const fontSize = computed(() => props.component.props.fontSize ?? 12);
 const align = computed(() => props.component.props.align ?? 'center');
 const bold = computed(() => props.component.props.bold ?? false);
 
+// 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
+const onText = computed(() => props.component.props.onText || '开启');
+const offText = computed(() => props.component.props.offText || '关闭');
+
+// 阶段5-6：趋势图过渡占位——未绑定设备/变量（无数据源）时不绘制伪造曲线，展示占位提示
+const hasTrendData = computed(() =>
+  props.component.bindDeviceId != null && !!props.component.bindVariableKey
+);
+
 const isHighAlert = computed(() => numValue.value >= (thresholdMax.value ?? 90));
 const isLowAlert = computed(() => numValue.value <= (thresholdMin.value ?? -1));
 const alertColor = computed(() => isHighAlert.value ? '#ef4444' : isLowAlert.value ? '#f59e0b' : activeColor.value);
@@ -299,7 +308,7 @@ const mappedStateText = computed(() => {
     <!-- Status Text panel overlay -->
     <rect x="18" y="60" width="44" height="15" rx="3" fill="#1e293b" opacity="0.9" />
     <text x="40" y="71" :fill="boolValue ? '#10b981' : '#f43f5e'" font-size="9" text-anchor="middle" font-weight="bold">
-      {{ boolValue ? 'OPEN' : 'CLOSE' }}
+      {{ boolValue ? onText : offText }}
     </text>
   </svg>
 
@@ -459,14 +468,14 @@ const mappedStateText = computed(() => {
     :style="{ borderColor: isHighAlert ? '#ef4444' : '#1e293b' }"
   >
     <div class="absolute top-1 left-2 text-[8px] text-slate-400 uppercase tracking-widest font-mono">
-      {{ component.label || 'MONITOR' }}
+      {{ component.label || '数字监测' }}
     </div>
     <div
       class="text-xl md:text-2xl font-black mt-2 font-mono tracking-widest"
       :style="{ color: isHighAlert ? '#ef4444' : '#34d399' }"
     >
-      {{ typeof value === 'boolean' ? (boolValue ? 'ON / ACTIVE' : 'OFF / IDLE') : `${numValue.toFixed(2)}` }}
-      <span v-if="typeof value !== 'boolean'" class="text-xs text-slate-500 font-normal ml-0.5">{{ unit || 'V' }}</span>
+      {{ typeof value === 'boolean' ? (boolValue ? onText : offText) : `${numValue.toFixed(2)}` }}
+      <span v-if="typeof value !== 'boolean' && unit" class="text-xs text-slate-500 font-normal ml-0.5">{{ unit }}</span>
     </div>
     <div
       class="absolute bottom-1 right-2 w-1.5 h-1.5 rounded-full"
@@ -480,10 +489,19 @@ const mappedStateText = computed(() => {
   <!-- 10. REAL-TIME TREND CHART -->
   <div v-else-if="component.type === 'trend-chart'" class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[9px] text-slate-400 flex flex-col">
     <div class="flex justify-between items-center mb-1 text-[9px] border-b border-slate-800 pb-1">
-      <span class="font-bold text-slate-300 truncate max-w-[70%]">{{ component.name || '核心参数趋势' }}</span>
-      <span class="text-emerald-400 font-bold">{{ numValue.toFixed(1) }} {{ unit || '℃' }}</span>
+      <span class="font-bold text-slate-300 truncate max-w-[70%]">{{ component.label || component.name || '实时趋势' }}</span>
+      <span v-if="hasTrendData" class="text-emerald-400 font-bold">
+        {{ numValue.toFixed(1) }}<template v-if="unit"> {{ unit }}</template>
+      </span>
+      <span v-else class="text-slate-500">--</span>
     </div>
-    <div class="flex-1 relative">
+    <!-- 阶段5-6：趋势图过渡占位——未绑定数据源时不绘制伪造曲线，展示占位提示 -->
+    <div v-if="!hasTrendData" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
+      <span class="w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse" />
+      <span class="text-[9px]">暂无数据</span>
+      <span class="text-[8px] text-slate-600">请在编辑器中绑定变量</span>
+    </div>
+    <div v-else class="flex-1 relative">
       <svg width="100%" height="100%">
         <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
         <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
@@ -616,7 +634,7 @@ const mappedStateText = computed(() => {
       </span>
       <!-- Top State Label -->
       <span class="text-slate-400 font-bold uppercase text-[8px] tracking-tight text-center truncate max-w-full">
-        {{ boolValue ? 'RUN / 开启' : 'STOP / 二位' }}
+        {{ boolValue ? onText : offText }}
       </span>
       
       <!-- Slot slider & Lever knob style-->

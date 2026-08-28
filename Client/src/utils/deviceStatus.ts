@@ -40,18 +40,30 @@ export const mapRuntimeStatusToStatus = (runtimeStatus?: string | number): numbe
  * 而前端消费模型是 `Record<变量Key, 实时值>`（如 `dev.variables[key]`）。
  * 这里把数组转成键值表并预置 null 占位，使 SignalR 实时值推送到达时即有落点
  * （`dev.variables[variableKey] !== undefined` 判断可命中），实时值/触发器/换算等消费方零改动。
+ *
+ * 实时值保留（prevDevices）：轮询/全量刷新会整体替换 devices 数组，若每次都把变量预置为 null，
+ * 会把 SignalR 已推送、且之后不再变化的值抹回 null。传入上一次的 devices 后，对同设备同名变量
+ * 已有「非 null」实时值的，直接继承，避免运行画面周期性闪零。
  */
-export const normalizeDevices = (raw: Device[]): Device[] =>
-  (raw ?? []).map((d) => {
+export const normalizeDevices = (raw: Device[], prevDevices?: Device[]): Device[] => {
+  // 构建前值索引：deviceId -> { variableKey -> 实时值 }，仅用于继承非 null 实时值
+  const prevMap = new Map<number | string, Record<string, any>>();
+  (prevDevices ?? []).forEach((d) => {
+    prevMap.set(d.id, d.variables ?? {});
+  });
+
+  return (raw ?? []).map((d) => {
     const variableMap: Record<string, any> = {};
     const variableMeta: Record<string, any> = {};
+    const prevVars = prevMap.get(d.id) ?? {};
     if (Array.isArray(d.variables)) {
       // 后端 DeviceDto.Variables 为 DeviceVariableDto[]：含实例级权限/地址/覆盖字段。
       // 一份按 key 索引保留完整元数据（variableMeta），供实时监控页取 effectiveIsReadOnly 等；
       // 另一份压扁为 variables 键值表（预置 null 占位），等待 SignalR 实时值推送落点。
       (d.variables as any[]).forEach((v: any) => {
         if (v && v.key) {
-          variableMap[v.key] = null;
+          const prevVal = prevVars[v.key];
+          variableMap[v.key] = prevVal !== undefined && prevVal !== null ? prevVal : null;
           variableMeta[v.key] = v;
         }
       });
@@ -72,3 +84,4 @@ export const normalizeDevices = (raw: Device[]): Device[] =>
       status: mapRuntimeStatusToStatus(d.runtimeStatus)
     };
   });
+};
