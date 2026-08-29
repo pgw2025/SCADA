@@ -726,10 +726,10 @@ export interface ScriptValidationResult {
 }
 
 export interface ExposedDataInterface {
-  id: string;
+  id: number;
   name: string;
   exposedKey: string;
-  deviceId: string;
+  deviceId: number;
   active: boolean;
   routeUrl: string;
   requestMethod: 'GET' | 'POST';

@@ -30,6 +30,8 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly DatabaseInitializationStatus _dbReady;
         private readonly CancellationTokenSource _cts = new();
 
+        private Task? _processTask;
+
         public RealtimeSnapshotService(
             IServiceScopeFactory scopeFactory,
             ILogger<RealtimeSnapshotService> logger,
@@ -71,15 +73,31 @@ namespace ScadaServer.WebApi.HostedServices
         /// <inheritdoc/>
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _ = Task.Run(() => ProcessAsync(_cts.Token));
+            // ProcessAsync 本身返回热 Task，无需 Task.Run；保存引用供 StopAsync 等待退出。
+            _processTask = ProcessAsync(_cts.Token);
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
             _cts.Cancel();
-            return Task.CompletedTask;
+            if (_processTask is not null)
+            {
+                try
+                {
+                    // 等待循环完成停止前最后一次快照落库；超时兜底防止宿主关闭被拖死。
+                    await _processTask.WaitAsync(TimeSpan.FromSeconds(30));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("实时快照服务停止超时，最近快照可能未落库。");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "实时快照服务后台循环退出异常。");
+                }
+            }
         }
 
         private async Task ProcessAsync(CancellationToken token)
@@ -109,6 +127,11 @@ namespace ScadaServer.WebApi.HostedServices
             catch (OperationCanceledException)
             {
                 // 应用关闭：正常退出路径
+            }
+            catch (Exception ex)
+            {
+                // 未预期异常不能让循环静默死亡（fire-and-forget 时代无法察觉），记录后继续走收尾落库。
+                _logger.LogError(ex, "实时快照服务后台循环因未预期异常退出。");
             }
 
             // 停止前最后落一次快照，避免丢失最近数据

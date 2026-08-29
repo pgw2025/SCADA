@@ -34,6 +34,7 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly IInfluxStore _influxStore;
         private readonly CancellationTokenSource _cts = new();
 
+        private Task? _processTask;
         private long _droppedCount;
 
         public HistoryRecorder(
@@ -88,17 +89,33 @@ namespace ScadaServer.WebApi.HostedServices
         /// <inheritdoc/>
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _ = Task.Run(() => ProcessAsync(_cts.Token));
+            // ProcessAsync 本身返回热 Task，无需 Task.Run；保存引用供 StopAsync 等待退出。
+            _processTask = ProcessAsync(_cts.Token);
             return Task.CompletedTask;
         }
 
         /// <inheritdoc/>
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
             // 先关闭通道让后台排空剩余数据，再取消阻塞读，最后等待退出。
             Complete();
             _cts.Cancel();
-            return Task.CompletedTask;
+            if (_processTask is not null)
+            {
+                try
+                {
+                    // 等待循环排空并完成最终落库；超时兜底防止宿主关闭被拖死。
+                    await _processTask.WaitAsync(TimeSpan.FromSeconds(30));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("历史记录服务停止超时，剩余数据可能未完全落库。");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "历史记录服务后台循环退出异常。");
+                }
+            }
         }
 
         private async Task ProcessAsync(CancellationToken token)
@@ -159,6 +176,11 @@ namespace ScadaServer.WebApi.HostedServices
             catch (OperationCanceledException)
             {
                 // 应用关闭：正常退出路径
+            }
+            catch (Exception ex)
+            {
+                // 未预期异常不能让循环静默死亡（fire-and-forget 时代无法察觉），记录后继续走排空逻辑。
+                _logger.LogError(ex, "历史记录服务后台循环因未预期异常退出。");
             }
 
             // 停止前排空剩余数据（不因取消而丢失）

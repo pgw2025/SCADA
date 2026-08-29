@@ -9,6 +9,7 @@ namespace ScadaServer.Application.Interfaces
         Task CreateAsync(ExposedInterfaceDto dto);
         Task UpdateAsync(ExposedInterfaceDto dto);
         Task DeleteAsync(int id);
+        Task SetActiveAsync(int id, bool active);
     }
 }
 

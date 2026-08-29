@@ -30,6 +30,8 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IDeviceDeletionService, DeviceDeletionService>();
             services.AddScoped<DatabaseInitializer>();
             services.AddScoped<IExposedInterfaceAppService, ExposedInterfaceAppService>();
+            // 开放 API 暴露接口配置注册表：单例常驻，内存缓存 /open/* 网关匹配的启用接口。
+            services.AddSingleton<IExposedApiRegistry, ExposedApiRegistry>();
             services.AddScoped<IHmiComponentAppService, HmiComponentAppService>();
             services.AddScoped<IModelVariableAppService, ModelVariableAppService>();
             services.AddScoped<IDeviceVariableAppService, DeviceVariableAppService>();

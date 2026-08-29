@@ -24,6 +24,11 @@ export default defineConfig(() => {
           target: 'http://localhost:5555',
           changeOrigin: true,
         },
+        // 开放 API 网关：/open/* 真实测试也要经开发代理转发到后端 :5555
+        '/open': {
+          target: 'http://localhost:5555',
+          changeOrigin: true,
+        },
         '/hubs': {
           target: 'http://localhost:5555',
           changeOrigin: true,

@@ -30,6 +30,10 @@ namespace ScadaServer.WebApi.Extensions
 
             // app.UseHttpsRedirection();
 
+            // 开放 API 动态路由网关分支：所有 /open/* 请求交给 ExposedApiMiddleware。
+            // 放在 UseRouting 之前，作为独立的终端分支处理，避免与 /api、/hubs 系统路由冲突。
+            app.Map("/open", openApp => openApp.UseMiddleware<ExposedApiMiddleware>());
+
             app.UseRouting();
 
             app.UseAuthentication();

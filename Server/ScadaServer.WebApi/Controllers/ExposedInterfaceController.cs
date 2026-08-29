@@ -47,5 +47,13 @@ namespace ScadaServer.WebApi.Controllers
             await _appService.DeleteAsync(id);
             return Ok();
         }
+
+        [HttpPut("{id}/enabled")]
+        [AuditLog("暴露接口", "TOGGLE")]
+        public async Task<IActionResult> SetEnabled(int id, [FromQuery] bool enabled)
+        {
+            await _appService.SetActiveAsync(id, enabled);
+            return Ok();
+        }
     }
 }

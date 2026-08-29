@@ -3,7 +3,6 @@ import {
   DataConversion,
   VariableTrigger,
   SystemScript,
-  ExposedDataInterface,
   DatabaseConfig,
   SystemConfig
 } from '../types';
@@ -11,7 +10,6 @@ import {
 export const dataConversions = ref<DataConversion[]>([]);
 export const triggers = ref<VariableTrigger[]>([]);
 export const systemScripts = ref<SystemScript[]>([]);
-export const exposedApis = ref<ExposedDataInterface[]>([]);
 export const databaseConfigs = ref<DatabaseConfig[]>([]);
 
 export const systemConfig = ref<SystemConfig>({
