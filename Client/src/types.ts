@@ -743,6 +743,18 @@ export interface HistoricalRecord {
   variableName: string;
   value: number;
   timestamp: string;
+  /** 采样质量位（Good/Bad/Uncertain/CommunicationError/…），历史查询图表按质量分级展示 */
+  quality?: string;
+}
+
+/** 历史查询页面可选变量项（设备→变量 级联动态数据源） */
+export interface HistoryVariableOption {
+  deviceId: number;
+  deviceKey: string;
+  deviceName: string;
+  variableKey: string;
+  variableName: string;
+  unit?: string;
 }
 
 export type DatabaseBackendType = 'MySQL' | 'PostgreSQL' | 'SQLite' | 'InfluxDB' | 'TimescaleDB';

@@ -158,7 +158,8 @@ namespace ScadaServer.Infrastructure.Influx
             int limit,
             DateTime? start = null,
             DateTime? end = null,
-            long? aggregateWindowMs = null)
+            long? aggregateWindowMs = null,
+            string aggregateFn = "mean")
         {
             if (limit <= 0)
             {
@@ -186,7 +187,7 @@ namespace ScadaServer.Infrastructure.Influx
 
             try
             {
-                var query = BuildQuery(bucket, deviceKey, variableKey, limit, start, end, aggregateWindowMs);
+                var query = BuildQuery(bucket, deviceKey, variableKey, limit, start, end, aggregateWindowMs, aggregateFn);
                 var tables = client.GetQueryApiSync().QuerySync(query, org);
 
                 foreach (var table in tables)
@@ -369,7 +370,8 @@ namespace ScadaServer.Infrastructure.Influx
 
         /// <summary>
         /// 组装 FLUX 查询：双 tag 过滤 + （可选）窗口聚合 + pivot 合并字段 + 倒序取 limit 再升序返回。
-        /// <paramref name="aggregateWindowMs"/> 大于 0 时插入 aggregateWindow（均值），用于大时间范围降采样。
+        /// <paramref name="aggregateWindowMs"/> 大于 0 时插入 aggregateWindow，用于大时间范围降采样。
+        /// <paramref name="aggregateFn"/> 聚合函数，白名单校验（mean/max/min/first/last），防止 FLUX 注入。
         /// </summary>
         private static string BuildQuery(
             string bucket,
@@ -378,13 +380,16 @@ namespace ScadaServer.Infrastructure.Influx
             int limit,
             DateTime? start,
             DateTime? end,
-            long? aggregateWindowMs = null)
+            long? aggregateWindowMs = null,
+            string aggregateFn = "mean")
         {
             var startExpr = start.HasValue ? $"'{start.Value:O}'" : "-30d";
             var stopExpr = end.HasValue ? $", stop: '{end.Value:O}'" : string.Empty;
 
+            var fn = NormalizeAggregateFn(aggregateFn);
+
             var aggregate = aggregateWindowMs is > 0
-                ? $"  |> aggregateWindow(every: {aggregateWindowMs}ms, fn: mean, createEmpty: false)\n"
+                ? $"  |> aggregateWindow(every: {aggregateWindowMs}ms, fn: {fn}, createEmpty: false)\n"
                 : string.Empty;
 
             return $"from(bucket: \"{Escape(bucket)}\")\n" +
@@ -397,6 +402,19 @@ namespace ScadaServer.Infrastructure.Influx
                    $"  |> limit(n: {limit})\n" +
                    "  |> sort(columns: [\"_time\"], desc: false)";
         }
+
+        /// <summary>
+        /// 聚合函数白名单归一化：仅允许 mean/max/min/first/last，其余回退 mean（防 FLUX 注入）。
+        /// </summary>
+        private static string NormalizeAggregateFn(string? fn) =>
+            fn switch
+            {
+                "max" => "max",
+                "min" => "min",
+                "first" => "first",
+                "last" => "last",
+                _ => "mean"
+            };
 
         /// <summary>
         /// FLUX 字符串字面量转义（反斜杠与单引号）。
