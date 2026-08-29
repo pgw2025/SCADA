@@ -322,7 +322,9 @@ const navTargetOptions = computed(() => {
               @change="updateProp('buttonMode', ($event.target as HTMLSelectElement).value)"
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
               <option value="toggle">主锁/自锁 (Toggle - 单击取反)</option>
-              <option value="momentary">点动操作 (Momentary - 按下1松开0)</option>
+              <option value="momentary">按1送0 / 点动 (Momentary - 按下1松开0)</option>
+              <option value="set-bit">置位 (SetBit - 写入1)</option>
+              <option value="reset-bit">复位 (ResetBit - 写入0)</option>
               <option value="set-value">恒定设值 (SetValue - 写入固定值)</option>
               <option value="navigate">画面跳转 (Navigate - 跳转到同端其它画面)</option>
             </select>
@@ -355,6 +357,176 @@ const navTargetOptions = computed(() => {
             <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
               运行时点击该按钮将跳转到所选画面；跨端跳转不允许，下拉仅列出「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端' }}」画面。
             </p>
+          </div>
+        </div>
+
+        <!-- INDUSTRIAL ROUNDED BUTTON SPECIFIC CONTROLS (圆角按钮专属配置) -->
+        <div v-if="selectedComponent.type === 'rounded-btn'"
+          class="space-y-3 text-xs border border-emerald-200/80 dark:border-emerald-900/60 p-3 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[11px] uppercase tracking-wider">圆角按钮与多状态配置
+            </p>
+            <span
+              class="text-[9px] font-mono bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded">Rounded
+              Button</span>
+          </div>
+
+          <!-- 控制模式选择 -->
+          <div>
+            <label class="text-[10px] font-semibold text-gray-700 dark:text-slate-300">控制动作模式 (Action Mode)</label>
+            <select :value="componentProps.buttonMode || 'toggle'"
+              @change="updateProp('buttonMode', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 mt-1 text-xs text-[#262626] dark:text-white font-medium">
+              <option value="toggle">取反 (Toggle - 0变1，1变0)</option>
+              <option value="set-bit">置位 (SetBit - 强制写入1 / True)</option>
+              <option value="reset-bit">复位 (ResetBit - 强制写入0 / False)</option>
+              <option value="momentary">按1送0 (Momentary - 按下写1松开写0)</option>
+              <option value="set-value">恒定设值 (SetValue - 写入指定数值)</option>
+              <option value="navigate">画面跳转 (Navigate - 跳转同端画面)</option>
+            </select>
+          </div>
+
+          <div v-if="componentProps.buttonMode === 'set-value'">
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">设值写入数值</label>
+            <input type="number" :value="componentProps.clickValue ?? 1"
+              @input="updateProp('clickValue', parseFloat(($event.target as HTMLInputElement).value) || 0)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-emerald-500 mt-0.5 text-xs" />
+          </div>
+
+          <div v-if="componentProps.buttonMode === 'navigate'">
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">跳转目标画面（仅同端）</label>
+            <select :value="componentProps.targetPageId ?? ''"
+              @change="updateProp('targetPageId', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-emerald-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+              <option value="">-- 请选择目标画面 --</option>
+              <option v-for="opt in navTargetOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
+            </select>
+          </div>
+
+          <!-- 圆角与边框精细调节 -->
+          <div class="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-emerald-100 dark:border-emerald-900/40">
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">圆角弧度 (Radius: {{ componentProps.borderRadius
+                ?? 10 }}px)</label>
+              <input type="range" min="0" max="40" step="1" :value="componentProps.borderRadius ?? 10"
+                @input="updateProp('borderRadius', parseInt(($event.target as HTMLInputElement).value) || 0)"
+                class="w-full mt-1 accent-emerald-600 dark:accent-emerald-400" />
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">边框粗细 (Border: {{ componentProps.borderWidth
+                ?? 1 }}px)</label>
+              <input type="range" min="0" max="6" step="1" :value="componentProps.borderWidth ?? 1"
+                @input="updateProp('borderWidth', parseInt(($event.target as HTMLInputElement).value) || 0)"
+                class="w-full mt-1 accent-emerald-600 dark:accent-emerald-400" />
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">边框轮廓颜色</label>
+            <div class="flex items-center gap-1.5 mt-1">
+              <input type="color" :value="componentProps.strokeColor || '#38bdf8'"
+                @input="updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
+                class="w-6 h-6 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+              <input type="text" :value="componentProps.strokeColor || '#38bdf8'"
+                @input="updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+            </div>
+          </div>
+
+          <!-- 双态/多态配置：状态0 (OFF/停止) 与 状态1 (ON/运行) -->
+          <div class="space-y-2 pt-2 border-t border-emerald-100 dark:border-emerald-900/40">
+            <p class="font-bold text-gray-700 dark:text-slate-300 text-[10px]">基础状态样式定义 (状态 0 / 1)</p>
+
+            <!-- 状态0 (值=0/false) -->
+            <div
+              class="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400">● 状态 0 (关/停止/0)</span>
+              </div>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div class="col-span-1">
+                  <label class="text-[9px] text-slate-400">显示文本</label>
+                  <input type="text" :value="componentProps.state0Text ?? 'OFF 停止'"
+                    @input="updateProp('state0Text', ($event.target as HTMLInputElement).value)"
+                    class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-slate-800 dark:text-white" />
+                </div>
+                <div>
+                  <label class="text-[9px] text-slate-400">背景色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.state0BgColor || '#1e293b'"
+                      @input="updateProp('state0BgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.state0BgColor || '#1e293b'"
+                      @input="updateProp('state0BgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-[9px] text-slate-400">文字颜色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.state0TextColor || '#94a3b8'"
+                      @input="updateProp('state0TextColor', ($event.target as HTMLInputElement).value)"
+                      class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.state0TextColor || '#94a3b8'"
+                      @input="updateProp('state0TextColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 状态1 (值=1/true) -->
+            <div
+              class="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">● 状态 1 (开/运行/1)</span>
+              </div>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div class="col-span-1">
+                  <label class="text-[9px] text-slate-400">显示文本</label>
+                  <input type="text" :value="componentProps.state1Text ?? 'ON 运行'"
+                    @input="updateProp('state1Text', ($event.target as HTMLInputElement).value)"
+                    class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-slate-800 dark:text-white" />
+                </div>
+                <div>
+                  <label class="text-[9px] text-slate-400">背景色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.state1BgColor || '#0284c7'"
+                      @input="updateProp('state1BgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.state1BgColor || '#0284c7'"
+                      @input="updateProp('state1BgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-[9px] text-slate-400">文字颜色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.state1TextColor || '#ffffff'"
+                      @input="updateProp('state1TextColor', ($event.target as HTMLInputElement).value)"
+                      class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.state1TextColor || '#ffffff'"
+                      @input="updateProp('state1TextColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 高级多状态自定义 (Custom States) -->
+            <div class="space-y-1 pt-1">
+              <label class="text-[10px] text-gray-500 dark:text-slate-400 flex justify-between">
+                <span>高级自定义多状态规则 (值:文本:背景色:字色)</span>
+              </label>
+              <textarea rows="2" :value="componentProps.customStates ?? ''"
+                @input="updateProp('customStates', ($event.target as HTMLTextAreaElement).value)"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 mt-0.5 focus:outline-none focus:border-emerald-500 text-[10px] font-mono text-gray-700 dark:text-slate-300 leading-relaxed"
+                placeholder="0:停止:#334155:#94a3b8;1:运行:#0284c7:#ffffff;2:报警:#dc2626:#ffffff" />
+              <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug">
+                支持任意数值状态映射，例如 <code
+                  class="bg-slate-100 dark:bg-slate-800 px-1 rounded">0:停止:#1e293b:#94a3b8;1:运行:#10b981:#ffffff;2:过载:#f59e0b:#ffffff;3:紧急故障:#ef4444:#ffffff</code>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -397,7 +569,8 @@ const navTargetOptions = computed(() => {
         </div>
 
         <!-- Custom fonts controls for Text boxes -->
-        <div v-if="['text', 'button', 'state-text'].includes(selectedComponent.type)" class="space-y-2 text-xs">
+        <div v-if="['text', 'button', 'state-text', 'rounded-btn'].includes(selectedComponent.type)"
+          class="space-y-2 text-xs">
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">对齐方式</label>

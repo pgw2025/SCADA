@@ -123,7 +123,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
     // 阶段3：导航模式——点击跳转目标画面（同端），不受写权限限制，运行时/编辑器预览均可触发
-    if (component.type === 'button' && component.props.buttonMode === 'navigate') {
+    if ((component.type === 'button' || component.type === 'rounded-btn') && component.props.buttonMode === 'navigate') {
       const target = component.props.targetPageId;
       if (target) emit('navigateToPage', target);
       return;
@@ -136,23 +136,31 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
       const devId = component.bindDeviceId ?? null;
       const varKey = component.bindVariableKey ?? component.bindField ?? '';
       const legacy = component.bindField;
-      if (component.type === 'button') {
+      if (component.type === 'button' || component.type === 'rounded-btn') {
         const mode = component.props.buttonMode || 'toggle';
         if (mode === 'set-value') {
           const writeVal = component.props.clickValue ?? 1;
           emit('triggerToggleValue', devId, varKey, legacy, 'setValue', writeVal);
+        } else if (mode === 'set-bit') {
+          // 置位：写入 1 / true
+          emit('triggerToggleValue', devId, varKey, legacy, 'setBit', true);
+        } else if (mode === 'reset-bit') {
+          // 复位：写入 0 / false
+          emit('triggerToggleValue', devId, varKey, legacy, 'resetBit', false);
         } else if (mode === 'momentary') {
-          // Write true on mouse press
+          // 按1送0 / 点动：按下写入 1，松开写入 0
           emit('triggerToggleValue', devId, varKey, legacy, 'momentary', true);
-          
-          // Fast release on window mouseup
+
+          // Fast release on window mouseup or touchend
           const onRelease = () => {
             emit('triggerToggleValue', devId, varKey, legacy, 'momentary', false);
             window.removeEventListener('mouseup', onRelease);
+            window.removeEventListener('touchend', onRelease);
           };
           window.addEventListener('mouseup', onRelease);
+          window.addEventListener('touchend', onRelease);
         } else {
-          // Toggle mode
+          // 取反 / Toggle mode
           emit('triggerToggleValue', devId, varKey, legacy, 'toggle');
         }
       } else {
@@ -511,32 +519,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none" @mouseup="handleMouseUp">
+  <div class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none"
+    @mouseup="handleMouseUp">
     <!-- Top Toolbar controls（只读/运行时模式隐藏编辑器工具条） -->
-    <div v-if="!readonly" class="h-12 border-b border-[#d9d9d9] bg-[#fafafa] px-4 flex items-center justify-between z-10 gap-2 flex-wrap shadow-sm">
+    <div v-if="!readonly"
+      class="h-12 border-b border-[#d9d9d9] bg-[#fafafa] px-4 flex items-center justify-between z-10 gap-2 flex-wrap shadow-sm">
       <!-- Run/Edit Mode toggle -->
       <div class="flex items-center gap-1 bg-white p-0.5 rounded border border-[#d9d9d9]">
-        <button
-          @click="emit('toggleMode'); emit('selectComponents', [])"
-          :class="[
-            'flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded transition-all cursor-pointer',
-            !isActiveMode
-              ? 'bg-[#001529] text-white shadow-sm'
-              : 'text-gray-500 hover:text-gray-800'
-          ]"
-        >
+        <button @click="emit('toggleMode'); emit('selectComponents', [])" :class="[
+          'flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded transition-all cursor-pointer',
+          !isActiveMode
+            ? 'bg-[#001529] text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-800'
+        ]">
           <Edit3 class="w-3.5 h-3.5" />
           设计模式
         </button>
-        <button
-          @click="emit('toggleMode'); emit('selectComponents', [])"
-          :class="[
-            'flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded transition-all cursor-pointer',
-            isActiveMode
-              ? 'bg-[#1890ff] text-white shadow-sm'
-              : 'text-gray-500 hover:text-gray-800'
-          ]"
-        >
+        <button @click="emit('toggleMode'); emit('selectComponents', [])" :class="[
+          'flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded transition-all cursor-pointer',
+          isActiveMode
+            ? 'bg-[#1890ff] text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-800'
+        ]">
           <Play class="w-3.5 h-3.5 animate-pulse" />
           运行模式
         </button>
@@ -545,21 +549,15 @@ onUnmounted(() => {
       <!-- Zoom & Grid settings -->
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5 bg-white border border-[#d9d9d9] rounded p-0.5">
-          <button
-            @click="zoom = Math.max(0.5, zoom - 0.1)"
-            class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer"
-            title="缩小"
-          >
+          <button @click="zoom = Math.max(0.5, zoom - 0.1)"
+            class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer" title="缩小">
             <Minimize class="w-3.5 h-3.5" />
           </button>
           <span class="text-[10px] font-mono font-bold w-12 text-center text-gray-600">
             {{ Math.round(zoom * 100) }}%
           </span>
-          <button
-            @click="zoom = Math.min(1.5, zoom + 0.1)"
-            class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer"
-            title="放大"
-          >
+          <button @click="zoom = Math.min(1.5, zoom + 0.1)"
+            class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer" title="放大">
             <Maximize class="w-3.5 h-3.5" />
           </button>
         </div>
@@ -568,29 +566,21 @@ onUnmounted(() => {
 
         <!-- Grid align state options -->
         <div class="hidden md:flex items-center gap-1.5">
-          <button
-            @click="showGrid = !showGrid"
-            :class="[
-              'p-1.5 rounded border transition-colors cursor-pointer',
-              showGrid
-                ? 'bg-white border-[#1890ff] text-[#1890ff]'
-                : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
-            ]"
-            title="显示辅助网格"
-          >
+          <button @click="showGrid = !showGrid" :class="[
+            'p-1.5 rounded border transition-colors cursor-pointer',
+            showGrid
+              ? 'bg-white border-[#1890ff] text-[#1890ff]'
+              : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
+          ]" title="显示辅助网格">
             <Grid class="w-3.5 h-3.5" />
           </button>
 
-          <button
-            @click="snapToGrid = !snapToGrid"
-            :class="[
-              'text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer',
-              snapToGrid
-                ? 'bg-white border-[#1890ff] text-[#1890ff]'
-                : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
-            ]"
-            title="吸附网格 (10px)"
-          >
+          <button @click="snapToGrid = !snapToGrid" :class="[
+            'text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer',
+            snapToGrid
+              ? 'bg-white border-[#1890ff] text-[#1890ff]'
+              : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
+          ]" title="吸附网格 (10px)">
             网格吸附
           </button>
         </div>
@@ -599,34 +589,24 @@ onUnmounted(() => {
 
         <!-- Actions shortcuts on selection -->
         <div v-if="selectedIds.length > 0 && !isActiveMode" class="flex items-center gap-1">
-          <button
-            v-if="selectedIds.length === 1"
-            @click="alignComponents('layer-up')"
+          <button v-if="selectedIds.length === 1" @click="alignComponents('layer-up')"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-[#1890ff] cursor-pointer"
-            title="置于顶层"
-          >
+            title="置于顶层">
             <Layers class="w-3.5 h-3.5 text-orange-500" />
           </button>
-          <button
-            v-if="selectedIds.length === 1"
-            @click="alignComponents('layer-down')"
+          <button v-if="selectedIds.length === 1" @click="alignComponents('layer-down')"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-[#1890ff] cursor-pointer"
-            title="置于底层"
-          >
+            title="置于底层">
             <Layers class="w-3.5 h-3.5 text-slate-400" />
           </button>
-          <button
-            @click="emit('duplicateComponents', [...selectedIds])"
+          <button @click="emit('duplicateComponents', [...selectedIds])"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-[#1890ff] cursor-pointer"
-            title="复制 (Ctrl+D)"
-          >
+            title="复制 (Ctrl+D)">
             <Copy class="w-3.5 h-3.5 text-cyan-600" />
           </button>
-          <button
-            @click="emit('deleteComponents', [...selectedIds])"
+          <button @click="emit('deleteComponents', [...selectedIds])"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-red-500 cursor-pointer"
-            title="删除"
-          >
+            title="删除">
             <Trash2 class="w-3.5 h-3.5 text-red-500" />
           </button>
           <span v-if="selectedIds.length > 1" class="text-[10px] text-gray-400 font-mono px-1">
@@ -635,12 +615,9 @@ onUnmounted(() => {
         </div>
 
         <!-- 阶段5-2：对齐工具条（单选→画布；多选≥2→选区包围盒/等距分布） -->
-        <select
-          v-if="selectedIds.length > 0 && !isActiveMode"
-          @change="onAlignChange"
+        <select v-if="selectedIds.length > 0 && !isActiveMode" @change="onAlignChange"
           class="hidden lg:block text-[10px] h-7 bg-white border border-[#d9d9d9] rounded px-1 text-gray-600 focus:outline-none cursor-pointer"
-          title="组件对齐"
-        >
+          title="组件对齐">
           <option value="" disabled selected>对齐…</option>
           <template v-if="selectedIds.length === 1">
             <option value="left">左对齐</option>
@@ -665,12 +642,9 @@ onUnmounted(() => {
         <!-- 分辨率预设 -->
         <div class="hidden lg:flex items-center gap-1">
           <span class="text-[10px] text-gray-400 font-mono">分辨率</span>
-          <select
-            :value="`${canvasWidth}x${canvasHeight}`"
-            @change="onPresetChange($event)"
+          <select :value="`${canvasWidth}x${canvasHeight}`" @change="onPresetChange($event)"
             class="text-[10px] h-7 bg-white border border-[#d9d9d9] rounded px-1 text-gray-600 focus:outline-none cursor-pointer"
-            title="切换画布分辨率"
-          >
+            title="切换画布分辨率">
             <option value="1920x1080">1920×1080</option>
             <option value="1366x768">1366×768</option>
             <option value="1280x720">1280×720</option>
@@ -678,166 +652,130 @@ onUnmounted(() => {
           </select>
         </div>
 
-        <button
-          @click="emit('clearCanvas')"
-          class="text-xs border border-red-200 hover:bg-red-50 text-red-500 font-bold px-2.5 py-1 rounded transition-all cursor-pointer"
-        >
+        <button @click="emit('clearCanvas')"
+          class="text-xs border border-red-200 hover:bg-red-50 text-red-500 font-bold px-2.5 py-1 rounded transition-all cursor-pointer">
           清空画布
         </button>
       </div>
     </div>
 
     <!-- Editor Inner Stage workspace -->
-    <div
-      ref="workspaceRef"
+    <div ref="workspaceRef"
       class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
-      :class="readonly ? 'p-2' : 'p-8'"
-      @mousedown="handleStageMouseDown"
-      @mousemove="handleMouseMove"
-      @mouseup="handleStageMouseUp"
-    >
+      :class="readonly ? 'p-2' : 'p-8'" @mousedown="handleStageMouseDown" @mousemove="handleMouseMove"
+      @mouseup="handleStageMouseUp">
       <!-- Canvas bounding card container -->
       <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
       <!-- 阶段5-7：只读模式 m-auto 安全居中（适配时居中，溢出时回退左顶对齐可滚动） -->
-      <div
-        class="relative shrink-0"
-        :class="readonly ? 'm-auto' : ''"
-        :style="{
-          width: canvasWidth * zoom + 'px',
-          height: canvasHeight * zoom + 'px'
-        }"
-      >
-      <div
-        ref="canvasRef"
-        class="bg-white border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
-        @dragover.prevent
-        @drop="onDrop"
-        :style="{
-          width: canvasWidth + 'px',
-          height: canvasHeight + 'px',
-          transform: `scale(${zoom})`,
-          transformOrigin: 'top left',
-          backgroundImage: showGrid
-            ? 'radial-gradient(#d9d9d9 1px, transparent 1px)'
-            : 'none',
-          backgroundSize: '10px 10px',
-          boxShadow: isActiveMode
-            ? '0 0 30px rgba(24, 144, 255, 0.08)'
-            : '0 0 20px rgba(0, 0, 0, 0.05)',
-        }"
-      >
-        <!-- Running light watermarks or status tag -->
-        <div class="absolute top-3 right-4 font-mono text-[9px] pointer-events-none select-none flex items-center gap-1.5 bg-white/90 px-2.5 py-1 rounded border border-[#d9d9d9] shadow-sm">
-          <span
-            :class="[
+      <div class="relative shrink-0" :class="readonly ? 'm-auto' : ''" :style="{
+        width: canvasWidth * zoom + 'px',
+        height: canvasHeight * zoom + 'px'
+      }">
+        <div ref="canvasRef"
+          class="bg-white border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
+          @dragover.prevent @drop="onDrop" :style="{
+            width: canvasWidth + 'px',
+            height: canvasHeight + 'px',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
+            backgroundImage: showGrid
+              ? 'radial-gradient(#d9d9d9 1px, transparent 1px)'
+              : 'none',
+            backgroundSize: '10px 10px',
+            boxShadow: isActiveMode
+              ? '0 0 30px rgba(24, 144, 255, 0.08)'
+              : '0 0 20px rgba(0, 0, 0, 0.05)',
+          }">
+          <!-- Running light watermarks or status tag -->
+          <div
+            class="absolute top-3 right-4 font-mono text-[9px] pointer-events-none select-none flex items-center gap-1.5 bg-white/90 px-2.5 py-1 rounded border border-[#d9d9d9] shadow-sm">
+            <span :class="[
               'w-1.5 h-1.5 rounded-full',
               isActiveMode ? 'bg-amber-500 animate-pulse' : 'bg-[#1890ff]'
-            ]"
-          />
-          {{ isActiveMode ? 'HMI 实时监控' : 'HMI 设计中心' }}
-        </div>
+            ]" />
+            {{ isActiveMode ? 'HMI 实时监控' : 'HMI 设计中心' }}
+          </div>
 
-        <div v-if="!readonly" class="absolute bottom-3 left-4 font-mono text-[9px] text-gray-400 pointer-events-none select-none">
-          画布尺寸: {{ canvasWidth }} × {{ canvasHeight }} 像素
-        </div>
+          <div v-if="!readonly"
+            class="absolute bottom-3 left-4 font-mono text-[9px] text-gray-400 pointer-events-none select-none">
+            画布尺寸: {{ canvasWidth }} × {{ canvasHeight }} 像素
+          </div>
 
-        <!-- 阶段5-2：框选橡皮筋 -->
-        <div
-          v-if="isBoxSelecting && boxRect.w > 0 && boxRect.h > 0"
-          class="absolute border border-[#1890ff] bg-[#1890ff]/10 pointer-events-none z-40"
-          :style="{
-            left: boxRect.x + 'px',
-            top: boxRect.y + 'px',
-            width: boxRect.w + 'px',
-            height: boxRect.h + 'px'
-          }"
-        />
+          <!-- 阶段5-2：框选橡皮筋 -->
+          <div v-if="isBoxSelecting && boxRect.w > 0 && boxRect.h > 0"
+            class="absolute border border-[#1890ff] bg-[#1890ff]/10 pointer-events-none z-40" :style="{
+              left: boxRect.x + 'px',
+              top: boxRect.y + 'px',
+              width: boxRect.w + 'px',
+              height: boxRect.h + 'px'
+            }" />
 
-        <!-- Render individual canvas components -->
-        <div
-          v-for="component in components"
-          :key="component.id"
-          @mousedown="handleDragStart($event, component)"
-          @click.stop
-          :class="[
-            'absolute rounded transition-shadow',
-            isActiveMode ? 'cursor-pointer hover:brightness-105' : 'cursor-grab active:cursor-grabbing',
-            selectedIds.includes(component.id) && !isActiveMode
-              ? component.id === selectedId
-                ? 'ring-2 ring-offset-2 ring-offset-white z-50 shadow'
-                : 'ring-1 ring-[#1890ff]/60 z-40'
-              : ''
-          ]"
-          :style="{
+          <!-- Render individual canvas components -->
+          <div v-for="component in components" :key="component.id" @mousedown="handleDragStart($event, component)"
+            @click.stop :class="[
+              'absolute rounded transition-shadow',
+              isActiveMode ? 'cursor-pointer hover:brightness-105' : 'cursor-grab active:cursor-grabbing',
+              selectedIds.includes(component.id) && !isActiveMode
+                ? component.id === selectedId
+                  ? 'ring-2 ring-offset-2 ring-offset-white z-50 shadow'
+                  : 'ring-1 ring-[#1890ff]/60 z-40'
+                : ''
+            ]" :style="{
             left: `${component.x}px`,
             top: `${component.y}px`,
             width: `${component.width}px`,
             height: `${component.height}px`,
             zIndex: component.zIndex || 1,
             '--tw-ring-color': '#1890ff'
-          }"
-        >
-          <!-- Visual rendering logic box -->
-          <HMIWidget
-            :component="component"
-            :value="componentValues[component.id] ?? 0"
-            :isActiveMode="isActiveMode"
-            :control-locked="props.isActiveMode && props.canControlWrite === false"
-          />
+          }">
+            <!-- Visual rendering logic box -->
+            <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
+              :control-locked="props.isActiveMode && props.canControlWrite === false" />
 
-          <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->
-          <div
-            v-if="componentQualities && componentQualities[component.id]"
-            class="absolute top-0.5 right-0.5 z-30 flex items-center gap-0.5 rounded bg-amber-500/90 text-white text-[7px] font-bold px-1 py-px pointer-events-none select-none leading-none shadow-sm"
-            :title="`变量质量异常: ${componentQualities[component.id]}`"
-          >
-            <span class="w-1 h-1 rounded-full bg-white animate-pulse" />
-            {{ componentQualities[component.id] }}
+            <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->
+            <div v-if="componentQualities && componentQualities[component.id]"
+              class="absolute top-0.5 right-0.5 z-30 flex items-center gap-0.5 rounded bg-amber-500/90 text-white text-[7px] font-bold px-1 py-px pointer-events-none select-none leading-none shadow-sm"
+              :title="`变量质量异常: ${componentQualities[component.id]}`">
+              <span class="w-1 h-1 rounded-full bg-white animate-pulse" />
+              {{ componentQualities[component.id] }}
+            </div>
+
+            <!-- Editable labels in component container -->
+            <div
+              v-if="!component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
+              class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] bg-white/95 border border-[#d9d9d9] text-gray-600 font-mono px-1.5 py-0.5 rounded shadow-sm truncate max-w-full pointer-events-none">
+              {{ component.label }}
+            </div>
+
+            <!-- Edit overlay elements like resize pointers -->
+            <template v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1">
+              <!-- NW Handle -->
+              <div
+                class="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nwse-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 'nw')" />
+              <!-- SW Handle -->
+              <div
+                class="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 'sw')" />
+              <!-- NE Handle -->
+              <div
+                class="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 'ne')" />
+              <!-- SE Handle (Primary Resize trigger) -->
+              <div
+                class="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-[#1890ff] border border-white rounded-full cursor-nwse-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 'se')" />
+              <!-- East handle -->
+              <div
+                class="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-e-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 'e')" />
+              <!-- South handle -->
+              <div
+                class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-s-resize z-50 shadow"
+                @mousedown="handleResizeStart($event, component, 's')" />
+            </template>
           </div>
-
-          <!-- Editable labels in component container -->
-          <div
-            v-if="!component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
-            class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] bg-white/95 border border-[#d9d9d9] text-gray-600 font-mono px-1.5 py-0.5 rounded shadow-sm truncate max-w-full pointer-events-none"
-          >
-            {{ component.label }}
-          </div>
-
-          <!-- Edit overlay elements like resize pointers -->
-          <template v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1">
-            <!-- NW Handle -->
-            <div
-              class="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nwse-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'nw')"
-            />
-            <!-- SW Handle -->
-            <div
-              class="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'sw')"
-            />
-            <!-- NE Handle -->
-            <div
-              class="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'ne')"
-            />
-            <!-- SE Handle (Primary Resize trigger) -->
-            <div
-              class="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-[#1890ff] border border-white rounded-full cursor-nwse-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'se')"
-            />
-            <!-- East handle -->
-            <div
-              class="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-e-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 'e')"
-            />
-            <!-- South handle -->
-            <div
-              class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-s-resize z-50 shadow"
-              @mousedown="handleResizeStart($event, component, 's')"
-            />
-          </template>
         </div>
-      </div>
       </div>
     </div>
   </div>

@@ -14,6 +14,7 @@ import {
   Clock,
   SlidersHorizontal,
   RefreshCw,
+  Sparkles,
 } from 'lucide-vue-next';
 
 /**
@@ -255,6 +256,33 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     description: '工业现场操作主令按钮，支持自锁(Toggle)、点动(Momentary)、设值(SetValue)、跳转(Navigate)四种执行逻辑。',
     category: 'structures',
     defaultProps: () => ({ ...baseProps('button'), targetPageId: null }),
+  },
+  'rounded-btn': {
+    type: 'rounded-btn',
+    name: '工业圆角多态按钮',
+    defaultWidth: 110,
+    defaultHeight: 46,
+    icon: Sparkles,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-500',
+    description: '可绑定变量的高级圆角控制按钮，支持自定义多状态颜色/文本，提供取反、置位、按1送0、复位多种控制模式。',
+    category: 'structures',
+    defaultProps: () => ({
+      ...baseProps('rounded-btn'),
+      buttonMode: 'toggle',
+      borderRadius: 10,
+      borderWidth: 1,
+      strokeColor: '#38bdf8',
+      buttonText: '圆角按钮',
+      state0Text: 'OFF 停止',
+      state0BgColor: '#1e293b',
+      state0TextColor: '#94a3b8',
+      state1Text: 'ON 运行',
+      state1BgColor: '#0284c7',
+      state1TextColor: '#ffffff',
+      customStates: '0:停止:#334155:#94a3b8;1:运行:#0284c7:#ffffff;2:报警:#dc2626:#ffffff',
+      targetPageId: null,
+    }),
   },
   switch: {
     type: 'switch',

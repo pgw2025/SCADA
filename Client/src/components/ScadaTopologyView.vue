@@ -422,6 +422,10 @@ const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, 
   let targetVal: any;
   if (actionType === 'setValue' && val !== undefined) {
     targetVal = val;
+  } else if (actionType === 'setBit') {
+    targetVal = typeof current === 'boolean' ? true : 1;
+  } else if (actionType === 'resetBit') {
+    targetVal = typeof current === 'boolean' ? false : 0;
   } else if (actionType === 'momentary' && val !== undefined) {
     if (typeof current === 'boolean') {
       targetVal = val;
@@ -429,11 +433,13 @@ const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, 
       targetVal = val ? 1 : 0;
     }
   } else {
-    // Toggle
+    // Toggle (取反)
     if (typeof current === 'boolean') {
       targetVal = !current;
     } else if (typeof current === 'number') {
-      targetVal = current === 0 ? 100 : 0;
+      targetVal = current === 0 ? 1 : 0;
+    } else {
+      targetVal = !current;
     }
   }
   setDeviceVariableValue(deviceId, key, targetVal);

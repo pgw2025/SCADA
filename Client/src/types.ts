@@ -16,6 +16,7 @@ export type ComponentType =
   | 'switch'       // 开关拨码
   | 'sys-time'     // 工业实时系统时间时钟
   | 'state-text'   // PLC变量对应的多状态文本状态翻译 (e.g. 0=故障, 1=运行)
+  | 'rounded-btn'  // 工业圆角按钮：支持变量绑定、自定义多状态背景/文字、取反/置位/复位/按1送0
   | 'motor';       // 变频伺服电机 (带旋转定子、风扇叶动效)
 
 export interface HMIComponent {
@@ -48,16 +49,27 @@ export interface HMIComponent {
     fontSize?: number;
     align?: 'left' | 'center' | 'right';
     bold?: boolean;
-    
+
     // 按钮/开关专属属性
-    buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'navigate'; // 按钮操作模式（navigate=跳转其它画面）
+    buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'set-bit' | 'reset-bit' | 'navigate'; // 按钮操作模式（toggle=取反, momentary=按1送0/点动, set-bit=置位1, reset-bit=复位0, set-value=设值, navigate=跳转）
     clickValue?: number; // 设值模式下点击写入的具体数值
     buttonText?: string; // 按钮上静态/动态显示的文本
     targetPageId?: string | null; // 导航模式下跳转目标画面 id（仅限同端）
-    
+
+    // 圆角按钮/自定义状态专属属性
+    borderRadius?: number; // 圆角弧度（px，如 4/8/12/20/999）
+    borderWidth?: number; // 边框粗细（px）
+    customStates?: string; // 自定义状态配置字典: "0:停止:#64748b:#ffffff;1:运行:#10b981:#ffffff;2:报警:#ef4444:#ffffff" 或 JSON 字符串
+    state0Text?: string; // 状态0默认文本
+    state0BgColor?: string; // 状态0默认背景色
+    state0TextColor?: string; // 状态0默认文字颜色
+    state1Text?: string; // 状态1默认文本
+    state1BgColor?: string; // 状态1默认背景色
+    state1TextColor?: string; // 状态1默认文字颜色
+
     // 多状态文本映射属性
     stateMappings?: string; // 用户可自定义配置: "0:停止;1:预热;2:满载运行" 或 "false:关闭;true:激活"
-    
+
     // 系统时间控件格式
     timeFormat?: 'HH:mm:ss' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD';
   };
@@ -97,7 +109,7 @@ export interface Area {
 export type VariableType = 'analog' | 'digital';
 
 // 数据类型枚举（与后端 ScadaServer.Domain.Enums.DataTypeEnum 对齐）
-export type DataTypeEnum = 
+export type DataTypeEnum =
   | 'INT' | 'REAL' | 'BOOL' | 'DINT' | 'BYTE' | 'BIT'
   | 'FLOAT' | 'DOUBLE' | 'STRING'
   | 'UINT16' | 'UINT32' | 'INT64' | 'UINT64'
@@ -122,7 +134,7 @@ export interface ModelVariable {
   /** 历史存储周期（毫秒）。Change 作为超时兜底周期，Cycle 作为定时采样周期。 */
   storeIntervalMs: number;
   updateMode: UpdateMode;
-  
+
   // 工业级增强字段
   scaleSlope: number;
   scaleOffset: number;
@@ -218,13 +230,13 @@ export interface ProtocolFieldConfig {
 
 /** 协议字段配置表：新增协议只需在此补一行，页面自动适配 */
 export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
-  S7:        { addressLabel: '寄存器地址', addressPlaceholder: '如 DB1.DBD4 / DB1.DBX0.0', addressRequired: true, needsBitOffset: true },
-  OPCUA:     { addressLabel: '节点ID',    addressPlaceholder: '如 ns=2;i=5',             addressRequired: true, needsBitOffset: false },
-  ModbusTcp: { addressLabel: '寄存器地址', addressPlaceholder: '如 40001',                addressRequired: true, needsBitOffset: true },
-  MQTT:      { addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level',    addressRequired: true, needsBitOffset: false },
-  BACnet:    { addressLabel: '对象地址',   addressPlaceholder: '如 AV:1',                 addressRequired: true, needsBitOffset: false },
-  DNP3:      { addressLabel: '点表索引',   addressPlaceholder: '如 2-3',                  addressRequired: true, needsBitOffset: false },
-  Virtual:   { }
+  S7: { addressLabel: '寄存器地址', addressPlaceholder: '如 DB1.DBD4 / DB1.DBX0.0', addressRequired: true, needsBitOffset: true },
+  OPCUA: { addressLabel: '节点ID', addressPlaceholder: '如 ns=2;i=5', addressRequired: true, needsBitOffset: false },
+  ModbusTcp: { addressLabel: '寄存器地址', addressPlaceholder: '如 40001', addressRequired: true, needsBitOffset: true },
+  MQTT: { addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level', addressRequired: true, needsBitOffset: false },
+  BACnet: { addressLabel: '对象地址', addressPlaceholder: '如 AV:1', addressRequired: true, needsBitOffset: false },
+  DNP3: { addressLabel: '点表索引', addressPlaceholder: '如 2-3', addressRequired: true, needsBitOffset: false },
+  Virtual: {}
 };
 
 export interface DataModel {

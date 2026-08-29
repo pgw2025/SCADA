@@ -169,17 +169,17 @@ onUnmounted(() => {
 const timeString = computed(() => {
   const dt = currentTime.value;
   const format = props.component.props.timeFormat || 'HH:mm:ss';
-  
+
   const pad = (num: number) => num.toString().padStart(2, '0');
-  
+
   const yyyy = dt.getFullYear();
   const mm = pad(dt.getMonth() + 1);
   const dd = pad(dt.getDate());
-  
+
   const hh = pad(dt.getHours());
   const min = pad(dt.getMinutes());
   const ss = pad(dt.getSeconds());
-  
+
   if (format === 'HH:mm:ss') {
     return `${hh}:${min}:${ss}`;
   } else if (format === 'YYYY-MM-DD') {
@@ -196,7 +196,7 @@ const mappedStateText = computed(() => {
   if (!mappingsRaw) {
     return String(rawVal);
   }
-  
+
   try {
     const pairs = mappingsRaw.split(/[;；]/);
     for (const pair of pairs) {
@@ -214,6 +214,61 @@ const mappedStateText = computed(() => {
   }
   return String(rawVal);
 });
+
+// 10. Rounded Button (圆角按钮) 状态、文本与背景颜色计算
+interface StateStyleConfig {
+  text: string;
+  bgColor: string;
+  textColor: string;
+  borderColor?: string;
+}
+
+const roundedBtnState = computed<StateStyleConfig>(() => {
+  const p = props.component.props;
+  const rawVal = props.value;
+  const strVal = String(rawVal).toLowerCase();
+  const isTrueOrNonZero = typeof rawVal === 'boolean' ? rawVal : Number(rawVal) !== 0;
+
+  // 1. 如果配置了 customStates (格式: "0:停止:#334155:#ffffff;1:运行:#0284c7:#ffffff;2:报警:#dc2626:#ffffff")
+  if (p.customStates && p.customStates.trim()) {
+    try {
+      const entries = p.customStates.split(/[;；]/);
+      for (const entry of entries) {
+        const parts = entry.split(':').map(s => s.trim());
+        if (parts.length >= 2) {
+          const matchKey = parts[0].toLowerCase();
+          if (matchKey === strVal || (matchKey === '1' && strVal === 'true') || (matchKey === '0' && strVal === 'false')) {
+            return {
+              text: parts[1] || p.buttonText || props.component.label || '按键',
+              bgColor: parts[2] || (isTrueOrNonZero ? (p.activeColor || '#0284c7') : (p.inactiveColor || '#1e293b')),
+              textColor: parts[3] || '#ffffff',
+              borderColor: parts[4] || p.strokeColor || 'transparent',
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse customStates for rounded-btn', e);
+    }
+  }
+
+  // 2. 如果配置了状态0 / 状态1 的精细配置
+  if (isTrueOrNonZero) {
+    return {
+      text: p.state1Text || p.buttonText || props.component.label || 'ON 运行',
+      bgColor: p.state1BgColor || p.activeColor || '#0284c7',
+      textColor: p.state1TextColor || '#ffffff',
+      borderColor: p.strokeColor || '#38bdf8',
+    };
+  } else {
+    return {
+      text: p.state0Text || p.buttonText || props.component.label || 'OFF 停止',
+      bgColor: p.state0BgColor || p.inactiveColor || '#1e293b',
+      textColor: p.state0TextColor || '#94a3b8',
+      borderColor: p.strokeColor || '#475569',
+    };
+  }
+});
 </script>
 
 <template>
@@ -224,35 +279,21 @@ const mappedStateText = computed(() => {
     <!-- Top Chimney -->
     <rect x="40" y="5" width="20" height="15" fill="#475569" :stroke="strokeColor" stroke-width="2" />
     <line x1="35" y1="5" x2="65" y2="5" stroke="#1e293b" stroke-width="3" />
-    
+
     <!-- Glowing Furnace Window -->
     <circle cx="50" cy="70" r="22" fill="#1e293b" stroke="#475569" stroke-width="2" />
-    
+
     <!-- Flame Animation when hot or turned on -->
-    <path
-      v-if="boolValue"
-      :d="`M 38 78 Q 42 55, 50 ${50 + (ticks % 3) * 2} Q 58 55, 62 78 Q 50 84, 38 78`"
-      :fill="isHighAlert ? '#ef4444' : '#f97316'"
-      :opacity="0.8 + Math.sin(ticks * 0.1) * 0.15"
-    />
-    <path
-      v-if="boolValue"
-      :d="`M 44 78 Q 46 62, 50 ${60 + (ticks % 2) * 2} Q 54 62, 56 78 Q 50 82, 44 78`"
-      fill="#eab308"
-      opacity="0.9"
-    />
-    
+    <path v-if="boolValue" :d="`M 38 78 Q 42 55, 50 ${50 + (ticks % 3) * 2} Q 58 55, 62 78 Q 50 84, 38 78`"
+      :fill="isHighAlert ? '#ef4444' : '#f97316'" :opacity="0.8 + Math.sin(ticks * 0.1) * 0.15" />
+    <path v-if="boolValue" :d="`M 44 78 Q 46 62, 50 ${60 + (ticks % 2) * 2} Q 54 62, 56 78 Q 50 82, 44 78`"
+      fill="#eab308" opacity="0.9" />
+
     <!-- Analog temperature indicator mini-bar -->
     <rect x="18" y="30" width="6" height="30" rx="3" fill="#1e293b" />
-    <rect
-      x="19"
-      :y="30 + (30 - (Math.min(numValue, maxValue) / maxValue) * 30)"
-      width="4"
-      :height="(Math.min(numValue, maxValue) / maxValue) * 30"
-      rx="2"
-      :fill="alertColor"
-    />
-    
+    <rect x="19" :y="30 + (30 - (Math.min(numValue, maxValue) / maxValue) * 30)" width="4"
+      :height="(Math.min(numValue, maxValue) / maxValue) * 30" rx="2" :fill="alertColor" />
+
     <!-- Pressure release outlet -->
     <path d="M 85 40 L 95 40 L 95 48 M 90 40 L 90 35" stroke="#475569" stroke-width="2" fill="none" />
   </svg>
@@ -262,13 +303,14 @@ const mappedStateText = computed(() => {
     <!-- Pump Support Stand -->
     <rect x="10" y="65" width="60" height="10" fill="#334155" rx="2" />
     <rect x="25" y="55" width="30" height="10" fill="#475569" />
-    
+
     <!-- Main circular casing -->
-    <circle cx="40" cy="35" r="28" :fill="boolValue ? '#1e293b' : '#334155'" :stroke="boolValue ? alertColor : strokeColor" stroke-width="4" />
-    
+    <circle cx="40" cy="35" r="28" :fill="boolValue ? '#1e293b' : '#334155'"
+      :stroke="boolValue ? alertColor : strokeColor" stroke-width="4" />
+
     <!-- Tangential water pipe connection -->
     <path d="M 68 20 L 78 20 L 78 30" :stroke="strokeColor" stroke-width="3" fill="none" />
-    
+
     <!-- Rotating rotor blades -->
     <g :transform="`translate(40, 35) rotate(${pumpAngle})`">
       <circle cx="0" cy="0" r="6" fill="#64748b" />
@@ -279,7 +321,7 @@ const mappedStateText = computed(() => {
       <circle cx="0" cy="-22" r="3.5" fill="#475569" />
       <circle cx="0" cy="22" r="3.5" fill="#475569" />
     </g>
-    
+
     <!-- Small operational dynamic indicator -->
     <circle cx="18" cy="18" r="4" :fill="boolValue ? '#10b981' : '#ef4444'" />
   </svg>
@@ -289,22 +331,24 @@ const mappedStateText = computed(() => {
     <!-- Pipe Flanges -->
     <rect x="5" y="30" width="8" height="20" fill="#475569" />
     <rect x="67" y="30" width="8" height="20" fill="#475569" />
-    
+
     <!-- Valves Body Triangles -->
-    <polygon points="12,25 12,55 40,40" :fill="boolValue ? activeColor : inactiveColor" stroke="#334155" stroke-width="2" />
-    <polygon points="68,25 68,55 40,40" :fill="boolValue ? activeColor : inactiveColor" stroke="#334155" stroke-width="2" />
-    
+    <polygon points="12,25 12,55 40,40" :fill="boolValue ? activeColor : inactiveColor" stroke="#334155"
+      stroke-width="2" />
+    <polygon points="68,25 68,55 40,40" :fill="boolValue ? activeColor : inactiveColor" stroke="#334155"
+      stroke-width="2" />
+
     <!-- Center Seal/Shaft -->
     <circle cx="40" cy="40" r="10" fill="#1e293b" stroke="#334155" stroke-width="2" />
     <rect x="36" y="16" width="8" height="15" fill="#64748b" />
-    
+
     <!-- Rotatable handle -->
     <g :transform="`translate(40, 16) rotate(${valveAngle})`">
       <line x1="-18" y1="0" x2="18" y2="0" stroke="#ef4444" stroke-width="4" />
       <circle cx="-18" cy="0" r="3" fill="#334155" />
       <circle cx="18" cy="0" r="3" fill="#334155" />
     </g>
-    
+
     <!-- Status Text panel overlay -->
     <rect x="18" y="60" width="44" height="15" rx="3" fill="#1e293b" opacity="0.9" />
     <text x="40" y="71" :fill="boolValue ? '#10b981' : '#f43f5e'" font-size="9" text-anchor="middle" font-weight="bold">
@@ -313,59 +357,51 @@ const mappedStateText = computed(() => {
   </svg>
 
   <!-- 4. TANK -->
-  <svg v-else-if="component.type === 'tank'" width="100%" height="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
+  <svg v-else-if="component.type === 'tank'" width="100%" height="100%" viewBox="0 0 100 120"
+    preserveAspectRatio="none">
     <!-- Leg supports -->
     <line x1="20" y1="110" x2="15" y2="118" stroke="#475569" stroke-width="4" />
     <line x1="80" y1="110" x2="85" y2="118" stroke="#475569" stroke-width="4" />
-    
+
     <!-- Main Glass Body container -->
     <rect x="8" y="8" width="84" height="104" rx="10" ry="10" fill="#1e293b" :stroke="strokeColor" stroke-width="3" />
-    
+
     <!-- Wave flow surface -->
-    <path
-      v-if="numValue > 0"
-      :d="numValue >= 99 ? 'M 10 10 L 90 10 L 90 110 L 10 110 Z' : wavePath"
-      :fill="fillColor || '#3b82f6'"
-      opacity="0.8"
-    />
-    
+    <path v-if="numValue > 0" :d="numValue >= 99 ? 'M 10 10 L 90 10 L 90 110 L 10 110 Z' : wavePath"
+      :fill="fillColor || '#3b82f6'" opacity="0.8" />
+
     <!-- Glossy Highlight -->
     <rect x="12" y="12" width="12" height="96" rx="4" fill="#ffffff" opacity="0.08" />
-    
+
     <!-- Grid Overlay lines -->
     <g stroke="#ffffff" stroke-width="1" opacity="0.25">
       <line x1="10" y1="35" x2="25" y2="35" />
       <line x1="10" y1="60" x2="30" y2="60" />
       <line x1="10" y1="85" x2="25" y2="85" />
-      
+
       <line x1="90" y1="35" x2="75" y2="35" />
       <line x1="90" y1="60" x2="70" y2="60" />
       <line x1="90" y1="85" x2="75" y2="85" />
     </g>
-    
+
     <!-- Numeric Value Overlay -->
-    <text x="50" y="65" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold" stroke="#000" stroke-width="1" paint-order="stroke">
+    <text x="50" y="65" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold" stroke="#000"
+      stroke-width="1" paint-order="stroke">
       {{ numValue.toFixed(1) }}%
     </text>
   </svg>
 
   <!-- 5. PIPE HORIZONTAL -->
   <div v-else-if="component.type === 'pipe-h'" class="w-full h-full relative flex items-center">
-    <div
-      class="absolute inset-x-0 h-4 rounded-full border-t border-b overflow-hidden shadow-inner flex items-center"
+    <div class="absolute inset-x-0 h-4 rounded-full border-t border-b overflow-hidden shadow-inner flex items-center"
       :style="{
         backgroundColor: numValue > 0 ? '#334155' : inactiveColor,
         borderColor: strokeColor,
-      }"
-    >
-      <div
-        v-if="numValue > 0"
-        class="w-[200%] h-1 opacity-70"
-        :style="{
-          backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 15px, ${activeColor} 15px, ${activeColor} 30px)`,
-          transform: `translateX(${pipeScrollOffsetH}px)`,
-        }"
-      />
+      }">
+      <div v-if="numValue > 0" class="w-[200%] h-1 opacity-70" :style="{
+        backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 15px, ${activeColor} 15px, ${activeColor} 30px)`,
+        transform: `translateX(${pipeScrollOffsetH}px)`,
+      }" />
     </div>
     <div class="absolute left-0 top-0 bottom-0 w-2 bg-slate-700 rounded-sm border-r border-slate-500" />
     <div class="absolute right-0 top-0 bottom-0 w-2 bg-slate-700 rounded-sm border-l border-slate-500" />
@@ -373,47 +409,31 @@ const mappedStateText = computed(() => {
 
   <!-- 6. PIPE VERTICAL -->
   <div v-else-if="component.type === 'pipe-v'" class="w-full h-full relative flex justify-center">
-    <div
-      class="absolute inset-y-0 w-4 rounded-full border-l border-r overflow-hidden shadow-inner flex justify-center"
+    <div class="absolute inset-y-0 w-4 rounded-full border-l border-r overflow-hidden shadow-inner flex justify-center"
       :style="{
         backgroundColor: numValue > 0 ? '#334155' : inactiveColor,
         borderColor: strokeColor,
-      }"
-    >
-      <div
-        v-if="numValue > 0"
-        class="h-[200%] w-1 opacity-70"
-        :style="{
-          backgroundImage: `repeating-linear-gradient(180deg, transparent, transparent 15px, ${activeColor} 15px, ${activeColor} 30px)`,
-          transform: `translateY(${pipeScrollOffsetV}px)`,
-        }"
-      />
+      }">
+      <div v-if="numValue > 0" class="h-[200%] w-1 opacity-70" :style="{
+        backgroundImage: `repeating-linear-gradient(180deg, transparent, transparent 15px, ${activeColor} 15px, ${activeColor} 30px)`,
+        transform: `translateY(${pipeScrollOffsetV}px)`,
+      }" />
     </div>
     <div class="absolute top-0 left-0 right-0 h-2 bg-slate-700 rounded-sm border-b border-slate-500" />
     <div class="absolute bottom-0 left-0 right-0 h-2 bg-slate-700 rounded-sm border-t border-slate-500" />
   </div>
 
   <!-- 7. circular dial gauge -->
-  <svg v-else-if="component.type === 'gauge-dial'" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="contain">
+  <svg v-else-if="component.type === 'gauge-dial'" width="100%" height="100%" viewBox="0 0 100 100"
+    preserveAspectRatio="contain">
     <circle cx="50" cy="50" r="46" fill="#1e293b" stroke="#334155" stroke-width="4" />
     <circle cx="50" cy="50" r="41" fill="#0f172a" />
-    
+
     <!-- Warning Arc -->
-    <path
-      d="M 20 78 A 36 36 0 0 1 80 78"
-      stroke="#10b981"
-      stroke-width="4"
-      fill="none"
-      stroke-dasharray="100"
-      stroke-dashoffset="24"
-    />
-    <path
-      d="M 70 24 A 36 36 0 0 1 80 78"
-      stroke="#f43f5e"
-      stroke-width="4"
-      fill="none"
-    />
-    
+    <path d="M 20 78 A 36 36 0 0 1 80 78" stroke="#10b981" stroke-width="4" fill="none" stroke-dasharray="100"
+      stroke-dashoffset="24" />
+    <path d="M 70 24 A 36 36 0 0 1 80 78" stroke="#f43f5e" stroke-width="4" fill="none" />
+
     <!-- Ticks -->
     <g stroke="#475569" stroke-width="2">
       <line x1="50" y1="12" x2="50" y2="16" />
@@ -422,13 +442,13 @@ const mappedStateText = computed(() => {
       <line x1="23" y1="23" x2="26" y2="26" />
       <line x1="77" y1="23" x2="74" y2="26" />
     </g>
-    
+
     <!-- Needle -->
     <g :transform="`translate(50, 50) rotate(${dialAngle})`">
       <path d="M -3 0 L 0 -38 L 3 0 Z" fill="#ef4444" />
       <circle cx="0" cy="0" r="5" fill="#f8fafc" />
     </g>
-    
+
     <!-- Indicators Text -->
     <text x="50" y="70" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="medium">
       {{ component.label }}
@@ -440,17 +460,17 @@ const mappedStateText = computed(() => {
   </svg>
 
   <!-- 8. LEVEL BAR -->
-  <div v-else-if="component.type === 'gauge-level'" class="w-full h-full flex flex-col items-center bg-slate-900 border border-slate-700 rounded p-1 font-mono text-[9px] text-slate-400">
-    <div class="flex-1 w-full bg-slate-950 border border-slate-800 rounded relative overflow-hidden flex flex-col justify-end">
+  <div v-else-if="component.type === 'gauge-level'"
+    class="w-full h-full flex flex-col items-center bg-slate-900 border border-slate-700 rounded p-1 font-mono text-[9px] text-slate-400">
+    <div
+      class="flex-1 w-full bg-slate-950 border border-slate-800 rounded relative overflow-hidden flex flex-col justify-end">
+      <div class="w-full transition-all duration-300" :style="{
+        height: `${Math.min(100, Math.max(0, numValue))}%`,
+        backgroundColor: alertColor,
+        boxShadow: `0 0 12px ${alertColor}`,
+      }" />
       <div
-        class="w-full transition-all duration-300"
-        :style="{
-          height: `${Math.min(100, Math.max(0, numValue))}%`,
-          backgroundColor: alertColor,
-          boxShadow: `0 0 12px ${alertColor}`,
-        }"
-      />
-      <div class="absolute inset-0 flex flex-col justify-between p-1 opacity-50 pointer-events-none text-[8px] text-slate-300 font-mono">
+        class="absolute inset-0 flex flex-col justify-between p-1 opacity-50 pointer-events-none text-[8px] text-slate-300 font-mono">
         <span>H</span>
         <span>M</span>
         <span>L</span>
@@ -462,34 +482,30 @@ const mappedStateText = computed(() => {
   </div>
 
   <!-- 9. DIGITAL VALUE -->
-  <div
-    v-else-if="component.type === 'digital-val'"
+  <div v-else-if="component.type === 'digital-val'"
     class="w-full h-full bg-slate-950 border-2 rounded-lg flex flex-col justify-center items-center px-2 py-1 shadow-inner relative overflow-hidden"
-    :style="{ borderColor: isHighAlert ? '#ef4444' : '#1e293b' }"
-  >
+    :style="{ borderColor: isHighAlert ? '#ef4444' : '#1e293b' }">
     <div class="absolute top-1 left-2 text-[8px] text-slate-400 uppercase tracking-widest font-mono">
       {{ component.label || '数字监测' }}
     </div>
-    <div
-      class="text-xl md:text-2xl font-black mt-2 font-mono tracking-widest"
-      :style="{ color: isHighAlert ? '#ef4444' : '#34d399' }"
-    >
+    <div class="text-xl md:text-2xl font-black mt-2 font-mono tracking-widest"
+      :style="{ color: isHighAlert ? '#ef4444' : '#34d399' }">
       {{ typeof value === 'boolean' ? (boolValue ? onText : offText) : `${numValue.toFixed(2)}` }}
-      <span v-if="typeof value !== 'boolean' && unit" class="text-xs text-slate-500 font-normal ml-0.5">{{ unit }}</span>
+      <span v-if="typeof value !== 'boolean' && unit" class="text-xs text-slate-500 font-normal ml-0.5">{{ unit
+        }}</span>
     </div>
-    <div
-      class="absolute bottom-1 right-2 w-1.5 h-1.5 rounded-full"
-      :style="{
-        backgroundColor: boolValue ? '#10b981' : '#ef4444',
-        animation: boolValue ? 'pulse 1.2s infinite' : 'none',
-      }"
-    />
+    <div class="absolute bottom-1 right-2 w-1.5 h-1.5 rounded-full" :style="{
+      backgroundColor: boolValue ? '#10b981' : '#ef4444',
+      animation: boolValue ? 'pulse 1.2s infinite' : 'none',
+    }" />
   </div>
 
   <!-- 10. REAL-TIME TREND CHART -->
-  <div v-else-if="component.type === 'trend-chart'" class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[9px] text-slate-400 flex flex-col">
+  <div v-else-if="component.type === 'trend-chart'"
+    class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[9px] text-slate-400 flex flex-col">
     <div class="flex justify-between items-center mb-1 text-[9px] border-b border-slate-800 pb-1">
-      <span class="font-bold text-slate-300 truncate max-w-[70%]">{{ component.label || component.name || '实时趋势' }}</span>
+      <span class="font-bold text-slate-300 truncate max-w-[70%]">{{ component.label || component.name || '实时趋势'
+        }}</span>
       <span v-if="hasTrendData" class="text-emerald-400 font-bold">
         {{ numValue.toFixed(1) }}<template v-if="unit"> {{ unit }}</template>
       </span>
@@ -506,20 +522,15 @@ const mappedStateText = computed(() => {
         <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
         <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
         <line x1="0" y1="75%" x2="100%" y2="75%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
-        <path
-          :d="chartPath"
-          fill="none"
-          :stroke="isHighAlert ? '#ef4444' : '#10b981'"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
+        <path :d="chartPath" fill="none" :stroke="isHighAlert ? '#ef4444' : '#10b981'" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     </div>
   </div>
 
   <!-- 11. CONVEYOR BELT -->
-  <svg v-else-if="component.type === 'conveyor'" width="100%" height="100%" viewBox="0 0 300 40" preserveAspectRatio="none">
+  <svg v-else-if="component.type === 'conveyor'" width="100%" height="100%" viewBox="0 0 300 40"
+    preserveAspectRatio="none">
     <rect x="5" y="12" width="290" height="16" rx="8" fill="#1e293b" :stroke="strokeColor" stroke-width="2.5" />
     <circle cx="15" cy="20" r="6" fill="#64748b" stroke="#334155" />
     <circle cx="15" cy="20" r="2" fill="#1e293b" />
@@ -529,7 +540,7 @@ const mappedStateText = computed(() => {
     <circle cx="200" cy="20" r="2" fill="#1e293b" />
     <circle cx="285" cy="20" r="6" fill="#64748b" stroke="#334155" />
     <circle cx="285" cy="20" r="2" fill="#1e293b" />
-    
+
     <g v-if="numValue > 0">
       <rect :x="20 + conveyorBeltStep" y="2" width="16" height="10" fill="#d97706" rx="1" />
       <rect :x="100 + conveyorBeltStep" y="2" width="16" height="10" fill="#d97706" rx="1" />
@@ -540,119 +551,105 @@ const mappedStateText = computed(() => {
   </svg>
 
   <!-- 12. TEXT LABEL -->
-  <div
-    v-else-if="component.type === 'text'"
-    class="w-full h-full flex items-center"
-    :style="{
-      justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-      fontSize: `${fontSize}px`,
-      fontWeight: bold ? 'bold' : 'normal',
-      color: activeColor || '#cbd5e1',
-    }"
-  >
+  <div v-else-if="component.type === 'text'" class="w-full h-full flex items-center" :style="{
+    justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
+    fontSize: `${fontSize}px`,
+    fontWeight: bold ? 'bold' : 'normal',
+    color: activeColor || '#cbd5e1',
+  }">
     {{ component.label }}
   </div>
 
   <!-- 13. LED INDICATOR -->
   <div v-else-if="component.type === 'led'" class="w-full h-full flex flex-col items-center justify-center">
-    <div
-      class="rounded-full transition-all duration-300"
-      :style="{
-        width: `${Math.min(width, height) - 12}px`,
-        height: `${Math.min(width, height) - 12}px`,
-        backgroundColor: boolValue ? activeColor : inactiveColor,
-        boxShadow: boolValue ? `0 0 16px ${activeColor}, inset 0 2px 4px rgba(255,255,255,0.4)` : 'inset 0 2px 4px rgba(0,0,0,0.4)',
-        border: '3px solid #334155',
-      }"
-    />
+    <div class="rounded-full transition-all duration-300" :style="{
+      width: `${Math.min(width, height) - 12}px`,
+      height: `${Math.min(width, height) - 12}px`,
+      backgroundColor: boolValue ? activeColor : inactiveColor,
+      boxShadow: boolValue ? `0 0 16px ${activeColor}, inset 0 2px 4px rgba(255,255,255,0.4)` : 'inset 0 2px 4px rgba(0,0,0,0.4)',
+      border: '3px solid #334155',
+    }" />
     <span class="text-[9px] text-slate-300 font-mono mt-1 text-center truncate max-w-full">
       {{ component.label }}
     </span>
   </div>
 
   <!-- 14. INDUSTRIAL BUTTON -->
-  <div
-    v-else-if="component.type === 'button'"
-    class="w-full h-full p-0.5"
-  >
+  <div v-else-if="component.type === 'button'" class="w-full h-full p-0.5">
     <div
       class="w-full h-full rounded border-2 shadow flex flex-col items-center justify-center transition-all select-none relative overflow-hidden"
       :class="[
         isActiveMode ? 'active:translate-y-0.5 active:shadow-inner cursor-pointer' : '',
         boolValue ? 'shadow-inner' : 'shadow-md border-t-white border-l-white border-b-slate-900 border-r-slate-900'
-      ]"
-      :style="{
+      ]" :style="{
         backgroundColor: boolValue ? activeColor : fillColor || '#cbd5e1',
         borderColor: boolValue ? '#0284c7' : '#94a3b8',
         color: boolValue ? '#ffffff' : '#1e293b'
-      }"
-    >
+      }">
       <!-- Led Indicator inside the button -->
-      <div 
-        class="absolute top-1 right-2 w-1.5 h-1.5 rounded-full border border-slate-600/30"
-        :style="{
-          backgroundColor: boolValue ? '#22c55e' : '#dc2626',
-          boxShadow: boolValue ? '0 0 6px #22c55e' : 'none'
-        }"
-      />
+      <div class="absolute top-1 right-2 w-1.5 h-1.5 rounded-full border border-slate-600/30" :style="{
+        backgroundColor: boolValue ? '#22c55e' : '#dc2626',
+        boxShadow: boolValue ? '0 0 6px #22c55e' : 'none'
+      }" />
       <!-- 阶段6-2：运行模式无写权限时，绑定按钮显示只读锁标记 -->
-      <span
-        v-if="isLockedControl"
+      <span v-if="isLockedControl"
         class="absolute bottom-1 left-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
-        title="当前角色无写权限，控件为只读"
-      >
-        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z"/></svg>
+        title="当前角色无写权限，控件为只读">
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
+        </svg>
         只读
       </span>
       <!-- Label -->
-      <span 
-        class="text-center font-mono pointer-events-none px-1 truncate max-w-full"
-        :style="{
-          fontSize: `${fontSize}px`,
-          fontWeight: bold ? 'bold' : 'normal'
-        }"
-      >
+      <span class="text-center font-mono pointer-events-none px-1 truncate max-w-full" :style="{
+        fontSize: `${fontSize}px`,
+        fontWeight: bold ? 'bold' : 'normal'
+      }">
         {{ component.props.buttonText || component.label || '命令键' }}
       </span>
-      <span class="text-[8px] opacity-60 font-sans pointer-events-none mt-0.5 select-none" v-if="component.bindVariableKey || component.bindField">
-        {{ component.props.buttonMode === 'momentary' ? '[点动]' : component.props.buttonMode === 'set-value' ? `[设值:${component.props.clickValue ?? 0}]` : '[自锁]' }}
+      <span class="text-[8px] opacity-60 font-sans pointer-events-none mt-0.5 select-none"
+        v-if="component.bindVariableKey || component.bindField">
+        {{ component.props.buttonMode === 'momentary' ? '[点动]' : component.props.buttonMode === 'set-value' ?
+          `[设值:${component.props.clickValue ?? 0}]` : '[自锁]' }}
       </span>
     </div>
   </div>
 
   <!-- 15. TOGGLE SWITCH -->
-  <div v-else-if="component.type === 'switch'" class="w-full h-full flex flex-col items-center justify-center p-1 font-mono text-[9px] select-none">
-    <div class="w-full h-full bg-[#1e293b] border border-slate-700 rounded p-1.5 flex flex-col items-center justify-between shadow-md relative">
+  <div v-else-if="component.type === 'switch'"
+    class="w-full h-full flex flex-col items-center justify-center p-1 font-mono text-[9px] select-none">
+    <div
+      class="w-full h-full bg-[#1e293b] border border-slate-700 rounded p-1.5 flex flex-col items-center justify-between shadow-md relative">
       <!-- 阶段6-2：运行模式无写权限时，绑定开关显示只读锁标记 -->
-      <span
-        v-if="isLockedControl"
+      <span v-if="isLockedControl"
         class="absolute top-1 right-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
-        title="当前角色无写权限，控件为只读"
-      >
-        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z"/></svg>
+        title="当前角色无写权限，控件为只读">
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
+        </svg>
         只读
       </span>
       <!-- Top State Label -->
       <span class="text-slate-400 font-bold uppercase text-[8px] tracking-tight text-center truncate max-w-full">
         {{ boolValue ? onText : offText }}
       </span>
-      
+
       <!-- Slot slider & Lever knob style-->
-      <div 
-        class="w-6 h-10 bg-slate-950 rounded-full border border-slate-800 relative flex items-center justify-center overflow-hidden shadow-inner cursor-pointer"
-      >
-        <div 
+      <div
+        class="w-6 h-10 bg-slate-950 rounded-full border border-slate-800 relative flex items-center justify-center overflow-hidden shadow-inner cursor-pointer">
+        <div
           class="w-5 h-5 rounded-full bg-slate-300 border border-slate-500 shadow-md transition-all duration-300 flex items-center justify-center"
           :style="{
             transform: boolValue ? 'translateY(-10px)' : 'translateY(10px)',
             backgroundColor: boolValue ? '#10b981' : '#ef4444',
             boxShadow: boolValue ? '0 2px 4px rgba(16,185,129,0.4)' : '0 2px 4px rgba(239,68,68,0.4)',
-          }"
-        >
+          }">
           <div class="w-1.5 h-1.5 rounded-full bg-white/60" />
         </div>
       </div>
-      
+
       <!-- Bottom Label text -->
       <span class="text-slate-500 text-[8px] font-bold text-center truncate max-w-full">
         {{ component.label }}
@@ -661,18 +658,14 @@ const mappedStateText = computed(() => {
   </div>
 
   <!-- 16. SYSTEM CLOCK / TIME -->
-  <div
-    v-else-if="component.type === 'sys-time'"
-    class="w-full h-full bg-black/90 border-2 border-slate-800 rounded-lg flex flex-col justify-center items-center px-2 py-1 shadow-inner relative text-emerald-400 font-mono select-none"
-  >
+  <div v-else-if="component.type === 'sys-time'"
+    class="w-full h-full bg-black/90 border-2 border-slate-800 rounded-lg flex flex-col justify-center items-center px-2 py-1 shadow-inner relative text-emerald-400 font-mono select-none">
     <div class="absolute top-1 left-2 text-[8px] text-slate-500 uppercase tracking-widest leading-none">
       {{ component.label || 'SYSTEM CLOCK' }}
     </div>
     <!-- Interactive time ticking -->
-    <div 
-      class="text-[13px] sm:text-[14px] font-bold text-center mt-2.5 tracking-wider w-full truncate"
-      v-text="timeString"
-    />
+    <div class="text-[13px] sm:text-[14px] font-bold text-center mt-2.5 tracking-wider w-full truncate"
+      v-text="timeString" />
     <div class="absolute bottom-1 right-2 flex items-center gap-1">
       <span class="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
       <span class="text-[7px] text-slate-500">LIVE</span>
@@ -680,42 +673,92 @@ const mappedStateText = computed(() => {
   </div>
 
   <!-- 17. MULTI-STATE TRANSLATION TEXT -->
-  <div
-    v-else-if="component.type === 'state-text'"
-    class="w-full h-full bg-slate-900 border border-slate-700/80 rounded px-2 py-1 flex flex-col justify-center font-mono relative overflow-hidden select-none"
-  >
+  <div v-else-if="component.type === 'state-text'"
+    class="w-full h-full bg-slate-900 border border-slate-700/80 rounded px-2 py-1 flex flex-col justify-center font-mono relative overflow-hidden select-none">
     <span class="text-[8px] text-slate-500 uppercase tracking-widest absolute top-1 left-2">
       {{ component.label || '状态监测器' }}
     </span>
     <div class="mt-2 text-xs font-bold flex items-center justify-between">
-      <span 
-        class="text-sky-400 truncate flex-1"
-        :style="{
-          fontSize: `${fontSize}px`,
-          fontWeight: bold ? 'bold' : 'normal'
-        }"
-      >
+      <span class="text-sky-400 truncate flex-1" :style="{
+        fontSize: `${fontSize}px`,
+        fontWeight: bold ? 'bold' : 'normal'
+      }">
         {{ mappedStateText }}
       </span>
-      <span class="text-[8px] text-slate-500 bg-slate-950 px-1 py-0.5 rounded leading-none border border-slate-800 ml-1">
+      <span
+        class="text-[8px] text-slate-500 bg-slate-950 px-1 py-0.5 rounded leading-none border border-slate-800 ml-1">
         VAL:{{ value }}
       </span>
     </div>
   </div>
 
+  <!-- 18. INDUSTRIAL ROUNDED BUTTON (圆角按钮组件) -->
+  <div v-else-if="component.type === 'rounded-btn'" class="w-full h-full p-0.5">
+    <div
+      class="w-full h-full shadow flex flex-col items-center justify-center transition-all select-none relative overflow-hidden group"
+      :class="[
+        isActiveMode ? 'active:scale-95 active:brightness-90 cursor-pointer' : '',
+        boolValue ? 'shadow-md' : 'shadow-xs'
+      ]" :style="{
+        borderRadius: `${component.props.borderRadius ?? 10}px`,
+        borderWidth: `${component.props.borderWidth ?? 1}px`,
+        borderColor: roundedBtnState.borderColor || component.props.strokeColor || '#38bdf8',
+        backgroundColor: roundedBtnState.bgColor,
+        color: roundedBtnState.textColor,
+      }">
+      <!-- Subtle top gloss highlight for industrial tactility -->
+      <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none"
+        :style="{ borderTopLeftRadius: `${component.props.borderRadius ?? 10}px`, borderTopRightRadius: `${component.props.borderRadius ?? 10}px` }" />
+
+      <!-- Status LED dot -->
+      <div class="absolute top-1.5 right-2 w-2 h-2 rounded-full border border-black/20" :style="{
+        backgroundColor: boolValue ? '#22c55e' : '#64748b',
+        boxShadow: boolValue ? '0 0 8px #22c55e' : 'none'
+      }" />
+
+      <!-- 只读锁标记 -->
+      <span v-if="isLockedControl"
+        class="absolute bottom-1 left-2 text-[8px] text-amber-300 flex items-center gap-0.5 leading-none bg-black/40 px-1 py-0.5 rounded"
+        title="当前角色无写权限，控件为只读">
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
+        </svg>
+        只读
+      </span>
+
+      <!-- Primary Label / Dynamic text -->
+      <span class="text-center font-mono pointer-events-none px-2 truncate max-w-full z-10 drop-shadow-xs" :style="{
+        fontSize: `${fontSize}px`,
+        fontWeight: bold ? 'bold' : '600'
+      }">
+        {{ roundedBtnState.text }}
+      </span>
+
+      <!-- Mode badge / hint -->
+      <span class="text-[8px] opacity-75 font-sans pointer-events-none mt-0.5 select-none z-10">
+        {{ component.props.buttonMode === 'momentary' ? '[按1送0]' : component.props.buttonMode === 'set-bit' ? '[置位1]' :
+          component.props.buttonMode === 'reset-bit' ? '[复位0]' : component.props.buttonMode === 'set-value' ?
+            `[设值:${component.props.clickValue ?? 0}]` : component.props.buttonMode === 'navigate' ? '[跳转]' : '[取反]' }}
+      </span>
+    </div>
+  </div>
+
   <!-- 18. INDUSTRIAL AC MOTOR -->
-  <svg v-else-if="component.type === 'motor'" width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
+  <svg v-else-if="component.type === 'motor'" width="100%" height="100%" viewBox="0 0 100 80"
+    preserveAspectRatio="none">
     <!-- Motor Mounting base feet -->
     <rect x="15" y="66" width="70" height="6" fill="#334155" rx="1" />
     <rect x="25" y="58" width="50" height="8" fill="#475569" />
-    
+
     <!-- Output drive shaft (left of the motor) -->
     <rect x="2" y="32" width="15" height="10" fill="#94a3b8" />
     <line x1="2" y1="37" x2="17" y2="37" stroke="#cbd5e1" stroke-width="1.5" />
-    
+
     <!-- Main cylindrical body -->
-    <rect x="24" y="14" width="52" height="46" rx="4" :fill="boolValue ? '#1e293b' : '#334155'" :stroke="boolValue ? alertColor : strokeColor" stroke-width="3" />
-    
+    <rect x="24" y="14" width="52" height="46" rx="4" :fill="boolValue ? '#1e293b' : '#334155'"
+      :stroke="boolValue ? alertColor : strokeColor" stroke-width="3" />
+
     <!-- Ribbed stator shell / Cooling Fins (Horizontal stripes for nice depth) -->
     <line x1="30" y1="22" x2="70" y2="22" stroke="#475569" stroke-width="2" />
     <line x1="30" y1="28" x2="70" y2="28" stroke="#475569" stroke-width="2" />
@@ -723,14 +766,14 @@ const mappedStateText = computed(() => {
     <line x1="30" y1="40" x2="70" y2="40" stroke="#475569" stroke-width="2" />
     <line x1="30" y1="46" x2="70" y2="46" stroke="#475569" stroke-width="2" />
     <line x1="30" y1="52" x2="70" y2="52" stroke="#475569" stroke-width="2" />
-    
+
     <!-- Electrical Junction/Terminal Box (Upper piece) -->
     <rect x="42" y="4" width="16" height="12" fill="#475569" rx="1" stroke="#334155" stroke-width="1" />
     <circle cx="50" cy="10" r="2.5" fill="#eab308" />
-    
+
     <!-- Fan Cowl / Protective Back Fan housing (right side) -->
     <path d="M 76 17 L 90 22 L 90 52 L 76 57 Z" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
-    
+
     <!-- Fast spinning cooling fan blades inside the cowl representation -->
     <g :transform="`translate(83, 37) rotate(${pumpAngle})`">
       <circle cx="0" cy="0" r="1.5" fill="#94a3b8" />
@@ -739,7 +782,7 @@ const mappedStateText = computed(() => {
       <polygon points="-13,-2 -13,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
       <polygon points="13,-2 13,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
     </g>
-    
+
     <!-- Run indicator led -->
     <circle cx="34" cy="50" r="3.5" :fill="boolValue ? '#10b981' : '#dc2626'" />
   </svg>
@@ -752,7 +795,14 @@ const mappedStateText = computed(() => {
 
 <style scoped>
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 </style>

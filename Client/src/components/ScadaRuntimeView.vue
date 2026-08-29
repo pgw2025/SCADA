@@ -166,11 +166,15 @@ const handleTriggerToggleValue = (
   let targetVal: any;
   if (actionType === 'setValue' && val !== undefined) {
     targetVal = val;
+  } else if (actionType === 'setBit') {
+    targetVal = typeof current === 'boolean' ? true : 1;
+  } else if (actionType === 'resetBit') {
+    targetVal = typeof current === 'boolean' ? false : 0;
   } else if (actionType === 'momentary' && val !== undefined) {
     targetVal = typeof current === 'boolean' ? val : val ? 1 : 0;
   } else {
     if (typeof current === 'boolean') targetVal = !current;
-    else if (typeof current === 'number') targetVal = current === 0 ? 100 : 0;
+    else if (typeof current === 'number') targetVal = current === 0 ? 1 : 0;
     else targetVal = val ?? 1;
   }
   setDeviceVariableValue(deviceId, key, targetVal);
@@ -185,11 +189,14 @@ const onLogout = () => {
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col bg-slate-100 dark:bg-[#070b12] text-slate-800 dark:text-slate-100 overflow-hidden select-none">
+  <div
+    class="h-screen w-screen flex flex-col bg-slate-100 dark:bg-[#070b12] text-slate-800 dark:text-slate-100 overflow-hidden select-none">
     <!-- Header -->
-    <header class="h-14 bg-white dark:bg-[#070b12] border-b border-slate-200 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-xs z-30">
+    <header
+      class="h-14 bg-white dark:bg-[#070b12] border-b border-slate-200 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-xs z-30">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
+        <div
+          class="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
           <MonitorPlay class="w-4 h-4 text-white" />
         </div>
         <div class="min-w-0">
@@ -204,43 +211,42 @@ const onLogout = () => {
 
       <div class="flex items-center gap-2 text-[11px] font-mono">
         <!-- 端切换（预览用） -->
-        <div class="hidden sm:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <button
-            @click="switchRuntimePlatform('Desktop')"
+        <div
+          class="hidden sm:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <button @click="switchRuntimePlatform('Desktop')"
             :class="runtimePlatform === 'Desktop' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
-            class="px-2.5 py-1 cursor-pointer transition-colors flex items-center gap-1"
-            title="桌面端视图"
-          ><Monitor class="w-3.5 h-3.5" /> 桌面</button>
-          <button
-            @click="switchRuntimePlatform('Mobile')"
+            class="px-2.5 py-1 cursor-pointer transition-colors flex items-center gap-1" title="桌面端视图">
+            <Monitor class="w-3.5 h-3.5" /> 桌面
+          </button>
+          <button @click="switchRuntimePlatform('Mobile')"
             :class="runtimePlatform === 'Mobile' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
-            class="px-2.5 py-1 cursor-pointer transition-colors flex items-center gap-1"
-            title="移动端视图"
-          ><Smartphone class="w-3.5 h-3.5" /> 移动</button>
+            class="px-2.5 py-1 cursor-pointer transition-colors flex items-center gap-1" title="移动端视图">
+            <Smartphone class="w-3.5 h-3.5" /> 移动
+          </button>
         </div>
 
-        <span class="hidden md:inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg">
+        <span
+          class="hidden md:inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg">
           <Home class="w-3.5 h-3.5" /> {{ loginUser?.username || 'user' }}
         </span>
 
-        <button
-          @click="router.push('/scada-view')"
+        <button @click="router.push('/scada-view')"
           class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 cursor-pointer"
-          title="返回工程列表"
-        ><ArrowLeft class="w-3.5 h-3.5" /> 返回</button>
+          title="返回工程列表">
+          <ArrowLeft class="w-3.5 h-3.5" /> 返回
+        </button>
 
-        <button
-          v-if="isAdmin"
-          @click="router.push('/scada-editor')"
+        <button v-if="isAdmin" @click="router.push('/scada-editor')"
           class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 cursor-pointer"
-          title="返回组态设计"
-        ><Pencil class="w-3.5 h-3.5" /> 编辑</button>
+          title="返回组态设计">
+          <Pencil class="w-3.5 h-3.5" /> 编辑
+        </button>
 
-        <button
-          @click="onLogout"
+        <button @click="onLogout"
           class="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 cursor-pointer"
-          title="退出登录"
-        ><LogOut class="w-4 h-4" /></button>
+          title="退出登录">
+          <LogOut class="w-4 h-4" />
+        </button>
       </div>
     </header>
 
@@ -258,53 +264,35 @@ const onLogout = () => {
         <p v-if="projectError" class="text-sm">工程加载失败或不存在</p>
         <p v-else class="text-sm">当前工程暂无「{{ runtimePlatform === 'Mobile' ? '移动端' : '桌面端' }}」组态画面</p>
         <p class="text-[11px] mt-1">请在组态设计中为该端新增画面并发布。</p>
-        <button
-          @click="router.push('/scada-view')"
-          class="mt-4 inline-flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-        ><ArrowLeft class="w-3.5 h-3.5" /> 返回工程列表</button>
+        <button @click="router.push('/scada-view')"
+          class="mt-4 inline-flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <ArrowLeft class="w-3.5 h-3.5" /> 返回工程列表
+        </button>
       </div>
 
       <!-- 组态画布 -->
       <div v-else
         class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden ring-1 ring-slate-300 dark:ring-slate-800 flex flex-col max-h-full min-w-0"
-        :class="runtimePlatform === 'Mobile' ? 'rounded-[2rem] p-2 bg-neutral-900' : ''"
-      >
-        <div :class="runtimePlatform === 'Mobile' ? 'rounded-[1.6rem] overflow-hidden flex flex-col flex-1 min-h-0' : 'flex flex-col flex-1 min-h-0'">
-          <CanvasPanel
-            class="min-h-0"
-            :components="currentPage.components"
-            :selectedId="null"
-            :selectedIds="[]"
-            :isActiveMode="true"
-            :component-values="componentValues"
-            :component-qualities="componentQualities"
-            :canvas-width="pageWidth"
-            :canvas-height="pageHeight"
-            :can-control-write="canControlWrite"
-            :readonly="true"
-            @triggerToggleValue="handleTriggerToggleValue"
-            @navigateToPage="handleNavigate"
-          />
+        :class="runtimePlatform === 'Mobile' ? 'rounded-[2rem] p-2 bg-neutral-900' : ''">
+        <div
+          :class="runtimePlatform === 'Mobile' ? 'rounded-[1.6rem] overflow-hidden flex flex-col flex-1 min-h-0' : 'flex flex-col flex-1 min-h-0'">
+          <CanvasPanel class="min-h-0" :components="currentPage.components" :selectedId="null" :selectedIds="[]"
+            :isActiveMode="true" :component-values="componentValues" :component-qualities="componentQualities"
+            :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite" :readonly="true"
+            @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate" />
         </div>
       </div>
     </main>
 
     <!-- Bottom page tabs（同端画面切换） -->
-    <nav
-      v-if="runtimePages.length > 1"
-      class="shrink-0 bg-white dark:bg-[#070b12] border-t border-slate-200 dark:border-slate-900 px-3 py-2 flex items-center gap-2 overflow-x-auto"
-    >
-      <button
-        v-for="pg in runtimePages"
-        :key="pg.id"
-        @click="selectedRuntimePageId = pg.id"
-        :class="[
-          selectedRuntimePageId === pg.id
-            ? 'bg-[#1890ff] text-white border-[#1890ff]'
-            : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800',
-          'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer whitespace-nowrap flex items-center gap-1'
-        ]"
-      >
+    <nav v-if="runtimePages.length > 1"
+      class="shrink-0 bg-white dark:bg-[#070b12] border-t border-slate-200 dark:border-slate-900 px-3 py-2 flex items-center gap-2 overflow-x-auto">
+      <button v-for="pg in runtimePages" :key="pg.id" @click="selectedRuntimePageId = pg.id" :class="[
+        selectedRuntimePageId === pg.id
+          ? 'bg-[#1890ff] text-white border-[#1890ff]'
+          : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800',
+        'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer whitespace-nowrap flex items-center gap-1'
+      ]">
         <span v-if="pg.isHome" class="w-1.5 h-1.5 rounded-full bg-amber-400" />
         {{ pg.name }}
       </button>
