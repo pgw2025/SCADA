@@ -380,11 +380,17 @@ namespace ScadaServer.Runtime
                 _realtimeSnapshot);
 
             await _scheduler.StartAsync(token);
+
+            // 调度启动后再启动变量绑定转发循环，避免设备未运行即触发转发写入。
+            await _bindingEngine.StartAsync(token);
         }
 
         /// <inheritdoc/>
         public async Task StopAsync()
         {
+            // 先停止变量绑定转发循环并排空，避免停止过程中残留转发写入目标设备。
+            await _bindingEngine.StopAsync(CancellationToken.None);
+
             if (_scheduler != null)
             {
                 var scheduler = _scheduler;

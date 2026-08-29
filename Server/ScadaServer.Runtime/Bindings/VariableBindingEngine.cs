@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,20 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
     // 运行指标（Interlocked 更新），后续可接入健康检查/监控端点。
     private long _writeSuccess;
     private long _writeFail;
+
+    // 转发写入队列：事件回调只做非阻塞入队，由单消费者循环串行处理，
+    // 消除原先每次转发一个 Task.Run 的无上限并发（fire-and-forget）。
+    private readonly Channel<(BindingTarget Target, object? Value)> _writeChannel
+        = Channel.CreateBounded<(BindingTarget, object?)>(new BoundedChannelOptions(10_000)
+        {
+            // 背压策略：队列满时丢最旧的待转发项，保证采集线程（事件发布方）永不阻塞。
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true
+        });
+
+    private CancellationTokenSource? _cts;
+    private Task? _dispatchLoop;
+    private long _droppedCount;
 
     public VariableBindingEngine(
         IVariableChangeBus changeBus,
@@ -117,6 +132,39 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
     }
 
     /// <inheritdoc/>
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // DispatchLoopAsync 本身返回热 Task，无需 Task.Run；保存引用供 StopAsync 等待退出。
+        _dispatchLoop = DispatchLoopAsync(_cts.Token);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // 先关闭通道让循环排空剩余转发，再取消，最后等待退出。
+        _writeChannel.Writer.TryComplete();
+        _cts?.Cancel();
+        if (_dispatchLoop is not null)
+        {
+            try
+            {
+                // 等待循环排空完成；超时兜底防止宿主关闭被拖死。
+                await _dispatchLoop.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("变量绑定转发循环停止超时，剩余转发可能未完成。");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "变量绑定转发循环退出异常。");
+            }
+        }
+    }
+
+    /// <inheritdoc/>
     public void Clear()
     {
         _index = new Dictionary<(int, string), List<BindingTarget>>();
@@ -142,10 +190,41 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
             return;
         }
 
-        // 转发写入放到后台执行，避免阻塞采集循环/写入通道（事件总线为同步回调）。
+        // 转发写入入队由单消费者循环处理，避免阻塞采集循环/写入通道（事件总线为同步回调）。
         foreach (var t in targets)
         {
-            _ = Task.Run(() => WriteTargetAsync(t, evt.Value));
+            if (!_writeChannel.Writer.TryWrite((t, evt.Value)))
+            {
+                Interlocked.Increment(ref _droppedCount);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 单消费者循环：串行处理待转发写入（天然限流 + 保序），消除无上限并发。
+    /// </summary>
+    private async Task DispatchLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            await foreach (var (target, value) in _writeChannel.Reader.ReadAllAsync(token))
+            {
+                await WriteTargetAsync(target, value);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 应用关闭：正常退出路径
+        }
+        catch (Exception ex)
+        {
+            // WriteTargetAsync 内部已捕获全部异常；此处兜底枚举器等链路异常。
+            _logger.LogError(ex, "变量绑定转发循环因未预期异常退出。");
+        }
+
+        if (Interlocked.Read(ref _droppedCount) > 0)
+        {
+            _logger.LogWarning("变量绑定转发队列满载丢弃 {Count} 条。", Interlocked.Read(ref _droppedCount));
         }
     }
 

@@ -39,6 +39,7 @@ namespace ScadaServer.Runtime.Tasks
         private readonly ConcurrentDictionary<int, byte> _inflight = new();
 
         private CancellationTokenSource? _loopCts;
+        private Task? _loopTask;
 
         public ScheduledTaskScheduler(
             IServiceScopeFactory scopeFactory,
@@ -63,17 +64,38 @@ namespace ScadaServer.Runtime.Tasks
         {
             _loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             await ReloadAsync();
-            _ = Task.Run(() => ScheduleLoopAsync(_loopCts.Token), _loopCts.Token);
+            // ScheduleLoopAsync 本身返回热 Task，无需 Task.Run；保存引用供 StopAsync 等待退出。
+            _loopTask = ScheduleLoopAsync(_loopCts.Token);
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
             _loopCts?.Cancel();
+            if (_loopTask is not null)
+            {
+                try
+                {
+                    // 等待调度循环退出；超时兜底防止宿主关闭被拖死。
+                    await _loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("定时任务调度循环停止超时。");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "定时任务调度循环退出异常。");
+                }
+            }
+
+            // 循环退出后等待在途执行收尾（超时放弃，避免宿主关闭被长时间任务拖死）。
+            await WaitForInflightAsync(TimeSpan.FromSeconds(30));
+
+            // 全部收尾后才 Dispose，避免循环仍在使用 token 时触发 ObjectDisposedException。
             _loopCts?.Dispose();
             _loopCts = null;
             _jobs.Clear();
             _inflight.Clear();
-            return Task.CompletedTask;
         }
 
         // =============== 加载与重载 ===============
@@ -178,30 +200,79 @@ namespace ScadaServer.Runtime.Tasks
             using var tick = new PeriodicTimer(TickInterval);
             var lastReload = DateTime.UtcNow;
 
-            while (!token.IsCancellationRequested && await tick.WaitForNextTickAsync(token))
+            try
             {
-                var now = DateTime.UtcNow;
-
-                // 兜底周期重载：捕获 CRUD 通知丢失 / 外部改库。
-                if (now - lastReload >= ReloadInterval)
+                while (!token.IsCancellationRequested && await tick.WaitForNextTickAsync(token))
                 {
-                    lastReload = now;
-                    await ReloadAsync();
-                    continue;
-                }
+                    var now = DateTime.UtcNow;
 
-                foreach (var job in _jobs.Values)
-                {
-                    if (job.NextUtc == null || now < job.NextUtc.Value)
+                    // 兜底周期重载：捕获 CRUD 通知丢失 / 外部改库。
+                    if (now - lastReload >= ReloadInterval)
                     {
+                        lastReload = now;
+                        await ReloadAsync();
                         continue;
                     }
 
-                    // 到期：先推进下一次触发时间（避免执行期间再次到期重复派发），再异步派发。
-                    job.NextUtc = ComputeNextUtc(job.Task.CronExpression, now);
-                    job.Task.NextRunAt = job.NextUtc;
-                    _ = DispatchAsync(job.Task, "Cron");
+                    foreach (var job in _jobs.Values)
+                    {
+                        if (job.NextUtc == null || now < job.NextUtc.Value)
+                        {
+                            continue;
+                        }
+
+                        // 到期：先推进下一次触发时间（避免执行期间再次到期重复派发），再异步派发。
+                        job.NextUtc = ComputeNextUtc(job.Task.CronExpression, now);
+                        job.Task.NextRunAt = job.NextUtc;
+                        DispatchFireAndTrack(job.Task, "Cron");
+                    }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // 应用关闭：正常退出路径
+            }
+            catch (Exception ex)
+            {
+                // 未预期异常不能让调度循环静默死亡（fire-and-forget 时代无法察觉）。
+                _logger.LogError(ex, "定时任务调度循环因未预期异常退出。");
+            }
+        }
+
+        /// <summary>
+        /// 派发并跟踪：Cron 触发时不阻塞调度循环，但通过 _inflight 跟踪在途执行，
+        /// 并对派发链路（含 DispatchAsync 内 catch 块中落库失败逃逸的异常）兜底捕获。
+        /// </summary>
+        private void DispatchFireAndTrack(ScheduledTask task, string triggerSource)
+        {
+            _ = DispatchSafeAsync(task, triggerSource);
+        }
+
+        private async Task DispatchSafeAsync(ScheduledTask task, string triggerSource)
+        {
+            try
+            {
+                await DispatchAsync(task, triggerSource);
+            }
+            catch (Exception ex)
+            {
+                // DispatchAsync 内部已捕获执行异常；此处兜底的是落库（PersistStatusAsync）等链路异常。
+                _logger.LogError(ex, "定时任务 {Id} 派发链路异常（含执行结果落库失败）。", task.Id);
+            }
+        }
+
+        /// <summary>停止时等待在途执行收尾；超时放弃并告警，避免宿主关闭被长时间任务拖死。</summary>
+        private async Task WaitForInflightAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (!_inflight.IsEmpty && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(200);
+            }
+
+            if (!_inflight.IsEmpty)
+            {
+                _logger.LogWarning("停止时仍有 {Count} 个定时任务在途执行，放弃等待。", _inflight.Count);
             }
         }
 

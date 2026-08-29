@@ -43,6 +43,7 @@ namespace ScadaServer.Runtime.Scripting
 
         /// <summary>周期性/Cron 调度轮询用 CancellationTokenSource。</summary>
         private CancellationTokenSource? _loopCts;
+        private Task? _loopTask;
 
         public ScriptEngineHost(
             IServiceScopeFactory scopeFactory,
@@ -68,18 +69,39 @@ namespace ScadaServer.Runtime.Scripting
             _changeBus.VariableChanged += OnVariableChanged;
 
             await ReloadAsync();
-            _ = Task.Run(() => ScheduleLoopAsync(_loopCts.Token), _loopCts.Token);
+            // ScheduleLoopAsync 本身返回热 Task，无需 Task.Run；保存引用供 StopAsync 等待退出。
+            _loopTask = ScheduleLoopAsync(_loopCts.Token);
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
             _changeBus.VariableChanged -= OnVariableChanged;
             _loopCts?.Cancel();
+            if (_loopTask is not null)
+            {
+                try
+                {
+                    // 等待调度循环退出；超时兜底防止宿主关闭被拖死。
+                    await _loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("脚本调度循环停止超时。");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "脚本调度循环退出异常。");
+                }
+            }
+
+            // 循环退出后等待在途执行收尾（超时放弃，避免宿主关闭被长时间脚本拖死）。
+            await WaitForInflightAsync(TimeSpan.FromSeconds(30));
+
+            // 全部收尾后才 Dispose，避免循环仍在使用 token 时触发 ObjectDisposedException。
             _loopCts?.Dispose();
             _loopCts = null;
             _jobs.Clear();
             _inflight.Clear();
-            return Task.CompletedTask;
         }
 
         // =============== 加载与重载 ===============
@@ -168,38 +190,99 @@ namespace ScadaServer.Runtime.Scripting
         private async Task ScheduleLoopAsync(CancellationToken token)
         {
             using var tick = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
-            while (!token.IsCancellationRequested && await tick.WaitForNextTickAsync(token))
+            try
             {
-                var now = DateTime.UtcNow;
-                foreach (var job in _jobs.Values)
+                while (!token.IsCancellationRequested && await tick.WaitForNextTickAsync(token))
                 {
-                    if (job.Script.TriggerType == ScriptTriggerType.Manual.ToString())
+                    var now = DateTime.UtcNow;
+                    foreach (var job in _jobs.Values)
                     {
-                        continue;
-                    }
+                        if (job.Script.TriggerType == ScriptTriggerType.Manual.ToString())
+                        {
+                            continue;
+                        }
 
-                    if (string.Equals(job.Script.TriggerType, ScriptTriggerType.OnChange.ToString()))
-                    {
-                        continue; // OnChange 由事件驱动
-                    }
+                        if (string.Equals(job.Script.TriggerType, ScriptTriggerType.OnChange.ToString()))
+                        {
+                            continue; // OnChange 由事件驱动
+                        }
 
-                    if (!job.Script.Active || job.Script.Tripped)
-                    {
-                        continue;
-                    }
+                        if (!job.Script.Active || job.Script.Tripped)
+                        {
+                            continue;
+                        }
 
-                    if (job.NextUtc == null)
-                    {
-                        continue;
-                    }
+                        if (job.NextUtc == null)
+                        {
+                            continue;
+                        }
 
-                    if (now >= job.NextUtc.Value)
-                    {
-                        var dueType = job.Script.TriggerType;
-                        job.NextUtc = ComputeNextRuntime(job.Script, now);
-                        _ = DispatchAsync(job.Script, dueType, null, null);
+                        if (now >= job.NextUtc.Value)
+                        {
+                            var dueType = job.Script.TriggerType;
+                            job.NextUtc = ComputeNextRuntime(job.Script, now);
+                            DispatchFireAndTrack(job.Script, dueType, null, null);
+                        }
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // 应用关闭：正常退出路径
+            }
+            catch (Exception ex)
+            {
+                // 未预期异常不能让调度循环静默死亡（fire-and-forget 时代无法察觉）。
+                _logger.LogError(ex, "脚本调度循环因未预期异常退出。");
+            }
+        }
+
+        /// <summary>
+        /// 派发并跟踪：自动触发时不阻塞调度循环/事件回调，但通过 _inflight 跟踪在途执行，
+        /// 并对派发链路（含执行记录落库失败逃逸的异常）兜底捕获。
+        /// </summary>
+        private void DispatchFireAndTrack(
+            SystemScript script,
+            string triggerType,
+            string? deviceContextKey = null,
+            string? variableContextKey = null,
+            string? executedBy = null,
+            ScriptSandbox.TriggerPayload? payload = null)
+        {
+            _ = DispatchSafeAsync(script, triggerType, deviceContextKey, variableContextKey, executedBy, payload);
+        }
+
+        private async Task DispatchSafeAsync(
+            SystemScript script,
+            string triggerType,
+            string? deviceContextKey,
+            string? variableContextKey,
+            string? executedBy,
+            ScriptSandbox.TriggerPayload? payload)
+        {
+            try
+            {
+                await DispatchAsync(script, triggerType, deviceContextKey, variableContextKey, executedBy, payload);
+            }
+            catch (Exception ex)
+            {
+                // DispatchAsync 外层 try 无 catch，此处兜底 PersistRecord/Transmit 等链路异常。
+                _logger.LogError(ex, "脚本 {Id} 派发链路异常（含执行记录落库失败）。", script.Id);
+            }
+        }
+
+        /// <summary>停止时等待在途执行收尾；超时放弃并告警，避免宿主关闭被长时间脚本拖死。</summary>
+        private async Task WaitForInflightAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (!_inflight.IsEmpty && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(200);
+            }
+
+            if (!_inflight.IsEmpty)
+            {
+                _logger.LogWarning("停止时仍有 {Count} 个脚本在途执行，放弃等待。", _inflight.Count);
             }
         }
 
@@ -411,7 +494,7 @@ namespace ScadaServer.Runtime.Scripting
                     PreviousValue = e.PreviousValue,
                     Quality = e.Quality.ToString()
                 };
-                _ = DispatchAsync(s, "OnChange", deviceKey, e.VariableKey, executedBy: null, payload);
+                DispatchFireAndTrack(s, "OnChange", deviceKey, e.VariableKey, payload: payload);
             }
         }
 
