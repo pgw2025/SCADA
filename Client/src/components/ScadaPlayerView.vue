@@ -1,0 +1,213 @@
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import {
+  currentProject,
+  desktopPages,
+  mobilePages,
+  selectProject,
+} from '../store/scadaStore';
+import { devices } from '../store/deviceStore';
+import { loginUser } from '../store/userStore';
+import { ROLE_OPERATOR, ROLE_ADMIN } from '../constants/roles';
+import { addLog } from '../store';
+import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { showToast } from '../services/toastService';
+import { RefreshCw } from 'lucide-vue-next';
+import CanvasPanel from './CanvasPanel.vue';
+
+const route = useRoute();
+
+// 端自动检测：按访问设备判定默认端；纯播放器去掉手动切换，检测失败时自动 fallback 到另一端。
+const detectMobile = (): boolean =>
+  window.innerWidth < 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+const primaryPlatform = ref<'Desktop' | 'Mobile'>(detectMobile() ? 'Mobile' : 'Desktop');
+
+// 挂载时从路由参数懒加载具体工程（方案B：/scada-view/:projectId）
+const loadingProject = ref(true);
+const projectError = ref(false);
+
+// 当前端选中画面 ID：必须在 loadFromParam 之前初始化。
+const selectedRuntimePageId = ref<string>('');
+
+const loadFromParam = async () => {
+  loadingProject.value = true;
+  projectError.value = false;
+  selectedRuntimePageId.value = '';
+  const proj = await selectProject(route.params.projectId as string);
+  loadingProject.value = false;
+  if (!proj) projectError.value = true;
+};
+watch(() => route.params.projectId, loadFromParam, { immediate: true });
+
+// 端 fallback：当前端无画面且另一端有画面时自动切换过去，避免纯播放器无法切换而空态。
+// 两端都无画面则保持当前端，落入空态分支。
+const runtimePlatform = computed<'Desktop' | 'Mobile'>(() => {
+  const primary = primaryPlatform.value;
+  const ownPages = primary === 'Mobile' ? mobilePages.value : desktopPages.value;
+  if (ownPages.length > 0) return primary;
+  const alt = primary === 'Mobile' ? desktopPages.value : mobilePages.value;
+  return alt.length > 0 ? (primary === 'Mobile' ? 'Desktop' : 'Mobile') : primary;
+});
+
+// 当前端可见画面列表（同端）
+const runtimePages = computed(() =>
+  runtimePlatform.value === 'Mobile' ? mobilePages.value : desktopPages.value
+);
+
+// 默认落地页：所在端首页（isHome）优先，否则取第一个
+watch(
+  runtimePages,
+  (pages) => {
+    if (selectedRuntimePageId.value && pages.some((p) => p.id === selectedRuntimePageId.value)) return;
+    if (!pages.length) {
+      selectedRuntimePageId.value = '';
+      return;
+    }
+    const home = pages.find((p) => p.isHome) || pages[0];
+    selectedRuntimePageId.value = home.id;
+  },
+  { immediate: true }
+);
+
+const currentPage = computed(
+  () => runtimePages.value.find((p) => p.id === selectedRuntimePageId.value) || runtimePages.value[0] || null
+);
+
+const pageWidth = computed(() => currentPage.value?.width ?? (runtimePlatform.value === 'Mobile' ? 375 : 1100));
+const pageHeight = computed(() => currentPage.value?.height ?? (runtimePlatform.value === 'Mobile' ? 812 : 700));
+
+// 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
+const warnedUnboundIds = new Set<string>();
+const componentValues = computed(() => {
+  const composite: Record<string, number | boolean> = {};
+  devices.value.forEach((d) => {
+    if (d.status === 'online' || d.status === 1) {
+      Object.keys(d.variables).forEach((k) => {
+        composite[`${d.id}:${k}`] = d.variables[k];
+      });
+    }
+  });
+  const result: Record<string, number | boolean> = {};
+  (currentPage.value?.components ?? []).forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const v = composite[`${c.bindDeviceId}:${c.bindVariableKey}`];
+      if (v !== undefined) {
+        result[c.id] = v;
+        return;
+      }
+    }
+    // 严格模式：未绑定设备/变量的组件禁止裸 key 取值，显示 0 并给出一次性警告
+    if (!warnedUnboundIds.has(c.id)) {
+      warnedUnboundIds.add(c.id);
+      addLog('组态运行', `组件 [${c.id}] 未绑定设备/变量（bindDeviceId=${c.bindDeviceId}），禁止裸 key 取值，显示 0`, 'warning');
+    }
+    result[c.id] = 0;
+  });
+  return result;
+});
+
+// 阶段5：控制下发权限——仅 Operator/Admin 可下发写指令
+const canControlWrite = computed(() => {
+  const r = loginUser.value?.role;
+  return r === ROLE_OPERATOR || r === ROLE_ADMIN;
+});
+
+// 阶段2-2：质量分级显示——按组件绑定（deviceId+variableKey）回读变量质量，
+// 非 Good 质量（Bad/Uncertain/CommunicationError/…）在画布组件上叠加角标，提示数据不可信。
+const componentQualities = computed(() => {
+  const result: Record<string, string> = {};
+  const devIndex = new Map<number | string, any>();
+  devices.value.forEach((d) => devIndex.set(d.id, d));
+  (currentPage.value?.components ?? []).forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const q = devIndex.get(c.bindDeviceId)?.variableMeta?.[c.bindVariableKey]?.quality;
+      if (q && q !== 'Good') result[c.id] = String(q);
+    }
+  });
+  return result;
+});
+
+// 阶段3：导航按钮跳转（同端切换，跨端不允许）
+const handleNavigate = (pageId: string) => {
+  const target = runtimePages.value.find((p) => p.id === pageId);
+  if (!target) return;
+  selectedRuntimePageId.value = pageId;
+  addLog('组态运行', `跳转到画面: [${target.name}]`, 'normal');
+};
+
+// 阶段4/6-2：控件写指令（含只读拦截，与编辑器一致）
+const handleTriggerToggleValue = (
+  deviceId: number | null,
+  variableKey: string,
+  legacyKey: string,
+  actionType?: string,
+  val?: any
+) => {
+  const key = variableKey || legacyKey;
+  if (!key) return;
+
+  // 严格模式：控件未绑定设备 → 禁止裸 key 写指令
+  if (deviceId == null) {
+    showToast('该控件未绑定设备，禁止写入（请到编辑器补全绑定）', 'warning');
+    addLog('组态运行', `写指令被拒绝：组件未绑定设备 (key=${key})`, 'warning');
+    return;
+  }
+
+  const dev = devices.value.find((d) => String(d.id) === String(deviceId));
+  const meta = dev?.variableMeta?.[key];
+  const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+  if (isReadOnly) {
+    showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
+    return;
+  }
+
+  const current = getDeviceVariableValue(deviceId, key);
+  let targetVal: any;
+  if (actionType === 'setValue' && val !== undefined) {
+    targetVal = val;
+  } else if (actionType === 'setBit') {
+    targetVal = typeof current === 'boolean' ? true : 1;
+  } else if (actionType === 'resetBit') {
+    targetVal = typeof current === 'boolean' ? false : 0;
+  } else if (actionType === 'momentary' && val !== undefined) {
+    targetVal = typeof current === 'boolean' ? val : val ? 1 : 0;
+  } else {
+    if (typeof current === 'boolean') targetVal = !current;
+    else if (typeof current === 'number') targetVal = current === 0 ? 1 : 0;
+    else targetVal = val ?? 1;
+  }
+  setDeviceVariableValue(deviceId, key, targetVal);
+};
+</script>
+
+<template>
+  <div class="h-screen w-screen bg-slate-200 dark:bg-[#0b1220] overflow-hidden select-none">
+    <!-- 加载中 -->
+    <div v-if="loadingProject"
+      class="h-full flex items-center justify-center text-slate-500 dark:text-slate-400">
+      <div class="text-center">
+        <RefreshCw class="w-8 h-8 mx-auto mb-2 animate-spin opacity-40" />
+        <p class="text-sm">正在加载工程组态…</p>
+      </div>
+    </div>
+
+    <!-- 空态 / 工程加载失败 / 当前无可用画面 -->
+    <div v-else-if="projectError || !currentPage"
+      class="h-full flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
+      <div>
+        <p class="text-sm">{{ projectError ? '工程加载失败或不存在' : '当前工程暂无可用画面' }}</p>
+        <p class="text-[11px] mt-1">请在组态设计中为该端新增画面并发布。</p>
+      </div>
+    </div>
+
+    <!-- 组态画布：直接铺满视口（运行态自动缩放适配，无卡片/手机壳装饰） -->
+    <div v-else class="h-full w-full">
+      <CanvasPanel class="h-full w-full" :components="currentPage.components" :selectedId="null" :selectedIds="[]"
+        :isActiveMode="true" :component-values="componentValues" :component-qualities="componentQualities"
+        :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite" :readonly="true"
+        @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate" />
+    </div>
+  </div>
+</template>

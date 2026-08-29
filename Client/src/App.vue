@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import {
   isAuthenticated,
   loginUser,
@@ -55,6 +55,7 @@ import {
 } from 'lucide-vue-next';
 
 const router = useRouter();
+const route = useRoute();
 
 // Responsive sidebar state for mobile drawers
 const isMobileSidebarOpen = ref(false);
@@ -160,6 +161,10 @@ const isActive = (path: string) =>
 
 // 阶段5：角色隔离——仅管理员可见后台导航；普通用户（Operator）仅见「组态运行」入口
 const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
+
+// 独立运行模式：路由 meta.standalone=true（组态运行画布）时隐藏系统顶部菜单与侧边栏，
+// 画布铺满整屏。由新标签页打开（token 在 localStorage 共享，无需重复登录）。
+const isStandalone = computed(() => route.meta.standalone === true);
 
 // ---- 自主修改密码（所有已登录用户可见，入口在侧边栏用户区）----
 const showChangePwModal = ref(false);
@@ -309,7 +314,7 @@ const handleChangeMyPassword = async () => {
     class="h-screen w-screen flex flex-col font-sans text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-[#070b12] overflow-hidden select-none">
     <!-- Top Header Bar: Light in light mode, dark in dark mode -->
     <header
-      v-show="!isScadaFullscreen"
+      v-show="!isScadaFullscreen && !isStandalone"
       class="h-14 bg-white dark:bg-[#070b12] text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-xs relative z-30 transition-colors">
       <div class="flex items-center gap-3">
         <button @click="isMobileSidebarOpen = !isMobileSidebarOpen"
@@ -360,7 +365,7 @@ const handleChangeMyPassword = async () => {
     <div class="flex-1 flex overflow-hidden relative">
       <!-- Desktop Sidebar: Light in light mode, dark in dark mode -->
       <aside
-        v-show="!isScadaFullscreen"
+        v-show="!isScadaFullscreen && !isStandalone"
         class="hidden lg:flex bg-white dark:bg-[#070b12] text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-900 flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300"
         :class="isSidebarCollapsed ? 'w-16' : 'w-64'">
         <div

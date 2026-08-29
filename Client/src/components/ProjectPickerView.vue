@@ -25,8 +25,10 @@ onMounted(async () => {
 
 const isAdmin = computed(() => loginUser.value?.role === ROLE_ADMIN);
 
+// 独立运行页：新标签页打开（路由 meta.standalone，App.vue 隐藏系统框架）。
+// token 在 localStorage 共享，新页 boot 时自动回源认证；router.resolve 保证带上路由 base。
 const enterProject = (id: number) => {
-  router.push(`/scada-view/${id}`);
+  window.open(router.resolve(`/scada-view/${id}`).href, '_blank');
 };
 
 const goEditor = () => router.push('/scada-editor');
