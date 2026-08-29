@@ -288,6 +288,85 @@ namespace ScadaServer.Infrastructure.Influx
             }
         }
 
+        /// <inheritdoc/>
+        public async Task<(bool Success, string Message)> DeleteBeforeAsync(DateTime cutoffUtc)
+        {
+            InfluxDBClient? client;
+            string bucket, org;
+            lock (_lock)
+            {
+                client = _client;
+                bucket = _bucket;
+                org = _org;
+            }
+
+            if (client == null || string.IsNullOrEmpty(bucket))
+            {
+                return (false, "尚未配置 InfluxDB 历史库连接，无法执行历史清理。");
+            }
+
+            try
+            {
+                var deleteApi = client.GetDeleteApi();
+                // 删除范围：epoch 起点 ~ cutoff；谓词限定 measurement，避免波及同 bucket 其他数据。
+                await deleteApi.Delete(
+                    new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    cutoffUtc,
+                    $"_measurement=\"{MeasurementName}\"",
+                    bucket,
+                    org);
+                return (true, $"已删除 {cutoffUtc:yyyy-MM-dd HH:mm:ss} UTC 之前的时序数据。");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "InfluxDB 历史清理失败（cutoff={Cutoff}）。", cutoffUtc);
+                return (false, $"InfluxDB 历史清理失败: {ex.Message}");
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<(bool Success, long Rows, string Message)> ExportAllAsync(string outputCsvPath)
+        {
+            InfluxDBClient? client;
+            string bucket, org;
+            lock (_lock)
+            {
+                client = _client;
+                bucket = _bucket;
+                org = _org;
+            }
+
+            if (client == null || string.IsNullOrEmpty(bucket) || string.IsNullOrEmpty(org))
+            {
+                return (false, 0, "尚未配置 InfluxDB 历史库连接，跳过时序数据导出。");
+            }
+
+            try
+            {
+                var flux = $"from(bucket: \"{Escape(bucket)}\")\n" +
+                           "  |> range(start: 0)\n" +
+                           $"  |> filter(fn: (r) => r._measurement == \"{MeasurementName}\")";
+
+                var csv = await client.GetQueryApi().QueryRawAsync(flux, null, org);
+                if (string.IsNullOrEmpty(csv))
+                {
+                    // 空结果也写出文件（仅表头缺失，保留空文件以标记已导出）
+                    await System.IO.File.WriteAllTextAsync(outputCsvPath, string.Empty);
+                    return (true, 0, "InfluxDB 时序数据为空，已导出空文件。");
+                }
+
+                await System.IO.File.WriteAllTextAsync(outputCsvPath, csv);
+                // 行数 = 换行符数（InfluxDB 原生 CSV 每行一个数据点/注释）
+                var rows = csv.Count(c => c == '\n');
+                return (true, rows, $"已导出 {rows} 行时序数据。");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "InfluxDB 全量导出失败。");
+                return (false, 0, $"InfluxDB 全量导出失败: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// 组装 FLUX 查询：双 tag 过滤 + （可选）窗口聚合 + pivot 合并字段 + 倒序取 limit 再升序返回。
         /// <paramref name="aggregateWindowMs"/> 大于 0 时插入 aggregateWindow（均值），用于大时间范围降采样。

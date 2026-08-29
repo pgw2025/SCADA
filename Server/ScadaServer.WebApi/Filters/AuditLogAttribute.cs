@@ -65,6 +65,8 @@ namespace ScadaServer.WebApi.Filters
             var actionName = context.ActionDescriptor.RouteValues.TryGetValue("action", out var action)
                 ? action
                 : context.ActionDescriptor.DisplayName ?? "action";
+            // 业务上下文（如变量键 + 写入值），追加到操作描述，便于审计定位"谁改了哪个变量、改成了什么"
+            var contextSuffix = ExtractContextSuffix(context);
 
             ActionExecutedContext executed;
             try
@@ -74,20 +76,20 @@ namespace ScadaServer.WebApi.Filters
             catch (Exception ex)
             {
                 // 异常：记 Error 级审计（异常仍向上抛，由全局异常中间件处理）
-                await TryRecordAsync(relatedId, $"操作异常：{actionName} {ex.Message}", "Error");
+                await TryRecordAsync(relatedId, $"操作异常：{actionName} {ex.Message}{contextSuffix}", "Error");
                 throw;
             }
 
             if (executed.Exception != null)
             {
-                await TryRecordAsync(relatedId, $"操作异常：{actionName} {executed.Exception.Message}", "Error");
+                await TryRecordAsync(relatedId, $"操作异常：{actionName} {executed.Exception.Message}{contextSuffix}", "Error");
                 return;
             }
 
             // 2xx 视为成功（Information），其余（4xx/5xx 业务失败）记为 Warning
             var statusCode = executed.HttpContext.Response.StatusCode;
             var level = statusCode is >= 200 and < 300 ? "Information" : "Warning";
-            await TryRecordAsync(relatedId, $"操作完成：{actionName}（HTTP {statusCode}）", level);
+            await TryRecordAsync(relatedId, $"操作完成：{actionName}（HTTP {statusCode}）{contextSuffix}", level);
         }
 
         /// <summary>
@@ -103,6 +105,47 @@ namespace ScadaServer.WebApi.Filters
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// 提取业务上下文后缀（变量键 + 写入值），用于操作描述中携带关键审计信息。
+        /// <para>
+        /// 仅识别路由值 variableKey 与请求体参数的 Value 属性（如 WriteVariableRequestDto），
+        /// 其余动作（无这些字段）返回空串，日志格式不受影响。
+        /// </para>
+        /// </summary>
+        private static string ExtractContextSuffix(ActionExecutingContext context)
+        {
+            var parts = new List<string>(2);
+
+            if (context.RouteData.Values.TryGetValue("variableKey", out var variableKey) && variableKey != null)
+            {
+                parts.Add($"变量=[{variableKey}]");
+            }
+
+            foreach (var arg in context.ActionArguments.Values)
+            {
+                if (arg == null)
+                {
+                    continue;
+                }
+
+                var valueProperty = arg.GetType().GetProperty("Value");
+                if (valueProperty == null)
+                {
+                    continue;
+                }
+
+                var value = valueProperty.GetValue(arg)?.ToString();
+                if (!string.IsNullOrEmpty(value))
+                {
+                    // 截断防止大对象写入值撑爆日志（整体内容另受 MaxContentLength 约束）
+                    parts.Add($"写入值=[{(value.Length <= 100 ? value : value[..100] + "…")}]");
+                }
+                break;
+            }
+
+            return parts.Count > 0 ? " " + string.Join(" ", parts) : string.Empty;
         }
 
         private async Task TryRecordAsync(string? relatedId, string description, string level)

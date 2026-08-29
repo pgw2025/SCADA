@@ -73,6 +73,9 @@ namespace ScadaServer.WebApi.Extensions
             // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）
             services.AddScoped<IOperationAuditService, OperationAuditService>();
 
+            // 变量写入审计记录器：运行时层（脚本/绑定联动）非 HTTP 写入路径的操作日志桥接（Singleton，与 RuntimeManager 生命周期一致）
+            services.AddSingleton<IVariableWriteAuditRecorder, VariableWriteAuditRecorder>();
+
             // 设备状态持久化订阅者（构造时订阅运行时状态变更事件，Singleton 常驻）
             services.AddSingleton<DeviceStatusPersistenceSubscriber>();
 

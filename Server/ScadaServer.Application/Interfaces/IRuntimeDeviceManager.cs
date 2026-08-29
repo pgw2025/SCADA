@@ -35,7 +35,8 @@ namespace ScadaServer.Application.Interfaces
         /// <param name="deviceId">设备 ID</param>
         /// <param name="variableKey">变量业务键（ModelVariable.Key）</param>
         /// <param name="value">待写入的原始值</param>
+        /// <param name="writeSource">写入来源（如「系统脚本」「变量绑定」）；非空时在运行时层记录写入审计日志，null（默认）表示 HTTP 用户写入（由 WebApi 审计过滤器记录）</param>
         /// <returns>(Success, ErrorMessage)；Success=true 时 ErrorMessage 为 null</returns>
-        Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value);
+        Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value, string? writeSource = null);
     }
 }

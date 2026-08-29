@@ -42,6 +42,7 @@ namespace ScadaServer.Runtime
         private readonly IAlarmRuleEngine _alarmRuleEngine;
         private readonly IAlarmRecorder _alarmRecorder;
         private readonly IRealtimeSnapshotService _realtimeSnapshot;
+        private readonly IVariableWriteAuditRecorder _variableWriteAudit;
         private DeviceScheduler? _scheduler;
 
         /// <summary>
@@ -69,7 +70,8 @@ namespace ScadaServer.Runtime
             IVariableBindingEngine bindingEngine,
             IAlarmRuleEngine alarmRuleEngine,
             IAlarmRecorder alarmRecorder,
-            IRealtimeSnapshotService realtimeSnapshot)
+            IRealtimeSnapshotService realtimeSnapshot,
+            IVariableWriteAuditRecorder variableWriteAudit)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -83,6 +85,7 @@ namespace ScadaServer.Runtime
             _alarmRuleEngine = alarmRuleEngine;
             _alarmRecorder = alarmRecorder;
             _realtimeSnapshot = realtimeSnapshot;
+            _variableWriteAudit = variableWriteAudit;
         }
 
         /// <inheritdoc/>
@@ -421,22 +424,30 @@ namespace ScadaServer.Runtime
         }
 
         /// <inheritdoc/>
-        public async Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value)
+        public async Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value, string? writeSource = null)
         {
+            // 审计埋点：非 HTTP 来源（系统脚本/变量绑定）在运行时层记录操作日志；
+            // HTTP 用户写入由 WebApi 层 [AuditLog] 过滤器记录（含操作人/IP），writeSource 传 null 跳过避免重复。
+            async Task<(bool Success, string? ErrorMessage)> FailAsync(string message)
+            {
+                await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, false, message);
+                return (false, message);
+            }
+
             if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
-                return (false, "设备不在运行中");
+                return await FailAsync("设备不在运行中");
 
             var vr = runtime.Variables.Values.FirstOrDefault(v => v.Key == variableKey);
             if (vr == null)
-                return (false, $"设备下不存在变量 [{variableKey}]");
+                return await FailAsync($"设备下不存在变量 [{variableKey}]");
             if (!vr.IsEnabled)
-                return (false, $"变量 [{variableKey}] 已禁用");
+                return await FailAsync($"变量 [{variableKey}] 已禁用");
             if (vr.IsReadOnly)
-                return (false, $"变量 [{variableKey}] 为只读，禁止写入");
+                return await FailAsync($"变量 [{variableKey}] 为只读，禁止写入");
             if (runtime.Driver == null)
-                return (false, "设备驱动未就绪");
+                return await FailAsync("设备驱动未就绪");
             if (runtime.ConnectionState != DeviceConnectionState.Connected)
-                return (false, "设备未连接，无法写入");
+                return await FailAsync("设备未连接，无法写入");
 
             // 串行化内存状态更新，避免与采集调度对同一变量并发读写。
             await runtime.Lock.WaitAsync();
@@ -453,7 +464,7 @@ namespace ScadaServer.Runtime
             catch (Exception ex)
             {
                 _logger.LogWarning("设备 {DeviceId} 变量 [{VarKey}] 写入失败: {Msg}", deviceId, variableKey, ex.Message);
-                return (false, $"写入失败: {ex.Message}");
+                return await FailAsync($"写入失败: {ex.Message}");
             }
             finally
             {
@@ -482,7 +493,28 @@ namespace ScadaServer.Runtime
                 Source = VariableChangeSource.UserWrite
             });
 
+            await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, true, null);
             return (true, null);
+        }
+
+        /// <summary>
+        /// 记录变量写入审计日志（仅非 HTTP 来源；审计失败不影响写值主业务）。
+        /// </summary>
+        private async Task RecordVariableWriteAuditAsync(int deviceId, string variableKey, object value, string? writeSource, bool success, string? errorMessage)
+        {
+            if (string.IsNullOrEmpty(writeSource))
+            {
+                return;
+            }
+
+            try
+            {
+                await _variableWriteAudit.RecordAsync(deviceId, variableKey, value, writeSource, success, errorMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入审计日志记录失败（已忽略）。", deviceId, variableKey);
+            }
         }
 
         /// <summary>

@@ -159,7 +159,7 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
         try
         {
             var rm = _serviceProvider.GetRequiredService<RuntimeManager>();
-            var result = await rm.WriteVariableAsync(target.DeviceId, target.VariableKey, value);
+            var result = await rm.WriteVariableAsync(target.DeviceId, target.VariableKey, value, "变量绑定");
             if (result.Success)
             {
                 Interlocked.Increment(ref _writeSuccess);

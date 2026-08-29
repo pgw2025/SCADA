@@ -15,6 +15,5 @@ export * from './alarmStore';
 export * from './scriptStore';
 export * from '../services/logService';
 export * from '../api/authApi';
-export * from '../services/taskService';
 export * from '../services/scriptService';
 export * from '../services/areaService';

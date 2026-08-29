@@ -107,7 +107,7 @@ namespace ScadaServer.Runtime.Scripting
                 return false;
             }
 
-            var (success, error) = _runtime.WriteVariableAsync(device.Device.Id, variableKey, value).GetAwaiter().GetResult();
+            var (success, error) = _runtime.WriteVariableAsync(device.Device.Id, variableKey, value, "系统脚本").GetAwaiter().GetResult();
             errorMessage = error ?? string.Empty;
             return success;
         }

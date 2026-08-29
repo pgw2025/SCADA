@@ -58,6 +58,7 @@ namespace ScadaServer.WebApi.Controllers
         /// 其它角色（如 Viewer）即使通过全局 JWT 认证也被拒绝（403）。
         [HttpPost("{id}/variables/{variableKey}/write")]
         [Authorize(Roles = $"{SystemRoles.Operator},{SystemRoles.Admin}")]
+        [AuditLog("变量写入", "WRITE")]
         public async Task<IActionResult> WriteVariable(int id, string variableKey, [FromBody] WriteVariableRequestDto dto)
         {
             await _deviceAppService.WriteVariableAsync(id, variableKey, dto.Value!);

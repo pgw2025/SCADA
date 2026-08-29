@@ -34,5 +34,32 @@ namespace ScadaServer.Domain.Entities
         /// 是否启用
         /// </summary>
         public bool Active { get; set; }
+
+        /// <summary>
+        /// 最近一次执行开始时间（UTC 存储）
+        /// </summary>
+        public DateTime? LastRunAt { get; set; }
+
+        /// <summary>
+        /// 最近一次执行状态：Running / Success / Failed / Skipped
+        /// </summary>
+        [MaxLength(16)]
+        public string LastStatus { get; set; } = "Idle";
+
+        /// <summary>
+        /// 最近一次执行错误信息（执行失败时供前端展示）
+        /// </summary>
+        [MaxLength(2000)]
+        public string? LastError { get; set; }
+
+        /// <summary>
+        /// 最近一次执行耗时（毫秒）
+        /// </summary>
+        public int? LastDurationMs { get; set; }
+
+        /// <summary>
+        /// 下次计划触发时间（UTC 存储，由调度器维护，前端展示用）
+        /// </summary>
+        public DateTime? NextRunAt { get; set; }
     }
 }

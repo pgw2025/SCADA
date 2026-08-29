@@ -54,6 +54,16 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IScriptEngineHost>(sp => sp.GetRequiredService<ScriptEngineHost>());
             services.AddHostedService(sp => sp.GetRequiredService<ScriptEngineHost>());
 
+            // 定时任务调度器：单一 Tick 循环驱动 Cron 触发；执行器按任务类型（策略模式）分派。
+            services.AddSingleton<ScadaServer.Runtime.Tasks.ScheduledTaskScheduler>();
+            services.AddSingleton<ScadaServer.Runtime.Tasks.IScheduledTaskScheduler>(
+                sp => sp.GetRequiredService<ScadaServer.Runtime.Tasks.ScheduledTaskScheduler>());
+            services.AddHostedService(sp => sp.GetRequiredService<ScadaServer.Runtime.Tasks.ScheduledTaskScheduler>());
+            services.AddSingleton<ScadaServer.Runtime.Tasks.IScheduledTaskExecutor, ScadaServer.Runtime.Tasks.SetValueTaskExecutor>();
+            services.AddSingleton<ScadaServer.Runtime.Tasks.IScheduledTaskExecutor, ScadaServer.Runtime.Tasks.ExecuteScriptTaskExecutor>();
+            services.AddSingleton<ScadaServer.Runtime.Tasks.IScheduledTaskExecutor, ScadaServer.Runtime.Tasks.ClearHistoryTaskExecutor>();
+            services.AddSingleton<ScadaServer.Runtime.Tasks.IScheduledTaskExecutor, ScadaServer.Runtime.Tasks.BackupTaskExecutor>();
+
             // MQTT 服务（MqttHandler 当前为占位实现）
             services.AddSingleton<IMqttService, MqttHandler>();
 

@@ -613,22 +613,35 @@ export interface VariableTrigger {
   active: boolean;
 }
 
+/** 定时任务（后端 ScheduledTaskDto 镜像）。 */
 export interface ScheduledTask {
-  id: string;
+  id: number;
   name: string;
   type: 'set_value' | 'backup' | 'execute_script' | 'clear_history';
-  cronExpression: string; // e.g. "每5秒", "每天凌晨2:00", "每分钟"
-  params: {
-    variableKey?: string;
-    newValue?: number;
-    /** 严格模式：set_value 任务的目标设备（禁止裸 key）。 */
-    deviceId?: number | null;
-    scriptId?: string;
-    retentionDays?: number;
-  };
-  lastRun?: string;
-  status: 'idle' | 'running' | 'success' | 'failed';
+  /** Cron 表达式：5 段分钟级或 6 段秒级（如 "0 2 * * *"，秒级首段支持步进如每 5 秒） */
+  cronExpression: string;
+  /** 任务参数 JSON 字符串：{ deviceId?, variableKey?, newValue?, scriptId?, retentionDays? } */
+  paramsJson: string;
   active: boolean;
+  /** 最近一次执行开始时间（UTC ISO，前端本地化展示） */
+  lastRunAt?: string | null;
+  /** 最近一次执行状态：Idle / Running / Success / Failed / Skipped */
+  lastStatus?: string | null;
+  /** 最近一次执行错误信息 */
+  lastError?: string | null;
+  /** 最近一次执行耗时（毫秒） */
+  lastDurationMs?: number | null;
+  /** 下次计划触发时间（UTC ISO，前端本地化展示） */
+  nextRunAt?: string | null;
+}
+
+/** 定时任务手动执行结果（POST /api/ScheduledTask/{id}/execute 返回）。 */
+export interface ScheduledTaskRunResult {
+  taskId: number;
+  status: 'Success' | 'Failed' | 'Skipped';
+  output?: string | null;
+  error?: string | null;
+  durationMs: number;
 }
 
 export interface SystemScript {

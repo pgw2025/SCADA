@@ -39,5 +39,17 @@ namespace ScadaServer.Application.Interfaces
 
         /// <summary>对指定（尚未生效的）配置做连接测试，不改变当前生效客户端。</summary>
         Task<(bool Success, long LatencyMs, string Message)> TestConnectionAsync(DatabaseConfig config);
+
+        /// <summary>
+        /// 删除 variable_history 测量中指定时间（UTC）之前的全部时序点（历史清理任务用）。
+        /// 未配置 InfluxDB 时返回 (false, 提示)。
+        /// </summary>
+        Task<(bool Success, string Message)> DeleteBeforeAsync(DateTime cutoffUtc);
+
+        /// <summary>
+        /// 全量导出 variable_history 测量为 CSV 文件（备份任务用，InfluxDB 原生 CSV 格式）。
+        /// 返回是否成功与数据行数；未配置 InfluxDB 时返回失败。
+        /// </summary>
+        Task<(bool Success, long Rows, string Message)> ExportAllAsync(string outputCsvPath);
     }
 }
