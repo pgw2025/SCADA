@@ -38,6 +38,19 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>点表诊断用：PLC 读取异常标记。</summary>
         private const string ReadError = "READ_ERROR";
 
+        /// <summary>协议配置反序列化选项：属性名大小写不敏感，兼容 camelCase / PascalCase 两种存储格式。</summary>
+        private static readonly JsonSerializerOptions ConfigJsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        /// <summary>
+        /// 批量读取聚簇的最大地址间隙（字节）。组内相邻变量的字节间隙不超过该值时才合并为一次读取；
+        /// 间隙过大的孤立点（如 DB1.DBW0 与 DB1.DBW4000）单独成簇，避免为读几个字节而拖动整段区间。
+        /// 注：S7netplus 的 ReadBytesAsync 对超过单次 PDU 的读取会在库内部自动分片为多次请求，驱动无需再按 PDU 切分。
+        /// </summary>
+        private const int MaxClusterGapBytes = 200;
+
         /// <summary>
         /// 支持地址格式（不区分大小写）：
         ///   DB1.DBX0.0 / DB1.DBW10 / DB1.DBD20 / DB1.DBR30
@@ -63,7 +76,7 @@ namespace ScadaServer.Infrastructure.Communication
             if (string.IsNullOrWhiteSpace(configJson))
                 throw new ArgumentException("S7 协议配置不能为空", nameof(device));
 
-            var config = JsonSerializer.Deserialize<S7Config>(configJson);
+            var config = JsonSerializer.Deserialize<S7Config>(configJson, ConfigJsonOptions);
             if (config == null)
                 throw new ArgumentException("无效的 S7 协议配置");
 
@@ -92,7 +105,7 @@ namespace ScadaServer.Infrastructure.Communication
                 Plc? newPlc = null;
                 try
                 {
-                    newPlc = new Plc(cpuType, config.IpAddress, (short)config.Rack, (short)config.Slot);
+                    newPlc = new Plc(cpuType, config.IpAddress, config.Port, (short)config.Rack, (short)config.Slot);
                     await newPlc.OpenAsync();
 
                     if (newPlc.IsConnected)
@@ -132,6 +145,9 @@ namespace ScadaServer.Infrastructure.Communication
                     throw new ArgumentException("S7 配置的 IP 地址无效（0.0.0.0）", nameof(config.IpAddress));
             }
 
+            if (config.Port < 1 || config.Port > 65535)
+                throw new ArgumentOutOfRangeException(nameof(config.Port), "Port 取值必须介于 1~65535");
+
             if (config.Rack < 0 || config.Rack > 31)
                 throw new ArgumentOutOfRangeException(nameof(config.Rack), "Rack 取值必须介于 0~31");
             if (config.Slot < 0 || config.Slot > 31)
@@ -168,6 +184,15 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
+        /// <summary>
+        /// 批量读取多个变量值。
+        /// </summary>
+        /// <remarks>
+        /// 返回字典的值为两类之一：真实读取值（bool/byte/short/int/float，S7 驱动的真实值不会是 string），
+        /// 或诊断标记字符串 —— <see cref="ReadError"/>（未连接 / 读取失败）与 <see cref="InvalidAddress"/>（地址非法）。
+        /// 调用方应先比对标记再做类型转换；该约定与接口 <c>ReadAsync</c> 以 null 表示失败的语义不同
+        /// （接口签名共享于所有驱动，统一需接口级变更）。
+        /// </remarks>
         public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();
@@ -210,43 +235,68 @@ namespace ScadaServer.Infrastructure.Communication
                 foreach (var group in groups)
                 {
                     int dbNumber = group.Key.DbNumber;
-                    var varInfos = group.ToList();
-                    if (varInfos.Count == 0)
+
+                    // 4) 组内按字节偏移升序排序后做近邻聚簇：仅当相邻变量的地址间隙
+                    //    不超过 MaxClusterGapBytes 时才合并为一次读取；间隙过大的孤立点
+                    //    单独成簇，避免为读几个字节而拖动整段区间（如 DB1.DBW0 与
+                    //    DB1.DBW4000 同组时读取 4KB 无用数据）。
+                    var ordered = group.OrderBy(x => x.Info.ByteOffset).ToList();
+                    if (ordered.Count == 0)
                         continue;
 
-                    // 4) 计算连续地址区间，一次读取
-                    int minOffset = varInfos.Min(x => x.Info.ByteOffset);
-                    int maxOffset = varInfos.Max(x => x.Info.ByteOffset + x.Info.ByteLength);
-                    int length = maxOffset - minOffset;
-                    if (length <= 0)
-                        continue;
+                    var clusters = new List<List<(IRuntimeVariable Variable, S7AddressInfo Info)>>();
+                    var current = new List<(IRuntimeVariable Variable, S7AddressInfo Info)> { ordered[0] };
+                    int clusterEnd = ordered[0].Info.ByteOffset + ordered[0].Info.ByteLength;
 
-                    byte[]? buffer;
-                    try
+                    for (int i = 1; i < ordered.Count; i++)
                     {
-                        buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length);
+                        var item = ordered[i];
+                        if (item.Info.ByteOffset - clusterEnd > MaxClusterGapBytes)
+                        {
+                            clusters.Add(current);
+                            current = new List<(IRuntimeVariable Variable, S7AddressInfo Info)>();
+                        }
+
+                        current.Add(item);
+                        clusterEnd = Math.Max(clusterEnd, item.Info.ByteOffset + item.Info.ByteLength);
                     }
-                    catch (Exception)
-                    {
-                        // 该组读取异常：整组标记 READ_ERROR，便于点表诊断
-                        foreach (var item in varInfos)
-                            results[item.Variable.Key] = ReadError;
-                        continue;
-                    }
+                    clusters.Add(current);
 
-                    // S7netplus 读取失败时可能返回 null
-                    if (buffer == null)
+                    foreach (var cluster in clusters)
                     {
-                        foreach (var item in varInfos)
-                            results[item.Variable.Key] = ReadError;
-                        continue;
-                    }
+                        int minOffset = cluster[0].Info.ByteOffset; // 升序排序后首元素即最小偏移
+                        int maxOffset = cluster.Max(x => x.Info.ByteOffset + x.Info.ByteLength);
+                        int length = maxOffset - minOffset;
+                        if (length <= 0)
+                            continue;
 
-                    // 5) 防越界解析
-                    foreach (var item in varInfos)
-                    {
-                        var value = ExtractValue(buffer, item.Info, minOffset);
-                        results[item.Variable.Key] = value ?? (object)ReadError;
+                        byte[]? buffer;
+                        try
+                        {
+                            buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length);
+                        }
+                        catch (Exception)
+                        {
+                            // 该簇读取异常：整簇标记 READ_ERROR，便于点表诊断
+                            foreach (var item in cluster)
+                                results[item.Variable.Key] = ReadError;
+                            continue;
+                        }
+
+                        // S7netplus 读取失败时可能返回 null；同时校验返回长度，杜绝下游越界
+                        if (buffer == null || buffer.Length < length)
+                        {
+                            foreach (var item in cluster)
+                                results[item.Variable.Key] = ReadError;
+                            continue;
+                        }
+
+                        // 5) 解析（缓冲区长度已校验，ExtractValue 内的边界检查为兜底防御）
+                        foreach (var item in cluster)
+                        {
+                            var value = ExtractValue(buffer, item.Info, minOffset);
+                            results[item.Variable.Key] = value ?? (object)ReadError;
+                        }
                     }
                 }
             }
@@ -349,9 +399,10 @@ namespace ScadaServer.Infrastructure.Communication
                     _ => value
                 };
             }
-            catch (InvalidCastException)
+            catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
             {
-                throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {dataType}");
+                // 覆盖 Convert 的全部典型转换失败：字符串格式错误（Format）、数值溢出（Overflow）、类型不兼容（InvalidCast）
+                throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {dataType}", ex);
             }
         }
 
@@ -416,12 +467,13 @@ namespace ScadaServer.Infrastructure.Communication
             if (_disposed)
                 return;
 
-            _disposed = true;
-
-            // 先断开连接（此时锁仍有效）
+            // 必须先断开连接、再置位 _disposed：DisconnectAsync 开头会检查 _disposed，
+            // 若先置位会导致其直接返回，PLC 连接永不关闭（句柄/套接字泄漏）
             await DisconnectAsync();
 
-            // 再释放信号量，避免重复释放
+            _disposed = true;
+
+            // 最后释放信号量，避免重复释放
             try
             {
                 _plcLock.Dispose();
@@ -453,11 +505,10 @@ namespace ScadaServer.Infrastructure.Communication
             int offset = int.Parse(match.Groups["offset"].Value, CultureInfo.InvariantCulture);
             bool hasBit = match.Groups["bit"].Success && !string.IsNullOrEmpty(match.Groups["bit"].Value);
             int bit = hasBit ? int.Parse(match.Groups["bit"].Value, CultureInfo.InvariantCulture) : 0;
-            int db = match.Groups["db"].Success && !string.IsNullOrEmpty(match.Groups["db"].Value)
-                ? int.Parse(match.Groups["db"].Value, CultureInfo.InvariantCulture)
-                : 0;
+            bool hasDb = match.Groups["db"].Success && !string.IsNullOrEmpty(match.Groups["db"].Value);
 
             bool isBitType = typeStr is "DBX" or "I" or "Q" or "M";
+            bool isDbType = typeStr.StartsWith("DB", StringComparison.Ordinal);
 
             // 地址合法性检查：Bit 偏移只能 0~7
             if (hasBit && (bit < 0 || bit > 7))
@@ -468,6 +519,27 @@ namespace ScadaServer.Infrastructure.Communication
             // 位类型必须携带 .bit 后缀
             if (isBitType && !hasBit)
                 return null;
+
+            // DB 区域地址（DBX/DBB/DBW/DBD/DBR）必须携带 "DBn." 前缀且 DB 号 ≥ 1（DB0 保留不可用，
+            // 缺少前缀的 "DBW10"、DB 号为 0 的 "DB0.DBW10" 均视为非法，反馈为点表诊断错误）；
+            // 非 DB 区域（I/Q/M 系列）不允许携带 DB 前缀（如 "DB1.MW10" 属区域与前缀误配，视为非法）
+            int db;
+            if (isDbType)
+            {
+                if (!hasDb)
+                    return null;
+
+                db = int.Parse(match.Groups["db"].Value, CultureInfo.InvariantCulture);
+                if (db < 1)
+                    return null;
+            }
+            else
+            {
+                if (hasDb)
+                    return null;
+
+                db = 0;
+            }
 
             var info = new S7AddressInfo
             {
