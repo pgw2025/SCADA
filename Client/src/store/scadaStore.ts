@@ -18,7 +18,7 @@ export const selectedPageId = ref<string>('');
 export const scadaLoading = ref(false);
 
 export const currentProject = computed(() => {
-    return scadaProjects.value.find(p => p.id === selectedProjectId.value) || scadaProjects.value[0];
+  return scadaProjects.value.find(p => p.id === selectedProjectId.value) || scadaProjects.value[0];
 });
 
 export const currentPage = computed(() => {
@@ -29,6 +29,16 @@ export const currentPage = computed(() => {
 
 // 双布局：当前编辑/查看的端（Desktop / Mobile）。缺省 Desktop。
 export const currentPlatform = ref<'Desktop' | 'Mobile'>('Desktop');
+
+/** 组态设计全屏模式状态（全屏下隐藏系统顶部菜单、系统侧边栏与编辑器左侧工程列表） */
+export const isScadaFullscreen = ref<boolean>(false);
+export const toggleScadaFullscreen = (val?: boolean) => {
+  if (typeof val === 'boolean') {
+    isScadaFullscreen.value = val;
+  } else {
+    isScadaFullscreen.value = !isScadaFullscreen.value;
+  }
+};
 
 // 按归属端分组的页面列表（缺省按 Desktop 处理），编辑器页面树据此分两栏。
 export const desktopPages = computed(() =>

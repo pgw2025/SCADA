@@ -22,8 +22,13 @@ import {
   Sliders, 
   X,
   FileJson,
-  Binary
+  Binary,
+  ChevronDown,
+  Check
 } from 'lucide-vue-next';
+
+// Mobile Drawer state
+const isMobileModelDrawerOpen = ref<boolean>(false);
 
 // Active selection
 const selectedModelId = ref<string>(dataModels.value[0]?.id || '');
@@ -399,15 +404,49 @@ const handleDeleteVariable = async (v: ModelVariable) => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto md:overflow-y-hidden flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
+  <div class="h-full flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent overflow-hidden">
     
-    <!-- LEFT LIST: Models directories -->
-    <div class="w-full md:w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 flex-1 md:flex-none transition-colors">
+    <!-- Mobile Model Switcher Header (方案一: 移动端顶部紧凑切换条) -->
+    <div class="md:hidden bg-violet-50/80 dark:bg-slate-900 border-b border-violet-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2 shrink-0">
+      <button
+        id="btn-open-model-drawer-v"
+        @click="isMobileModelDrawerOpen = true"
+        class="flex-1 flex items-center justify-between bg-white dark:bg-slate-800 border border-violet-200/70 dark:border-slate-700 rounded-lg px-3 py-2 text-left shadow-2xs active:scale-[0.99] transition-transform cursor-pointer"
+      >
+        <div class="flex items-center gap-2 min-w-0">
+          <Layers class="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+          <div class="min-w-0">
+            <div class="text-xs font-bold text-slate-800 dark:text-white truncate">
+              {{ currentModel?.name || '选择数据模型' }}
+            </div>
+            <div class="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+              <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1 rounded font-mono font-bold">{{ currentModelProtocol }} 协议</span>
+              <span>•</span>
+              <span>{{ totalVariableCount }} 个变量</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 text-slate-400 pl-2">
+          <ChevronDown class="w-4 h-4 text-violet-600 dark:text-violet-400" />
+        </div>
+      </button>
+
+      <button 
+        @click="showVarModal = true"
+        class="bg-violet-600 hover:bg-violet-700 text-white p-2.5 rounded-lg flex items-center justify-center shrink-0 shadow-2xs cursor-pointer"
+        title="添加变量"
+      >
+        <Plus class="w-4 h-4" />
+      </button>
+    </div>
+
+    <!-- LEFT LIST: Models directories (md 及以上桌面端侧边栏) -->
+    <div class="hidden md:flex w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col shrink-0 transition-colors">
       
       <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900 dark:text-white">
           <Layers class="w-4 h-4 text-violet-500" />
-          <span>数据模型</span>
+          <span>数据模型 ({{ dataModels.length }})</span>
         </div>
 
         <button 
@@ -419,7 +458,7 @@ const handleDeleteVariable = async (v: ModelVariable) => {
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[220px] md:max-h-none text-left">
+      <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-left">
         <div 
           v-for="model in dataModels" 
           :key="model.id"
@@ -444,27 +483,27 @@ const handleDeleteVariable = async (v: ModelVariable) => {
     </div>
 
     <!-- RIGHT PANEL: Schema detail table and live append -->
-    <div class="flex-1 flex flex-col bg-slate-50/50 dark:bg-transparent text-left min-w-0">
+    <div class="flex-1 flex flex-col bg-slate-50/50 dark:bg-transparent text-left min-w-0 overflow-hidden">
       
-      <div v-if="currentModel" class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
+      <div v-if="currentModel" class="bg-white dark:bg-slate-900 p-4 md:p-5 border-b border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors shrink-0">
         <div class="space-y-1">
-          <div class="flex items-center gap-2">
-            <h2 class="font-bold text-base text-slate-950 dark:text-white font-sans tracking-tight">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="font-bold text-sm md:text-base text-slate-950 dark:text-white font-sans tracking-tight">
               {{ currentModel.name }}
             </h2>
             <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-800 text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded leading-none">
               {{ currentModelProtocol }} 架构
             </span>
           </div>
-          <p class="text-xs text-slate-500 dark:text-slate-400 font-sans">
-            {{ currentModel.description }}
+          <p class="text-xs text-slate-500 dark:text-slate-400 font-sans line-clamp-2 sm:line-clamp-none">
+            {{ currentModel.description || '暂无模型描述' }}
           </p>
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
           <button 
             @click="showVarModal = true"
-            class="bg-violet-600 hover:bg-violet-700 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+            class="bg-violet-600 hover:bg-violet-700 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all shadow-xs"
           >
             <Plus class="w-4 h-4" />
             添加变量
@@ -480,11 +519,11 @@ const handleDeleteVariable = async (v: ModelVariable) => {
         </div>
       </div>
 
-      <!-- Variables template viewer table -->
-      <div class="flex-1 p-5 md:overflow-y-auto overflow-y-visible space-y-4">
+      <!-- Variables template viewer & Search bar -->
+      <div class="flex-1 flex flex-col min-h-0 p-3 md:p-5 space-y-3 overflow-hidden">
         
-        <div v-if="currentModel" class="space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors">
+        <div v-if="currentModel" class="flex-1 flex flex-col min-h-0 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors shrink-0 shadow-2xs">
             <div class="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
               <Sliders class="w-4 h-4 text-violet-500" />
               <span>共 <b class="text-indigo-600 dark:text-indigo-400">{{ totalVariableCount }}</b> 个变量</span>
@@ -500,10 +539,11 @@ const handleDeleteVariable = async (v: ModelVariable) => {
             </div>
           </div>
 
-          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm transition-colors">
+          <!-- Desktop Table (md 及以上显示) -->
+          <div class="hidden md:block flex-1 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs transition-colors">
             <table class="w-full text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
-              <thead>
-                <tr class="bg-slate-50 dark:bg-slate-950/60 text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+              <thead class="sticky top-0 bg-slate-50 dark:bg-slate-950/90 backdrop-blur-xs z-10">
+                <tr class="text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider">
                   <th class="px-4 py-3.5">标识</th>
                   <th class="px-4 py-3.5">名称</th>
                   <th class="px-4 py-3.5">类型</th>
@@ -517,13 +557,13 @@ const handleDeleteVariable = async (v: ModelVariable) => {
                   :key="v.key"
                   class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all text-left"
                 >
-                  <td class="px-4 py-4 font-bold text-violet-700 dark:text-violet-400">
+                  <td class="px-4 py-3.5 font-bold text-violet-700 dark:text-violet-400">
                     <span class="flex items-center gap-1">
                       <Binary class="w-3.5 h-3.5 text-violet-400" />
                       {{ v.key }}
                     </span>
                   </td>
-                  <td class="px-4 py-4 font-sans font-medium">
+                  <td class="px-4 py-3.5 font-sans font-medium">
                     <span class="text-slate-800 dark:text-slate-200 font-bold block">{{ v.name }}</span>
                     <span class="block text-[10px] font-mono text-slate-400 dark:text-slate-500 font-normal leading-relaxed mt-0.5">{{ v.description }}</span>
                     
@@ -548,7 +588,7 @@ const handleDeleteVariable = async (v: ModelVariable) => {
                       </span>
                     </div>
                   </td>
-                  <td class="px-4 py-4">
+                  <td class="px-4 py-3.5">
                     <span 
                       v-if="v.dataType"
                       class="px-2 py-0.5 rounded text-[10.5px] font-bold font-mono border shadow-3xs tracking-wider uppercase"
@@ -566,8 +606,8 @@ const handleDeleteVariable = async (v: ModelVariable) => {
                       {{ v.type === 'digital' ? 'Boolean' : 'Analog' }}
                     </span>
                   </td>
-                  <td class="px-4 py-4 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
-                  <td class="px-4 py-4 text-right">
+                  <td class="px-4 py-3.5 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
+                  <td class="px-4 py-3.5 text-right">
                     <div class="inline-flex items-center gap-1">
                       <button
                         @click="openEditVariable(v)"
@@ -595,11 +635,148 @@ const handleDeleteVariable = async (v: ModelVariable) => {
               </tbody>
             </table>
           </div>
+
+          <!-- Mobile Cards View (移动端卡片式流) -->
+          <div class="md:hidden flex-1 overflow-y-auto space-y-2.5">
+            <div
+              v-for="v in filteredVariables"
+              :key="v.key"
+              class="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs text-left"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100">{{ v.name }}</span>
+                    <span 
+                      v-if="v.dataType"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
+                      :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
+                    >
+                      {{ v.dataType }}
+                    </span>
+                  </div>
+                  <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
+                    <Binary class="w-3 h-3 text-violet-500" />
+                    <span>Key: <strong class="text-violet-700 dark:text-violet-400 font-bold">{{ v.key }}</strong></span>
+                  </div>
+                  <p v-if="v.description" class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">
+                    {{ v.description }}
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    @click="openEditVariable(v)"
+                    class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 rounded-md text-slate-400 hover:text-violet-600"
+                    title="编辑变量"
+                  >
+                    <Pencil class="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    @click="handleDeleteVariable(v)"
+                    class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 rounded-md text-slate-400 hover:text-rose-600"
+                    title="删除变量"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-3 gap-2 text-[11px]">
+                <div>
+                  <span class="text-slate-400 block text-[10px]">单位</span>
+                  <span class="font-mono text-slate-700 dark:text-slate-200 font-medium">{{ v.unit || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-400 block text-[10px]">量程</span>
+                  <span class="font-mono text-slate-700 dark:text-slate-200">
+                    {{ v.min !== undefined && v.max !== undefined ? `[${v.min}, ${v.max}]` : '-' }}
+                  </span>
+                </div>
+                <div>
+                  <span class="text-slate-400 block text-[10px]">历史存储</span>
+                  <span class="text-emerald-600 dark:text-emerald-400 font-medium">
+                    {{ v.isStored !== false ? '写入TSDB' : '仅内存' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="filteredVariables.length === 0" class="text-center py-12 text-slate-400 text-xs">
+              <Layers class="w-10 h-10 stroke-[1.5] mb-2 mx-auto text-slate-300 dark:text-slate-600" />
+              <p>{{ varSearchQuery ? '未匹配到相关变量' : '暂无点位变量定义' }}</p>
+              <button
+                @click="showVarModal = true"
+                class="mt-3 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs"
+              >
+                <Plus class="w-3.5 h-3.5" /> 立即添加变量
+              </button>
+            </div>
+          </div>
         </div>
 
         <div v-else class="h-64 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
           <Layers class="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
           <p class="text-xs">请注册或选择一个变量数据模型</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Model Selection Bottom Drawer (移动端模型选择抽屉) -->
+    <div
+      v-if="isMobileModelDrawerOpen"
+      class="fixed inset-0 z-50 md:hidden bg-slate-900/60 backdrop-blur-xs flex flex-col justify-end"
+      @click.self="isMobileModelDrawerOpen = false"
+    >
+      <div class="bg-white dark:bg-slate-900 rounded-t-2xl max-h-[80vh] flex flex-col shadow-2xl border-t border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom duration-200">
+        <!-- Drawer Header -->
+        <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <Layers class="w-5 h-5 text-violet-600 dark:text-violet-400" />
+            <span class="font-bold text-sm text-slate-800 dark:text-white">选择数据模型 ({{ dataModels.length }})</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              @click="showModelModal = true; isMobileModelDrawerOpen = false"
+              class="text-xs bg-violet-600 text-white px-2.5 py-1 rounded-md flex items-center gap-1 font-medium cursor-pointer"
+            >
+              <Plus class="w-3.5 h-3.5" /> 新建
+            </button>
+            <button
+              @click="isMobileModelDrawerOpen = false"
+              class="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Drawer Model Items -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-2 max-h-96">
+          <div
+            v-for="model in dataModels"
+            :key="model.id"
+            @click="selectedModelId = model.id; isMobileModelDrawerOpen = false"
+            class="p-3 rounded-xl border text-left flex items-center justify-between gap-3 cursor-pointer transition-all"
+            :class="selectedModelId === model.id ? 'bg-violet-50/70 dark:bg-violet-950/40 border-violet-300 dark:border-violet-700' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-800'"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <div class="font-bold text-xs text-slate-800 dark:text-white truncate">
+                  {{ model.name }}
+                </div>
+                <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1 rounded text-[10px] font-mono">
+                  {{ protocolOf(model) }}
+                </span>
+              </div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                ID: {{ model.id }} • {{ model.variables?.length || 0 }} 个变量
+              </div>
+            </div>
+            <div v-if="selectedModelId === model.id" class="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center shrink-0">
+              <Check class="w-3 h-3" />
+            </div>
+          </div>
         </div>
       </div>
     </div>

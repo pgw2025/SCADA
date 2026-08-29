@@ -19,6 +19,7 @@ import { syncAreas } from './services/areaService';
 import { fetchDataModelsFromBackend } from './api/modelApi';
 import { syncDevices } from './services/deviceService';
 import { startBackendPolling, stopBackendPolling } from './services/pollService';
+import { isScadaFullscreen } from './store/scadaStore';
 import ToastContainer from './components/ToastContainer.vue';
 
 import {
@@ -132,6 +133,15 @@ watch(
 onUnmounted(() => {
   if (clockInterval) clearInterval(clockInterval);
 });
+
+watch(
+  () => router.currentRoute.value.path,
+  (newPath) => {
+    if (newPath !== '/scada-editor' && isScadaFullscreen.value) {
+      isScadaFullscreen.value = false;
+    }
+  }
+);
 
 // Helper for navigation
 const navigate = (path: string) => {
@@ -299,6 +309,7 @@ const handleChangeMyPassword = async () => {
     class="h-screen w-screen flex flex-col font-sans text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-[#070b12] overflow-hidden select-none">
     <!-- Top Header Bar: Light in light mode, dark in dark mode -->
     <header
+      v-show="!isScadaFullscreen"
       class="h-14 bg-white dark:bg-[#070b12] text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-900 px-4 flex items-center justify-between shrink-0 shadow-xs relative z-30 transition-colors">
       <div class="flex items-center gap-3">
         <button @click="isMobileSidebarOpen = !isMobileSidebarOpen"
@@ -349,6 +360,7 @@ const handleChangeMyPassword = async () => {
     <div class="flex-1 flex overflow-hidden relative">
       <!-- Desktop Sidebar: Light in light mode, dark in dark mode -->
       <aside
+        v-show="!isScadaFullscreen"
         class="hidden lg:flex bg-white dark:bg-[#070b12] text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-900 flex-col justify-between shrink-0 select-none relative z-20 transition-all duration-300"
         :class="isSidebarCollapsed ? 'w-16' : 'w-64'">
         <div
