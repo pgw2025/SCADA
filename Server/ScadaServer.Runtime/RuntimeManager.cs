@@ -101,36 +101,38 @@ namespace ScadaServer.Runtime
 
         private async void OnDeviceConnectionStateChanged(int deviceId, DeviceConnectionState state)
         {
-            if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
-            {
-                return;
-            }
-
-            var status = MapConnectionStateToStatus(runtime);
-
-            // 仅在对外状态值变化时触发，抑制抖动（连接态频繁来回切换但对外语义不变）。
-            if (_lastPushedStatus.TryGetValue(deviceId, out var previous) && previous == status)
-            {
-                return;
-            }
-
-            _lastPushedStatus[deviceId] = status;
-            StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
-            {
-                DeviceId = deviceId,
-                Status = status
-            });
-
-            // 主动推送设备状态变更：RuntimeManager 直接调用通知服务，
-            // 避免通知服务反向注入 IRuntimeManager 形成 Singleton 循环依赖。
-            // 推送失败仅告警，不影响采集循环与事件订阅者（如持久化订阅者）。
+            // async void 事件处理器：整体兜底捕获，任何路径的异常（含 StatusChanged 订阅者抛出）
+            // 都不得击穿成为未观察异常导致进程崩溃。
             try
             {
+                if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+                {
+                    return;
+                }
+
+                var status = MapConnectionStateToStatus(runtime);
+
+                // 仅在对外状态值变化时触发，抑制抖动（连接态频繁来回切换但对外语义不变）。
+                if (_lastPushedStatus.TryGetValue(deviceId, out var previous) && previous == status)
+                {
+                    return;
+                }
+
+                _lastPushedStatus[deviceId] = status;
+                StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
+                {
+                    DeviceId = deviceId,
+                    Status = status
+                });
+
+                // 主动推送设备状态变更：RuntimeManager 直接调用通知服务，
+                // 避免通知服务反向注入 IRuntimeManager 形成 Singleton 循环依赖。
+                // 推送失败仅告警，不影响采集循环与事件订阅者（如持久化订阅者）。
                 await _notificationService.NotifyDeviceStatusAsync(deviceId, status);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "设备 {DeviceId} 状态变更通知推送失败。", deviceId);
+                _logger.LogWarning(ex, "设备 {DeviceId} 状态变更处理失败。", deviceId);
             }
         }
 
@@ -204,6 +206,38 @@ namespace ScadaServer.Runtime
             await RegisterDeviceAsync(deviceId);
         }
 
+        /// <summary>
+        /// 自动重连待重连设备（由 DeviceScheduler 按退避窗口触发）。
+        /// 移除占位运行时后重新走完整注册流程（加载设备图 → 连接驱动 → 注册）；
+        /// 若连接仍失败，注册流程会再次注册占位运行时，形成退避重试循环。
+        /// </summary>
+        /// <param name="deviceId">设备 ID</param>
+        public async Task ReconnectDeviceAsync(int deviceId)
+        {
+            // 重入门闸：仅当当前在册运行时确为待重连占位时才执行，避免并发重连。
+            // 后续 TryRemove 作为原子闸门：并发调用中只有一个能成功移除并继续。
+            if (!DeviceRuntimes.TryGetValue(deviceId, out var current) || !current.NeedsReconnect)
+            {
+                return;
+            }
+
+            if (!DeviceRuntimes.TryRemove(deviceId, out var placeholder))
+            {
+                return;
+            }
+
+            _lastPushedStatus.TryRemove(deviceId, out _);
+
+            // 占位运行时无 Worker 与驱动，仅防御性取消（无副作用）。
+            lock (placeholder.DispatchSync)
+            {
+                placeholder.CancelWorker();
+            }
+
+            // 重新走完整注册流程（内部先幂等移除，再加载、连接、注册）。
+            await RegisterDeviceAsync(deviceId);
+        }
+
         /// <inheritdoc/>
         public async Task RemoveDeviceAsync(int deviceId)
         {
@@ -215,12 +249,21 @@ namespace ScadaServer.Runtime
             _lastPushedStatus.TryRemove(deviceId, out _);
 
             // 1) 取消当前 Worker 并等待其收尾，避免在驱动断开期间仍被采集访问。
-            runtime.CancelWorker();
-            if (runtime.WorkerTask != null)
+            // 在 DispatchSync 锁内取消并读取 WorkerTask：与调度器派发临界区串行化，
+            // 确保读到的句柄必然属于"最后一个派发的 Worker"——设备已从 DeviceRuntimes
+            // 移除，此后调度器派发校验（在册 + 同引用）必然失败，不会再有新 Worker。
+            Task? workerTask;
+            lock (runtime.DispatchSync)
+            {
+                runtime.CancelWorker();
+                workerTask = runtime.WorkerTask;
+            }
+
+            if (workerTask != null)
             {
                 try
                 {
-                    await runtime.WorkerTask.WaitAsync(TimeSpan.FromSeconds(3));
+                    await workerTask.WaitAsync(TimeSpan.FromSeconds(3));
                 }
                 catch (TimeoutException)
                 {
@@ -295,7 +338,6 @@ namespace ScadaServer.Runtime
                     return false;
                 }
                 var protocolLabel = driverKey;
-                var driver = _driverFactory.CreateDriver(driverKey);
 
                 // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
                 // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。
@@ -308,15 +350,40 @@ namespace ScadaServer.Runtime
                     Area = device.Area
                 };
 
-                var connected = await driver.ConnectAsync(runtime);
-                if (!connected)
+                // 驱动创建与连接异常同样视为连接失败（进入占位重连路径），避免初始化异常被外层
+                // catch 吞掉后设备永不重试。
+                bool connected;
+                try
                 {
-                    _logger.LogWarning("设备 {Key} ({Protocol}) 连接失败，已跳过。", device.Key, protocolLabel);
-                    await driver.DisposeAsync();
-                    return false;
+                    var driver = _driverFactory.CreateDriver(driverKey);
+                    connected = await driver.ConnectAsync(runtime);
+                    if (connected)
+                    {
+                        runtime.Driver = driver;
+                    }
+                    else
+                    {
+                        await driver.DisposeAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "设备 {Key} ({Protocol}) 连接时发生异常。", device.Key, protocolLabel);
+                    connected = false;
                 }
 
-                runtime.Driver = driver;
+                if (!connected)
+                {
+                    // 注册占位运行时并标记待重连：调度器发现 NeedsReconnect 后按退避窗口
+                    // 触发 ReconnectDeviceAsync 自动重试，设备状态对外呈现 Fault。
+                    runtime.NeedsReconnect = true;
+                    runtime.ConnectionState = DeviceConnectionState.Error;
+                    RegisterDevice(runtime);
+                    _logger.LogWarning(
+                        "设备 {Key} ({Protocol}) 连接失败，已注册为待重连，调度器将按退避窗口自动重试。",
+                        device.Key, protocolLabel);
+                    return false;
+                }
 
                 // 驱动连接即视为已连接：设备无需等待首轮采集即可对外呈现在线，
                 // 并为空转（无启用变量）设备直接定格在线状态，避免停留在 Initializing/Offline。
@@ -400,11 +467,15 @@ namespace ScadaServer.Runtime
             }
 
             // 停止轮询后，断开所有设备驱动（如 S7 PLC 连接）并释放其资源，确保优雅关闭。
+            // 注意：待重连占位运行时没有驱动（Driver 为 null），需判空跳过。
             foreach (var runtime in DeviceRuntimes.Values)
             {
                 try
                 {
-                    await runtime.Driver.DisposeAsync();
+                    if (runtime.Driver != null)
+                    {
+                        await runtime.Driver.DisposeAsync();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -455,22 +526,27 @@ namespace ScadaServer.Runtime
             if (runtime.ConnectionState != DeviceConnectionState.Connected)
                 return await FailAsync("设备未连接，无法写入");
 
-            // 串行化内存状态更新，避免与采集调度对同一变量并发读写。
-            await runtime.Lock.WaitAsync();
+            // 驱动写入在设备锁外执行：网络 IO 可能耗时秒级，持锁会阻塞同设备采集循环
+            // 的全部内存态更新。写驱动期间设备不持有 Lock，采集可正常进行。
             try
             {
                 await runtime.Driver.WriteAsync(vr, value);
-
-                // 写成功后立即在临界区内同步运行时内存态，与采集调度（DeviceWorker 同样持 Lock 更新）串行化，消除竞态。
-                vr.PreviousValue = vr.Value;
-                vr.Value = value;
-                vr.UpdateTime = DateTime.Now;
-                vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
             }
             catch (Exception ex)
             {
                 _logger.LogWarning("设备 {DeviceId} 变量 [{VarKey}] 写入失败: {Msg}", deviceId, variableKey, ex.Message);
                 return await FailAsync($"写入失败: {ex.Message}");
+            }
+
+            // 写成功后短暂持锁仅同步运行时内存态（纯内存赋值，微秒级），
+            // 与采集调度（DeviceWorker 同样持 Lock 更新）串行化，消除竞态。
+            await runtime.Lock.WaitAsync();
+            try
+            {
+                vr.PreviousValue = vr.Value;
+                vr.Value = value;
+                vr.UpdateTime = DateTime.Now;
+                vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
             }
             finally
             {

@@ -45,9 +45,18 @@ namespace ScadaServer.Runtime.Devices
         private readonly TaskCompletionSource _stoppedTcs =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // 调度循环的热任务句柄：StartAsync 启动后立即返回，循环在后台运行，
+        // 供 StopAsync 观察循环退出与异常。
+        private Task? _loopTask;
+
         // 每设备重拉退避表：key = 设备ID，value = 允许再次派发的最早时间点。
         // 防止 Worker 因不可恢复原因快速反复退出时，每个 tick 都疯狂重派刷屏。
         private readonly ConcurrentDictionary<int, DateTime> _retryAfter = new();
+
+        // 活跃 Worker 登记表：key = 设备ID，value = 已派发的 Worker 任务。
+        // 派发时登记（新任务覆盖旧任务），供 StopAsync 聚合等待所有 Worker 收尾，
+        // 确保驱动释放不会发生在 Worker 仍在使用驱动的期间。
+        private readonly ConcurrentDictionary<int, Task> _workerTasks = new();
 
         private static readonly TimeSpan RetryBackoff = TimeSpan.FromSeconds(5);
 
@@ -83,27 +92,56 @@ namespace ScadaServer.Runtime.Devices
         }
 
         /// <summary>
-        /// 启动调度器主循环
+        /// 启动调度器主循环（立即返回，循环在后台任务中运行）。
         /// </summary>
+        /// <remarks>
+        /// 与 VariableBindingEngine.StartAsync 保持同一模型：循环体作为热任务派发后立即返回，
+        /// 避免调用方（RuntimeManager.StartAsync）被无限循环阻塞，
+        /// 导致后续启动步骤（如变量绑定引擎）永远无法执行。
+        /// </remarks>
         /// <param name="token">取消令牌，用于停止调度器（宿主关闭时触发）</param>
-        /// <returns>任务完成时返回</returns>
-        public async Task StartAsync(CancellationToken token)
+        /// <returns>启动完成即返回的任务</returns>
+        public Task StartAsync(CancellationToken token)
         {
             // 用宿主 token 链接出调度器自身的 token，使 StopAsync 也能提前结束循环。
             _cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var linkedToken = _cts.Token;
 
             _logger.LogInformation("DeviceScheduler started.");
 
+            // 循环体作为热任务在后台运行，不阻塞调用方。
+            _loopTask = SchedulerLoopAsync(_cts.Token);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 调度器主循环：每个 tick 只补发"尚无活跃 Worker 且已过退避窗口"的设备。
+        /// </summary>
+        /// <param name="linkedToken">链接宿主 token 与调度器取消源的令牌</param>
+        private async Task SchedulerLoopAsync(CancellationToken linkedToken)
+        {
             try
             {
-                // 主调度循环：每个 tick 只补发"尚无活跃 Worker 且已过退避窗口"的设备。
                 while (!linkedToken.IsCancellationRequested)
                 {
                     var devices = _runtimeManager.DeviceRuntimes.Values.ToList();
 
                     foreach (var runtime in devices)
                     {
+                        // 待重连占位设备：不派发采集 Worker，按退避窗口触发运行时管理器重连。
+                        if (runtime.NeedsReconnect)
+                        {
+                            if (_retryAfter.TryGetValue(runtime.Device.Id, out var reconnectUntil)
+                                && DateTime.Now < reconnectUntil)
+                            {
+                                continue;
+                            }
+
+                            // 先登记退避窗口再触发重连，防止重连在途时每个 tick 重复触发。
+                            _retryAfter[runtime.Device.Id] = DateTime.Now + RetryBackoff;
+                            _ = ReconnectDeviceSafelyAsync(runtime.Device.Id);
+                            continue;
+                        }
+
                         // 已有活跃 Worker 的设备直接跳过，避免重复派发（同一时刻单设备单 Worker）。
                         if (runtime.IsRunning)
                         {
@@ -140,6 +178,12 @@ namespace ScadaServer.Runtime.Devices
                     }
                 }
             }
+            catch (Exception ex)
+            {
+                // 循环任务为 fire-and-forget，异常不会自然传播到调用方：在此兜底记录，
+                // 防止成为未观察异常；_stoppedTcs 在 finally 中保证置位，StopAsync 不会悬挂。
+                _logger.LogError(ex, "DeviceScheduler 主循环发生未预期异常，调度已停止。");
+            }
             finally
             {
                 // 通知等待者：调度循环已退出。
@@ -152,49 +196,105 @@ namespace ScadaServer.Runtime.Devices
         /// 为单台设备派生一个常驻采集 Worker（fire-and-forget，不等待完成）。
         /// </summary>
         /// <remarks>
-        /// 派发前同步置位 <see cref="DeviceRuntime.IsRunning"/>，保证同一设备不会在两个 tick 间被重复派发；
-        /// Worker 退出时在 finally 中复位该标志，并在"非取消退出"时登记重拉退避窗口。
+        /// 派发临界区（校验在册 → 置位 IsRunning → 创建 token → 记录任务）在
+        /// <see cref="DeviceRuntime.DispatchSync"/> 锁内原子完成，与设备注销路径串行化：
+        /// <list type="bullet">
+        /// <item>设备已注销（不在册或已被新运行时替换）时不派发，杜绝僵尸 Worker；</item>
+        /// <item>同一设备同一时刻至多一个 Worker；</item>
+        /// <item>Worker 退出清理带所有权校验，不会误释放/覆盖新 Worker 的 token 与任务句柄。</item>
+        /// </list>
         /// </remarks>
         private void DispatchWorker(DeviceRuntime runtime, CancellationToken linkedToken)
         {
-            runtime.IsRunning = true;
-
-            // 为当前设备派生独立取消令牌：链接全局关停令牌，同时支持运行期单设备注销/重载。
-            var workerToken = runtime.CreateWorkerToken(linkedToken);
-
-            runtime.WorkerTask = Task.Run(async () =>
+            lock (runtime.DispatchSync)
             {
-                try
+                // 设备已注销或已被新运行时替换：不再派发。
+                if (!_runtimeManager.DeviceRuntimes.TryGetValue(runtime.Device.Id, out var current)
+                    || !ReferenceEquals(current, runtime))
                 {
-                    var worker = new DeviceWorker(
-                        runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus, _alarmRuleEngine, _alarmRecorder, _realtimeSnapshot);
-                    await worker.WorkerAsync(workerToken);
+                    return;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+
+                // 已有活跃 Worker：跳过（锁外快照检查的二次确认）。
+                if (runtime.IsRunning)
                 {
-                    _logger.LogError(ex, "DeviceWorker for {DeviceKey} failed.", runtime.Device.Key);
+                    return;
                 }
-                finally
+
+                runtime.IsRunning = true;
+
+                // 为当前设备派生独立取消源：链接全局关停令牌，同时支持运行期单设备注销/重载。
+                var workerCts = runtime.CreateWorkerCts(linkedToken);
+
+                // Task.Run 不传入取消 token：避免 token 在任务开始执行前被取消时
+                // 任务直接转为 Cancelled 状态、finally 不执行导致 IsRunning 永久卡 true。
+                // Worker 内部自行监听 workerCts.Token 实现取消退出。
+                var task = Task.Run(() => RunWorkerAsync(runtime, workerCts));
+
+                runtime.WorkerTask = task;
+                _workerTasks[runtime.Device.Id] = task;
+            }
+        }
+
+        /// <summary>
+        /// 单设备 Worker 主体：执行采集循环并在退出时做所有权安全的清理。
+        /// </summary>
+        private async Task RunWorkerAsync(DeviceRuntime runtime, CancellationTokenSource workerCts)
+        {
+            try
+            {
+                var worker = new DeviceWorker(
+                    runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus, _alarmRuleEngine, _alarmRecorder, _realtimeSnapshot);
+                await worker.WorkerAsync(workerCts.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "DeviceWorker for {DeviceKey} failed.", runtime.Device.Key);
+            }
+            finally
+            {
+                // 仅"非取消退出"需要安排重拉（取消代表正在关停该设备，不应自愈拉起）。
+                var cancelled = workerCts.IsCancellationRequested;
+
+                lock (runtime.DispatchSync)
                 {
                     // 无论成功、异常还是取消，都必须复位标志，使调度器可再次派发。
                     runtime.IsRunning = false;
 
-                    // 仅"非取消退出"需要安排重拉（取消代表正在关停该设备，不应自愈拉起）。
-                    var cancelled = workerToken.IsCancellationRequested;
-                    runtime.DisposeWorkerToken();
-                    runtime.WorkerTask = null;
-
-                    if (!cancelled)
-                    {
-                        _retryAfter[runtime.Device.Id] = DateTime.Now + RetryBackoff;
-                    }
+                    // 所有权校验：仅当取消源仍属于本 Worker 时才释放，
+                    // 避免旧 Worker 退出清理误释放新 Worker 的取消源。
+                    runtime.DisposeWorkerTokenIfCurrent(workerCts);
                 }
-            }, linkedToken);
+
+                if (!cancelled)
+                {
+                    _retryAfter[runtime.Device.Id] = DateTime.Now + RetryBackoff;
+                }
+            }
         }
 
         /// <summary>
-        /// 停止调度器主循环，触发所有活跃 Worker 收尾退出。
+        /// 触发设备自动重连（fire-and-forget 包装，异常就地记录，避免未观察异常）。
         /// </summary>
+        private async Task ReconnectDeviceSafelyAsync(int deviceId)
+        {
+            try
+            {
+                await _runtimeManager.ReconnectDeviceAsync(deviceId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 自动重连失败（退避窗口后将重试）。", deviceId);
+            }
+        }
+
+        /// <summary>
+        /// 停止调度器主循环，等待所有已派发 Worker 收尾退出。
+        /// </summary>
+        /// <remarks>
+        /// 必须先等待全部 Worker 退出再返回：调用方（RuntimeManager.StopAsync）随后会
+        /// 释放所有设备驱动，若 Worker 仍阻塞在驱动读取中，驱动会在其脚下被拆除。
+        /// </remarks>
         public async Task StopAsync()
         {
             if (_cts == null)
@@ -205,14 +305,34 @@ namespace ScadaServer.Runtime.Devices
             // 触发取消：调度循环与进行中的 worker 都会收到信号。
             _cts.Cancel();
 
-            // 等待调度循环真正退出，给在途 worker 一个收尾窗口。
+            // 等待调度循环真正退出。
             try
             {
                 await _stoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (TimeoutException)
             {
-                _logger.LogWarning("DeviceScheduler 停止超时（5s），部分 worker 可能仍在退出。");
+                _logger.LogWarning("DeviceScheduler 调度循环停止超时（5s）。");
+            }
+
+            // 聚合等待所有已派发 Worker 收尾（含已注销设备的在途 Worker），
+            // 确保驱动释放不会发生在 Worker 仍在使用驱动的期间。
+            var workers = _workerTasks.Values.ToList();
+            if (workers.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("DeviceScheduler 等待 {Count} 个 Worker 退出超时（5s），部分 worker 可能仍在退出。",
+                        workers.Count);
+                }
+                catch (Exception)
+                {
+                    // Worker 侧异常（含取消导致的 TaskCanceledException）均已各自记录，此处忽略聚合异常。
+                }
             }
 
             _cts.Dispose();

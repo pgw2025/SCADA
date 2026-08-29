@@ -76,6 +76,12 @@ namespace ScadaServer.Runtime.Devices
         /// <returns>任务完成时返回</returns>
         public async Task WorkerAsync(CancellationToken cancellationToken)
         {
+            // 待重连占位运行时：不采集，由调度器触发重连后重建 Worker。
+            if (_runtime.NeedsReconnect)
+            {
+                return;
+            }
+
             // 检查驱动是否已分配，无驱动则无法工作
             if (_runtime.Driver == null)
             {
@@ -90,47 +96,53 @@ namespace ScadaServer.Runtime.Devices
             // 主采集循环，直到收到取消信号
             while (!cancellationToken.IsCancellationRequested)
             {
-                // 计时器用于统计本轮采集耗时
-                var sw = Stopwatch.StartNew();
                 var now = DateTime.Now;
+
+                // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）
+                var due = new List<VariableRuntime>();
+                foreach (var vr in _runtime.Variables.Values)
+                {
+                    if (!vr.IsEnabled) continue;
+                    if (now >= vr.NextPollTime) due.Add(vr);
+                }
+
+                if (due.Count == 0)
+                {
+                    // 本 tick 无到期变量（含无启用变量的空转设备）：驱动连接依然有效，
+                    // 保持 Connected，避免始终停留在 Initializing/Offline（空转设备离线的根因之一）。
+                    _runtime.ConnectionState = DeviceConnectionState.Connected;
+
+                    // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性
+                    var soonest = DateTime.MaxValue;
+                    foreach (var vr in _runtime.Variables.Values)
+                    {
+                        if (vr.IsEnabled && vr.NextPollTime < soonest) soonest = vr.NextPollTime;
+                    }
+
+                    var waitMs = soonest == DateTime.MaxValue
+                        ? _runtime.Device.PollingInterval
+                        : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
+                    // 上限 2000ms：避免长时间阻塞导致配置变更 / 取消信号响应不及时
+                    waitMs = Math.Min(waitMs, 2000);
+
+                    if (waitMs > 0)
+                    {
+                        try { await Task.Delay(waitMs, cancellationToken); }
+                        catch (OperationCanceledException) { break; }
+                    }
+                    continue;
+                }
+
+                // 计时器仅覆盖实际采集段：空转等待发生在计时范围之外，
+                // 避免空闲休眠被计入平均响应时间导致统计值持续膨胀。
+                var sw = Stopwatch.StartNew();
                 try
                 {
                     var changed = new List<(string Key, object Value)>();
 
-                    // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）
-                    var due = new List<VariableRuntime>();
-                    foreach (var vr in _runtime.Variables.Values)
-                    {
-                        if (!vr.IsEnabled) continue;
-                        if (now >= vr.NextPollTime) due.Add(vr);
-                    }
-
-                    if (due.Count == 0)
-                    {
-                        // 本 tick 无到期变量（含无启用变量的空转设备）：驱动连接依然有效，
-                        // 保持 Connected，避免始终停留在 Initializing/Offline（空转设备离线的根因之一）。
-                        _runtime.ConnectionState = DeviceConnectionState.Connected;
-
-                        // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性
-                        var soonest = DateTime.MaxValue;
-                        foreach (var vr in _runtime.Variables.Values)
-                        {
-                            if (vr.IsEnabled && vr.NextPollTime < soonest) soonest = vr.NextPollTime;
-                        }
-
-                        var waitMs = soonest == DateTime.MaxValue
-                            ? _runtime.Device.PollingInterval
-                            : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
-                        // 上限 2000ms：避免长时间阻塞导致配置变更 / 取消信号响应不及时
-                        waitMs = Math.Min(waitMs, 2000);
-
-                        if (waitMs > 0)
-                        {
-                            try { await Task.Delay(waitMs, cancellationToken); }
-                            catch (OperationCanceledException) { break; }
-                        }
-                        continue;
-                    }
+                    // 轮次级成功统计：本轮至少一个变量读取成功才视为通讯成功，
+                    // 用于收尾时区分"部分成功=在线"与"全部失败=通讯故障"。
+                    var anySuccess = false;
 
                     // 逐个读取到期变量。
                     // 第九阶段起：驱动只接收 RuntimeVariable（IRuntimeVariable 视图），
@@ -198,6 +210,9 @@ namespace ScadaServer.Runtime.Devices
 
                             // 检测变量上下限越界并推送系统报警（仅进入越界时推送一次）
                             TryCheckAlarm(vr);
+
+                            // 读取并更新成功，计入轮次级成功统计。
+                            anySuccess = true;
                         }
                         catch (Exception ex)
                         {
@@ -225,11 +240,31 @@ namespace ScadaServer.Runtime.Devices
                         }
                     }
 
-                    // 本轮采集成功，更新设备状态
-                    _runtime.ConnectionState = DeviceConnectionState.Connected;
-                    _runtime.LastCommunicationTime = DateTime.Now;
-                    _runtime.SuccessCount++;
-                    _runtime.ConsecutiveFailureCount = 0;
+                    // 本轮采集结果（轮次级判定，due.Count > 0 时才会到达此处）：
+                    // 任一变量读取成功即视为通讯成功（部分成功 = 在线）；
+                    // 全部变量读取失败判定为通讯故障，设备转 Error/Fault，
+                    // 连续失败计数递增供外部监控告警使用。
+                    if (anySuccess)
+                    {
+                        _runtime.ConnectionState = DeviceConnectionState.Connected;
+                        _runtime.LastCommunicationTime = DateTime.Now;
+                        _runtime.SuccessCount++;
+                        _runtime.ConsecutiveFailureCount = 0;
+                    }
+                    else
+                    {
+                        _runtime.ConnectionState = DeviceConnectionState.Error;
+                        _runtime.FailureCount++;
+                        _runtime.ConsecutiveFailureCount++;
+
+                        // 仅在首次失败时告警一次，持续失败由设备状态（Fault）体现，避免每轮刷屏。
+                        if (_runtime.ConsecutiveFailureCount == 1)
+                        {
+                            _logger.LogWarning(
+                                "Device {DeviceKey} 本轮 {Count} 个到期变量全部读取失败，设备转为 Error。",
+                                _runtime.Device.Key, due.Count);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -241,7 +276,8 @@ namespace ScadaServer.Runtime.Devices
                 }
                 finally
                 {
-                    // 更新平均响应时间（基于成功次数的移动平均；尚未成功时直接取本轮耗时）
+                    // 更新平均响应时间（基于成功次数的移动平均；尚未成功时直接取本轮耗时）。
+                    // 注：失败轮次耗时同样计入——反映真实通讯耗时，便于监控劣化趋势。
                     sw.Stop();
                     if (_runtime.SuccessCount > 0)
                     {
