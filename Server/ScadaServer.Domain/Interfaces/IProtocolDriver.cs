@@ -30,8 +30,8 @@ namespace ScadaServer.Domain.Interfaces
         /// 读取单个变量值
         /// </summary>
         /// <param name="variable">变量运行时（地址来自 DeviceVariable）</param>
-        /// <returns>变量值</returns>
-        Task<object> ReadAsync(IRuntimeVariable variable);
+        /// <returns>变量值；无可用值 / 设备未连接时返回 null（调用方视作本次读取无效）</returns>
+        Task<object?> ReadAsync(IRuntimeVariable variable);
 
         /// <summary>
         /// 批量读取多个变量值

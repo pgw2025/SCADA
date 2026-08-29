@@ -69,7 +69,7 @@ namespace ScadaServer.Infrastructure.Communication
             return true;
         }
 
-        public async Task<object> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable)
         {
             if (!_connected) return null;
             // 写入过的变量优先返回最后一次写入值，否则生成模拟值。

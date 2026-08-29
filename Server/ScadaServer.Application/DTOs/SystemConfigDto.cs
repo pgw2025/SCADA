@@ -3,9 +3,9 @@ namespace ScadaServer.Application.DTOs
     public class SystemConfigDto
     {
         public int Id { get; set; }
-        public string SystemTitle { get; set; }
+        public string SystemTitle { get; set; } = string.Empty;
         public int PollIntervalMs { get; set; }
-        public string MqttBrokerHost { get; set; }
+        public string MqttBrokerHost { get; set; } = string.Empty;
         public int RetentionPeriodDays { get; set; }
     }
 }

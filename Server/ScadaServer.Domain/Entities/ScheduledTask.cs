@@ -12,23 +12,23 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 任务名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 任务类型
         /// </summary>
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
 
         /// <summary>
         /// Cron 表达式，用于定义任务执行时间
         /// </summary>
-        public string CronExpression { get; set; }
+        public string CronExpression { get; set; } = string.Empty;
 
         /// <summary>
         /// 任务参数（JSON格式）
         /// </summary>
         [Column(TypeName = "text")]
-        public string ParamsJson { get; set; }
+        public string ParamsJson { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否启用

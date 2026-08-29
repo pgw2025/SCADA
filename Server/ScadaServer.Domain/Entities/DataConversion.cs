@@ -12,7 +12,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 转换名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 源设备ID
@@ -22,7 +22,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 源变量键
         /// </summary>
-        public string SourceVariableKey { get; set; }
+        public string SourceVariableKey { get; set; } = string.Empty;
 
         /// <summary>
         /// 目标设备ID
@@ -32,7 +32,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 目标变量键
         /// </summary>
-        public string TargetVariableKey { get; set; }
+        public string TargetVariableKey { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否启用

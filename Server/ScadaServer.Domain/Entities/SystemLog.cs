@@ -28,12 +28,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 日志级别（.NET LogLevel 名称：Trace/Debug/Information/Warning/Error/Critical）
         /// </summary>
-        public string Level { get; set; }
+        public string Level { get; set; } = string.Empty;
 
         /// <summary>
         /// 日志来源（Logger category 或业务模块名，如 "ScadaServer.WebApi.Program" / "设备管理"）
         /// </summary>
-        public string Source { get; set; }
+        public string Source { get; set; } = string.Empty;
 
         /// <summary>
         /// 动作类型（仅操作/安全日志）：LOGIN/LOGOUT/CREATE/UPDATE/DELETE/EXECUTE/ENABLE/DISABLE 等；运行日志为空
@@ -58,6 +58,6 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 日志内容（写入时截断至 MaxContentLength，默认 2000 字符）
         /// </summary>
-        public string Content { get; set; }
+        public string Content { get; set; } = string.Empty;
     }
 }

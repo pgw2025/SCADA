@@ -8,9 +8,9 @@ namespace ScadaServer.Application.DTOs
 
         [Required(ErrorMessage = "区域名称不能为空")]
         [StringLength(50, ErrorMessage = "区域名称不能超过50个字符")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [StringLength(200, ErrorMessage = "描述不能超过200个字符")]
-        public string Description { get; set; }
+        public string Description { get; set; } = string.Empty;
     }
 }

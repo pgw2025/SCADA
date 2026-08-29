@@ -112,7 +112,7 @@ namespace ScadaServer.Application.Services
         public async Task<DataModelDto> CreateAsync(CreateDataModelDto dto)
         {
             // 0. 规范化：修剪空格
-            dto.Name = dto.Name?.Trim();
+            dto.Name = dto.Name.Trim();
 
             // 1. 业务校验：名称唯一性
             var existing = await _repository.GetListAsync(m => m.Name == dto.Name);
@@ -141,7 +141,7 @@ namespace ScadaServer.Application.Services
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
         {
             // 0. 规范化：修剪空格
-            dto.Name = dto.Name?.Trim();
+            dto.Name = dto.Name.Trim();
 
             var entity = await _repository.GetByIdAsync(dto.Id);
             if (entity == null)

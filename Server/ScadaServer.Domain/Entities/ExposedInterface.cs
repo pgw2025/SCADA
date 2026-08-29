@@ -13,19 +13,19 @@ namespace ScadaServer.Domain.Entities
         /// 接口名称
         /// </summary>
         [MaxLength(100)]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 路由URL
         /// </summary>
         [MaxLength(512)]
-        public string RouteUrl { get; set; }
+        public string RouteUrl { get; set; } = string.Empty;
 
         /// <summary>
         /// 请求方法（GET/POST/PUT/DELETE等）
         /// </summary>
         [MaxLength(16)]
-        public string RequestMethod { get; set; }
+        public string RequestMethod { get; set; } = string.Empty;
 
         /// <summary>
         /// 关联的设备ID
@@ -35,13 +35,13 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的设备
         /// </summary>
-        public Device Device { get; set; }
+        public Device Device { get; set; } = null!;
 
         /// <summary>
         /// 暴露键（用于标识接口）
         /// </summary>
         [MaxLength(256)]
-        public string ExposedKey { get; set; }
+        public string ExposedKey { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否启用

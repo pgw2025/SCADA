@@ -12,12 +12,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 项目名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 项目描述
         /// </summary>
-        public string Description { get; set; }
+        public string Description { get; set; } = string.Empty;
 
         /// <summary>
         /// 创建时间
@@ -28,6 +28,6 @@ namespace ScadaServer.Domain.Entities
         /// 项目包含的页面列表
         /// </summary>
         [NotMapped]
-        public List<ScadaPage> Pages { get; set; }
+        public List<ScadaPage> Pages { get; set; } = new();
     }
 }

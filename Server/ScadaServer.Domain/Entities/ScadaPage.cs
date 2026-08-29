@@ -17,12 +17,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的项目
         /// </summary>
-        public ScadaProject Project { get; set; }
+        public ScadaProject Project { get; set; } = null!;
 
         /// <summary>
         /// 页面名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否为首页
@@ -61,6 +61,6 @@ namespace ScadaServer.Domain.Entities
         /// 页面包含的HMI组件列表
         /// </summary>
         [NotMapped]
-        public List<HmiComponent> Components { get; set; }
+        public List<HmiComponent> Components { get; set; } = new();
     }
 }

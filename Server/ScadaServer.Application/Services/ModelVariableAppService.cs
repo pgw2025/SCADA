@@ -43,8 +43,8 @@ namespace ScadaServer.Application.Services
         public async Task<ModelVariableDto> CreateAsync(ModelVariableDto dto)
         {
             // 0. 规范化
-            dto.Key = dto.Key?.Trim();
-            dto.Name = dto.Name?.Trim();
+            dto.Key = dto.Key.Trim();
+            dto.Name = dto.Name.Trim();
 
             // 1. 存在性检查：模型必须存在
             var model = await _modelRepository.GetByIdAsync(dto.ModelId);
@@ -73,8 +73,8 @@ namespace ScadaServer.Application.Services
         public async Task<ModelVariableDto> UpdateAsync(ModelVariableDto dto)
         {
             // 0. 规范化
-            dto.Key = dto.Key?.Trim();
-            dto.Name = dto.Name?.Trim();
+            dto.Key = dto.Key.Trim();
+            dto.Name = dto.Name.Trim();
 
             var entity = await _repository.GetByIdAsync(dto.Id);
             if (entity == null)

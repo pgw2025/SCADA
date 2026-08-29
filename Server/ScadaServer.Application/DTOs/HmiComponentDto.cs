@@ -11,10 +11,10 @@ namespace ScadaServer.Application.DTOs
         public int PageId { get; set; }
 
         [Required(ErrorMessage = "组件类型不能为空")]
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "组件名称不能为空")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [Range(0, 100000, ErrorMessage = "X坐标超出合理范围")]
         public int X { get; set; }
@@ -31,7 +31,7 @@ namespace ScadaServer.Application.DTOs
         [Range(0, 1000, ErrorMessage = "层级超出合理范围")]
         public int ZIndex { get; set; }
 
-        public string BindField { get; set; }
+        public string BindField { get; set; } = string.Empty;
 
         /// <summary>
         /// 组件标签（前端显示名，可选）
@@ -48,6 +48,6 @@ namespace ScadaServer.Application.DTOs
         /// </summary>
         public string? BindVariableKey { get; set; }
 
-        public string PropsJson { get; set; }
+        public string PropsJson { get; set; } = string.Empty;
     }
 }

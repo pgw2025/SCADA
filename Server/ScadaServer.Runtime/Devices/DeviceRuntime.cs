@@ -31,7 +31,7 @@ public class DeviceRuntime : IRuntimeDevice
     IEnumerable<IRuntimeVariable> IRuntimeDevice.Variables => Variables.Values;
 
     // 所属数据模型
-    public DataModel Model { get; init; }
+    public DataModel Model { get; init; } = null!;
 
     // 协议实体（来自 DataModel.Protocol，模型必绑协议后作为驱动派发真相源）
     public Protocol? Protocol { get; init; }
@@ -43,7 +43,7 @@ public class DeviceRuntime : IRuntimeDevice
     public Area? Area { get; init; }
 
     // 驱动实例
-    public IProtocolDriver Driver { get; set; }
+    public IProtocolDriver Driver { get; set; } = null!;
 
     // 变量运行时集合（key = DeviceVariable.Id）
     public Dictionary<int, VariableRuntime> Variables { get; } = new();

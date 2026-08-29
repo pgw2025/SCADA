@@ -17,22 +17,22 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 关联的设备
         /// </summary>
-        public Device Device { get; set; }
+        public Device Device { get; set; } = null!;
 
         /// <summary>
         /// 变量键
         /// </summary>
-        public string VariableKey { get; set; }
+        public string VariableKey { get; set; } = string.Empty;
 
         /// <summary>
         /// 传感器名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 单位
         /// </summary>
-        public string Unit { get; set; }
+        public string Unit { get; set; } = string.Empty;
 
         /// <summary>
         /// 最后采集值

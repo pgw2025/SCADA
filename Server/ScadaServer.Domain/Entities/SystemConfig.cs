@@ -12,7 +12,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 系统标题
         /// </summary>
-        public string SystemTitle { get; set; }
+        public string SystemTitle { get; set; } = string.Empty;
 
         /// <summary>
         /// 轮询间隔（毫秒）
@@ -22,7 +22,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// MQTT Broker 地址
         /// </summary>
-        public string MqttBrokerHost { get; set; }
+        public string MqttBrokerHost { get; set; } = string.Empty;
 
         /// <summary>
         /// 数据保留周期（天）

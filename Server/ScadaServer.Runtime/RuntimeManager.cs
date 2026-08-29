@@ -149,7 +149,7 @@ namespace ScadaServer.Runtime
             // Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)
             // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
             var devices = await db.Devices
-                .Include(d => d.Model).ThenInclude(m => m.Protocol)
+                .Include(d => d.Model).ThenInclude(m => m!.Protocol)
                 .Include(d => d.Config)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .Where(d => d.IsEnabled)
@@ -266,7 +266,7 @@ namespace ScadaServer.Runtime
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
             return await db.Devices
-                .Include(d => d.Model).ThenInclude(m => m.Protocol)
+                .Include(d => d.Model).ThenInclude(m => m!.Protocol)
                 .Include(d => d.Config)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);

@@ -11,17 +11,17 @@ namespace ScadaServer.Application.DTOs
         /// <summary>
         /// 日志分类：Runtime（运行）/ Operation（操作审计）/ Security（安全审计）
         /// </summary>
-        public string Category { get; set; }
+        public string Category { get; set; } = string.Empty;
 
         /// <summary>
         /// 日志级别（Trace/Debug/Information/Warning/Error/Critical）
         /// </summary>
-        public string Level { get; set; }
+        public string Level { get; set; } = string.Empty;
 
         /// <summary>
         /// 日志来源
         /// </summary>
-        public string Source { get; set; }
+        public string Source { get; set; } = string.Empty;
 
         /// <summary>
         /// 动作类型（仅操作/安全日志）
@@ -46,6 +46,6 @@ namespace ScadaServer.Application.DTOs
         /// <summary>
         /// 日志内容
         /// </summary>
-        public string Content { get; set; }
+        public string Content { get; set; } = string.Empty;
     }
 }

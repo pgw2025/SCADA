@@ -89,6 +89,6 @@ namespace ScadaServer.Domain.Entities
         /// 一个 <see cref="ModelVariable"/> 的实例化；设备实例上可覆盖地址、轮询间隔、缩放、死区等。
         /// </para>
         /// </summary>
-        public List<DeviceVariable>? DeviceVariables { get; set; }
+        public List<DeviceVariable> DeviceVariables { get; set; } = new();
     }
 }

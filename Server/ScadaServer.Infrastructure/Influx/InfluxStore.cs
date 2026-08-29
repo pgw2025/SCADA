@@ -59,7 +59,7 @@ namespace ScadaServer.Infrastructure.Influx
             InfluxDBClient? newClient = null;
             try
             {
-                newClient = InfluxDBClientFactory.Create(url, token);
+                newClient = new InfluxDBClient(url, token);
             }
             catch (Exception ex)
             {
@@ -236,10 +236,9 @@ namespace ScadaServer.Infrastructure.Influx
             var sw = Stopwatch.StartNew();
             try
             {
-                var health = await client.HealthAsync();
+                await client.PingAsync();
                 sw.Stop();
-                var pass = health?.Status == HealthCheck.StatusEnum.Pass;
-                return (pass, sw.ElapsedMilliseconds, health?.Message ?? "InfluxDB 健康检查无状态返回。");
+                return (true, sw.ElapsedMilliseconds, "InfluxDB 连接正常。");
             }
             catch (Exception ex)
             {
@@ -270,14 +269,12 @@ namespace ScadaServer.Infrastructure.Influx
             {
                 var url = BuildUrl(config);
                 var token = config.Token ?? string.Empty;
-                client = InfluxDBClientFactory.Create(url, token);
+                client = new InfluxDBClient(url, token);
 
                 var sw = Stopwatch.StartNew();
-                var health = await client.HealthAsync();
+                await client.PingAsync();
                 sw.Stop();
-                var pass = health?.Status == HealthCheck.StatusEnum.Pass;
-                return (pass, sw.ElapsedMilliseconds,
-                    pass ? (health?.Message ?? "InfluxDB 连接正常。") : (health?.Message ?? "InfluxDB 健康检查未通过。"));
+                return (true, sw.ElapsedMilliseconds, "InfluxDB 连接正常。");
             }
             catch (Exception ex)
             {

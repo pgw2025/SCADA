@@ -18,12 +18,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 变量键（唯一标识）
         /// </summary>
-        public string Key { get; set; }
+        public string Key { get; set; } = string.Empty;
 
         /// <summary>
         /// 变量名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 信号类型（模拟量/数字量），由 DataType 推导：BIT/BOOL -> Digital，其余 -> Analog。

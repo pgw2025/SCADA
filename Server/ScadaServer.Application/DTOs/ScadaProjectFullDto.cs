@@ -15,7 +15,7 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class ScadaProjectFullDto
     {
-        public ScadaProjectDto Project { get; set; }
+        public ScadaProjectDto Project { get; set; } = null!;
         public List<ScadaPageWithComponentsDto> Pages { get; set; } = new();
     }
 }

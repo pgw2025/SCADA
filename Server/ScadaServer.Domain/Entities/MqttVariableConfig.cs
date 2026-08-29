@@ -22,12 +22,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 变量键
         /// </summary>
-        public string VariableKey { get; set; }
+        public string VariableKey { get; set; } = string.Empty;
 
         /// <summary>
         /// 变量别名
         /// </summary>
-        public string Alias { get; set; }
+        public string Alias { get; set; } = string.Empty;
 
         /// <summary>
         /// 是否启用

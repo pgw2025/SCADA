@@ -281,6 +281,12 @@ namespace ScadaServer.WebApi.HostedServices
                 await db.SaveChangesAsync(token);
                 _logger.LogDebug("已批量写入 {Count} 条系统日志。", batch.Count);
             }
+            catch (OperationCanceledException)
+            {
+                // 主循环在应用关闭时用同样的 token 取消，落库中途取消属预期的正常退出路径，
+                // 此时由排空逻辑以 CancellationToken.None 做最终写入，这里不作为错误记录。
+                _logger.LogDebug("系统日志批量写入被关闭流程取消（丢弃 {Count} 条）。", batch.Count);
+            }
             catch (Exception ex)
             {
                 // 运行日志写入失败可接受（不重试，避免阻塞）；操作日志失败降级为 ILogger 告警，至少控制台留痕。

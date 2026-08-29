@@ -142,7 +142,7 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 读取
 
-        public async Task<object> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable)
         {
             if (_disposed || variable == null)
                 return null;

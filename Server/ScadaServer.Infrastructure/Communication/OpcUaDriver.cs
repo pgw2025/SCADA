@@ -8,7 +8,8 @@ namespace ScadaServer.Infrastructure.Communication
 {
     public class OpcUaDriver : IProtocolDriver
     {
-        private ISession _session;
+        private Session? _session;
+        private readonly ISessionFactory _sessionFactory = new DefaultSessionFactory(DefaultTelemetry.Create(configure: _ => { }));
         private readonly Dictionary<int, Subscription> _subscriptions = new();
         private readonly List<MonitoredItem> _monitoredItems = new();
 
@@ -36,10 +37,10 @@ namespace ScadaServer.Infrastructure.Communication
             };
 
             EndpointDescription selectedEndpoint;
-            using (var discoveryClient = DiscoveryClient.Create(new Uri(endpointUrl)))
+            using (var discoveryClient = await DiscoveryClient.CreateAsync(appConfig, new Uri(endpointUrl)))
             {
-                var endpoints = discoveryClient.GetEndpoints(null);
-                
+                var endpoints = await discoveryClient.GetEndpointsAsync(null, CancellationToken.None);
+
                 // 根据配置的安全策略选择端点
                 if (config.SecurityPolicy?.Equals("None", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -63,11 +64,13 @@ namespace ScadaServer.Infrastructure.Communication
                 identity = new UserIdentity(config.Username, System.Text.Encoding.UTF8.GetBytes(config.Password));
             }
 
-            _session = await Session.Create(appConfig, managedEndpoint, false, "ScadaServer", 60000, identity, new List<string>());
-            return _session.Connected;
+            var session = await _sessionFactory.CreateAsync(
+                appConfig, managedEndpoint, false, "ScadaServer", 60000, identity, new List<string>());
+            _session = session as Session;
+            return _session?.Connected ?? false;
         }
 
-        public async Task<object> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable)
         {
             if (_session == null || !_session.Connected) return null;
             // 节点地址来源：RuntimeVariable.Address（DeviceVariable.Address）
@@ -184,7 +187,7 @@ namespace ScadaServer.Infrastructure.Communication
                 var item = _monitoredItems.FirstOrDefault(i => i.DisplayName == variable.Key);
                 if (item != null)
                 {
-                    item.Subscription.RemoveItem(item);
+                    item.Subscription?.RemoveItem(item);
                     _monitoredItems.Remove(item);
                 }
             }

@@ -17,12 +17,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 操作人
         /// </summary>
-        public string Operator { get; set; }
+        public string Operator { get; set; } = string.Empty;
 
         /// <summary>
         /// 变更描述
         /// </summary>
-        public string ChangeDesc { get; set; }
+        public string ChangeDesc { get; set; } = string.Empty;
 
         /// <summary>
         /// 创建时间

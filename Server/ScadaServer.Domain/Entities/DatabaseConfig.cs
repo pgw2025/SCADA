@@ -12,22 +12,22 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 配置名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 数据库类型
         /// </summary>
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
 
         /// <summary>
         /// 后端类型
         /// </summary>
-        public string BackendType { get; set; }
+        public string BackendType { get; set; } = string.Empty;
 
         /// <summary>
         /// 主机地址
         /// </summary>
-        public string Host { get; set; }
+        public string Host { get; set; } = string.Empty;
 
         /// <summary>
         /// 端口号
@@ -37,17 +37,17 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 用户名
         /// </summary>
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
 
         /// <summary>
         /// 密码
         /// </summary>
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         /// <summary>
         /// 数据库名称（InfluxDB 场景下也可作为 Bucket 别名）
         /// </summary>
-        public string DatabaseName { get; set; }
+        public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>
         /// 访问令牌（InfluxDB 2.x Token / 其它基于令牌的数据库）

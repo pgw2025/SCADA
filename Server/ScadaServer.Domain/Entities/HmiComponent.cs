@@ -17,12 +17,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 组件类型（如：按钮、图表、仪表等）
         /// </summary>
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
 
         /// <summary>
         /// 组件名称
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// X坐标
@@ -52,7 +52,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 绑定字段（变量键，旧绑定模型，保留以兼容存量数据）
         /// </summary>
-        public string BindField { get; set; }
+        public string BindField { get; set; } = string.Empty;
 
         /// <summary>
         /// 组件标签（前端组件显示名，原只能塞进 PropsJson，现独立成列；可选）
@@ -73,6 +73,6 @@ namespace ScadaServer.Domain.Entities
         /// 组件属性（JSON格式）
         /// </summary>
         [Column(TypeName = "text")]
-        public string PropsJson { get; set; }
+        public string PropsJson { get; set; } = string.Empty;
     }
 }
