@@ -12,7 +12,7 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    [Migration("20260829062345_AddExposedInterfaceRouteUniqueIndex")]
+    [Migration("20260829100421_AddExposedInterfaceRouteUniqueIndex")]
     partial class AddExposedInterfaceRouteUniqueIndex
     {
         /// <inheritdoc />
@@ -518,23 +518,31 @@ namespace ScadaServer.Infrastructure.Migrations
 
                     b.Property<string>("ExposedKey")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("RequestMethod")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
 
                     b.Property<string>("RouteUrl")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("DeviceId");
+
+                    b.HasIndex("RouteUrl", "RequestMethod")
+                        .IsUnique()
+                        .HasDatabaseName("ix_exposedinterfaces_route_method");
 
                     b.ToTable("ExposedInterfaces", (string)null);
                 });

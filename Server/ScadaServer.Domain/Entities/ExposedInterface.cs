@@ -12,16 +12,19 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 接口名称
         /// </summary>
+        [MaxLength(100)]
         public string Name { get; set; }
 
         /// <summary>
         /// 路由URL
         /// </summary>
+        [MaxLength(512)]
         public string RouteUrl { get; set; }
 
         /// <summary>
         /// 请求方法（GET/POST/PUT/DELETE等）
         /// </summary>
+        [MaxLength(16)]
         public string RequestMethod { get; set; }
 
         /// <summary>
@@ -37,6 +40,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 暴露键（用于标识接口）
         /// </summary>
+        [MaxLength(256)]
         public string ExposedKey { get; set; }
 
         /// <summary>

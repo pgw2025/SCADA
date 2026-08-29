@@ -102,6 +102,21 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<Device>().ToTable("Devices");
             modelBuilder.Entity<DeviceConfig>().ToTable("DeviceConfigs");
             modelBuilder.Entity<ExposedInterface>().ToTable("ExposedInterfaces");
+            // 开放接口：路由与请求方法需建库级唯一索引兜底（并发/直写库时的数据库级约束）。
+            // 列需显式限制长度映射为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引），
+            // 与实体上的 [MaxLength] 保持一致。
+            modelBuilder.Entity<ExposedInterface>()
+                .Property(x => x.Name).HasMaxLength(100);
+            modelBuilder.Entity<ExposedInterface>()
+                .Property(x => x.RouteUrl).HasMaxLength(512);
+            modelBuilder.Entity<ExposedInterface>()
+                .Property(x => x.RequestMethod).HasMaxLength(16);
+            modelBuilder.Entity<ExposedInterface>()
+                .Property(x => x.ExposedKey).HasMaxLength(256);
+            modelBuilder.Entity<ExposedInterface>()
+                .HasIndex(x => new { x.RouteUrl, x.RequestMethod })
+                .IsUnique()
+                .HasDatabaseName("ix_exposedinterfaces_route_method");
             modelBuilder.Entity<HmiComponent>().ToTable("HmiComponents");
             modelBuilder.Entity<ModelVariable>().ToTable("ModelVariables");
 
