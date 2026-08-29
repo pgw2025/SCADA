@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable, updateVariable, deleteVariable } from '../store/index';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable, updateVariable, deleteVariable, exportVariables } from '../store/index';
 import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
+import VariableImportDialog from './VariableImportDialog.vue';
 
 onMounted(() => {
   fetchDataModelsFromBackend();
@@ -24,7 +25,9 @@ import {
   FileJson,
   Binary,
   ChevronDown,
-  Check
+  Check,
+  Upload,
+  Download
 } from 'lucide-vue-next';
 
 // Mobile Drawer state
@@ -401,6 +404,36 @@ const handleDeleteVariable = async (v: ModelVariable) => {
 
   addLog('模型建立', `模型 [${model.name}] 删除变量 [${v.name}]`, 'warning');
 };
+
+// ---- 变量批量导入 / 导出 ----
+
+// 导入向导开关
+const showImportDialog = ref<boolean>(false);
+
+// 导出：根据 format 下载 xlsx/csv（URL.createObjectURL 落地，不新增 api 层依赖）
+const handleExport = async (format: 'xlsx' | 'csv') => {
+  const model = currentModel.value;
+  if (!model) return;
+  try {
+    const blob = await exportVariables(Number(model.id), format);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Model-${model.id}-Variables-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addLog('模型建立', `模型 [${model.name}] 导出变量(${format.toUpperCase()})`, 'normal');
+  } catch {
+    // 失败提示由 http 拦截器统一 Toast 弹出
+  }
+};
+
+// 导入完成后刷新当前模型变量列表（增量并入当前模型，避免全量重拉导致选中态丢失）
+const handleImportDone = async () => {
+  await fetchDataModelsFromBackend();
+};
 </script>
 
 <template>
@@ -501,6 +534,32 @@ const handleDeleteVariable = async (v: ModelVariable) => {
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
+          <button 
+            @click="showImportDialog = true"
+            class="bg-emerald-600 hover:bg-emerald-700 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+            title="批量导入变量（TIA xlsx / CSV）"
+          >
+            <Upload class="w-4 h-4" />
+            导入
+          </button>
+          <div class="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+            <button
+              @click="handleExport('xlsx')"
+              class="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 px-3 py-1.5 inline-flex items-center gap-1 cursor-pointer transition-all"
+              title="导出为 Excel"
+            >
+              <Download class="w-4 h-4" />
+              导出
+            </button>
+            <button
+              @click="handleExport('csv')"
+              class="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-400 dark:text-slate-500 px-2 py-1.5 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all"
+              title="导出为 CSV"
+            >
+              CSV
+            </button>
+          </div>
+
           <button 
             @click="showVarModal = true"
             class="bg-violet-600 hover:bg-violet-700 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all shadow-xs"
@@ -1114,6 +1173,14 @@ const handleDeleteVariable = async (v: ModelVariable) => {
         </div>
       </div>
     </div>
+
+    <!-- MODAL: 批量导入变量向导 -->
+    <VariableImportDialog
+      :open="showImportDialog"
+      :model-id="currentModel ? Number(currentModel.id) : 0"
+      @close="showImportDialog = false"
+      @done="handleImportDone"
+    />
 
   </div>
 </template>

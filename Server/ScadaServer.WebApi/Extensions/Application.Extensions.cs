@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Application.ImportExport;
 using ScadaServer.Application.Services;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Persistence;
@@ -34,6 +35,10 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IExposedApiRegistry, ExposedApiRegistry>();
             services.AddScoped<IHmiComponentAppService, HmiComponentAppService>();
             services.AddScoped<IModelVariableAppService, ModelVariableAppService>();
+
+            // 模型变量导入/导出：解析器与导出服务均无状态，可注册为常驻单例。
+            services.AddSingleton<IVariableImportParser, VariableImportParser>();
+            services.AddSingleton<VariableExportService>();
             services.AddScoped<IDeviceVariableAppService, DeviceVariableAppService>();
             services.AddScoped<IProtocolAppService, ProtocolAppService>();
             services.AddScoped<IMqttServerAppService, MqttServerAppService>();

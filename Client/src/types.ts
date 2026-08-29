@@ -834,3 +834,54 @@ export interface SystemConfig {
   backendApiUrl?: string;
 }
 
+// ===== 模型变量导入/导出（对应后端 VariableTransferDto）=====
+
+/** 冲突处理策略：Skip(跳过)/ Overwrite(覆盖更新)/ Abort(存在冲突即失败) */
+export type ConflictStrategy = 'Skip' | 'Overwrite' | 'Abort';
+
+/** 单行导入解析结果（预览展示用），与后端 VariableImportRow 对齐 */
+export interface VariableImportRow {
+  rowNumber: number;
+  key: string;
+  name: string;
+  dataTypeRaw?: string | null;
+  dataType: DataTypeEnum;
+  isApproxType?: boolean;
+  address?: string | null;
+  description?: string | null;
+  path?: string | null;
+  hasError: boolean;
+  errorReason?: string | null;
+  isConflict: boolean;
+  // CSV 增强字段（可选）
+  unit?: string | null;
+  min?: number | null;
+  max?: number | null;
+  storeMode?: 'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated' | null;
+  storeIntervalMs?: number | null;
+  updateMode?: UpdateMode | null;
+  scaleSlope?: number | null;
+  scaleOffset?: number | null;
+  deadBand?: number | null;
+  isReadOnly?: boolean | null;
+}
+
+/** 导入预览结果（POST /api/ModelVariable/import/preview 返回） */
+export interface VariableImportPreview {
+  modelId: number;
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  conflictRows: number;
+  rows: VariableImportRow[];
+}
+
+/** 导入结果（POST /api/ModelVariable/import 返回） */
+export interface VariableImportResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  failedRows: VariableImportRow[];
+}
+

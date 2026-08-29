@@ -1,5 +1,5 @@
 import { http } from './http';
-import { ModelVariable } from '../types';
+import { ModelVariable, VariableImportPreview, VariableImportResult, ConflictStrategy } from '../types';
 import { systemConfig, addLog } from '../store/index';
 
 const BASE_URL = () => `${systemConfig.value.backendApiUrl}/api/ModelVariable`;
@@ -70,4 +70,36 @@ export const deleteVariable = async (id: number): Promise<void> => {
     addLog('变量管理', `删除变量失败 [${id}]: ${error.message}`, 'warning');
     throw error;
   }
+};
+
+// POST /api/ModelVariable/import/preview - 解析并预览导入文件（不入库）
+export const previewVariableImport = async (modelId: number, file: File): Promise<VariableImportPreview> => {
+  const form = new FormData();
+  form.append('modelId', String(modelId));
+  form.append('file', file);
+  const response = await http.post<VariableImportPreview>(`${BASE_URL()}/import/preview`, form);
+  return response.data;
+};
+
+// POST /api/ModelVariable/import - 确认导入（按冲突策略批量写入）
+export const submitVariableImport = async (
+  modelId: number,
+  file: File,
+  strategy: ConflictStrategy = 'Skip'
+): Promise<VariableImportResult> => {
+  const form = new FormData();
+  form.append('modelId', String(modelId));
+  form.append('file', file);
+  form.append('conflictStrategy', strategy);
+  const response = await http.post<VariableImportResult>(`${BASE_URL()}/import`, form);
+  return response.data;
+};
+
+// GET /api/ModelVariable/by-model/{modelId}/export - 导出模型变量（xlsx/csv，blob 由调用方落地下载）
+export const exportVariables = async (modelId: number, format: 'xlsx' | 'csv' = 'xlsx'): Promise<Blob> => {
+  const response = await http.get<Blob>(`${BASE_URL()}/by-model/${modelId}/export`, {
+    params: { format },
+    responseType: 'blob',
+  });
+  return response.data;
 };
