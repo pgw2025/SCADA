@@ -262,6 +262,15 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasMaxLength(16)
                 .HasDefaultValue("Desktop");
 
+            // 页面背景配置 JSON（长文本）与运行端自适应模式（可空，NULL=未配置回退默认）
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.BackgroundJson)
+                .HasColumnType("longtext");
+
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.AdaptMode)
+                .HasMaxLength(32);
+
             modelBuilder.Entity<ScadaPage>()
                 .HasIndex(p => new { p.ProjectId, p.Platform })
                 .HasDatabaseName("IX_ScadaPages_ProjectId_Platform");

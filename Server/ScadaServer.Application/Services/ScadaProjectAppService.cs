@@ -136,6 +136,8 @@ namespace ScadaServer.Application.Services
                     Platform = page.Platform,
                     Width = page.Width,
                     Height = page.Height,
+                    BackgroundJson = page.BackgroundJson,
+                    AdaptMode = page.AdaptMode,
                     Components = pageComponents
                 });
             }

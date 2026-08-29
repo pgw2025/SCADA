@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
-import { HMIComponent } from '../types';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { HMIComponent, PageBackground, PageAdaptMode } from '../types';
 import HMIWidget from './HMIWidget.vue';
 import {
   Maximize,
@@ -26,6 +26,10 @@ const props = defineProps<{
   canControlWrite?: boolean;
   /** 只读（运行时查看）模式：隐藏编辑器工具条，仅渲染画布与实时状态 */
   readonly?: boolean;
+  /** 页面背景配置（null=未配置回退白底）；设计/运行态均按此渲染画布 */
+  background?: PageBackground | null;
+  /** 运行端自适应屏幕模式（null=兼容行为：等比缩小不放大） */
+  adaptMode?: PageAdaptMode | null;
 }>();
 
 const emit = defineEmits<{
@@ -40,11 +44,14 @@ const emit = defineEmits<{
   (e: 'updateCanvasSize', w: number, h: number): void;
   (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number): void;
   (e: 'navigateToPage', pageId: string): void;
+  (e: 'selectBackground'): void;
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
 const workspaceRef = ref<HTMLDivElement | null>(null);
 const zoom = ref<number>(1);
+// 双轴缩放：设计模式恒等（等比）；运行端 Stretch（拉伸填满）模式下 X/Y 独立
+const zoomY = ref<number>(1);
 const showGrid = ref<boolean>(true);
 const snapToGrid = ref<boolean>(true);
 
@@ -66,11 +73,11 @@ const dragSnapshot = ref<{ id: string; x: number; y: number }[]>([]);
 const isBoxSelecting = ref<boolean>(false);
 const boxRect = ref<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
 
-// 屏幕坐标 → 画布坐标（按 zoom 反算）
+// 屏幕坐标 → 画布坐标（按 zoom 反算；拉伸模式下 X/Y 各自按轴缩放反算）
 const toCanvasCoords = (clientX: number, clientY: number) => {
   const rect = canvasRef.value?.getBoundingClientRect();
   if (!rect) return { x: 0, y: 0 };
-  return { x: (clientX - rect.left) / zoom.value, y: (clientY - rect.top) / zoom.value };
+  return { x: (clientX - rect.left) / zoom.value, y: (clientY - rect.top) / zoomY.value };
 };
 
 // Handle arrow keys for micro-adjustments in Edit Mode
@@ -240,7 +247,7 @@ const handleMouseMove = (e: MouseEvent) => {
     if (dragSnapshot.value.length === 0) return;
     // 阶段5-2：批量拖动——以首个选中项为基准计算吸附后的位移，整体平移
     const deltaX = (e.clientX - dragStart.value.x) / zoom.value;
-    const deltaY = (e.clientY - dragStart.value.y) / zoom.value;
+    const deltaY = (e.clientY - dragStart.value.y) / zoomY.value;
 
     const base = dragSnapshot.value[0];
     let nextX = base.x + deltaX;
@@ -263,7 +270,7 @@ const handleMouseMove = (e: MouseEvent) => {
     emit('updateComponents', updates);
   } else if (activeResizeHandle.value) {
     const deltaX = (e.clientX - dragStart.value.x) / zoom.value;
-    const deltaY = (e.clientY - dragStart.value.y) / zoom.value;
+    const deltaY = (e.clientY - dragStart.value.y) / zoomY.value;
 
     let nextW = compOriginalPos.value.w;
     let nextH = compOriginalPos.value.h;
@@ -332,13 +339,19 @@ const handleStageMouseDown = (e: MouseEvent) => {
 };
 
 // 阶段5-2：框选结束 → 命中相交组件；极小框视为单击空白 → 取消选择
+// 页面属性：设计模式下单击画布空白（画布范围内）→ 通知父级打开背景属性配置
 const handleStageMouseUp = () => {
   if (!isBoxSelecting.value) return;
   isBoxSelecting.value = false;
   const r = boxRect.value;
   const area = r.w * r.h;
   if (area < 16) {
+    // 单击落点在画布范围内（含边缘）才视为「点击背景」；画布外灰色工作区仅取消选择
+    const inCanvas = r.x >= 0 && r.y >= 0 && r.x <= props.canvasWidth && r.y <= props.canvasHeight;
     emit('selectComponents', []);
+    if (!props.isActiveMode && !props.readonly && inCanvas) {
+      emit('selectBackground');
+    }
     boxRect.value = { x: 0, y: 0, w: 0, h: 0 };
     return;
   }
@@ -452,6 +465,18 @@ const onPresetChange = (e: Event) => {
   if (w && h) emit('updateCanvasSize', w, h);
 };
 
+// 设计模式工具栏缩放（等比：双轴同步）
+const zoomIn = () => {
+  const v = Math.min(1.5, zoom.value + 0.1);
+  zoom.value = v;
+  zoomY.value = v;
+};
+const zoomOut = () => {
+  const v = Math.max(0.5, zoom.value - 0.1);
+  zoom.value = v;
+  zoomY.value = v;
+};
+
 // 阶段5-4：组件库拖拽投放（按 zoom 反算 + 网格吸附得到画布坐标）
 const onDrop = (e: DragEvent) => {
   e.preventDefault();
@@ -465,7 +490,7 @@ const onDrop = (e: DragEvent) => {
   }
   const rect = canvasRef.value.getBoundingClientRect();
   let x = (e.clientX - rect.left) / zoom.value;
-  let y = (e.clientY - rect.top) / zoom.value;
+  let y = (e.clientY - rect.top) / zoomY.value;
   if (snapToGrid.value) {
     x = Math.round(x / 10) * 10;
     y = Math.round(y / 10) * 10;
@@ -475,7 +500,11 @@ const onDrop = (e: DragEvent) => {
   emit('addComponentAt', parsed.type, parsed.w, parsed.h, parsed.name, x, y);
 };
 
-// 阶段5-7：运行端响应式——只读（运行时）模式自动缩放画布以适配可视区，上限 100%（不放大）。
+// 阶段5-7：运行端响应式——只读（运行时）模式自动缩放画布以适配可视区。
+// 页面属性-自适应屏幕模式：
+//  - null（未配置，兼容默认）：等比缩小适配，上限 100%（不放大）
+//  - FitScaleUp：等比缩放完整可见，允许放大填满
+//  - Stretch：X/Y 双轴独立拉伸填满（非等比，可能变形）
 let fitObserver: ResizeObserver | null = null;
 
 const applyFitZoom = () => {
@@ -486,9 +515,66 @@ const applyFitZoom = () => {
   const availW = el.clientWidth - pad * 2;
   const availH = el.clientHeight - pad * 2;
   if (availW <= 0 || availH <= 0) return;
-  const fit = Math.min(1, availW / props.canvasWidth, availH / props.canvasHeight);
+
+  if (props.adaptMode === 'Stretch') {
+    // 拉伸填满：X/Y 各自独立缩放
+    zoom.value = Math.max(0.05, Math.round((availW / props.canvasWidth) * 100) / 100);
+    zoomY.value = Math.max(0.05, Math.round((availH / props.canvasHeight) * 100) / 100);
+    return;
+  }
+
+  let fit: number;
+  if (props.adaptMode === 'FitScaleUp') {
+    // 等比完整可见，允许放大
+    fit = Math.min(availW / props.canvasWidth, availH / props.canvasHeight);
+  } else {
+    // 兼容默认：等比缩小，上限 100%
+    fit = Math.min(1, availW / props.canvasWidth, availH / props.canvasHeight);
+  }
   zoom.value = Math.max(0.2, Math.round(fit * 100) / 100);
+  zoomY.value = zoom.value;
 };
+
+// ===== 页面属性：画布背景渲染（纯色/渐变/图片 + 设计模式辅助网格叠加） =====
+// 辅助网格仅设计模式显示，运行端纯净渲染页面背景
+const showDesignGrid = computed(() => showGrid.value && !props.readonly);
+
+const canvasBackgroundStyle = computed(() => {
+  const bg = props.background;
+  const imageLayers: string[] = [];
+  const sizes: string[] = [];
+  const repeats: string[] = [];
+
+  if (bg) {
+    if (bg.type === 'color') {
+      // 纯色走 backgroundColor
+    } else if (bg.type === 'gradient') {
+      const start = bg.gradientStart || '#ffffff';
+      const end = bg.gradientEnd || '#ffffff';
+      const angle = typeof bg.gradientAngle === 'number' ? Math.max(0, Math.min(360, bg.gradientAngle)) : 180;
+      imageLayers.push(`linear-gradient(${angle}deg, ${start}, ${end})`);
+      sizes.push('100% 100%');
+      repeats.push('no-repeat');
+    } else if (bg.type === 'image' && (bg.imageUrl || '').trim()) {
+      imageLayers.push(`url("${(bg.imageUrl || '').trim()}")`);
+      const fit = bg.imageFit || 'fill';
+      sizes.push(fit === 'contain' ? 'contain' : fit === 'cover' ? 'cover' : fit === 'tile' ? 'auto auto' : '100% 100%');
+      repeats.push(fit === 'tile' ? 'repeat' : 'no-repeat');
+    }
+  }
+  if (showDesignGrid.value) {
+    imageLayers.push('radial-gradient(#d9d9d9 1px, transparent 1px)');
+    sizes.push('10px 10px');
+    repeats.push('repeat');
+  }
+
+  return {
+    backgroundColor: bg?.type === 'color' ? (bg.color || '#ffffff') : '#ffffff',
+    backgroundImage: imageLayers.length ? imageLayers.join(', ') : 'none',
+    backgroundSize: sizes.length ? sizes.join(', ') : undefined,
+    backgroundRepeat: repeats.length ? repeats.join(', ') : undefined,
+  };
+});
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
@@ -503,7 +589,7 @@ onMounted(() => {
 });
 
 watch(
-  () => [props.readonly, props.canvasWidth, props.canvasHeight],
+  () => [props.readonly, props.canvasWidth, props.canvasHeight, props.adaptMode],
   () => {
     if (props.readonly) applyFitZoom();
   }
@@ -549,14 +635,14 @@ onUnmounted(() => {
       <!-- Zoom & Grid settings -->
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5 bg-white border border-[#d9d9d9] rounded p-0.5">
-          <button @click="zoom = Math.max(0.5, zoom - 0.1)"
+          <button @click="zoomOut"
             class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer" title="缩小">
             <Minimize class="w-3.5 h-3.5" />
           </button>
           <span class="text-[10px] font-mono font-bold w-12 text-center text-gray-600">
             {{ Math.round(zoom * 100) }}%
           </span>
-          <button @click="zoom = Math.min(1.5, zoom + 0.1)"
+          <button @click="zoomIn"
             class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer" title="放大">
             <Maximize class="w-3.5 h-3.5" />
           </button>
@@ -667,21 +753,19 @@ onUnmounted(() => {
       <!-- Canvas bounding card container -->
       <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
       <!-- 阶段5-7：只读模式 m-auto 安全居中（适配时居中，溢出时回退左顶对齐可滚动） -->
+      <!-- 拉伸填满（Stretch）模式下 X/Y 独立缩放，占位宽高分别按各轴 zoom 计算 -->
       <div class="relative shrink-0" :class="readonly ? 'm-auto' : ''" :style="{
         width: canvasWidth * zoom + 'px',
-        height: canvasHeight * zoom + 'px'
+        height: canvasHeight * zoomY + 'px'
       }">
         <div ref="canvasRef"
-          class="bg-white border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
+          class="border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
           @dragover.prevent @drop="onDrop" :style="{
             width: canvasWidth + 'px',
             height: canvasHeight + 'px',
-            transform: `scale(${zoom})`,
+            transform: `scale(${zoom}, ${zoomY})`,
             transformOrigin: 'top left',
-            backgroundImage: showGrid
-              ? 'radial-gradient(#d9d9d9 1px, transparent 1px)'
-              : 'none',
-            backgroundSize: '10px 10px',
+            ...canvasBackgroundStyle,
             boxShadow: isActiveMode
               ? '0 0 30px rgba(24, 144, 255, 0.08)'
               : '0 0 20px rgba(0, 0, 0, 0.05)',

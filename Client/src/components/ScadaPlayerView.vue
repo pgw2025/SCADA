@@ -207,6 +207,7 @@ const handleTriggerToggleValue = (
       <CanvasPanel class="h-full w-full" :components="currentPage.components" :selectedId="null" :selectedIds="[]"
         :isActiveMode="true" :component-values="componentValues" :component-qualities="componentQualities"
         :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite" :readonly="true"
+        :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
         @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate" />
     </div>
   </div>

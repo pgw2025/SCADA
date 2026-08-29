@@ -46,6 +46,18 @@ namespace ScadaServer.Domain.Entities
         public int Height { get; set; }
 
         /// <summary>
+        /// 画布背景配置（JSON，前端序列化）：类型（纯色/渐变/图片）及对应参数。
+        /// NULL 表示未配置，前端回退默认白底。
+        /// </summary>
+        public string? BackgroundJson { get; set; }
+
+        /// <summary>
+        /// 运行端自适应屏幕模式：FitScaleUp（等比缩放-允许放大）/ Stretch（拉伸填满）。
+        /// NULL/空 表示未配置，前端回退兼容行为（等比缩小不放大）。
+        /// </summary>
+        public string? AdaptMode { get; set; }
+
+        /// <summary>
         /// 页面包含的HMI组件列表
         /// </summary>
         [NotMapped]

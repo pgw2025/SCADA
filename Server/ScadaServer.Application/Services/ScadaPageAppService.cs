@@ -60,7 +60,9 @@ namespace ScadaServer.Application.Services
                 IsHome = dto.IsHome,
                 Platform = platform,
                 Width = dto.Width > 0 ? dto.Width : 1100,
-                Height = dto.Height > 0 ? dto.Height : 700
+                Height = dto.Height > 0 ? dto.Height : 700,
+                BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson),
+                AdaptMode = NormalizeAdaptMode(dto.AdaptMode)
             };
             await _repository.InsertAsync(entity);
             return entity.Id;
@@ -82,6 +84,8 @@ namespace ScadaServer.Application.Services
             entity.Platform = platform;
             entity.Width = dto.Width > 0 ? dto.Width : entity.Width;
             entity.Height = dto.Height > 0 ? dto.Height : entity.Height;
+            entity.BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson);
+            entity.AdaptMode = NormalizeAdaptMode(dto.AdaptMode);
             await _repository.UpdateAsync(entity);
             return true;
         }
@@ -111,12 +115,33 @@ namespace ScadaServer.Application.Services
             IsHome = entity.IsHome,
             Platform = entity.Platform,
             Width = entity.Width,
-            Height = entity.Height
+            Height = entity.Height,
+            BackgroundJson = entity.BackgroundJson,
+            AdaptMode = entity.AdaptMode
         };
 
         /// <summary>归一化归属端：空/非法值一律回退 Desktop。</summary>
         private static string NormalizePlatform(string? platform)
             => string.Equals(platform, "Mobile", StringComparison.OrdinalIgnoreCase) ? "Mobile" : "Desktop";
+
+        /// <summary>
+        /// 归一化背景配置 JSON：空白串归一化为 NULL（未配置）。
+        /// 内容结构由前端负责序列化/校验，后端仅透传存储。
+        /// </summary>
+        private static string? NormalizeBackgroundJson(string? json)
+            => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
+
+        /// <summary>归一化自适应模式：仅允许 FitScaleUp / Stretch，其余（含空）归一化为 NULL。</summary>
+        private static string? NormalizeAdaptMode(string? mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode)) return null;
+            return mode.Trim() switch
+            {
+                "FitScaleUp" => "FitScaleUp",
+                "Stretch" => "Stretch",
+                _ => null
+            };
+        }
 
         /// <summary>
         /// 保证同一 (ProjectId, Platform) 范围内至多一个首页：将除 excludeId 外的其它首页置否。

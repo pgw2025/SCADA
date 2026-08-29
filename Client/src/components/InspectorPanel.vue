@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { HMIComponent } from '../types';
+import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
-import { Settings, Tag, Sliders, Layout, Hash, ChevronRight } from 'lucide-vue-next';
+import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand } from 'lucide-vue-next';
 
 const props = defineProps<{
   selectedComponent: HMIComponent | null;
   currentPageId?: string;
+  /** 背景选中态：非空时显示「页面属性」表单（背景 + 自适应屏幕配置） */
+  backgroundPage?: ScadaPage | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'updateComponent', id: string, updates: Partial<HMIComponent>): void;
+  (e: 'updatePage', updates: Partial<ScadaPage>): void;
   (e: 'collapse'): void;
 }>();
 
@@ -68,10 +71,41 @@ const navTargetOptions = computed(() => {
     .filter(p => p.id !== props.currentPageId)
     .map(p => ({ id: p.id, name: p.name }));
 });
+
+// ===== 页面属性（背景 + 自适应屏幕）=====
+// 未配置背景时的默认值（纯色白底）；每次编辑整体提交，父级负责落库
+const pageBackground = computed<PageBackground>(() =>
+  props.backgroundPage?.background ?? { type: 'color', color: '#ffffff' });
+
+const updateBackground = (patch: Partial<PageBackground>) => {
+  emit('updatePage', { background: { ...pageBackground.value, ...patch } });
+};
+
+const onBackgroundTypeChange = (val: string) => {
+  const type = val as PageBackgroundType;
+  // 切换类型时保留各类型已有参数，仅补默认值，避免来回切换丢失已填内容
+  const cur = pageBackground.value;
+  const patch: Partial<PageBackground> = { type };
+  if (type === 'color' && !cur.color) patch.color = '#ffffff';
+  if (type === 'gradient') {
+    if (!cur.gradientStart) patch.gradientStart = '#e0f2fe';
+    if (!cur.gradientEnd) patch.gradientEnd = '#1e3a8a';
+    if (typeof cur.gradientAngle !== 'number') patch.gradientAngle = 180;
+  }
+  if (type === 'image') {
+    if (!cur.imageFit) patch.imageFit = 'fill';
+  }
+  updateBackground(patch);
+};
+
+const onAdaptModeChange = (val: string) => {
+  emit('updatePage', { adaptMode: val === 'FitScaleUp' || val === 'Stretch' ? val : null });
+};
 </script>
 
 <template>
-  <div v-if="!selectedComponent"
+  <!-- 空态：未选中任何元件/背景 -->
+  <div v-if="!selectedComponent && !backgroundPage"
     class="h-full bg-[#fafafa] dark:bg-slate-950 border-l border-[#d9d9d9] dark:border-slate-800 p-6 text-gray-400 dark:text-slate-500 text-xs flex flex-col justify-between items-center text-center transition-colors relative">
     <div class="w-full flex justify-end">
       <button @click="emit('collapse')"
@@ -85,10 +119,185 @@ const navTargetOptions = computed(() => {
       <Settings class="w-8 h-8 text-[#1890ff] dark:text-sky-400 mb-2 animate-spin-slow opacity-60" />
       <p class="font-semibold text-gray-700 dark:text-slate-300">属性面板</p>
       <p class="text-[10px] text-gray-400 dark:text-slate-500 mt-2.5 max-w-[200px] leading-relaxed">
-        请在画布上选择元件以配置属性。
+        请在画布上选择元件以配置属性。<br />点击画布空白背景可配置页面属性。
       </p>
     </div>
     <div class="h-4"></div>
+  </div>
+
+  <!-- 页面属性：点击画布背景后显示（背景设置 + 自适应屏幕设置） -->
+  <div v-else-if="backgroundPage"
+    class="h-full flex flex-col bg-white dark:bg-slate-900 border-l border-[#d9d9d9] dark:border-slate-800 text-[#262626] dark:text-slate-100 overflow-y-auto transition-colors">
+    <!-- Title -->
+    <div
+      class="p-4 border-b border-[#f0f0f0] dark:border-slate-800 bg-[#fafafa] dark:bg-slate-950 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <Palette class="w-4 h-4 text-[#1890ff] dark:text-sky-400" />
+        <h3 class="text-xs font-bold text-[#141414] dark:text-slate-100 uppercase tracking-wider">
+          页面属性
+        </h3>
+      </div>
+      <button @click="emit('collapse')"
+        class="p-1 rounded text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+        title="收起属性面板">
+        <ChevronRight class="w-4 h-4" />
+      </button>
+    </div>
+
+    <div class="p-4 space-y-4 text-left">
+      <!-- 页面基本信息（只读） -->
+      <section class="space-y-3">
+        <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300">
+          <Layout class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400" />
+          基本信息
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">画面名称</label>
+            <input type="text" disabled :value="backgroundPage.name"
+              class="w-full bg-[#fafafa] dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 mt-0.5 text-gray-400 dark:text-slate-500 cursor-not-allowed" />
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">画布尺寸 (px)</label>
+            <input type="text" disabled :value="`${backgroundPage.width ?? 1100} × ${backgroundPage.height ?? 700}`"
+              class="w-full bg-[#fafafa] dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 mt-0.5 text-gray-400 dark:text-slate-500 font-mono text-[10px] cursor-not-allowed" />
+          </div>
+        </div>
+      </section>
+
+      <div class="border-t border-[#f0f0f0] dark:border-slate-800 my-4" />
+
+      <!-- 背景设置 -->
+      <section class="space-y-3">
+        <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300">
+          <Palette class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400" />
+          背景设置
+        </div>
+
+        <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">背景类型</label>
+          <select :value="pageBackground.type"
+            @change="onBackgroundTypeChange(($event.target as HTMLSelectElement).value)"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+            <option value="color">纯色背景</option>
+            <option value="gradient">渐变背景</option>
+            <option value="image">图片背景 (URL)</option>
+          </select>
+        </div>
+
+        <!-- 纯色 -->
+        <template v-if="pageBackground.type === 'color'">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">背景颜色</label>
+            <div class="flex items-center gap-1.5 mt-1">
+              <input type="color" :value="pageBackground.color || '#ffffff'"
+                @input="updateBackground({ color: ($event.target as HTMLInputElement).value })"
+                class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+              <input type="text" :value="pageBackground.color || '#ffffff'"
+                @input="updateBackground({ color: ($event.target as HTMLInputElement).value })"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">快速选择</label>
+            <div class="grid grid-cols-8 gap-1.5 mt-1">
+              <button v-for="c in ['#ffffff', '#f5f5f5', '#e0f2fe', '#dcfce7', '#fef9c3', '#111827', '#0f172a', '#1e3a8a']"
+                :key="c" @click="updateBackground({ color: c })" :style="{ backgroundColor: c }"
+                class="h-6 rounded border border-[#d9d9d9] dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-[#1890ff] transition-shadow"
+                :title="c" />
+            </div>
+          </div>
+        </template>
+
+        <!-- 渐变 -->
+        <template v-else-if="pageBackground.type === 'gradient'">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">起始色 (Start)</label>
+            <div class="flex items-center gap-1.5 mt-1">
+              <input type="color" :value="pageBackground.gradientStart || '#e0f2fe'"
+                @input="updateBackground({ gradientStart: ($event.target as HTMLInputElement).value })"
+                class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+              <input type="text" :value="pageBackground.gradientStart || '#e0f2fe'"
+                @input="updateBackground({ gradientStart: ($event.target as HTMLInputElement).value })"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">终止色 (End)</label>
+            <div class="flex items-center gap-1.5 mt-1">
+              <input type="color" :value="pageBackground.gradientEnd || '#1e3a8a'"
+                @input="updateBackground({ gradientEnd: ($event.target as HTMLInputElement).value })"
+                class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+              <input type="text" :value="pageBackground.gradientEnd || '#1e3a8a'"
+                @input="updateBackground({ gradientEnd: ($event.target as HTMLInputElement).value })"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">
+              渐变角度 ({{ pageBackground.gradientAngle ?? 180 }}°)
+            </label>
+            <input type="range" min="0" max="360" step="5" :value="pageBackground.gradientAngle ?? 180"
+              @input="updateBackground({ gradientAngle: parseInt(($event.target as HTMLInputElement).value) || 0 })"
+              class="w-full mt-1 accent-[#1890ff]" />
+          </div>
+          <!-- 实时预览 -->
+          <div class="h-8 rounded border border-[#d9d9d9] dark:border-slate-700" :style="{
+            backgroundImage: `linear-gradient(${pageBackground.gradientAngle ?? 180}deg, ${pageBackground.gradientStart || '#e0f2fe'}, ${pageBackground.gradientEnd || '#1e3a8a'})`
+          }" />
+        </template>
+
+        <!-- 图片 -->
+        <template v-else>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">图片 URL</label>
+            <input type="text" :value="pageBackground.imageUrl ?? ''"
+              @input="updateBackground({ imageUrl: ($event.target as HTMLInputElement).value })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white text-xs focus:outline-none"
+              placeholder="https://example.com/bg.png" />
+            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
+              暂不支持本地上传，请填写可公开访问的图片地址。
+            </p>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">填充方式</label>
+            <select :value="pageBackground.imageFit || 'fill'"
+              @change="updateBackground({ imageFit: ($event.target as HTMLSelectElement).value as PageBackground['imageFit'] })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+              <option value="fill">拉伸铺满（可能变形）</option>
+              <option value="contain">等比完整显示（可能留白）</option>
+              <option value="cover">等比铺满裁切（可能裁边）</option>
+              <option value="tile">平铺（按原始尺寸重复）</option>
+            </select>
+          </div>
+        </template>
+      </section>
+
+      <div class="border-t border-[#f0f0f0] dark:border-slate-800 my-4" />
+
+      <!-- 自适应屏幕设置 -->
+      <section class="space-y-3">
+        <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300">
+          <Expand class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400" />
+          自适应屏幕
+        </div>
+
+        <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">运行端适配模式</label>
+          <select :value="backgroundPage.adaptMode ?? ''"
+            @change="onAdaptModeChange(($event.target as HTMLSelectElement).value)"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+            <option value="">默认（等比缩小，不放大）</option>
+            <option value="FitScaleUp">等比缩放（允许放大填满）</option>
+            <option value="Stretch">拉伸填满（非等比，可能变形）</option>
+          </select>
+          <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+            仅作用于运行端全屏查看：画面按所选模式缩放适配视口。<br />
+            设计端画布不受影响，可随时用工具栏缩放查看。
+          </p>
+        </div>
+      </section>
+    </div>
   </div>
 
   <div v-else

@@ -400,8 +400,35 @@ export interface ScadaPage {
   /** 画布尺寸（后端持久化；缺省回退默认 1100×700） */
   width?: number;
   height?: number;
+  /** 画布背景配置（后端 BackgroundJson 反序列化；null/undefined=未配置回退白底） */
+  background?: PageBackground | null;
+  /** 运行端自适应屏幕模式（后端持久化；null/undefined=未配置回退兼容行为：等比缩小不放大） */
+  adaptMode?: PageAdaptMode | null;
   components: HMIComponent[];
 }
+
+// ===== 组态页面背景与自适应配置 =====
+
+/** 背景类型：纯色 / 渐变 / 图片（URL） */
+export type PageBackgroundType = 'color' | 'gradient' | 'image';
+
+/** 页面背景配置（序列化为 JSON 存后端 ScadaPage.BackgroundJson） */
+export interface PageBackground {
+  type: PageBackgroundType;
+  /** 纯色：CSS 颜色值 */
+  color?: string;
+  /** 渐变：起始色 / 终止色 / 角度（deg，0-360） */
+  gradientStart?: string;
+  gradientEnd?: string;
+  gradientAngle?: number;
+  /** 图片：URL 及填充方式 */
+  imageUrl?: string;
+  /** fill=拉伸铺满（非等比）、contain=等比完整显示、cover=等比铺满裁切、tile=平铺 */
+  imageFit?: 'fill' | 'contain' | 'cover' | 'tile';
+}
+
+/** 运行端自适应屏幕模式：FitScaleUp=等比缩放（允许放大）；Stretch=拉伸填满（非等比） */
+export type PageAdaptMode = 'FitScaleUp' | 'Stretch';
 
 export interface ScadaScreenProject {
   id: string;

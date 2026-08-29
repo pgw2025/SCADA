@@ -1,6 +1,6 @@
 import { http } from './http';
 import { systemConfig } from '../store/configStore';
-import { HMIComponent, ScadaPage, ScadaScreenProject, ComponentType } from '../types';
+import { HMIComponent, ScadaPage, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
 
 /**
  * 组态设计后端 API 封装（对应阶段1的 ScadaProject / ScadaPage / HmiComponent 三组端点）。
@@ -34,6 +34,8 @@ export interface PageWithComponentsDto {
   platform: string;
   width: number;
   height: number;
+  backgroundJson: string | null;
+  adaptMode: string | null;
   components: ComponentDto[];
 }
 export interface PageDto {
@@ -44,6 +46,8 @@ export interface PageDto {
   platform: string;
   width: number;
   height: number;
+  backgroundJson?: string | null;
+  adaptMode?: string | null;
 }
 export interface ComponentDto {
   id: number;
@@ -124,6 +128,9 @@ export const toPageDto = (pg: ScadaPage, projectId: number) => ({
   platform: pg.platform ?? 'Desktop',
   width: pg.width ?? PAGE_DEFAULT_W,
   height: pg.height ?? PAGE_DEFAULT_H,
+  // 背景配置对象 <-> 后端 BackgroundJson 字符串；未配置传 null（后端归一化为 NULL）
+  backgroundJson: pg.background ? JSON.stringify(pg.background) : null,
+  adaptMode: pg.adaptMode ?? null,
 });
 
 export const toComponentDto = (c: HMIComponent, pageId: number) => ({
@@ -171,8 +178,25 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   isHome: d.isHome,
   width: d.width,
   height: d.height,
+  background: parseBackgroundJson(d.backgroundJson),
+  adaptMode: d.adaptMode === 'FitScaleUp' || d.adaptMode === 'Stretch' ? (d.adaptMode as PageAdaptMode) : null,
   components: (d.components || []).map(fromComponentDto),
 });
+
+/** 后端 BackgroundJson 字符串 -> 前端背景配置对象；非法/缺失返回 null（未配置） */
+const parseBackgroundJson = (json: string | null | undefined): PageBackground | null => {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string'
+      && ['color', 'gradient', 'image'].includes(parsed.type)) {
+      return parsed as PageBackground;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 export const fromProjectFullDto = (d: ProjectFullDto): ScadaScreenProject => ({
   id: `srv-${d.project.id}`,

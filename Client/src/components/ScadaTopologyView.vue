@@ -42,7 +42,7 @@ import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { showToast } from '../services/toastService';
-import { HMIComponent, ComponentType, ScadaScreenProject } from '../types';
+import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
@@ -86,6 +86,13 @@ const selectedId = computed<string | null>(() =>
   selectedIds.value.length === 1 ? selectedIds.value[0] : null
 );
 const isActiveMode = ref<boolean>(false);
+
+// 页面属性：背景选中态（与组件选中互斥；点击画布空白背景 → InspectorPanel 切换为「页面属性」表单）
+const isBackgroundSelected = ref<boolean>(false);
+
+// 切换页面 / 进入运行模式时退出背景属性编辑
+watch(selectedPageId, () => { isBackgroundSelected.value = false; });
+watch(isActiveMode, (active) => { if (active) isBackgroundSelected.value = false; });
 
 // 阶段6：绑定检查面板（严格模式：组件必须绑定设备维度）
 const showBindingCheck = ref<boolean>(false);
@@ -293,9 +300,26 @@ const handleUpdateComponents = (updates: { id: string; updates: Partial<HMICompo
   endChange();
 };
 
-// 阶段5-2：选中集合变更（单选/多选/框选统一入口）
+// 阶段5-2：选中集合变更（单选/多选/框选统一入口）；与背景属性编辑互斥
 const handleSelectComponents = (ids: string[]) => {
   selectedIds.value = ids;
+  isBackgroundSelected.value = false;
+};
+
+// 页面属性：点击画布空白背景 → 进入背景属性编辑（清空组件选中）
+const handleSelectBackground = () => {
+  selectedIds.value = [];
+  isBackgroundSelected.value = true;
+};
+
+// 页面属性：背景/自适应配置变更 → 本地更新 + 落库
+const handleUpdatePage = (updates: Partial<ScadaPage>) => {
+  const pg = currentPage.value;
+  if (!pg) return;
+  Object.assign(pg, updates);
+  addLog('组态编辑', `页面属性更新: [${pg.name}]`, 'normal');
+  // 落库页面配置（新建未落库页面仅前端生效）
+  persistPageUpdate(pg).catch(() => { });
 };
 
 // Add a widget from panel library
@@ -984,23 +1008,25 @@ const selectedCompObj = computed(() => {
                   <CanvasPanel :components="currentPage.components" :selectedId="selectedId" :selectedIds="selectedIds"
                     :isActiveMode="isActiveMode" :component-values="componentValues" :canvas-width="pageWidth"
                     :canvas-height="pageHeight" :can-control-write="canControlWrite"
+                    :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
                     @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
                     @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
                     @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
                     @duplicate-components="handleDuplicateComponents" @clearCanvas="handleClearCanvas"
                     @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
-                    @navigate-to-page="handleNavigate" />
+                    @navigate-to-page="handleNavigate" @select-background="handleSelectBackground" />
                 </div>
               </div>
               <CanvasPanel v-else :components="currentPage.components" :selectedId="selectedId"
                 :selectedIds="selectedIds" :isActiveMode="isActiveMode" :component-values="componentValues"
                 :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite"
+                :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
                 @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
                 @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
                 @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
                 @duplicate-components="handleDuplicateComponents" @clearCanvas="handleClearCanvas"
                 @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
-                @navigate-to-page="handleNavigate" />
+                @navigate-to-page="handleNavigate" @select-background="handleSelectBackground" />
             </div>
           </div>
         </div>
@@ -1012,7 +1038,9 @@ const selectedCompObj = computed(() => {
         class="w-full md:w-80 bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 transition-colors">
         <!-- Render Inspector Panel directly targeting chosen component -->
         <InspectorPanel :selectedComponent="selectedCompObj" :current-page-id="currentPage.id"
-          @updateComponent="handleUpdateComponent" @collapse="isInspectorOpen = false" />
+          :background-page="isBackgroundSelected ? currentPage : null"
+          @updateComponent="handleUpdateComponent" @updatePage="handleUpdatePage"
+          @collapse="isInspectorOpen = false" />
       </div>
 
       <!-- 属性面板收起态把手 -->
