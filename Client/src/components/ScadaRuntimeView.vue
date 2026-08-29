@@ -36,6 +36,10 @@ const switchRuntimePlatform = (p: 'Desktop' | 'Mobile') => {
 const loadingProject = ref(true);
 const projectError = ref(false);
 
+// 当前端选中画面 ID：必须在 loadFromParam 之前初始化。
+// 否则下方 immediate watch 首次同步执行 loadFromParam 时会命中 TDZ（ReferenceError）。
+const selectedRuntimePageId = ref<string>('');
+
 const loadFromParam = async () => {
   loadingProject.value = true;
   projectError.value = false;
@@ -52,7 +56,6 @@ const runtimePages = computed(() =>
 );
 
 // 默认落地页：所在端首页（isHome）优先，否则取第一个
-const selectedRuntimePageId = ref<string>('');
 watch(
   runtimePages,
   (pages) => {

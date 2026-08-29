@@ -112,6 +112,10 @@ watch(
     // 登录成功后轮询兜底对所有角色生效（SignalR 断连时 HTTP 降级刷新设备列表）
     startBackendPolling();
 
+    // 登录后重建/补连 SignalR：登录页阶段 onMounted 的首次 start 因无 token 401 失败，
+    // 自动重连不处理首次 start 失败，须在持有 JWT 后重新初始化（内部会重建 Disconnected 连接）。
+    initializeRealtimeSignals();
+
     Promise.all([
       syncAreas(),
       fetchDataModelsFromBackend(),

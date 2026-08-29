@@ -19,7 +19,17 @@ export const initializeRealtimeSignals = () => {
         return;
     }
 
-    if (signalRConnection.value) return; // Avoid double initialization
+    // 已存在连接：仍处于已连接/重连中则跳过，避免重复初始化；
+    // 若因登录前无 token 首次 start 401 而停在 Disconnected，则销毁重建，
+    // 让登录后能带着最新 JWT 重新握手（自动重连不覆盖首次 start 失败）。
+    if (signalRConnection.value) {
+        if (signalRConnection.value.state === 'Disconnected') {
+            signalRConnection.value.stop().catch(() => { });
+            signalRConnection.value = null;
+        } else {
+            return;
+        }
+    }
 
     addLog('后端对接', `正在构建 ASP.NET Core SignalR 信道 (网关: ${systemConfig.value.backendApiUrl})...`, 'info');
 
