@@ -118,7 +118,28 @@ namespace ScadaServer.Infrastructure.Persistence
                 .IsUnique()
                 .HasDatabaseName("ix_exposedinterfaces_route_method");
             modelBuilder.Entity<HmiComponent>().ToTable("HmiComponents");
+            // 模型变量：列宽显式限制为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引），
+            // 并建立 (ModelId, Key) 库级唯一索引兜底，杜绝并发/直写库造成"模型内变量键重复"。
             modelBuilder.Entity<ModelVariable>().ToTable("ModelVariables");
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.Key).HasMaxLength(50);
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.Name).HasMaxLength(50);
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.Unit).HasMaxLength(32);
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.Description).HasMaxLength(500);
+            modelBuilder.Entity<ModelVariable>()
+                .HasIndex(m => new { m.ModelId, m.Key })
+                .IsUnique()
+                .HasDatabaseName("ix_modelvariable_model_key");
+            // 模型变量归属数据模型：显式 Restrict，删除模型前由应用层显式清理变量，杜绝孤儿或静默级联。
+            modelBuilder.Entity<ModelVariable>()
+                .HasOne<DataModel>()
+                .WithMany()
+                .HasForeignKey(m => m.ModelId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_ModelVariables_DataModels_ModelId");
 
             modelBuilder.Entity<Protocol>().ToTable("Protocols");
             modelBuilder.Entity<Protocol>()
@@ -237,7 +258,9 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<Device>()
                 .HasOne(d => d.Model)
                 .WithMany()
-                .HasForeignKey(d => d.ModelId);
+                .HasForeignKey(d => d.ModelId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Devices_DataModels_ModelId");
 
             modelBuilder.Entity<Device>()
                 .HasOne(d => d.Config)
@@ -305,7 +328,8 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasOne(dv => dv.ModelVariable)
                 .WithMany(mv => mv.DeviceVariables)
                 .HasForeignKey(dv => dv.ModelVariableId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DeviceVariables_ModelVariables_ModelVariableId");
 
             // 长文本列类型（MySQL 不支持 nvarchar(max)/text 默认映射，显式指定）
             modelBuilder.Entity<DeviceConfig>()

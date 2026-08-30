@@ -12,6 +12,9 @@
     <PackageReference Include="Cronos" Version="0.13.0" />
     <!-- xlsx 读写：模型变量导入（TIA）与导出 -->
     <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <!-- 捕获 DbUpdateException/MySqlException 以将唯一索引冲突转为友好业务提示（版本对齐 Infrastructure） -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.17" />
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
 
   <PropertyGroup>

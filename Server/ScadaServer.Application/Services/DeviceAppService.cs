@@ -5,6 +5,8 @@ using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Enums;
 using System.Text.Json;
 using ScadaServer.Domain.Interfaces.Repositories;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace ScadaServer.Application.Services
 {
@@ -50,6 +52,40 @@ namespace ScadaServer.Application.Services
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
 
+            var variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId);
+            return ToDto(entity, variables);
+        }
+
+        public async Task<List<DeviceDto>> GetListAsync(bool includeVariables = true)
+        {
+            var list = await _repository.GetListAsync();
+
+            // N+1 优化：一次性加载全量设备变量与变量模板，循环内仅内存组装，避免每台设备额外查询。
+            Dictionary<int, List<DeviceVariableDto>>? variablesByDevice = null;
+            if (includeVariables && list.Count > 0)
+            {
+                var allDeviceVariables = await _deviceVariableRepository.GetListAsync();
+                var allModelVariables = await _modelVariableRepository.GetListAsync();
+                var mvMap = allModelVariables.ToDictionary(mv => mv.Id);
+
+                variablesByDevice = allDeviceVariables
+                    .GroupBy(dv => dv.DeviceId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(dv => MapDeviceVariableDto(dv, mvMap)).ToList());
+            }
+
+            return list.Select(entity =>
+            {
+                List<DeviceVariableDto> variables = variablesByDevice != null && variablesByDevice.TryGetValue(entity.Id, out var vs)
+                    ? vs
+                    : new List<DeviceVariableDto>();
+                return ToDto(entity, variables);
+            }).ToList();
+        }
+
+        private DeviceDto ToDto(Device entity, List<DeviceVariableDto>? variables)
+        {
             return new DeviceDto
             {
                 Id = entity.Id,
@@ -66,38 +102,30 @@ namespace ScadaServer.Application.Services
                 LastCommunicationTime = entity.LastCommunicationTime,
                 ConfigJson = entity.Config?.JsonConfig,
                 RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
-                Variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
+                Variables = variables
             };
         }
 
-        public async Task<List<DeviceDto>> GetListAsync(bool includeVariables = true)
+        private static DeviceVariableDto MapDeviceVariableDto(DeviceVariable dv, Dictionary<int, ModelVariable> mvMap)
         {
-            var list = await _repository.GetListAsync();
-            var dtos = new List<DeviceDto>();
-            foreach (var entity in list)
+            mvMap.TryGetValue(dv.ModelVariableId, out var mv);
+            return new DeviceVariableDto
             {
-                dtos.Add(new DeviceDto
-                {
-                    Id = entity.Id,
-                    Name = entity.Name,
-                    Key = entity.Key,
-                    AreaId = entity.AreaId,
-                    ModelId = entity.ModelId,
-                    ProtocolKey = entity.Model?.Protocol?.Key,
-                    ProtocolName = entity.Model?.Protocol?.Name,
-                    IsEnabled = entity.IsEnabled,
-                    PollingInterval = entity.PollingInterval,
-                    CreatedAt = entity.CreatedAt,
-                    UpdatedAt = entity.UpdatedAt,
-                    LastCommunicationTime = entity.LastCommunicationTime,
-                    ConfigJson = entity.Config?.JsonConfig,
-                    RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
-                    Variables = includeVariables
-                        ? await LoadDeviceVariablesAsync(entity.Id, entity.ModelId)
-                        : new List<DeviceVariableDto>()
-                });
-            }
-            return dtos;
+                Id = dv.Id,
+                DeviceId = dv.DeviceId,
+                ModelVariableId = dv.ModelVariableId,
+                Key = mv?.Key ?? string.Empty,
+                Name = mv?.Name ?? string.Empty,
+                DataType = mv?.DataType ?? default,
+                Unit = mv?.Unit,
+                Address = dv.Address,
+                BitOffset = dv.BitOffset,
+                PollingIntervalMs = dv.PollingIntervalMs,
+                IsEnabled = dv.IsEnabled,
+                ScaleSlopeOverride = dv.ScaleSlopeOverride,
+                ScaleOffsetOverride = dv.ScaleOffsetOverride,
+                DeadBandOverride = dv.DeadBandOverride
+            };
         }
 
         /// <summary>
@@ -114,27 +142,7 @@ namespace ScadaServer.Application.Services
             var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == modelId);
             var mvMap = modelVariables.ToDictionary(mv => mv.Id);
 
-            return deviceVariables.Select(dv =>
-            {
-                mvMap.TryGetValue(dv.ModelVariableId, out var mv);
-                return new DeviceVariableDto
-                {
-                    Id = dv.Id,
-                    DeviceId = dv.DeviceId,
-                    ModelVariableId = dv.ModelVariableId,
-                    Key = mv?.Key ?? string.Empty,
-                    Name = mv?.Name ?? string.Empty,
-                    DataType = mv?.DataType ?? default,
-                    Unit = mv?.Unit,
-                    Address = dv.Address,
-                    BitOffset = dv.BitOffset,
-                    PollingIntervalMs = dv.PollingIntervalMs,
-                    IsEnabled = dv.IsEnabled,
-                    ScaleSlopeOverride = dv.ScaleSlopeOverride,
-                    ScaleOffsetOverride = dv.ScaleOffsetOverride,
-                    DeadBandOverride = dv.DeadBandOverride
-                };
-            }).ToList();
+            return deviceVariables.Select(dv => MapDeviceVariableDto(dv, mvMap)).ToList();
         }
 
         /// <summary>
@@ -258,6 +266,13 @@ namespace ScadaServer.Application.Services
             throw new BusinessException("生成设备标识失败：唯一键冲突过多，请手动指定标识或稍后重试。");
         }
 
+        /// <summary>
+        /// 判断 EF 保存异常是否为 MySQL 唯一键冲突（错误码 1062，如设备标识唯一索引）。
+        /// </summary>
+        private static bool IsUniqueIndexConflict(DbUpdateException ex)
+            => ex.GetBaseException() is MySqlException mySql
+                && (mySql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry || mySql.Number == 1062);
+
         public async Task<DeviceDto> CreateAsync(CreateDeviceDto dto)
         {
             // 1. 存在性检查：校验区域和模型是否存在
@@ -309,11 +324,19 @@ namespace ScadaServer.Application.Services
                     ModelId = dto.ModelId,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
-                    CreatedAt = DateTime.Now,
-                    UpdatedAt = DateTime.Now
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 };
 
-                await _repository.InsertAsync(entity);
+                try
+                {
+                    await _repository.InsertAsync(entity);
+                }
+                catch (DbUpdateException ex) when (IsUniqueIndexConflict(ex))
+                {
+                    // 并发竞态兜底：预检通过但落库时撞设备标识唯一索引
+                    throw new BusinessException($"设备标识 '{dto.Key}' 已存在");
+                }
 
                 // 创建协议配置
                 var config = new DeviceConfig
@@ -321,7 +344,7 @@ namespace ScadaServer.Application.Services
                     DeviceId = entity.Id,
                     JsonConfig = string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson,
                     Version = 1,
-                    UpdatedAt = DateTime.Now
+                    UpdatedAt = DateTime.UtcNow
                 };
                 await _configRepository.InsertAsync(config);
 
@@ -363,6 +386,13 @@ namespace ScadaServer.Application.Services
             // 记录更新前的启用状态，供事务提交后判断运行时注册/注销/重载。
             var wasEnabled = entity.IsEnabled;
 
+            // 1. 结构性约束：设备所绑定的数据模型不可变更。
+            //    更换模型会令既有设备变量实例的模板引用失配、协议随之变化，必须删除后按新模型重建。
+            if (dto.ModelId != entity.ModelId)
+            {
+                throw new BusinessException("不支持变更设备绑定的数据模型，请删除设备后重新创建。");
+            }
+
             // 1. 业务校验：Key 不能与其他设备重复
             var existing = await _repository.GetListAsync(d => d.Key == dto.Key && d.Id != dto.Id);
             if (existing.Any())
@@ -383,7 +413,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {dto.ModelId} 的变量模型不存在");
             }
 
-            // 3. 验证协议配置 JSON 格式（允许改绑定模型，协议随模型推导）
+            // 3. 验证协议配置 JSON 格式（协议随所绑定模型推导）
+            //    注：PUT 语义中 ConfigJson 为空表示"不修改协议配置"（保留原值），仅在前端回传时校验收录。
             if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
                 ValidateConfigJson(model.Protocol?.DriverKey, dto.ConfigJson);
@@ -397,16 +428,16 @@ namespace ScadaServer.Application.Services
                 entity.ModelId = dto.ModelId;
                 entity.IsEnabled = dto.IsEnabled;
                 entity.PollingInterval = dto.PollingInterval;
-                entity.UpdatedAt = DateTime.Now;
+                entity.UpdatedAt = DateTime.UtcNow;
 
                 await _repository.UpdateAsync(entity);
 
-                // 更新协议配置
+                // 更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）
                 if (!string.IsNullOrEmpty(dto.ConfigJson) && entity.Config != null)
                 {
                     entity.Config.JsonConfig = dto.ConfigJson;
                     entity.Config.Version++;
-                    entity.Config.UpdatedAt = DateTime.Now;
+                    entity.Config.UpdatedAt = DateTime.UtcNow;
                     await _configRepository.UpdateAsync(entity.Config);
                 }
 

@@ -16,13 +16,15 @@ namespace ScadaServer.Domain.Entities
         public int ModelId { get; set; }
 
         /// <summary>
-        /// 变量键（唯一标识）
+        /// 变量键（模型内唯一标识）
         /// </summary>
+        [MaxLength(50)]
         public string Key { get; set; } = string.Empty;
 
         /// <summary>
         /// 变量名称
         /// </summary>
+        [MaxLength(50)]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
@@ -43,7 +45,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 单位
         /// </summary>
-        
+        [MaxLength(32)]
         public string? Unit { get; set; }
 
         /// <summary>
@@ -61,7 +63,7 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 变量描述
         /// </summary>
-        
+        [MaxLength(500)]
         public string? Description { get; set; }
 
         /// <summary>
@@ -126,6 +128,6 @@ namespace ScadaServer.Domain.Entities
         /// 因此这里是 1:N 关系；具体地址、轮询、缩放等实现细节由设备实例决定。
         /// </para>
         /// </summary>
-        public List<DeviceVariable>? DeviceVariables { get; set; }
+        public List<DeviceVariable> DeviceVariables { get; set; } = new();
     }
 }

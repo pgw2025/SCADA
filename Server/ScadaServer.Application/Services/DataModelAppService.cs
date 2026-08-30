@@ -38,26 +38,48 @@ namespace ScadaServer.Application.Services
         public async Task<List<DataModelDto>> GetListAsync(bool includeVariables = true)
         {
             var list = await _repository.GetListAsync();
-            var dtos = new List<DataModelDto>();
-            foreach (var entity in list)
+
+            // N+1 优化：一次性取出全部模型变量并按 ModelId 分组，循环内仅内存组装。
+            Dictionary<int, List<ModelVariableDto>>? mvByModel = null;
+            if (includeVariables)
             {
-                dtos.Add(await MapToDtoAsync(entity, includeVariables));
+                var allVariables = await _variableRepository.GetListAsync();
+                mvByModel = allVariables
+                    .GroupBy(mv => mv.ModelId)
+                    .ToDictionary(g => g.Key, g => g.Select(ModelVariableMapper.ToDto).ToList());
             }
-            return dtos;
+
+            return list.Select(entity => ToDto(entity, mvByModel)).ToList();
         }
 
         /// <summary>
-        /// 实体 → DTO。由于 <see cref="DataModel.Variables"/> 为 [NotMapped]，EF 不会加载，
-        /// 这里按需查询 <see cref="ModelVariable"/> 后回填，保证接口返回的模型变量列表正确。
+        /// 实体 → DTO。变量列表若已通过 <paramref name="mvByModel"/> 一次加载则复用，否则按需查询回填
+        /// （<see cref="DataModel.Variables"/> 为 [NotMapped]，EF 不会加载）。
         /// </summary>
         private async Task<DataModelDto> MapToDtoAsync(DataModel entity, bool includeVariables)
         {
+            Dictionary<int, List<ModelVariableDto>>? mvByModel = null;
+            if (includeVariables)
+            {
+                var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
+                mvByModel = new Dictionary<int, List<ModelVariableDto>>
+                {
+                    [entity.Id] = variables.Select(ModelVariableMapper.ToDto).ToList()
+                };
+            }
+            return ToDto(entity, mvByModel);
+        }
+
+        private static DataModelDto ToDto(DataModel entity, Dictionary<int, List<ModelVariableDto>>? mvByModel)
+        {
             // 协议字段来自 Include 加载的 Protocol 导航属性
-            var dtos = new DataModelDto
+            var dto = new DataModelDto
             {
                 Id = entity.Id,
                 Name = entity.Name,
                 Description = entity.Description,
+                Vendor = entity.Vendor,
+                ModelName = entity.ModelName,
                 VendorModel = entity.VendorModel,
                 ProtocolId = entity.ProtocolId,
                 ProtocolKey = entity.Protocol?.Key,
@@ -65,32 +87,13 @@ namespace ScadaServer.Application.Services
                 Variables = new List<ModelVariableDto>()
             };
 
-            if (includeVariables)
+            if (mvByModel != null && mvByModel.TryGetValue(entity.Id, out var variables))
             {
-                var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
-                dtos.Variables = variables.Select(ToModelVariableDto).ToList();
+                dto.Variables = variables;
             }
 
-            return dtos;
+            return dto;
         }
-
-        private static ModelVariableDto ToModelVariableDto(ModelVariable v) => new()
-        {
-            Id = v.Id,
-            ModelId = v.ModelId,
-            Key = v.Key,
-            Name = v.Name,
-            Type = v.Type,
-            DataType = v.DataType,
-            Unit = v.Unit,
-            Min = v.Min,
-            Max = v.Max,
-            Description = v.Description,
-            IsStored = v.IsStored,
-            StoreMode = v.StoreMode,
-            UpdateMode = v.UpdateMode,
-            ExtensionData = v.ExtensionData
-        };
 
         /// <summary>
         /// 协议绑定校验：协议必须存在且已启用（模型必须绑定协议，作为驱动派发真相源）。
@@ -128,10 +131,12 @@ namespace ScadaServer.Application.Services
             {
                 Name = dto.Name,
                 Description = dto.Description?.Trim(),
+                Vendor = dto.Vendor?.Trim(),
+                ModelName = dto.ModelName?.Trim(),
                 VendorModel = dto.VendorModel?.Trim(),
                 ProtocolId = protocolId,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
             await _repository.InsertAsync(entity);
 
@@ -156,12 +161,14 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型名称 '{dto.Name}' 已存在");
             }
 
-            // 1.5 协议绑定校验（PUT 为全量替换语义，未传 ProtocolId 即解绑）
+            // 1.5 协议绑定校验（PUT 为全量替换语义：ProtocolId 必填，未传/为 0 由 DTO [Range] 拦截或在此抛异常）
             entity.ProtocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
             entity.Name = dto.Name;
             entity.Description = dto.Description?.Trim();
+            entity.Vendor = dto.Vendor?.Trim();
+            entity.ModelName = dto.ModelName?.Trim();
             entity.VendorModel = dto.VendorModel?.Trim();
-            entity.UpdatedAt = DateTime.Now;
+            entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
 
             return await MapToDtoAsync(entity, includeVariables: true);
@@ -182,9 +189,13 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"无法删除模型 '{entity.Name}'，因为已有设备正在使用此模型。请先删除相关设备。");
             }
 
-            // 2. 在重试策略内执行事务，避免 MySqlRetryingExecutionStrategy 冲突
+            // 2. 在重试策略内执行事务，避免 MySqlRetryingExecutionStrategy 冲突。
+            //    模型中若已定义变量，先显式删除（模型无设备引用时其变量不会被设备实例化，删除安全）——
+            //    数据库 (ModelId → DataModel) 外键为 Restrict，避免遗留孤儿变量。
             await _uow.ExecuteInTransactionAsync(async transaction =>
             {
+                await _variableRepository.DeleteRangeAsync(mv => mv.ModelId == id);
+
                 // 删除模型本身
                 await _repository.DeleteAsync(entity);
 
