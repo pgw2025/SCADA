@@ -97,7 +97,7 @@ const filteredWidgets = computed(() => {
           ? 'text-[#1890ff] dark:text-sky-400 border-b-2 border-[#1890ff] dark:border-sky-400 bg-white dark:bg-slate-900 font-bold'
           : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-slate-800/40'
       ]">
-        管道
+        结构
       </button>
     </div>
 

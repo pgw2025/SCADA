@@ -2,6 +2,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { HMIComponent, PageBackground, PageAdaptMode } from '../types';
 import HMIWidget from './HMIWidget.vue';
+import { isControlWidget } from '../widgetRegistry';
+import { trendHistory } from '../utils/trendHistory';
 import {
   Maximize,
   Minimize,
@@ -139,7 +141,9 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
     // 阶段6-2：非授权角色（非 Operator/Admin）在运行模式禁止下发写指令，
     // 控件仅作只读展示；后端 [Authorize(Roles)] 仍兜底返回 403。
     if (props.canControlWrite === false) return;
-    if (component.bindVariableKey || component.bindField) {
+    // 仅控制类器件可写：显式按钮/圆角按钮/开关/阀。其余（tank/pipe/led/图表等）为纯展示，
+    // 点击不产生副作用，避免运行态误向 PLC 写值。
+    if (isControlWidget(component.type) && (component.bindVariableKey || component.bindField)) {
       const devId = component.bindDeviceId ?? null;
       const varKey = component.bindVariableKey ?? component.bindField ?? '';
       const legacy = component.bindField;
@@ -814,6 +818,7 @@ onUnmounted(() => {
           }">
             <!-- Visual rendering logic box -->
             <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
+              :history="trendHistory[component.id]"
               :control-locked="props.isActiveMode && props.canControlWrite === false" />
 
             <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->

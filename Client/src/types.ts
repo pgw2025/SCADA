@@ -17,7 +17,8 @@ export type ComponentType =
   | 'sys-time'     // 工业实时系统时间时钟
   | 'state-text'   // PLC变量对应的多状态文本状态翻译 (e.g. 0=故障, 1=运行)
   | 'rounded-btn'  // 工业圆角按钮：支持变量绑定、自定义多状态背景/文字、取反/置位/复位/按1送0
-  | 'motor';       // 变频伺服电机 (带旋转定子、风扇叶动效)
+  | 'motor'        // 变频伺服电机 (带旋转定子、风扇叶动效)
+  | 'image';       // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
 
 export interface HMIComponent {
   id: string;
@@ -41,6 +42,7 @@ export interface HMIComponent {
     inactiveColor?: string;
     showValue?: boolean;
     maxValue?: number;
+    minValue?: number;   // 量程下限（百分比类/仪表类归一化基准）
     unit?: string;
     fillColor?: string;
     strokeColor?: string;
@@ -76,6 +78,10 @@ export interface HMIComponent {
 
     // 系统时间控件格式
     timeFormat?: 'HH:mm:ss' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD';
+
+    // 图片图元专属属性（type === 'image'）
+    imageUrl?: string;   // 图片访问 URL（/api/HmiImage/file/... 相对路径，经代理转发）
+    imageFit?: 'fill' | 'contain' | 'cover' | 'tile'; // 填充方式（默认 fill 拉伸）
   };
 }
 

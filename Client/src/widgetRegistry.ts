@@ -5,6 +5,7 @@ import {
   Layers,
   Thermometer,
   ToggleLeft,
+  ToggleRight,
   Tv,
   Type,
   BatteryCharging,
@@ -15,6 +16,7 @@ import {
   SlidersHorizontal,
   RefreshCw,
   Sparkles,
+  Image as ImageIcon,
 } from 'lucide-vue-next';
 
 /**
@@ -41,15 +43,20 @@ export interface WidgetDef {
   defaultProps: () => Record<string, any>;
 }
 
+// 单一真相源：InspectorPanel 回显与 HMIWidget 运行时兜底均以此为准。
+// 所有字段显式写全，不做隐式缺省，避免「面板显示值 ≠ 运行生效值」。
 const baseProps = (type: ComponentType): Record<string, any> => ({
   activeColor: type === 'valve' || type === 'led' ? '#10b981' : '#3b82f6',
   inactiveColor: '#94a3b8',
   maxValue: type === 'gauge-dial' ? 120 : 100,
+  minValue: 0, // 量程下限（百分比类/仪表类归一化基准）
   unit: type === 'gauge-dial' ? '℃' : '',
   showValue: false,
   fontSize: 12,
   bold: false,
   align: 'center',
+  thresholdMax: 90, // 与面板回显一致
+  thresholdMin: 10, // 与面板回显一致
 });
 
 export const widgetRegistry: Record<string, WidgetDef> = {
@@ -193,7 +200,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     icon: Clock,
     iconKind: 'lucide',
     iconColor: 'text-emerald-500',
-    description: '数字式数码时钟控件，毫秒级响应显示。',
+    description: '数字式数码时钟控件，秒级刷新显示当前时间。',
     category: 'sensors',
     defaultProps: () => baseProps('sys-time'),
   },
@@ -289,12 +296,25 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     name: '两位旋动选择按钮',
     defaultWidth: 70,
     defaultHeight: 90,
-    icon: ToggleLeft,
+    icon: ToggleRight, // 与 valve(ToggleLeft) 区分，图库图标可辨识
     iconKind: 'lucide',
     iconColor: 'text-[#1890ff]',
     description: '自复位旋钮式状态控制开关，触手可及。',
     category: 'structures',
     defaultProps: () => baseProps('switch'),
+  },
+  image: {
+    type: 'image',
+    name: '自定义图片',
+    defaultWidth: 200,
+    defaultHeight: 150,
+    icon: ImageIcon,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-400',
+    description: '上传或从图库选择图片作为图元，可缩放、跨页面复用。',
+    category: 'structures',
+    // 图片路径延迟到选图后写入（handleImageSelected），默认空=占位提示
+    defaultProps: () => ({ imageUrl: '', imageFit: 'fill' }),
   },
 };
 
@@ -304,3 +324,13 @@ export const widgetList: WidgetDef[] = Object.values(widgetRegistry);
 // 取某类型注册项（缺省回退到通用配置，避免新增类型未注册时报错）
 export const getWidgetDef = (type: string): WidgetDef | undefined =>
   widgetRegistry[type];
+
+/** 可下发写指令的控制类器件（运行态可点击写值）；其余器件为纯展示 */
+export const CONTROL_WIDGET_TYPES: ReadonlySet<string> = new Set([
+  'button',
+  'rounded-btn',
+  'switch',
+  'valve',
+]);
+export const isControlWidget = (type: string): boolean =>
+  CONTROL_WIDGET_TYPES.has(type);

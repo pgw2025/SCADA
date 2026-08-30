@@ -47,6 +47,7 @@ import { loginUser } from '../store/userStore';
 import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage } from '../types';
@@ -55,6 +56,7 @@ import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
 import BindingCheckPanel from './BindingCheckPanel.vue';
 import ConfirmModal from './ConfirmModal.vue';
+import ImageLibraryDialog from './ImageLibraryDialog.vue';
 import { getWidgetDef } from '../widgetRegistry';
 import {
   FolderIcon,
@@ -255,6 +257,18 @@ const componentValues = computed(() => {
   return result;
 });
 
+// 趋势图真实数据源：把当前页 trend-chart 组件的实时值推入滚动缓冲
+watch(componentValues, (vals) => {
+  (currentPageSafe.value.components ?? []).forEach((c) => {
+    if (c.type === 'trend-chart') pushTrendPoint(c.id, vals[c.id] ?? 0);
+  });
+}, { immediate: true });
+
+// 页面切换时清理趋势缓冲，防止跨页残留
+watch(() => currentPageSafe.value.id, () => {
+  Object.keys(trendHistory).forEach(clearTrendHistory);
+});
+
 // 阶段5-3：画布分辨率（由页面属性驱动，回退默认 1100×700）
 const pageWidth = computed(() => currentPageSafe.value.width ?? 1100);
 const pageHeight = computed(() => currentPageSafe.value.height ?? 700);
@@ -381,8 +395,16 @@ const handleUpdatePage = (updates: Partial<ScadaPage>) => {
 
 // Add a widget from panel library
 // 阶段5-5：默认尺寸 / props 取自 widgetRegistry（消除与图库两处散改）
-const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string, x = 40, y = 60) => {
+// extraProps：落布时覆盖默认 props（图片图元选图后传 imageUrl，确保首次落库即带图）
+const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string, x = 40, y = 60, extraProps?: Record<string, any>) => {
   if (!currentPage.value) return;
+  // 图片图元：未选图时先打开图库（拿到 URL 与原始宽高比后再落布），不直接添加空图元；
+  // 已带 imageUrl（图库选图回调传入 extraProps）时放行落布——否则选图回调再入此处会
+  // 重新弹开图库并 return，形成"点击照片无反应"的死循环。
+  if (type === 'image' && !extraProps?.imageUrl) {
+    showImageLibrary.value = true;
+    return;
+  }
   const currentComps = currentPage.value.components;
   const newId = genComponentId(type);
   const def = getWidgetDef(type);
@@ -400,7 +422,7 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
     label: label,
     bindField: '',
     zIndex: currentComps.length + 1,
-    props: def?.defaultProps() ?? {},
+    props: { ...(def?.defaultProps() ?? {}), ...(extraProps ?? {}) },
   };
 
   recordDiscrete(currentComps);
@@ -415,6 +437,34 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
 // 阶段5-4：组件库拖拽投放落点（由 CanvasPanel 反算坐标后调用，x/y 为画布内坐标）
 const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number) => {
   handleAddWidget(type as ComponentType, w, h, name, x, y);
+};
+
+// ===== 图片图元：图库选图 → 按原图宽高比落布 =====
+const showImageLibrary = ref<boolean>(false);
+
+// 图库选图回调：复用 handleAddWidget 落布链路（含落库/回填 serverId），imageUrl 经 extraProps 随首次落库写入
+const handleImageSelected = (img: { url: string; originalName: string; width: number; height: number }) => {
+  const pg = currentPage.value;
+  if (!pg) return;
+  showImageLibrary.value = false;
+
+  // 等比缩放：最长边 60~400，避免小图标不可选/大图铺满画布
+  const ratio = img.width > 0 && img.height > 0 ? img.width / img.height : 4 / 3;
+  let w: number, h: number;
+  if (ratio >= 1) {
+    w = Math.min(400, Math.max(60, img.width));
+    h = Math.round(w / ratio);
+  } else {
+    h = Math.min(400, Math.max(60, img.height));
+    w = Math.round(h * ratio);
+  }
+  // 落点取画布中心附近，避免每次都叠在默认 (40,60)
+  const x = Math.max(0, Math.round(((pg.width ?? 1100) - w) / 2));
+  const y = Math.max(0, Math.round(((pg.height ?? 700) - h) / 2));
+  const label = img.originalName.replace(/\.[^.]+$/, '').trim() || '图片';
+
+  handleAddWidget('image', w, h, label, x, y, { imageUrl: img.url, imageFit: 'fill' as const });
+  addLog('组态编辑', `在页面 [${pg.name}] 添加图片图元 [${label}]`, 'info');
 };
 
 // Duplicate widget(s) — 阶段5-2 支持批量复制
@@ -1254,6 +1304,9 @@ const handleExportPage = async (page: ScadaPage) => {
       </div>
 
     </div>
+
+    <!-- 组态图片图库：图元添加选图（图元换图/背景选图由 InspectorPanel 内嵌实例处理） -->
+    <ImageLibraryDialog v-model="showImageLibrary" @select="handleImageSelected" />
 
     <!-- 绑定检查浮动面板（严格模式：组件必须绑定设备维度） -->
     <div v-if="showBindingCheck" class="fixed top-16 right-4 z-40">

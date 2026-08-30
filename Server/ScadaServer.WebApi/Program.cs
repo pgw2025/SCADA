@@ -21,6 +21,9 @@ builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(Sys
 // 配置系统日志选项（写库门槛 / 黑名单 / 保留期）
 builder.Services.Configure<SystemLogOptions>(builder.Configuration.GetSection(SystemLogOptions.SectionName));
 
+// 配置组态图片图库选项（存储目录 / 大小上限 / 扩展名白名单）
+builder.Services.Configure<HmiImageOptions>(builder.Configuration.GetSection(HmiImageOptions.SectionName));
+
 // 将 ILogger 运行日志写入数据库的 Provider：
 // 以单例注册（不经 builder.Logging.AddProvider），由 LoggerFactory 延迟解析，
 // 保证依赖链（SystemLogRecorder 单例）完整后再实例化，避免 Host 构建期提前创建导致解析失败。

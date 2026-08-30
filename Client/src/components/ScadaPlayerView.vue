@@ -13,6 +13,7 @@ import { ROLE_OPERATOR, ROLE_ADMIN } from '../constants/roles';
 import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
+import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { showToast } from '../services/toastService';
 import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
@@ -126,6 +127,18 @@ const componentValues = computed(() => {
     result[c.id] = 0;
   });
   return result;
+});
+
+// 趋势图真实数据源：把当前页 trend-chart 组件的实时值推入滚动缓冲
+watch(componentValues, (vals) => {
+  (currentPage.value?.components ?? []).forEach((c) => {
+    if (c.type === 'trend-chart') pushTrendPoint(c.id, vals[c.id] ?? 0);
+  });
+}, { immediate: true });
+
+// 页面切换时清理趋势缓冲，防止跨页残留
+watch(() => currentPage.value?.id, () => {
+  Object.keys(trendHistory).forEach(clearTrendHistory);
 });
 
 // 阶段5：控制下发权限——仅 Operator/Admin 可下发写指令

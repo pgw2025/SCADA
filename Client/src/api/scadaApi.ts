@@ -113,6 +113,39 @@ export const deleteComponent = async (id: number): Promise<void> => {
   await http.delete(`${API()}/HmiComponent/${id}`);
 };
 
+// ---- 组态图片图库（图元/页面背景共用） ----
+
+/** 与后端 HmiImageDto 对齐（camelCase 线格式） */
+export interface HmiImageDto {
+  /** 存储文件名（GUID_原名.扩展名），删除接口的标识 */
+  fileName: string;
+  /** 用户上传时的原始文件名（图库显示用） */
+  originalName: string;
+  sizeBytes: number;
+  uploadedAtUtc: string;
+  /** 图片访问相对 URL（/api/HmiImage/file/...） */
+  url: string;
+}
+
+/** 上传图片（multipart，字段名 file）。Token 由 http 拦截器注入；失败统一 toast。 */
+export const uploadHmiImage = async (file: File): Promise<HmiImageDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  const r = await http.post<HmiImageDto>(`${API()}/HmiImage/upload`, form);
+  return r.data;
+};
+
+/** 图库列表（按上传时间倒序） */
+export const listHmiImages = async (): Promise<HmiImageDto[]> => {
+  const r = await http.get<HmiImageDto[]>(`${API()}/HmiImage/list`);
+  return r.data || [];
+};
+
+/** 删除图片（后端校验 GUID 文件名格式，无引用检查——前端删除前确认提示） */
+export const deleteHmiImage = async (fileName: string): Promise<void> => {
+  await http.delete(`${API()}/HmiImage/${encodeURIComponent(fileName)}`);
+};
+
 // ---- 前端 -> 后端 DTO ----
 export const toProjectDto = (p: ScadaScreenProject) => ({
   id: p.serverId ?? 0,

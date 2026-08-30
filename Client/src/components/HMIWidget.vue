@@ -1,17 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { HMIComponent } from '../types';
+import { getWidgetDef } from '../widgetRegistry';
+// 全局共享动画时钟：单实例 rAF 驱动所有动画器件，避免每组件独立 rAF（见 #13）
+import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
 
 const props = defineProps<{
   component: HMIComponent;
   value: number | boolean;
   isActiveMode: boolean;
   controlLocked?: boolean;
+  /** 趋势图真实数据窗口（父级维护的滚动缓冲，无则显示占位） */
+  history?: number[];
 }>();
 
-// 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件
+// 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件。
+// 判定口径与 CanvasPanel 写拦截（bindVariableKey || bindField）一致，避免仅 bindField 的旧组件无锁标。
 const isLockedControl = computed(() =>
-  !!props.controlLocked && !!props.component.bindVariableKey
+  !!props.controlLocked && !!(props.component.bindVariableKey || props.component.bindField)
 );
 
 const numValue = computed(() => {
@@ -22,93 +28,124 @@ const boolValue = computed(() => {
   return typeof props.value === 'boolean' ? props.value : props.value > 0;
 });
 
-// Let's keep simple frame counter for animated widgets (conveyor boxes, flowing fluid, rotating pump)
-const ticks = ref(0);
-let animId: number | null = null;
+// 量程归一化百分比（0~100）：供 tank / gauge-level / boiler 温度条使用
+const normalizedPercent = computed(() => {
+  const lo = minValue.value, hi = maxValue.value;
+  if (hi <= lo) return numValue.value > 0 ? 100 : 0; // 量程非法防除零
+  return Math.min(100, Math.max(0, ((numValue.value - lo) / (hi - lo)) * 100));
+});
 
-const tick = () => {
-  ticks.value = (ticks.value + 1) % 1000;
-  animId = requestAnimationFrame(tick);
-};
-
-const startAnimation = () => {
-  if (!animId) {
-    animId = requestAnimationFrame(tick);
-  }
-};
-
-const stopAnimation = () => {
-  if (animId) {
-    cancelAnimationFrame(animId);
-    animId = null;
-  }
-};
-
+// 动画帧计数：使用全局共享时钟（单个 rAF 实例驱动所有器件），避免每组件独立开 rAF。
 onMounted(() => {
-  if (props.isActiveMode) {
-    startAnimation();
-  }
+  if (props.isActiveMode) subscribeAnimation();
 });
 
 watch(() => props.isActiveMode, (newVal) => {
-  if (newVal) {
-    startAnimation();
-  } else {
-    stopAnimation();
-  }
+  if (newVal) subscribeAnimation();
+  else unsubscribeAnimation();
 });
 
 onUnmounted(() => {
-  stopAnimation();
+  unsubscribeAnimation();
 });
 
-// Extracted prop getters
-const activeColor = computed(() => props.component.props.activeColor ?? '#10b981');
-const inactiveColor = computed(() => props.component.props.inactiveColor ?? '#94a3b8');
-const strokeColor = computed(() => props.component.props.strokeColor ?? '#475569');
-const fillColor = computed(() => props.component.props.fillColor ?? '#cbd5e1');
-const maxValue = computed(() => props.component.props.maxValue ?? 100);
-const unit = computed(() => props.component.props.unit ?? '');
-const thresholdMin = computed(() => props.component.props.thresholdMin ?? 0);
-const thresholdMax = computed(() => props.component.props.thresholdMax ?? 100);
-const fontSize = computed(() => props.component.props.fontSize ?? 12);
-const align = computed(() => props.component.props.align ?? 'center');
-const bold = computed(() => props.component.props.bold ?? false);
+// Extracted prop getters —— 三级 fallback：组件 props → 注册表默认 → 硬兜底。
+// 与 InspectorPanel 回显共用同一真相源（widgetRegistry.baseProps），杜绝双轨不一致。
+const defDefaults = computed(() => getWidgetDef(props.component.type)?.defaultProps() ?? {});
+const propOr = <T,>(key: string, hard: T): T => {
+  const v = props.component.props[key as keyof HMIComponent['props']];
+  return (v !== undefined && v !== null && v !== '') ? (v as T)
+    : ((defDefaults.value[key] as T) ?? hard);
+};
+
+const activeColor = computed(() => propOr('activeColor', '#10b981'));
+const inactiveColor = computed(() => propOr('inactiveColor', '#94a3b8'));
+const strokeColor = computed(() => propOr('strokeColor', '#475569'));
+const fillColor = computed(() => propOr('fillColor', '#cbd5e1'));
+const minValue = computed(() => Number(propOr('minValue', 0)));
+const maxValue = computed(() => Number(propOr('maxValue', 100)) || 100); // ||100 防 maxValue=0 除零
+const unit = computed(() => propOr('unit', ''));
+const thresholdMin = computed(() => Number(propOr('thresholdMin', 10)));
+const thresholdMax = computed(() => Number(propOr('thresholdMax', 90)));
+const fontSize = computed(() => Number(propOr('fontSize', 12)));
+const align = computed<'left' | 'center' | 'right'>(() =>
+  (propOr('align', 'center') as 'left' | 'center' | 'right') || 'center');
+const bold = computed(() => propOr('bold', false));
+
+// 图片图元：填充方式 → 尺寸样式（tile 无 object-fit 对应，按原尺寸平铺由容器裁切）
+const imageFitStyle = computed(() => {
+  const fit = props.component.props.imageFit ?? 'fill';
+  if (fit === 'tile') {
+    // 原尺寸平铺：用 background-repeat 实现真·平铺，替代原先「原尺寸左上对齐退化为裁切」的分支
+    return { width: 'auto', height: 'auto', maxWidth: 'none', maxHeight: 'none' };
+  }
+  // 显式字面量收窄，避免 string 不可赋给 CSS ObjectFit 联合类型
+  const objectFit: 'fill' | 'contain' | 'cover' =
+    fit === 'contain' ? 'contain' : fit === 'cover' ? 'cover' : 'fill';
+  return { width: '100%', height: '100%', objectFit };
+});
+
+// #12 image 图元状态：URL 加载失败兜底 + tile 背景平铺
+const imgError = ref(false);
+const resetImgError = () => (imgError.value = false);
+watch(() => props.component.props.imageUrl, resetImgError);
+const tileStyle = computed(() => ({
+  width: '100%',
+  height: '100%',
+  backgroundImage: `url("${props.component.props.imageUrl}")`,
+  backgroundRepeat: 'repeat',
+  backgroundSize: 'auto',
+}));
 
 // 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
 const onText = computed(() => props.component.props.onText || '开启');
 const offText = computed(() => props.component.props.offText || '关闭');
 
+// text 器件动态映射：label 含 {value} 占位符时替换为当前绑定值（兑现图库描述）
+const textContent = computed(() => {
+  const label = props.component.label ?? '';
+  if (!label.includes('{value}')) return label;
+  const val = typeof props.value === 'boolean'
+    ? (props.value ? onText.value : offText.value)
+    : numValue.value.toFixed(2) + (unit.value || '');
+  return label.replaceAll('{value}', val);
+});
+
 // 阶段5-6：趋势图过渡占位——未绑定设备/变量（无数据源）时不绘制伪造曲线，展示占位提示
 const hasTrendData = computed(() =>
   props.component.bindDeviceId != null && !!props.component.bindVariableKey
 );
+// 是否有 ≥2 个真实采样点可绘制（未绑定或刚绑定待采样时显示占位）
+const trendReady = computed(() => (props.history?.length ?? 0) >= 2);
 
-const isHighAlert = computed(() => numValue.value >= (thresholdMax.value ?? 90));
-const isLowAlert = computed(() => numValue.value <= (thresholdMin.value ?? -1));
+const isHighAlert = computed(() => numValue.value >= thresholdMax.value);
+const isLowAlert = computed(() => numValue.value <= thresholdMin.value);
 const alertColor = computed(() => isHighAlert.value ? '#ef4444' : isLowAlert.value ? '#f59e0b' : activeColor.value);
 
 const width = computed(() => props.component.width);
 const height = computed(() => props.component.height);
 
 // Dynamic computed states for widget types:
-// 1. Pump rotation angle
-const pumpAngle = computed(() => boolValue.value ? (ticks.value * 24) % 360 : 0);
+// 1. Pump rotation angle —— 运行转速随绑定值变化（模拟变频），开启时才转动
+const pumpAngle = computed(() =>
+  boolValue.value ? (ticks.value * (12 + Math.min(36, Math.abs(numValue.value) / 4))) % 360 : 0
+);
 
 // 2. Valve handle angle
 const valveAngle = computed(() => boolValue.value ? 0 : 90);
 
 // 3. Tank fluid waves
 const wavePath = computed(() => {
-  const percentHeight = Math.min(100, Math.max(0, numValue.value));
+  const percentHeight = normalizedPercent.value;
   const fluidY = 10 + (100 - percentHeight);
   const waveOffset = props.isActiveMode ? (ticks.value * 0.15) % (2 * Math.PI) : 0;
   return `M 10 ${fluidY} Q 30 ${fluidY - 4 * Math.sin(waveOffset)}, 50 ${fluidY} T 90 ${fluidY} L 90 110 L 10 110 Z`;
 });
 
-// 4. Pipe Flow scroll offset for fluid simulation
-const pipeScrollOffsetH = computed(() => numValue.value > 0 ? -(ticks.value * 2) % 30 : 0);
-const pipeScrollOffsetV = computed(() => numValue.value > 0 ? (ticks.value * 2) % 30 : 0);
+// 4. Pipe Flow scroll offset for fluid simulation —— 流速随绑定值变化（非恒定常数）
+const flowSpeed = computed(() => 0.5 + Math.min(3, Math.abs(numValue.value) / 50));
+const pipeScrollOffsetH = computed(() => numValue.value > 0 ? -(ticks.value * flowSpeed.value) % 30 : 0);
+const pipeScrollOffsetV = computed(() => numValue.value > 0 ? (ticks.value * flowSpeed.value) % 30 : 0);
 
 // 5. Dial Rotation Angle
 const dialAngle = computed(() => {
@@ -119,36 +156,43 @@ const dialAngle = computed(() => {
   return -140 + ((boundedVal - minVal) / (maxVal - minVal)) * angleRange;
 });
 
-// 6. Trend chart path
+// 6. Trend chart path —— 基于 history 真实数据窗口 + 量程归一化（替代伪造正弦波）
 const chartPath = computed(() => {
-  const points: number[] = [];
-  for (let i = 0; i < 15; i++) {
-    const phase = (ticks.value + i * 4) * 0.1;
-    const wave = Math.sin(phase) * 15 + Math.cos(phase * 0.5) * 8;
-    const pt = Math.max(0, Math.min(100, numValue.value + wave));
-    points.push(pt);
-  }
+  const pts = props.history ?? [];
+  if (pts.length < 2) return '';
 
   const padding = 10;
   const innerW = width.value - padding * 2;
   const innerH = height.value - padding * 2.5;
+  if (innerW <= 0 || innerH <= 0) return '';
+
+  // Y 轴量程：优先配置量程（minValue/maxValue），未配置时按数据自适应（±10% 余量）
+  const lo = minValue.value, hi = maxValue.value;
+  let yMin: number, yMax: number;
+  if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
+    yMin = lo; yMax = hi;
+  } else {
+    const dMin = Math.min(...pts), dMax = Math.max(...pts);
+    const margin = (dMax - dMin) * 0.1 || 1;
+    yMin = dMin - margin; yMax = dMax + margin;
+  }
+
+  // 将采样窗口压缩到可视宽度（约每 6px 一个点），窗口过大时降采样
+  const window = pts.slice(-Math.max(2, Math.floor(innerW / 6)));
+  const intervalX = innerW / (window.length - 1);
 
   let pathStr = '';
-  const intervalX = innerW / (points.length - 1);
-  points.forEach((val, index) => {
+  window.forEach((val, index) => {
     const x = padding + index * intervalX;
-    const y = padding + (innerH - (val / 100) * innerH);
-    if (index === 0) {
-      pathStr += `M ${x} ${y}`;
-    } else {
-      pathStr += ` L ${x} ${y}`;
-    }
+    const ratio = Math.max(0, Math.min(1, (val - yMin) / (yMax - yMin)));
+    const y = padding + (innerH - ratio * innerH);
+    pathStr += `${index === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
   });
   return pathStr;
 });
 
-// 7. Conveyor Speed steps
-const conveyorBeltStep = computed(() => numValue.value > 0 ? (ticks.value * (numValue.value / 40)) % 40 : 0);
+// 7. Conveyor Speed steps —— 位移周期与箱子间距(80)对齐，消除 step 跳变回退的箱体瞬移
+const conveyorBeltStep = computed(() => numValue.value > 0 ? (ticks.value * (numValue.value / 40)) % 80 : 0);
 
 // 8. Auto-updating time for sys-time Clock widget
 const currentTime = ref(new Date());
@@ -272,6 +316,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
 </script>
 
 <template>
+  <div class="relative w-full h-full">
   <!-- 1. BOILER -->
   <svg v-if="component.type === 'boiler'" width="100%" height="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
     <!-- Boiler Outer Shell -->
@@ -289,10 +334,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     <path v-if="boolValue" :d="`M 44 78 Q 46 62, 50 ${60 + (ticks % 2) * 2} Q 54 62, 56 78 Q 50 82, 44 78`"
       fill="#eab308" opacity="0.9" />
 
-    <!-- Analog temperature indicator mini-bar -->
+    <!-- Analog temperature indicator mini-bar（按量程归一化，maxValue 已防除零） -->
     <rect x="18" y="30" width="6" height="30" rx="3" fill="#1e293b" />
-    <rect x="19" :y="30 + (30 - (Math.min(numValue, maxValue) / maxValue) * 30)" width="4"
-      :height="(Math.min(numValue, maxValue) / maxValue) * 30" rx="2" :fill="alertColor" />
+    <rect x="19" :y="30 + (30 - (normalizedPercent / 100) * 30)" width="4"
+      :height="(normalizedPercent / 100) * 30" rx="2" :fill="alertColor" />
 
     <!-- Pressure release outlet -->
     <path d="M 85 40 L 95 40 L 95 48 M 90 40 L 90 35" stroke="#475569" stroke-width="2" fill="none" />
@@ -367,7 +412,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     <rect x="8" y="8" width="84" height="104" rx="10" ry="10" fill="#1e293b" :stroke="strokeColor" stroke-width="3" />
 
     <!-- Wave flow surface -->
-    <path v-if="numValue > 0" :d="numValue >= 99 ? 'M 10 10 L 90 10 L 90 110 L 10 110 Z' : wavePath"
+    <path v-if="numValue > 0" :d="normalizedPercent >= 99 ? 'M 10 10 L 90 10 L 90 110 L 10 110 Z' : wavePath"
       :fill="fillColor || '#3b82f6'" opacity="0.8" />
 
     <!-- Glossy Highlight -->
@@ -384,10 +429,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       <line x1="90" y1="85" x2="75" y2="85" />
     </g>
 
-    <!-- Numeric Value Overlay -->
+    <!-- Numeric Value Overlay（显示原始值+单位，而非强制百分比） -->
     <text x="50" y="65" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold" stroke="#000"
       stroke-width="1" paint-order="stroke">
-      {{ numValue.toFixed(1) }}%
+      {{ numValue.toFixed(1) }}{{ unit ? ' ' + unit : '' }}
     </text>
   </svg>
 
@@ -425,7 +470,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
 
   <!-- 7. circular dial gauge -->
   <svg v-else-if="component.type === 'gauge-dial'" width="100%" height="100%" viewBox="0 0 100 100"
-    preserveAspectRatio="contain">
+    preserveAspectRatio="xMidYMid meet">
     <circle cx="50" cy="50" r="46" fill="#1e293b" stroke="#334155" stroke-width="4" />
     <circle cx="50" cy="50" r="41" fill="#0f172a" />
 
@@ -465,7 +510,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     <div
       class="flex-1 w-full bg-slate-950 border border-slate-800 rounded relative overflow-hidden flex flex-col justify-end">
       <div class="w-full transition-all duration-300" :style="{
-        height: `${Math.min(100, Math.max(0, numValue))}%`,
+        height: `${normalizedPercent}%`,
         backgroundColor: alertColor,
         boxShadow: `0 0 12px ${alertColor}`,
       }" />
@@ -477,7 +522,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </div>
     </div>
     <div class="mt-1 text-[10px] text-slate-100 font-bold truncate max-w-full">
-      {{ numValue.toFixed(0) }}%
+      {{ numValue.toFixed(0) }}{{ unit ? ' ' + unit : '' }}
     </div>
   </div>
 
@@ -511,11 +556,11 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </span>
       <span v-else class="text-slate-500">--</span>
     </div>
-    <!-- 阶段5-6：趋势图过渡占位——未绑定数据源时不绘制伪造曲线，展示占位提示 -->
-    <div v-if="!hasTrendData" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
+    <!-- 阶段5-6：趋势图占位——未绑定数据源或采样点不足时不绘制伪造曲线 -->
+    <div v-if="!trendReady" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
       <span class="w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse" />
-      <span class="text-[9px]">暂无数据</span>
-      <span class="text-[8px] text-slate-600">请在编辑器中绑定变量</span>
+      <span class="text-[9px]">{{ hasTrendData ? '等待采样…' : '暂无数据' }}</span>
+      <span class="text-[8px] text-slate-600">{{ hasTrendData ? '采集 ≥2 点后自动绘制' : '请在编辑器中绑定变量' }}</span>
     </div>
     <div v-else class="flex-1 relative">
       <svg width="100%" height="100%">
@@ -532,14 +577,14 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
   <svg v-else-if="component.type === 'conveyor'" width="100%" height="100%" viewBox="0 0 300 40"
     preserveAspectRatio="none">
     <rect x="5" y="12" width="290" height="16" rx="8" fill="#1e293b" :stroke="strokeColor" stroke-width="2.5" />
-    <circle cx="15" cy="20" r="6" fill="#64748b" stroke="#334155" />
-    <circle cx="15" cy="20" r="2" fill="#1e293b" />
-    <circle cx="100" cy="20" r="6" fill="#64748b" stroke="#334155" />
-    <circle cx="100" cy="20" r="2" fill="#1e293b" />
-    <circle cx="200" cy="20" r="6" fill="#64748b" stroke="#334155" />
-    <circle cx="200" cy="20" r="2" fill="#1e293b" />
-    <circle cx="285" cy="20" r="6" fill="#64748b" stroke="#334155" />
-    <circle cx="285" cy="20" r="2" fill="#1e293b" />
+    <circle cx="20" cy="20" r="6" fill="#64748b" stroke="#334155" />
+    <circle cx="20" cy="20" r="2" fill="#1e293b" />
+    <circle cx="105" cy="20" r="6" fill="#64748b" stroke="#334155" />
+    <circle cx="105" cy="20" r="2" fill="#1e293b" />
+    <circle cx="195" cy="20" r="6" fill="#64748b" stroke="#334155" />
+    <circle cx="195" cy="20" r="2" fill="#1e293b" />
+    <circle cx="280" cy="20" r="6" fill="#64748b" stroke="#334155" />
+    <circle cx="280" cy="20" r="2" fill="#1e293b" />
 
     <g v-if="numValue > 0">
       <rect :x="20 + conveyorBeltStep" y="2" width="16" height="10" fill="#d97706" rx="1" />
@@ -557,7 +602,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     fontWeight: bold ? 'bold' : 'normal',
     color: activeColor || '#cbd5e1',
   }">
-    {{ component.label }}
+    {{ textContent }}
   </div>
 
   <!-- 13. LED INDICATOR -->
@@ -572,6 +617,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     <span class="text-[9px] text-slate-300 font-mono mt-1 text-center truncate max-w-full">
       {{ component.label }}
     </span>
+    <span class="text-[8px] text-slate-500 dark:text-slate-400 font-mono text-center truncate max-w-full"
+      v-if="component.bindVariableKey || component.bindField">
+      {{ boolValue ? onText : offText }}
+    </span>
   </div>
 
   <!-- 14. INDUSTRIAL BUTTON -->
@@ -583,7 +632,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
         boolValue ? 'shadow-inner' : 'shadow-md border-t-white border-l-white border-b-slate-900 border-r-slate-900'
       ]" :style="{
         backgroundColor: boolValue ? activeColor : fillColor || '#cbd5e1',
-        borderColor: boolValue ? '#0284c7' : '#94a3b8',
+        borderColor: boolValue ? (strokeColor || '#0284c7') : '#94a3b8',
         color: boolValue ? '#ffffff' : '#1e293b'
       }">
       <!-- Led Indicator inside the button -->
@@ -610,8 +659,11 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </span>
       <span class="text-[8px] opacity-60 font-sans pointer-events-none mt-0.5 select-none"
         v-if="component.bindVariableKey || component.bindField">
-        {{ component.props.buttonMode === 'momentary' ? '[点动]' : component.props.buttonMode === 'set-value' ?
-          `[设值:${component.props.clickValue ?? 0}]` : '[自锁]' }}
+        {{ component.props.buttonMode === 'momentary' ? '[点动]' :
+           component.props.buttonMode === 'set-bit' ? '[置位]' :
+           component.props.buttonMode === 'reset-bit' ? '[复位]' :
+           component.props.buttonMode === 'set-value' ? `[设值:${component.props.clickValue ?? 0}]` :
+           component.props.buttonMode === 'navigate' ? '[跳转]' : '[自锁]' }}
       </span>
     </div>
   </div>
@@ -744,7 +796,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     </div>
   </div>
 
-  <!-- 18. INDUSTRIAL AC MOTOR -->
+  <!-- 19. INDUSTRIAL AC MOTOR -->
   <svg v-else-if="component.type === 'motor'" width="100%" height="100%" viewBox="0 0 100 80"
     preserveAspectRatio="none">
     <!-- Motor Mounting base feet -->
@@ -774,22 +826,49 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     <!-- Fan Cowl / Protective Back Fan housing (right side) -->
     <path d="M 76 17 L 90 22 L 90 52 L 76 57 Z" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
 
-    <!-- Fast spinning cooling fan blades inside the cowl representation -->
+    <!-- Fast spinning cooling fan blades inside the cowl representation（叶片半径收为6，落在风罩 76–90 内） -->
     <g :transform="`translate(83, 37) rotate(${pumpAngle})`">
       <circle cx="0" cy="0" r="1.5" fill="#94a3b8" />
-      <polygon points="-2,-13 2,-13 0,0" :fill="boolValue ? activeColor : '#64748b'" />
-      <polygon points="-2,13 2,13 0,0" :fill="boolValue ? activeColor : '#64748b'" />
-      <polygon points="-13,-2 -13,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
-      <polygon points="13,-2 13,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
+      <polygon points="-2,-6 2,-6 0,0" :fill="boolValue ? activeColor : '#64748b'" />
+      <polygon points="-2,6 2,6 0,0" :fill="boolValue ? activeColor : '#64748b'" />
+      <polygon points="-6,-2 -6,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
+      <polygon points="6,-2 6,2 0,0" :fill="boolValue ? activeColor : '#64748b'" />
     </g>
 
     <!-- Run indicator led -->
     <circle cx="34" cy="50" r="3.5" :fill="boolValue ? '#10b981' : '#dc2626'" />
   </svg>
 
+  <!-- 19. CUSTOM IMAGE（自定义图片图元） -->
+  <div v-else-if="component.type === 'image'"
+    class="w-full h-full flex items-center justify-center overflow-hidden select-none">
+    <!-- tile：background-repeat 真平铺 -->
+    <div v-if="(component.props.imageFit === 'tile') && (component.props.imageUrl || '').trim() && !imgError"
+      :style="tileStyle" class="w-full h-full" />
+    <!-- 常规 fit：img 渲染 -->
+    <img v-else-if="(component.props.imageUrl || '').trim() && !imgError" :src="component.props.imageUrl" alt=""
+      draggable="false" @error="imgError = true" class="pointer-events-none max-w-full max-h-full" :style="imageFitStyle" />
+    <div v-else class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <polyline points="21 15 16 10 5 21" />
+      </svg>
+      <span class="text-[10px]">{{ imgError ? '图片加载失败' : '未设置图片' }}</span>
+    </div>
+  </div>
+
   <!-- ERROR -->
   <div v-else class="p-2 bg-slate-800 text-white rounded text-xs select-none">
     Unknown Widget: {{ component.type }}
+  </div>
+
+  <!-- 通用变量值浮签：showValue=true 且组件自身无内嵌数值时，在底部覆盖层显示当前值（#6） -->
+  <div v-if="component.props.showValue && !['gauge-dial','gauge-level','digital-val','trend-chart','tank','sys-time','state-text','rounded-btn','button','image','text'].includes(component.type)"
+    class="absolute inset-x-0 bottom-0 text-center text-[9px] font-mono bg-black/60 text-white rounded-b px-1 truncate pointer-events-none z-20 select-none">
+    {{ typeof props.value === 'boolean' ? (boolValue ? onText : offText) : numValue.toFixed(1) + (unit ? ' ' + unit : '') }}
+  </div>
   </div>
 </template>
 

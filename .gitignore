@@ -26,3 +26,7 @@ desktop.ini
 # ── Runtime-generated config ──
 # 数据库管理页运行时生成的主库覆盖文件（含数据库密码），不入库
 appsettings.dboverride.json
+
+# ── Runtime uploads ──
+# 组态图片图库：运行时上传的用户图片（GUID_原名），不入库
+Server/ScadaServer.WebApi/uploads/

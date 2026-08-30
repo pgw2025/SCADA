@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue';
 import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
+import { getWidgetDef } from '../widgetRegistry';
 import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand } from 'lucide-vue-next';
+import ImageLibraryDialog from './ImageLibraryDialog.vue';
 
 const props = defineProps<{
   selectedComponent: HMIComponent | null;
@@ -21,6 +23,11 @@ const emit = defineEmits<{
 const componentProps = computed(() => {
   return props.selectedComponent?.props ?? {};
 });
+
+// 当前类型注册表默认 props：回显缺省值与运行态兜底共用同一真相源
+const typeDefaults = computed(() =>
+  getWidgetDef(props.selectedComponent?.type ?? '')?.defaultProps() ?? {}
+);
 
 // 自定义画布尺寸：范围 200~10000，失焦/回车提交；非法值回退当前页面值
 const CANVAS_SIZE_MIN = 200;
@@ -67,6 +74,13 @@ const updateComponentField = (field: keyof HMIComponent, value: any) => {
   emit('updateComponent', props.selectedComponent.id, {
     [field]: value,
   });
+};
+
+// 解析数值输入：合法（含 0）原样写入，非法（NaN/空）回退缺省值。
+// 修复「threshold 填 0 被写成 90/10」类问题。
+const numInput = (raw: string, fallback: number): number => {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : fallback;
 };
 
 // 阶段3：复合绑定（设备 + 变量）两级选择
@@ -129,6 +143,21 @@ const onBackgroundTypeChange = (val: string) => {
 
 const onAdaptModeChange = (val: string) => {
   emit('updatePage', { adaptMode: val === 'FitScaleUp' || val === 'Stretch' ? val : null });
+};
+
+// ===== 图片图元 / 背景图：图库选图 =====
+// 图元换图（updateProp 走既有防抖落库链路）
+const showImagePicker = ref(false);
+const onPickComponentImage = (img: { url: string }) => {
+  showImagePicker.value = false;
+  updateProp('imageUrl', img.url);
+};
+
+// 背景选图（updateBackground 整体提交，父级落库）
+const showBgImagePicker = ref(false);
+const onPickBackgroundImage = (img: { url: string }) => {
+  showBgImagePicker.value = false;
+  updateBackground({ imageUrl: img.url });
 };
 </script>
 
@@ -289,12 +318,18 @@ const onAdaptModeChange = (val: string) => {
         <template v-else>
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">图片 URL</label>
-            <input type="text" :value="pageBackground.imageUrl ?? ''"
-              @input="updateBackground({ imageUrl: ($event.target as HTMLInputElement).value })"
-              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white text-xs focus:outline-none"
-              placeholder="https://example.com/bg.png" />
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <input type="text" :value="pageBackground.imageUrl ?? ''"
+                @input="updateBackground({ imageUrl: ($event.target as HTMLInputElement).value })"
+                class="flex-1 min-w-0 bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 text-[#262626] dark:text-white text-xs focus:outline-none"
+                placeholder="https://example.com/bg.png 或 /api/HmiImage/..." />
+              <button type="button" @click="showBgImagePicker = true"
+                class="shrink-0 px-2 py-1.5 rounded border border-[#1890ff] text-[#1890ff] dark:text-sky-400 dark:border-sky-500 hover:bg-[#e6f7ff] dark:hover:bg-sky-950/40 text-[10px] whitespace-nowrap transition-colors cursor-pointer">
+                从图库选择
+              </button>
+            </div>
             <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
-              暂不支持本地上传，请填写可公开访问的图片地址。
+              可从图库选择/上传，或填写可访问的外部图片地址。
             </p>
           </div>
           <div>
@@ -308,6 +343,9 @@ const onAdaptModeChange = (val: string) => {
               <option value="tile">平铺（按原始尺寸重复）</option>
             </select>
           </div>
+
+          <!-- 背景选图库（内嵌实例，选择后写入 imageUrl） -->
+          <ImageLibraryDialog v-model="showBgImagePicker" @select="onPickBackgroundImage" />
         </template>
       </section>
 
@@ -494,7 +532,7 @@ const onAdaptModeChange = (val: string) => {
         </div>
 
         <!-- 阶段5-6：状态文本解耦——阀/数显/开关等有状态控件的开/关文案可配置，去除硬编码英/中文 -->
-        <div v-if="['valve', 'digital-val', 'switch'].includes(selectedComponent.type)"
+        <div v-if="['valve', 'digital-val', 'switch', 'led'].includes(selectedComponent.type)"
           class="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">开启状态文本</label>
@@ -525,37 +563,46 @@ const onAdaptModeChange = (val: string) => {
           </div>
         </div>
 
-        <!-- Calibration threshold and high warning limit meters -->
-        <div v-if="['gauge-dial', 'gauge-level', 'digital-val'].includes(selectedComponent.type)" class="space-y-2">
-          <div class="grid grid-cols-2 gap-2 text-xs">
+        <!-- 量程设置：量程上限/下限/单位（百分比类与仪表类归一化基准） -->
+        <div v-if="['gauge-dial', 'gauge-level', 'digital-val', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
+          class="space-y-2">
+          <div class="grid grid-cols-3 gap-2 text-xs">
             <div>
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">测量量程上限 (Max)</label>
-              <input type="number" :value="componentProps.maxValue ?? 100"
-                @input="updateProp('maxValue', parseFloat(($event.target as HTMLInputElement).value) || 100)"
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">量程下限 (Min)</label>
+              <input type="number" :value="componentProps.minValue ?? typeDefaults.minValue ?? 0"
+                @input="updateProp('minValue', numInput(($event.target as HTMLInputElement).value, 0))"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none" />
             </div>
             <div>
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">测量单位 (Unit)</label>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">量程上限 (Max)</label>
+              <input type="number" :value="componentProps.maxValue ?? typeDefaults.maxValue ?? 100"
+                @input="updateProp('maxValue', numInput(($event.target as HTMLInputElement).value, typeDefaults.maxValue ?? 100))"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none" />
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">单位 (Unit)</label>
               <input type="text" :value="componentProps.unit ?? ''"
                 @input="updateProp('unit', ($event.target as HTMLInputElement).value)"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none"
                 placeholder="e.g. L/s, MPa, ℃" />
             </div>
           </div>
+        </div>
 
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
-              <input type="number" :value="componentProps.thresholdMax ?? 90"
-                @input="updateProp('thresholdMax', parseFloat(($event.target as HTMLInputElement).value) || 90)"
-                class="w-full bg-white dark:bg-slate-950 border border-red-300 dark:border-red-800 rounded px-2.5 py-1 text-red-600 dark:text-red-400 focus:outline-none focus:border-red-500" />
-            </div>
-            <div>
-              <label class="text-[10px] text-amber-600 dark:text-amber-400">黄色低限预警值</label>
-              <input type="number" :value="componentProps.thresholdMin ?? 10"
-                @input="updateProp('thresholdMin', parseFloat(($event.target as HTMLInputElement).value) || 0)"
-                class="w-full bg-white dark:bg-slate-950 border border-rose-300 dark:border-amber-800 rounded px-2.5 py-1 text-amber-700 dark:text-amber-300 focus:outline-none focus:border-amber-500" />
-            </div>
+        <!-- 高/低限报警阈值：覆盖所有消费 isHighAlert/alertColor 的器件 -->
+        <div v-if="['gauge-dial', 'gauge-level', 'digital-val', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
+          class="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
+            <input type="number" :value="componentProps.thresholdMax ?? typeDefaults.thresholdMax ?? 90"
+              @input="updateProp('thresholdMax', numInput(($event.target as HTMLInputElement).value, typeDefaults.thresholdMax ?? 90))"
+              class="w-full bg-white dark:bg-slate-950 border border-red-300 dark:border-red-800 rounded px-2.5 py-1 text-red-600 dark:text-red-400 focus:outline-none focus:border-red-500" />
+          </div>
+          <div>
+            <label class="text-[10px] text-amber-600 dark:text-amber-400">黄色低限预警值</label>
+            <input type="number" :value="componentProps.thresholdMin ?? typeDefaults.thresholdMin ?? 10"
+              @input="updateProp('thresholdMin', numInput(($event.target as HTMLInputElement).value, typeDefaults.thresholdMin ?? 10))"
+              class="w-full bg-white dark:bg-slate-950 border border-amber-300 dark:border-amber-800 rounded px-2.5 py-1 text-amber-700 dark:text-amber-300 focus:outline-none focus:border-amber-500" />
           </div>
         </div>
 
@@ -580,7 +627,7 @@ const onAdaptModeChange = (val: string) => {
           <div v-if="componentProps.buttonMode === 'set-value'">
             <label class="text-[10px] text-gray-500 dark:text-slate-400">点击写入的数值</label>
             <input type="number" :value="componentProps.clickValue ?? 1"
-              @input="updateProp('clickValue', parseFloat(($event.target as HTMLInputElement).value) || 0)"
+              @input="updateProp('clickValue', numInput(($event.target as HTMLInputElement).value, 1))"
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs" />
           </div>
 
@@ -605,6 +652,39 @@ const onAdaptModeChange = (val: string) => {
               运行时点击该按钮将跳转到所选画面；跨端跳转不允许，下拉仅列出「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端' }}」画面。
             </p>
           </div>
+        </div>
+
+        <!-- IMAGE WIDGET SPECIFIC CONTROLS（图片图元专属配置） -->
+        <div v-if="selectedComponent.type === 'image'"
+          class="space-y-2 text-xs border border-sky-200/80 dark:border-sky-900/60 p-3 rounded-lg bg-sky-50/40 dark:bg-sky-950/20">
+          <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider">图片配置</p>
+
+          <!-- 预览 -->
+          <div class="h-28 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 flex items-center justify-center overflow-hidden">
+            <img v-if="(componentProps.imageUrl || '').trim()" :src="componentProps.imageUrl" alt=""
+              class="max-h-full max-w-full object-contain" draggable="false" />
+            <span v-else class="text-[10px] text-slate-400 dark:text-slate-500">未设置图片</span>
+          </div>
+
+          <button type="button" @click="showImagePicker = true"
+            class="w-full py-1.5 rounded bg-[#1890ff] hover:bg-[#40a9ff] text-white text-xs font-medium transition-colors cursor-pointer">
+            更换图片（从图库选择/上传）
+          </button>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">填充方式</label>
+            <select :value="componentProps.imageFit || 'fill'"
+              @change="updateProp('imageFit', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+              <option value="fill">拉伸填满（可能变形）</option>
+              <option value="contain">等比完整显示（可能留白）</option>
+              <option value="cover">等比铺满裁切（可能裁边）</option>
+              <option value="tile">平铺（按原始尺寸重复）</option>
+            </select>
+          </div>
+
+          <!-- 图元换图库（组件内嵌实例，与图元添加/背景选图互不影响） -->
+          <ImageLibraryDialog v-model="showImagePicker" @select="onPickComponentImage" />
         </div>
 
         <!-- INDUSTRIAL ROUNDED BUTTON SPECIFIC CONTROLS (圆角按钮专属配置) -->
@@ -636,7 +716,7 @@ const onAdaptModeChange = (val: string) => {
           <div v-if="componentProps.buttonMode === 'set-value'">
             <label class="text-[10px] text-gray-500 dark:text-slate-400">设值写入数值</label>
             <input type="number" :value="componentProps.clickValue ?? 1"
-              @input="updateProp('clickValue', parseFloat(($event.target as HTMLInputElement).value) || 0)"
+              @input="updateProp('clickValue', numInput(($event.target as HTMLInputElement).value, 1))"
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-emerald-500 mt-0.5 text-xs" />
           </div>
 
@@ -831,8 +911,8 @@ const onAdaptModeChange = (val: string) => {
             </div>
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">字体大小 (px)</label>
-              <input type="number" :value="componentProps.fontSize || 12"
-                @input="updateProp('fontSize', parseInt(($event.target as HTMLInputElement).value) || 12)"
+              <input type="number" :value="componentProps.fontSize ?? 12"
+                @input="updateProp('fontSize', numInput(($event.target as HTMLInputElement).value, 12))"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1 text-[#262626] dark:text-white mt-0.5 focus:outline-none" />
             </div>
           </div>
@@ -843,6 +923,16 @@ const onAdaptModeChange = (val: string) => {
               class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
             <label htmlFor="fontBoldDef" class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">
               加粗字体 (Font Bold)
+            </label>
+          </div>
+
+          <!-- 阶段：showValue — 组件内显示变量值（隐藏顶部浮签标签），复活死属性（#6） -->
+          <div class="flex items-center gap-2 mt-2" v-if="selectedComponent.type !== 'text'">
+            <input type="checkbox" id="showValueDef" :checked="componentProps.showValue || false"
+              @change="updateProp('showValue', ($event.target as HTMLInputElement).checked)"
+              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+            <label htmlFor="showValueDef" class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">
+              组件内显示变量值（隐藏顶部浮签）
             </label>
           </div>
         </div>
