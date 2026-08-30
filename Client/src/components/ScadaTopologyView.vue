@@ -51,10 +51,12 @@ import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendH
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
-import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, HMILayer } from '../types';
+import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, HMILayer, HmiEventType } from '../types';
+import { dispatchComponentEvent, useHmiDataEvents, HmiEventDispatchContext } from '../services/hmiEventService';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
+import EventPanel from './EventPanel.vue';
 import LayersPanel from './LayersPanel.vue';
 import BindingCheckPanel from './BindingCheckPanel.vue';
 import ConfirmModal from './ConfirmModal.vue';
@@ -82,6 +84,7 @@ import {
   Minimize2,
   Package,
   Sliders,
+  Zap,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -92,13 +95,13 @@ import {
 const isWidgetLibraryOpen = ref<boolean>(true);
 // 工程列表侧边栏收起/展开控制状态
 const isProjectListOpen = ref<boolean>(true);
-// 右侧侧边栏（以选项卡模式整合属性配置与图层管理）
+// 右侧侧边栏（以选项卡模式整合属性配置、事件配置与图层管理）
 const isRightSidebarOpen = ref<boolean>(true);
-const rightActiveTab = ref<'inspector' | 'layers'>('inspector');
+const rightActiveTab = ref<'inspector' | 'events' | 'layers'>('inspector');
 // 当前选中的活动图层
 const activeLayerId = ref<string | null>(null);
 
-const toggleRightTab = (tab: 'inspector' | 'layers') => {
+const toggleRightTab = (tab: 'inspector' | 'events' | 'layers') => {
   if (!isRightSidebarOpen.value) {
     isRightSidebarOpen.value = true;
     rightActiveTab.value = tab;
@@ -638,6 +641,39 @@ const handleTriggerRunScript = async (scriptId: number) => {
     // 失败提示由 http 拦截器统一弹出（403/404/脚本熔断等）
   }
 };
+
+// ===== 事件系统（编辑器预览 isActiveMode）：分发上下文与处理器 =====
+// setProp 动作仅改本地渲染数据（不落库），退出预览后仍保留原设计值由撤销/刷新兜底
+const previewEventCtx = computed<HmiEventDispatchContext>(() => ({
+  canControlWrite: canControlWrite.value,
+  writeVariable: (deviceId, variableKey, writeMode, value) => {
+    handleTriggerToggleValue(deviceId, variableKey, '', writeMode, value);
+  },
+  navigateToPage: handleNavigate,
+  runScript: (scriptId) => { handleTriggerRunScript(scriptId); },
+  applyRuntimePatch: (componentId, patch) => {
+    const target = currentPage.value?.components.find((c) => c.id === componentId);
+    if (!target) return;
+    if (patch.visible !== undefined) target.visible = patch.visible;
+    if (patch.label !== undefined) target.label = patch.label;
+    if (patch.props) target.props = { ...target.props, ...patch.props };
+  },
+  onBlocked: (msg) => showToast(msg, 'warning'),
+}));
+
+// 事件系统：预览模式交互类事件（click/press/release）由 CanvasPanel 上抛分发
+const handleComponentEvent = (component: HMIComponent, eventType: string) => {
+  if (!isActiveMode.value) return;
+  dispatchComponentEvent(component, eventType as HmiEventType, previewEventCtx.value);
+};
+
+// 事件系统：预览模式数据类事件（valueChange/alarm），编辑态禁用
+useHmiDataEvents({
+  components: () => currentPage.value?.components ?? [],
+  componentValues,
+  ctx: () => previewEventCtx.value,
+  enabled: () => isActiveMode.value,
+});
 
 // Create new SCADA project screen
 const handleCreateProject = () => {
@@ -1365,7 +1401,8 @@ const handleExportPage = async (page: ScadaPage) => {
                     @delete-components="handleDeleteComponents" @duplicate-components="handleDuplicateComponents"
                     @clearCanvas="handleClearCanvas" @update-canvas-size="handleUpdateCanvasSize"
                     @add-component-at="handleAddWidgetAt" @navigate-to-page="handleNavigate"
-                    @trigger-run-script="handleTriggerRunScript" @select-background="handleSelectBackground" />
+                    @trigger-run-script="handleTriggerRunScript" @select-background="handleSelectBackground"
+                    @component-event="handleComponentEvent" />
                 </div>
               </div>
               <CanvasPanel v-else :components="currentPage.components" :selectedId="selectedId"
@@ -1378,7 +1415,7 @@ const handleExportPage = async (page: ScadaPage) => {
                 @duplicate-components="handleDuplicateComponents" @clearCanvas="handleClearCanvas"
                 @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
                 @navigate-to-page="handleNavigate" @trigger-run-script="handleTriggerRunScript"
-                @select-background="handleSelectBackground" />
+                @select-background="handleSelectBackground" @component-event="handleComponentEvent" />
             </div>
           </div>
         </div>
@@ -1401,6 +1438,14 @@ const handleExportPage = async (page: ScadaPage) => {
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
               <Sliders class="w-3.5 h-3.5" />
               <span>属性配置</span>
+            </button>
+            <button @click="rightActiveTab = 'events'"
+              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              :class="rightActiveTab === 'events'
+                ? 'bg-white dark:bg-slate-900 text-[#1890ff] dark:text-sky-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
+              <Zap class="w-3.5 h-3.5" />
+              <span>事件</span>
             </button>
             <button @click="rightActiveTab = 'layers'"
               class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
@@ -1435,6 +1480,13 @@ const handleExportPage = async (page: ScadaPage) => {
               @collapse="isRightSidebarOpen = false" />
           </div>
 
+          <!-- 事件配置选项卡 -->
+          <div v-show="rightActiveTab === 'events'" class="h-full">
+            <EventPanel :selectedComponent="selectedCompObj" :current-page-id="currentPage.id"
+              :page-components="currentPage.components"
+              @updateComponent="handleUpdateComponent" @collapse="isRightSidebarOpen = false" />
+          </div>
+
           <!-- PS 图层管理选项卡 -->
           <div v-show="rightActiveTab === 'layers'" class="h-full">
             <LayersPanel :layers="currentPage.layers || []" :components="currentPage.components"
@@ -1451,11 +1503,11 @@ const handleExportPage = async (page: ScadaPage) => {
       <!-- 右侧面板收起态把手 -->
       <div v-if="!isActiveMode && !isRightSidebarOpen" @click="isRightSidebarOpen = true"
         class="hidden md:flex flex-col items-center justify-center w-7 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none py-4 gap-2.5 z-10 group shadow-xs"
-        title="点击展开右侧面板 (属性配置 / 图层管理)">
+        title="点击展开右侧面板 (属性配置 / 事件 / 图层管理)">
         <ChevronLeft class="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
         <span
           class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">属性
-          / 图层</span>
+          / 事件 / 图层</span>
       </div>
 
     </div>

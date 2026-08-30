@@ -50,6 +50,8 @@ const emit = defineEmits<{
   (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>): void;
   (e: 'navigateToPage', pageId: string): void;
   (e: 'triggerRunScript', scriptId: number): void;
+  /** 事件系统：运行态组件事件触发（press 立即；click/release 在松开时），由父级分发执行 */
+  (e: 'componentEvent', component: HMIComponent, eventType: string): void;
   (e: 'selectBackground'): void;
 }>();
 
@@ -199,6 +201,29 @@ const handleKeyDown = (e: KeyboardEvent) => {
 // Pointer Events callbacks
 const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
+    // ===== 事件系统：优先消费 props.events 配置（共存策略）=====
+    // 配置了交互类事件（click/press/release）且含可用动作 → 走事件分发，不再回退 buttonMode；
+    // press 按下立即触发；release / click 在松开（mouseup/touchend）时触发。
+    const evts = (component.props.events as any[] | undefined) ?? [];
+    const hasInteractiveEvent = evts.some(
+      (ev) =>
+        ev && ev.enabled !== false &&
+        (ev.type === 'click' || ev.type === 'press' || ev.type === 'release') &&
+        (ev.actions ?? []).some((a: any) => a && a.enabled !== false)
+    );
+    if (hasInteractiveEvent) {
+      emit('componentEvent', component, 'press');
+      const onRelease = () => {
+        emit('componentEvent', component, 'release');
+        emit('componentEvent', component, 'click');
+        window.removeEventListener('mouseup', onRelease);
+        window.removeEventListener('touchend', onRelease);
+      };
+      window.addEventListener('mouseup', onRelease);
+      window.addEventListener('touchend', onRelease);
+      return;
+    }
+
     // 阶段3：导航模式——点击跳转目标画面（同端），不受写权限限制，运行时/编辑器预览均可触发
     if ((component.type === 'button' || component.type === 'rounded-btn') && component.props.buttonMode === 'navigate') {
       const target = component.props.targetPageId;

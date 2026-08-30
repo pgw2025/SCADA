@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   currentProject,
@@ -16,6 +16,9 @@ import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../service
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
+import { dispatchComponentEvent, useHmiDataEvents, HmiEventDispatchContext } from '../services/hmiEventService';
+import { refreshActiveAlarms } from '../store/alarmStore';
+import { HMIComponent, HmiEventType } from '../types';
 import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
 
@@ -228,6 +231,44 @@ const handleTriggerRunScript = async (scriptId: number) => {
     // 失败提示由 http 拦截器统一弹出（403/404/脚本熔断等）
   }
 };
+
+// ===== 事件系统：分发上下文（写变量/跳转/脚本复用既有处理器；setProp 走运行态补丁不落库） =====
+const eventCtx = computed<HmiEventDispatchContext>(() => ({
+  canControlWrite: canControlWrite.value,
+  writeVariable: (deviceId, variableKey, writeMode, value) => {
+    // writeMode 与既有 actionType 一词同义（toggle/setBit/resetBit/setValue/momentary）
+    handleTriggerToggleValue(deviceId, variableKey, '', writeMode, value);
+  },
+  navigateToPage: handleNavigate,
+  runScript: (scriptId) => { handleTriggerRunScript(scriptId); },
+  applyRuntimePatch: (componentId, patch) => {
+    const comps = currentPage.value?.components ?? [];
+    const target = comps.find((c) => c.id === componentId);
+    if (!target) return;
+    // 仅改运行态渲染数据（store 内组件对象，响应式生效），不落库
+    if (patch.visible !== undefined) target.visible = patch.visible;
+    if (patch.label !== undefined) target.label = patch.label;
+    if (patch.props) target.props = { ...target.props, ...patch.props };
+  },
+  onBlocked: (msg) => showToast(msg, 'warning'),
+}));
+
+// 事件系统：交互类事件（click/press/release）由 CanvasPanel 上抛分发
+const handleComponentEvent = (component: HMIComponent, eventType: string) => {
+  dispatchComponentEvent(component, eventType as HmiEventType, eventCtx.value);
+};
+
+// 事件系统：数据类事件（valueChange/alarm）监听（值变化条件过滤、报警触发/恢复去重由 composable 处理）
+useHmiDataEvents({
+  components: () => currentPage.value?.components ?? [],
+  componentValues,
+  ctx: () => eventCtx.value,
+});
+
+// 报警事件校准：进入播放器时拉取一次当前未恢复报警（SignalR 实时增量由全局连接推送）
+onMounted(() => {
+  refreshActiveAlarms().catch(() => { });
+});
 </script>
 
 <template>
@@ -258,7 +299,7 @@ const handleTriggerRunScript = async (scriptId: number) => {
         :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
         :layers="currentPage.layers"
         @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate"
-        @triggerRunScript="handleTriggerRunScript" />
+        @triggerRunScript="handleTriggerRunScript" @component-event="handleComponentEvent" />
     </div>
   </div>
 </template>

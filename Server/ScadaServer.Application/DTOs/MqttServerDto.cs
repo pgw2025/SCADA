@@ -38,4 +38,23 @@ namespace ScadaServer.Application.DTOs
         /// </summary>
         public int VariableCount { get; set; }
     }
+
+    /// <summary>
+    /// 测试连接请求（不落库）。与 MqttServerDto 分离：
+    /// 测试时尚未命名是正常场景，不应触发 Name 必填校验。
+    /// </summary>
+    public class MqttTestConnectionDto
+    {
+        [Required(ErrorMessage = "Broker地址不能为空")]
+        public string BrokerUrl { get; set; } = string.Empty;
+
+        [Range(1, 65535, ErrorMessage = "端口需在 1-65535 之间")]
+        public int Port { get; set; } = 1883;
+
+        public string ClientId { get; set; } = string.Empty;
+
+        public string Username { get; set; } = string.Empty;
+
+        public string? Password { get; set; }
+    }
 }

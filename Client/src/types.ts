@@ -29,6 +29,72 @@ export interface HMILayer {
   colorBadge?: string;
 }
 
+// ===== 组件事件系统（事件属性面板）=====
+// 事件配置整体存于 HMIComponent.props.events（PropsJson 透传落库，后端无需改动）。
+
+/** 事件触发源类型 */
+export type HmiEventType =
+  | 'click'        // 单击（所有组件可用）
+  | 'press'        // 按下（点动写1场景）
+  | 'release'      // 松开（点动写0场景）
+  | 'valueChange'  // 绑定变量值变化（需已绑定设备+变量，可配条件）
+  | 'alarm';       // 绑定变量进入报警状态（需已绑定设备+变量）
+
+/** 写变量动作的写入模式（与既有 buttonMode 写入指令链对齐） */
+export type HmiEventWriteMode = 'toggle' | 'setBit' | 'resetBit' | 'setValue' | 'momentary';
+
+/** 值变化条件运算符 */
+export type HmiEventConditionOp = '>' | '<' | '=' | '>=' | '<=' | '!=';
+
+export interface HmiEventCondition {
+  op: HmiEventConditionOp;
+  operand: number;
+}
+
+/** 动作类型 */
+export type HmiEventActionKind =
+  | 'writeVar'   // 写变量
+  | 'navigate'   // 页面跳转
+  | 'runScript'  // 执行系统脚本
+  | 'setProp';   // 修改组件属性（运行态生效，不落库）
+
+export interface HmiEventAction {
+  id: string;
+  kind: HmiEventActionKind;
+  enabled: boolean;
+  params: {
+    /** writeVar：写入目标设备（null=沿用组件主绑定 bindDeviceId） */
+    deviceId?: number | null;
+    /** writeVar：写入变量键（空=沿用组件主绑定 bindVariableKey） */
+    variableKey?: string;
+    writeMode?: HmiEventWriteMode;
+    /** setValue 模式写入值 */
+    value?: number;
+    /** navigate：目标画面 id（仅限同端） */
+    targetPageId?: string;
+    /** runScript：系统脚本 id */
+    scriptId?: number;
+    /** setProp：目标组件（空=自身） */
+    targetComponentId?: string;
+    /** setProp：运行态补丁（不落库） */
+    patch?: {
+      visible?: boolean;
+      label?: string;
+      props?: Record<string, any>;
+    };
+  };
+}
+
+/** 单个事件的完整配置（条件 + 有序动作链） */
+export interface HmiEventConfig {
+  type: HmiEventType;
+  enabled: boolean;
+  /** 仅 valueChange：值需满足条件才触发（null=任何变化都触发） */
+  condition?: HmiEventCondition | null;
+  /** 动作链：按顺序执行 */
+  actions: HmiEventAction[];
+}
+
 export interface HMIComponent {
   id: string;
   /** 后端自增主键（持久化后回填）；未保存的新组件为 undefined */
@@ -107,6 +173,9 @@ export interface HMIComponent {
     // 图片图元专属属性（type === 'image'）
     imageUrl?: string;   // 图片访问 URL（/api/HmiImage/file/... 相对路径，经代理转发）
     imageFit?: 'fill' | 'contain' | 'cover' | 'tile'; // 填充方式（默认 fill 拉伸）
+
+    // 组件事件配置（事件属性面板；运行态优先于 buttonMode 旧逻辑）
+    events?: HmiEventConfig[];
   };
 }
 

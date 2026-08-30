@@ -70,7 +70,7 @@ namespace ScadaServer.WebApi.Controllers
         /// </summary>
         [HttpPost("test")]
         [AuditLog("MQTT服务器", "TEST")]
-        public async Task<IActionResult> TestConnection([FromBody] MqttServerDto dto)
+        public async Task<IActionResult> TestConnection([FromBody] MqttTestConnectionDto dto)
             => Ok(await _appService.TestConnectionAsync(dto));
     }
 }

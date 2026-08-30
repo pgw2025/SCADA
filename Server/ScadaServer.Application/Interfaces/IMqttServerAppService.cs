@@ -23,6 +23,6 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>
         /// 使用给定参数测试连接（不落库），返回成功/失败与错误信息。
         /// </summary>
-        Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttServerDto dto);
+        Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttTestConnectionDto dto);
     }
 }

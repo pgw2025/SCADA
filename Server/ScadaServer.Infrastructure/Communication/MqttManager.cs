@@ -213,7 +213,7 @@ namespace ScadaServer.Infrastructure.Communication
         }
 
         /// <inheritdoc/>
-        public async Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttServerDto dto)
+        public async Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttTestConnectionDto dto)
         {
             var result = new MqttTestConnectionResultDto();
             var client = _mqttFactory.CreateMqttClient();

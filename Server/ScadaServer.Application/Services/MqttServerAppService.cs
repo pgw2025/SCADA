@@ -115,7 +115,7 @@ namespace ScadaServer.Application.Services
 
         public Task<List<MqttServerStatusDto>> GetStatusesAsync() => _mqttManager.GetStatusesAsync();
 
-        public Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttServerDto dto) =>
+        public Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttTestConnectionDto dto) =>
             _mqttManager.TestConnectionAsync(dto);
 
         /// <summary>
