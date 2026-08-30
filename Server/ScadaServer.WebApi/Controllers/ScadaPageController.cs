@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using System.Text.Json;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.WebApi.Services;
@@ -11,11 +12,16 @@ namespace ScadaServer.WebApi.Controllers
     public class ScadaPageController : ControllerBase
     {
         private readonly IScadaPageAppService _appService;
+        private readonly IScadaProjectAppService _projectAppService;
         private readonly IOperationAuditService _auditService;
 
-        public ScadaPageController(IScadaPageAppService appService, IOperationAuditService auditService)
+        public ScadaPageController(
+            IScadaPageAppService appService,
+            IScadaProjectAppService projectAppService,
+            IOperationAuditService auditService)
         {
             _appService = appService;
+            _projectAppService = projectAppService;
             _auditService = auditService;
         }
 
@@ -66,6 +72,46 @@ namespace ScadaServer.WebApi.Controllers
             await _appService.DeleteAsync(id);
             await AuditAsync("DELETE", id.ToString(), $"删除组态页面 [id={id}]");
             return NoContent();
+        }
+
+        /// <summary>导出单个画面为可迁移 JSON 文件（含全部组件，绑定携带设备业务键）。</summary>
+        [HttpGet("{id}/export")]
+        public async Task<IActionResult> Export(int id)
+        {
+            var package = await _projectAppService.ExportPageAsync(id);
+            if (package == null) return NotFound();
+
+            var fileName = $"{SanitizeFileName(package.Pages[0].Name)}.scada-page.json";
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(package, ScadaTransferJson.Options);
+            Response.Headers.ContentDisposition =
+                $"attachment; filename=\"scada-page.json\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
+            await AuditAsync("EXPORT", id.ToString(), $"导出组态画面 [id={id}] 名称「{package.Pages[0].Name}」");
+            return File(bytes, "application/json;charset=utf-8");
+        }
+
+        /// <summary>导入画面迁移包到指定工程（重名自动加后缀；同端已有首页时降级为普通画面）。</summary>
+        [HttpPost("import")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> Import([FromQuery] int projectId, [FromBody] ScadaTransferPackageDto package)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            try
+            {
+                var result = await _projectAppService.ImportPageAsync(projectId, package);
+                await AuditAsync("IMPORT", result.PageId?.ToString() ?? string.Empty,
+                    $"导入组态画面 [id={result.PageId}] 名称「{result.PageName}」到工程 {projectId}");
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        private static string SanitizeFileName(string name)
+        {
+            var clean = string.Join("_", name.Split(System.IO.Path.GetInvalidFileNameChars())).Trim();
+            return string.IsNullOrWhiteSpace(clean) ? "export" : clean;
         }
     }
 }

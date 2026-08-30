@@ -160,3 +160,20 @@ export const selectProject = async (rawId: string | number): Promise<ScadaScreen
     return null;
   }
 };
+
+/**
+ * 导入导出后的刷新：强制从后端重拉指定工程完整树。
+ * 先从本地移除再走 selectProject 懒加载，保证拿到最新数据。
+ */
+export const reloadProjectTree = async (serverId: number): Promise<ScadaScreenProject | null> => {
+  const idx = scadaProjects.value.findIndex(p => p.serverId === serverId);
+  if (idx >= 0) scadaProjects.value.splice(idx, 1);
+  return selectProject(serverId);
+};
+
+/** 工程摘要列表 upsert（导入后卡片页立即可见，无需整页刷新） */
+export const upsertProjectSummary = (s: { id: number; name: string; description: string }) => {
+  const i = projectSummaries.value.findIndex(p => p.id === s.id);
+  if (i >= 0) projectSummaries.value.splice(i, 1, s);
+  else projectSummaries.value.push(s);
+};

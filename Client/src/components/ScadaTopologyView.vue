@@ -23,8 +23,12 @@ import {
   scadaLoading,
   initializeScada,
   isScadaFullscreen,
-  toggleScadaFullscreen
+  toggleScadaFullscreen,
+  projectSummaries,
+  reloadProjectTree,
+  upsertProjectSummary
 } from '../store/scadaStore';
+import { exportProjectFile, exportPageFile, parseTransferFile, importProject, importPage } from '../api/scadaApi';
 import {
   updateCurrentPageComponents,
   ensurePageSaved,
@@ -34,6 +38,7 @@ import {
   persistPageUpdate,
   persistPageDelete,
   persistProjectUpdate,
+  persistProjectDelete,
   persistDuplicatePage,
   reconcileComponents
 } from '../services/scadaService';
@@ -74,7 +79,9 @@ import {
   Package,
   Sliders,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Upload
 } from 'lucide-vue-next';
 
 // 面板收起/展开控制状态
@@ -684,6 +691,32 @@ const saveProjRename = (pId: string) => {
   isRenamingProjId.value = null;
 };
 
+// Delete project（确认后删除；后端事务级联删除其下全部画面与组件）
+const handleDeleteProject = () => {
+  const proj = currentProject.value;
+  if (!proj) return;
+
+  askConfirm('删除工程', `确定删除工程 [${proj.name}] 吗？其下所有画面与组件将一并删除，且不可恢复。`, () => {
+    // 阶段2：若已落库则删除后端工程（事务级联删页面与组件）
+    persistProjectDelete(proj).catch(() => { });
+
+    // 本地移除工程并同步清理工程摘要列表（卡片页数据源）
+    const idx = scadaProjects.value.findIndex(p => p.id === proj.id);
+    if (idx !== -1) scadaProjects.value.splice(idx, 1);
+    if (proj.serverId) {
+      const sIdx = projectSummaries.value.findIndex(s => s.id === proj.serverId);
+      if (sIdx !== -1) projectSummaries.value.splice(sIdx, 1);
+    }
+
+    // 切换选中到剩余首个工程；无工程则清空选中（空态 UI 引导新建）
+    const next = scadaProjects.value[0];
+    selectedProjectId.value = next?.id ?? '';
+    selectedPageId.value = next?.pages[0]?.id ?? '';
+
+    addLog('组态编辑', `删除工程: [${proj.name}]`, 'warning');
+  }, true, '删除');
+};
+
 const selectProjectDirectly = (projId: string) => {
   selectedProjectId.value = projId;
   const proj = scadaProjects.value.find(p => p.id === projId);
@@ -695,6 +728,86 @@ const selectProjectDirectly = (projId: string) => {
 const selectedCompObj = computed(() => {
   return currentPageSafe.value.components.find((c) => c.id === selectedId.value) || null;
 });
+
+// ===== 组态导入导出（工程/画面迁移文件） =====
+// 导入写后端为 RequireAdmin；前端按角色隐藏入口，后端仍兜底 403。
+const isAdminUser = computed(() => loginUser.value?.role === ROLE_ADMIN);
+
+const projectImportInput = ref<HTMLInputElement | null>(null);
+const triggerImportProject = () => projectImportInput.value?.click();
+
+const handleImportProjectFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ''; // 允许重复选择同一文件
+  if (!file) return;
+  try {
+    const pkg = await parseTransferFile(file);
+    const result = await importProject(pkg);
+    showToast(`已导入工程「${result.projectName}」（画面 ${result.importedPages}、组件 ${result.importedComponents}）`, 'success');
+    if (result.warnings.length) showToast(result.warnings.join('\n'), 'warning');
+    upsertProjectSummary({ id: result.projectId, name: result.projectName, description: pkg.project?.description || '' });
+    await reloadProjectTree(result.projectId);
+    selectedPageId.value = currentProject.value?.pages[0]?.id || '';
+    addLog('组态编辑', `导入工程: [${result.projectName}]`, 'normal');
+  } catch (err: any) {
+    // HTTP 错误已由 http 拦截器统一 toast；此处只兜解析/本地错误
+    if (!err?.response) showToast(err?.message || '导入失败', 'error');
+  }
+};
+
+const handleExportProject = async () => {
+  const proj = currentProject.value;
+  if (!proj?.serverId) return;
+  try {
+    await exportProjectFile(proj.serverId, proj.name);
+    addLog('组态编辑', `导出工程: [${proj.name}]`, 'normal');
+  } catch { }
+};
+
+const pageImportInput = ref<HTMLInputElement | null>(null);
+const triggerImportPage = () => {
+  if (!currentProject.value?.serverId) {
+    showToast('当前工程尚未保存到后端，无法导入画面', 'warning');
+    return;
+  }
+  pageImportInput.value?.click();
+};
+
+const handleImportPageFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  const proj = currentProject.value;
+  if (!proj?.serverId) return;
+  try {
+    const pkg = await parseTransferFile(file);
+    if (pkg.format !== 'scada-page') {
+      showToast('请选择画面导出文件（format 应为 scada-page）', 'error');
+      return;
+    }
+    const result = await importPage(proj.serverId, pkg);
+    showToast(`已导入画面「${result.pageName}」（组件 ${result.importedComponents}）`, 'success');
+    if (result.warnings.length) showToast(result.warnings.join('\n'), 'warning');
+    await reloadProjectTree(proj.serverId);
+    if (result.pageId) selectedPageId.value = `srv-${result.pageId}`;
+    addLog('组态编辑', `导入画面: [${result.pageName}]`, 'normal');
+  } catch (err: any) {
+    if (!err?.response) showToast(err?.message || '导入失败', 'error');
+  }
+};
+
+const handleExportPage = async (page: ScadaPage) => {
+  if (!page.serverId) {
+    showToast('该画面尚未保存到后端，无法导出', 'warning');
+    return;
+  }
+  try {
+    await exportPageFile(page.serverId, page.name);
+    addLog('组态编辑', `导出画面: [${page.name}]`, 'normal');
+  } catch { }
+};
 </script>
 
 <template>
@@ -712,11 +825,23 @@ const selectedCompObj = computed(() => {
             <FolderIcon class="w-4 h-4 text-amber-500" />
             <span>工程列表</span>
           </div>
-          <button @click="showProjectModal = true"
-            class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
-            title="新建工程">
-            <Plus class="w-4 h-4" />
-          </button>
+          <div class="flex items-center gap-1">
+            <button v-if="isAdminUser" @click="triggerImportProject"
+              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
+              title="导入工程（.scada-project.json）">
+              <Upload class="w-4 h-4" />
+            </button>
+            <button v-if="currentProject?.serverId" @click="handleExportProject"
+              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
+              title="导出当前工程">
+              <Download class="w-4 h-4" />
+            </button>
+            <button @click="showProjectModal = true"
+              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
+              title="新建工程">
+              <Plus class="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <select :value="selectedProjectId" @change="selectProjectDirectly(($event.target as HTMLSelectElement).value)"
@@ -733,11 +858,18 @@ const selectedCompObj = computed(() => {
         <!-- Project direct quick edit rename -->
         <div class="flex items-center justify-between">
           <span class="text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">工程属性</span>
-          <button v-if="isRenamingProjId !== currentProject.id"
-            @click="startRenameProj(currentProject.id, currentProject.name)"
-            class="text-[10px] text-slate-400 dark:text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 cursor-pointer">
-            重命名
-          </button>
+          <div class="flex items-center gap-2">
+            <button v-if="isRenamingProjId !== currentProject.id"
+              @click="startRenameProj(currentProject.id, currentProject.name)"
+              class="text-[10px] text-slate-400 dark:text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 cursor-pointer">
+              重命名
+            </button>
+            <button v-if="isRenamingProjId !== currentProject.id" @click="handleDeleteProject"
+              class="text-slate-400 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 cursor-pointer"
+              title="删除工程">
+              <Trash2 class="w-3 h-3" />
+            </button>
+          </div>
         </div>
 
         <div v-if="isRenamingProjId === currentProject.id" class="flex gap-1 items-center mt-1">
@@ -757,15 +889,23 @@ const selectedCompObj = computed(() => {
       <div
         class="flex items-center justify-between px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100/60 dark:border-slate-800">
         <span>画面列表</span>
-        <button @click="showBindingCheck = !showBindingCheck"
-          class="flex items-center gap-1 normal-case font-semibold text-[11px] px-2 py-1 rounded border transition-colors"
-          :class="showBindingCheck
-            ? 'bg-amber-500 text-white border-amber-500'
-            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'"
-          title="检查当前画面中未绑定设备的组件（裸 Key 风险）">
-          <AlertTriangle class="w-3.5 h-3.5" />
-          绑定检查
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button v-if="isAdminUser" @click="triggerImportPage"
+            class="flex items-center gap-1 normal-case font-semibold text-[11px] px-2 py-1 rounded border transition-colors bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#1890ff] dark:hover:border-sky-500"
+            title="导入画面到当前工程（.scada-page.json）">
+            <Upload class="w-3.5 h-3.5" />
+            导入画面
+          </button>
+          <button @click="showBindingCheck = !showBindingCheck"
+            class="flex items-center gap-1 normal-case font-semibold text-[11px] px-2 py-1 rounded border transition-colors"
+            :class="showBindingCheck
+              ? 'bg-amber-500 text-white border-amber-500'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'"
+            title="检查当前画面中未绑定设备的组件（裸 Key 风险）">
+            <AlertTriangle class="w-3.5 h-3.5" />
+            绑定检查
+          </button>
+        </div>
       </div>
 
       <!-- 桌面端分组 -->
@@ -811,6 +951,10 @@ const selectedCompObj = computed(() => {
               <button @click.stop="handleDuplicatePage(page)"
                 class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
                 <Copy class="w-3 h-3" />
+              </button>
+              <button @click.stop="handleExportPage(page)"
+                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
+                <Download class="w-3 h-3" />
               </button>
               <button @click.stop="handleDeletePage(page.id, page.name)"
                 class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
@@ -865,6 +1009,10 @@ const selectedCompObj = computed(() => {
               <button @click.stop="handleDuplicatePage(page)"
                 class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
                 <Copy class="w-3 h-3" />
+              </button>
+              <button @click.stop="handleExportPage(page)"
+                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
+                <Download class="w-3 h-3" />
               </button>
               <button @click.stop="handleDeletePage(page.id, page.name)"
                 class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
@@ -1134,6 +1282,12 @@ const selectedCompObj = computed(() => {
     <ConfirmModal :open="confirmState.open" :title="confirmState.title" :message="confirmState.message"
       :danger="confirmState.danger" :confirm-text="confirmState.confirmText" @confirm="onConfirmModal"
       @cancel="confirmState.open = false" />
+
+    <!-- 组态导入导出：隐藏文件选择（触发后端迁移包导入） -->
+    <input ref="projectImportInput" type="file" accept=".json,application/json" class="hidden"
+      @change="handleImportProjectFile" />
+    <input ref="pageImportInput" type="file" accept=".json,application/json" class="hidden"
+      @change="handleImportPageFile" />
 
   </div>
 </template>

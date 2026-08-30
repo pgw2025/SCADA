@@ -213,3 +213,80 @@ const safeParse = (json: string): Record<string, any> => {
     return {};
   }
 };
+
+// ===== 组态导入导出（工程/画面迁移文件） =====
+
+// ---- 迁移包线格式（与后端 ScadaTransferDto 对齐，camelCase） ----
+export interface TransferComponentDto {
+  type: string; name: string;
+  x: number; y: number; width: number; height: number; zIndex: number;
+  bindField: string; label: string | null;
+  bindDeviceKey: string | null; bindVariableKey: string | null;
+  propsJson: string;
+}
+export interface TransferPageDto {
+  name: string; isHome: boolean; platform: string;
+  width: number; height: number;
+  backgroundJson: string | null; adaptMode: string | null;
+  components: TransferComponentDto[];
+}
+export interface TransferPackageDto {
+  format: string; version: number; exportedAt: string | null;
+  project: { name: string; description: string } | null;
+  pages: TransferPageDto[];
+}
+export interface ImportResultDto {
+  projectId: number; projectName: string;
+  pageId: number | null; pageName: string | null;
+  importedPages: number; importedComponents: number;
+  warnings: string[];
+}
+
+/** 文件名清洗：剔除 Windows/浏览器非法字符 */
+const sanitizeFileName = (name: string): string =>
+  (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'export';
+
+/** 触发浏览器下载后端返回的 blob 附件（Token 由 http 拦截器自动注入） */
+const downloadBlob = (data: Blob, filename: string): void => {
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+/** 导出工程（整树 JSON 文件下载） */
+export const exportProjectFile = async (id: number, fallbackName: string): Promise<void> => {
+  const r = await http.get(`${API()}/ScadaProject/${id}/export`, { responseType: 'blob' });
+  downloadBlob(r.data, `${sanitizeFileName(fallbackName)}.scada-project.json`);
+};
+
+/** 导出画面（单画面 JSON 文件下载） */
+export const exportPageFile = async (id: number, fallbackName: string): Promise<void> => {
+  const r = await http.get(`${API()}/ScadaPage/${id}/export`, { responseType: 'blob' });
+  downloadBlob(r.data, `${sanitizeFileName(fallbackName)}.scada-page.json`);
+};
+
+/** 读取并解析导入文件（前端先做 format 存在性校验，给友好提示） */
+export const parseTransferFile = async (file: File): Promise<TransferPackageDto> => {
+  const parsed = JSON.parse(await file.text());
+  if (!parsed || typeof parsed.format !== 'string') {
+    throw new Error('不是有效的组态导出文件（缺少 format 字段）');
+  }
+  return parsed as TransferPackageDto;
+};
+
+/** 导入工程（返回新工程 id/名称与告警列表） */
+export const importProject = async (pkg: TransferPackageDto): Promise<ImportResultDto> => {
+  const r = await http.post<ImportResultDto>(`${API()}/ScadaProject/import`, pkg);
+  return r.data;
+};
+
+/** 导入画面到指定工程 */
+export const importPage = async (projectId: number, pkg: TransferPackageDto): Promise<ImportResultDto> => {
+  const r = await http.post<ImportResultDto>(`${API()}/ScadaPage/import?projectId=${projectId}`, pkg);
+  return r.data;
+};
