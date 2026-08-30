@@ -16,6 +16,7 @@ import {
   selectedPageId,
   currentProject,
   currentPage,
+  currentPageSafe,
   currentPlatform,
   desktopPages,
   mobilePages,
@@ -188,11 +189,12 @@ watch([selectedProjectId, selectedPageId], () => {
 
 // 阶段5-1：撤销/重做（纯前端快照栈 + 阶段3 后端对账）
 const applyRestored = (restored: HMIComponent[] | null) => {
-  if (!restored) return;
-  const before = currentPage.value.components;
+  const pg = currentPage.value;
+  if (!restored || !pg) return;
+  const before = pg.components;
   updateCurrentPageComponents(restored.map((c) => ({ ...c })));
   // 阶段3 撤销对账：撤销/重做后补齐与后端差异（清孤儿/重建丢失/静默校正属性）
-  reconcileComponents(currentPage.value, currentProject.value, before, restored).catch(() => { });
+  reconcileComponents(pg, currentProject.value, before, restored).catch(() => { });
   if (selectedId.value && !restored.find((c) => c.id === selectedId.value)) {
     selectedIds.value = [];
   }
@@ -203,6 +205,7 @@ const onHistoryKey = (e: KeyboardEvent) => {
   if (isActiveMode.value) return;
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (!currentPage.value) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     if (e.shiftKey) {
@@ -227,7 +230,7 @@ const componentValues = computed(() => {
   });
 
   const result: Record<string, number | boolean> = {};
-  currentPage.value.components.forEach((c) => {
+  currentPageSafe.value.components.forEach((c) => {
     if (c.bindDeviceId != null && c.bindVariableKey) {
       const v = composite[`${c.bindDeviceId}:${c.bindVariableKey}`];
       if (v !== undefined) {
@@ -246,14 +249,14 @@ const componentValues = computed(() => {
 });
 
 // 阶段5-3：画布分辨率（由页面属性驱动，回退默认 1100×700）
-const pageWidth = computed(() => currentPage.value.width ?? 1100);
-const pageHeight = computed(() => currentPage.value.height ?? 700);
+const pageWidth = computed(() => currentPageSafe.value.width ?? 1100);
+const pageHeight = computed(() => currentPageSafe.value.height ?? 700);
 
 // 设备级 SignalR 订阅：运行态实时值解析只消费当前页面已绑定组件的设备，
 // 按绑定设备集合订阅/退订（变量更新仅推送已订阅设备分组，替代全连接广播）。
 const boundDeviceIds = computed(() => {
   const ids = new Set<number>();
-  currentPage.value.components.forEach((c: any) => {
+  currentPageSafe.value.components.forEach((c: any) => {
     if (c.bindDeviceId != null) ids.add(Number(c.bindDeviceId));
   });
   return ids;
@@ -276,6 +279,7 @@ const canControlWrite = computed(() => {
 });
 const handleUpdateCanvasSize = (w: number, h: number) => {
   const pg = currentPage.value;
+  if (!pg) return;
   pg.width = w;
   pg.height = h;
   addLog('组态编辑', `画布分辨率调整为 [${w} × ${h}]`, 'normal');
@@ -285,6 +289,7 @@ const handleUpdateCanvasSize = (w: number, h: number) => {
 
 // Map CanvasPanel updates directly to active project page
 const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
+  if (!currentPage.value) return;
   beginChange(currentPage.value.components, id);
   const currentComps = currentPage.value.components;
   const newComps = currentComps.map((comp) => {
@@ -305,7 +310,7 @@ const handleUpdateComponent = (id: string, updates: Partial<HMIComponent>) => {
 
 // 阶段5-2：批量属性更新（多选整体拖动/对齐/分布）；连续编辑段合并为单条历史
 const handleUpdateComponents = (updates: { id: string; updates: Partial<HMIComponent> }[]) => {
-  if (!updates.length) return;
+  if (!updates.length || !currentPage.value) return;
   beginChange(currentPage.value.components, 'batch');
   const idSet = new Set(updates.map((u) => u.id));
   const newComps = currentPage.value.components.map((comp) => {
@@ -345,6 +350,7 @@ const handleUpdatePage = (updates: Partial<ScadaPage>) => {
 // Add a widget from panel library
 // 阶段5-5：默认尺寸 / props 取自 widgetRegistry（消除与图库两处散改）
 const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string, x = 40, y = 60) => {
+  if (!currentPage.value) return;
   const currentComps = currentPage.value.components;
   const newId = genComponentId(type);
   const def = getWidgetDef(type);
@@ -381,6 +387,7 @@ const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: 
 
 // Duplicate widget(s) — 阶段5-2 支持批量复制
 const handleDuplicateComponents = (ids: string[]) => {
+  if (!currentPage.value) return;
   const currentComps = currentPage.value.components;
   const targets = currentComps.filter((c) => ids.includes(c.id));
   if (!targets.length) return;
@@ -407,6 +414,7 @@ const handleDuplicateComponents = (ids: string[]) => {
 
 // Delete widget(s) — 阶段5-2 支持批量删除（统一一次确认）
 const handleDeleteComponents = (ids: string[]) => {
+  if (!currentPage.value) return;
   const targets = currentPage.value.components.filter((c) => ids.includes(c.id));
   if (!targets.length) return;
 
@@ -426,6 +434,7 @@ const handleDeleteComponents = (ids: string[]) => {
 
 // Clear active drawing canvas Layout
 const handleClearCanvas = () => {
+  if (!currentPage.value) return;
   askConfirm('清空画布', '确定要清空当前画布吗？此操作将移除本页全部组件且不可逆。', () => {
     recordDiscrete(currentPage.value.components);
     const toDelete = currentPage.value.components.filter(c => c.serverId);
@@ -684,7 +693,7 @@ const selectProjectDirectly = (projId: string) => {
 };
 
 const selectedCompObj = computed(() => {
-  return currentPage.value.components.find((c) => c.id === selectedId.value) || null;
+  return currentPageSafe.value.components.find((c) => c.id === selectedId.value) || null;
 });
 </script>
 

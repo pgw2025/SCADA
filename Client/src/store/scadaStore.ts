@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue';
-import { ScadaScreenProject } from '../types';
+import { ScadaScreenProject, ScadaPage } from '../types';
 import * as api from '../api/scadaApi';
 
 /**
@@ -26,6 +26,20 @@ export const currentPage = computed(() => {
   if (!proj) return undefined;
   return proj.pages.find(pg => pg.id === selectedPageId.value) || proj.pages[0];
 });
+
+/**
+ * 空页占位（冻结）：无工程/无页面时的安全兜底。
+ * 仅供 currentPageSafe 使用：读取方可安全访问 components 等字段；
+ * 冻结保证不会被误写（严格模式下写入抛错，暴露误用）。
+ */
+const _EMPTY_PAGE: ScadaPage = { id: '', name: '', components: [] };
+export const EMPTY_PAGE: Readonly<ScadaPage> = Object.freeze(_EMPTY_PAGE);
+
+/**
+ * currentPage 的安全版本：无工程/无页面（整树加载前/后端为空）时返回空页占位，
+ * components 恒为数组，供计算属性与渲染安全读取；语义判断（空态 UI）仍用 currentPage。
+ */
+export const currentPageSafe = computed<ScadaPage>(() => currentPage.value ?? (EMPTY_PAGE as ScadaPage));
 
 // 双布局：当前编辑/查看的端（Desktop / Mobile）。缺省 Desktop。
 export const currentPlatform = ref<'Desktop' | 'Mobile'>('Desktop');
