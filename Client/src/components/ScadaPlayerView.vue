@@ -241,6 +241,7 @@ const handleTriggerToggleValue = (
         :isActiveMode="true" :component-values="componentValues" :component-qualities="componentQualities"
         :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite" :readonly="true"
         :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
+        :layers="currentPage.layers"
         @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate" />
     </div>
   </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { HMIComponent, PageBackground, PageAdaptMode } from '../types';
+import { HMIComponent, PageBackground, PageAdaptMode, HMILayer } from '../types';
 import HMIWidget from './HMIWidget.vue';
 import { isControlWidget } from '../widgetRegistry';
 import { trendHistory } from '../utils/trendHistory';
@@ -13,6 +13,7 @@ import {
   Layers,
   Play,
   Edit3,
+  Lock,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -32,6 +33,8 @@ const props = defineProps<{
   background?: PageBackground | null;
   /** 运行端自适应屏幕模式（null=兼容行为：等比缩小不放大） */
   adaptMode?: PageAdaptMode | null;
+  /** 页面图层列表 */
+  layers?: HMILayer[];
 }>();
 
 const emit = defineEmits<{
@@ -44,7 +47,7 @@ const emit = defineEmits<{
   (e: 'duplicateComponents', ids: string[]): void;
   (e: 'clearCanvas'): void;
   (e: 'updateCanvasSize', w: number, h: number): void;
-  (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number): void;
+  (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>): void;
   (e: 'navigateToPage', pageId: string): void;
   (e: 'selectBackground'): void;
 }>();
@@ -67,6 +70,54 @@ const compOriginalPos = ref<{ x: number; y: number; w: number; h: number }>({
   w: 0,
   h: 0,
 });
+
+// 图层快速查找 Map
+const layerMap = computed(() => {
+  const map: Record<string, HMILayer> = {};
+  (props.layers || []).forEach((l) => {
+    map[l.id] = l;
+  });
+  return map;
+});
+
+// 获取组件归属的图层实体（若组件未指定 layerId 或 layerId 不在有效图层中，默认归属首个图层）
+const getComponentLayer = (comp: HMIComponent): HMILayer | undefined => {
+  const layers = props.layers;
+  if (!layers || layers.length === 0) return undefined;
+  if (comp.layerId && layerMap.value[comp.layerId]) {
+    return layerMap.value[comp.layerId];
+  }
+  return layers[0];
+};
+
+// 判断组件是否可见（组件本身 visible !== false 且 所属图层 visible !== false）
+const isComponentVisible = (comp: HMIComponent): boolean => {
+  if (comp.visible === false) return false;
+  const layer = getComponentLayer(comp);
+  if (layer && layer.visible === false) {
+    return false;
+  }
+  return true;
+};
+
+// 判断组件是否锁定（组件本身 locked === true 或 所属图层 locked === true）
+const isComponentLocked = (comp: HMIComponent): boolean => {
+  if (comp.locked === true) return true;
+  const layer = getComponentLayer(comp);
+  if (layer && layer.locked === true) {
+    return true;
+  }
+  return false;
+};
+
+// 获取组件计算后的不透明度 (0~1)
+const getComponentOpacity = (comp: HMIComponent): number => {
+  const layer = getComponentLayer(comp);
+  if (layer && typeof layer.opacity === 'number') {
+    return Math.max(0.05, Math.min(1, layer.opacity / 100));
+  }
+  return 1;
+};
 
 // 阶段5-2：多选批量拖动——记录所有选中项的拖拽前坐标
 const dragSnapshot = ref<{ id: string; x: number; y: number }[]>([]);
@@ -94,29 +145,45 @@ const handleKeyDown = (e: KeyboardEvent) => {
   const step = e.shiftKey ? 10 : 1;
   const snap = snapToGrid.value && !e.shiftKey ? 10 : step;
   const selSet = new Set(props.selectedIds);
-  const selComps = props.components.filter((c) => selSet.has(c.id));
+  // 仅对未锁定且可见的组件生效微调位移
+  const selComps = props.components.filter((c) => selSet.has(c.id) && !isComponentLocked(c) && isComponentVisible(c));
 
   switch (e.key) {
     case 'ArrowUp':
       e.preventDefault();
-      emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { y: Math.max(0, c.y - snap) } })));
+      if (selComps.length > 0) {
+        emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { y: Math.max(0, c.y - snap) } })));
+      }
       break;
     case 'ArrowDown':
       e.preventDefault();
-      emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { y: c.y + snap } })));
+      if (selComps.length > 0) {
+        emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { y: c.y + snap } })));
+      }
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { x: Math.max(0, c.x - snap) } })));
+      if (selComps.length > 0) {
+        emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { x: Math.max(0, c.x - snap) } })));
+      }
       break;
     case 'ArrowRight':
       e.preventDefault();
-      emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { x: c.x + snap } })));
+      if (selComps.length > 0) {
+        emit('updateComponents', selComps.map((c) => ({ id: c.id, updates: { x: c.x + snap } })));
+      }
       break;
     case 'Delete':
     case 'Backspace':
       e.preventDefault();
-      emit('deleteComponents', [...props.selectedIds]);
+      // 锁定组件禁止直接删除
+      const deletableIds = props.selectedIds.filter((id) => {
+        const c = props.components.find((comp) => comp.id === id);
+        return c && !isComponentLocked(c);
+      });
+      if (deletableIds.length > 0) {
+        emit('deleteComponents', deletableIds);
+      }
       break;
     case 'd':
     case 'D':
@@ -184,6 +251,11 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
 
   e.stopPropagation();
 
+  // 若组件被锁定或隐藏，设计模式下禁止选中/拖拽
+  if (isComponentLocked(component) || !isComponentVisible(component)) {
+    return;
+  }
+
   // 阶段5-2：多选逻辑
   const isMulti = e.ctrlKey || e.shiftKey;
   let selSet: string[];
@@ -210,16 +282,16 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
 
   isDragging.value = true;
   dragStart.value = { x: e.clientX, y: e.clientY };
-  // 记录所有选中项拖拽前坐标（用于整体平移 + 网格吸附）
+  // 记录所有选中项拖拽前坐标（只记录未锁定且可见的选中项）
   const selSetObj = new Set(selSet);
   dragSnapshot.value = props.components
-    .filter((c) => selSetObj.has(c.id))
+    .filter((c) => selSetObj.has(c.id) && !isComponentLocked(c) && isComponentVisible(c))
     .map((c) => ({ id: c.id, x: c.x, y: c.y }));
 };
 
 const handleResizeStart = (e: MouseEvent, component: HMIComponent, handle: string) => {
-  // 阶段5-2：缩放手柄仅对单选组件生效
-  if (props.selectedIds.length !== 1 || component.id !== props.selectedId) return;
+  // 阶段5-2：缩放手柄仅对单选组件生效，锁定或隐藏组件禁止缩放
+  if (props.selectedIds.length !== 1 || component.id !== props.selectedId || isComponentLocked(component) || !isComponentVisible(component)) return;
   e.stopPropagation();
   e.preventDefault();
   activeResizeHandle.value = handle;
@@ -361,6 +433,8 @@ const handleStageMouseUp = () => {
   }
   const hits = props.components
     .filter((c) => {
+      // 排除已锁定或隐藏的组件
+      if (isComponentLocked(c) || !isComponentVisible(c)) return false;
       const cx1 = c.x;
       const cy1 = c.y;
       const cx2 = c.x + c.width;
@@ -486,7 +560,7 @@ const onDrop = (e: DragEvent) => {
   e.preventDefault();
   const raw = e.dataTransfer?.getData('application/x-scada-widget');
   if (!raw || !canvasRef.value) return;
-  let parsed: { type: string; w: number; h: number; name: string };
+  let parsed: { type: string; w: number; h: number; name: string; extraProps?: Record<string, any> };
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -501,7 +575,7 @@ const onDrop = (e: DragEvent) => {
   }
   x = Math.max(0, x);
   y = Math.max(0, y);
-  emit('addComponentAt', parsed.type, parsed.w, parsed.h, parsed.name, x, y);
+  emit('addComponentAt', parsed.type, parsed.w, parsed.h, parsed.name, x, y, parsed.extraProps);
 };
 
 // 阶段5-7：运行端响应式——只读（运行时）模式自动缩放画布以适配可视区。
@@ -799,14 +873,18 @@ onUnmounted(() => {
             }" />
 
           <!-- Render individual canvas components -->
-          <div v-for="component in components" :key="component.id" @mousedown="handleDragStart($event, component)"
+          <div v-for="component in components" :key="component.id"
+            v-show="isComponentVisible(component)"
+            @mousedown="handleDragStart($event, component)"
             @click.stop :class="[
               'absolute rounded transition-shadow',
-              isActiveMode ? 'cursor-pointer hover:brightness-105' : 'cursor-grab active:cursor-grabbing',
+              isActiveMode
+                ? 'cursor-pointer hover:brightness-105'
+                : (isComponentLocked(component) ? 'cursor-not-allowed select-none' : 'cursor-grab active:cursor-grabbing'),
               selectedIds.includes(component.id) && !isActiveMode
                 ? component.id === selectedId
-                  ? 'ring-2 ring-offset-2 ring-offset-white z-50 shadow'
-                  : 'ring-1 ring-[#1890ff]/60 z-40'
+                  ? (isComponentLocked(component) ? 'ring-2 ring-rose-500/80 ring-offset-2 ring-offset-white z-50 shadow' : 'ring-2 ring-offset-2 ring-offset-white z-50 shadow')
+                  : (isComponentLocked(component) ? 'ring-1 ring-rose-400/60 z-40' : 'ring-1 ring-[#1890ff]/60 z-40')
                 : ''
             ]" :style="{
             left: `${component.x}px`,
@@ -814,7 +892,8 @@ onUnmounted(() => {
             width: `${component.width}px`,
             height: `${component.height}px`,
             zIndex: component.zIndex || 1,
-            '--tw-ring-color': '#1890ff'
+            opacity: getComponentOpacity(component),
+            '--tw-ring-color': isComponentLocked(component) ? '#f43f5e' : '#1890ff'
           }">
             <!-- Visual rendering logic box -->
             <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
@@ -829,6 +908,13 @@ onUnmounted(() => {
               {{ componentQualities[component.id] }}
             </div>
 
+            <!-- Locked indicator badge if selected and locked -->
+            <div v-if="isComponentLocked(component) && !isActiveMode && selectedIds.includes(component.id)"
+              class="absolute -top-2.5 -right-2.5 z-50 bg-rose-500 text-white rounded-full p-1 shadow-sm pointer-events-none"
+              title="图元或所在图层已锁定，禁止拖拽移动">
+              <Lock class="w-3 h-3" />
+            </div>
+
             <!-- Editable labels in component container -->
             <div
               v-if="!component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
@@ -836,8 +922,8 @@ onUnmounted(() => {
               {{ component.label }}
             </div>
 
-            <!-- Edit overlay elements like resize pointers -->
-            <template v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1">
+            <!-- Edit overlay elements like resize pointers (仅对未锁定组件展示) -->
+            <template v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1 && !isComponentLocked(component)">
               <!-- NW Handle -->
               <div
                 class="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nwse-resize z-50 shadow"

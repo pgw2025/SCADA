@@ -13,10 +13,11 @@ import {
   Workflow,
   SquareTerminal,
   Clock,
-  SlidersHorizontal,
   RefreshCw,
   Sparkles,
   Image as ImageIcon,
+  Monitor,
+  Smartphone,
 } from 'lucide-vue-next';
 
 /**
@@ -28,9 +29,10 @@ import {
  * 新增组件类型只需：① 在此注册；② 在 `HMIWidget.vue` 增加渲染分支。
  */
 
-export type WidgetCategory = 'equipment' | 'sensors' | 'structures';
+export type WidgetCategory = 'equipment' | 'sensors' | 'structures' | 'headers';
 
 export interface WidgetDef {
+  key?: string;
   type: ComponentType;
   name: string;
   defaultWidth: number;
@@ -57,6 +59,22 @@ const baseProps = (type: ComponentType): Record<string, any> => ({
   align: 'center',
   thresholdMax: 90, // 与面板回显一致
   thresholdMin: 10, // 与面板回显一致
+  // 标题背景默认属性
+  ...(type === 'title-header'
+    ? {
+        headerStyle: 'tech-blue',
+        headerDevice: 'desktop',
+        headerTitle: '工业互联网智能监控大屏',
+        headerSubtitle: 'INTELLIGENT SCADA MONITORING PLATFORM',
+        headerLogoText: 'SCADA 5G',
+        headerShowClock: true,
+        headerShowStatus: true,
+        headerStatusText: '系统运行正常',
+        headerGlowColor: '#38bdf8',
+        fontSize: 22,
+        bold: true,
+      }
+    : {}),
 });
 
 export const widgetRegistry: Record<string, WidgetDef> = {
@@ -204,18 +222,6 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     category: 'sensors',
     defaultProps: () => baseProps('sys-time'),
   },
-  'state-text': {
-    type: 'state-text',
-    name: 'PLC变量中文翻译器',
-    defaultWidth: 155,
-    defaultHeight: 55,
-    icon: SlidersHorizontal,
-    iconKind: 'lucide',
-    iconColor: 'text-blue-500',
-    description: '多状态信号到汉字状态文本翻译映射转换板。',
-    category: 'sensors',
-    defaultProps: () => baseProps('state-text'),
-  },
   'pipe-h': {
     type: 'pipe-h',
     name: '水平输水管路',
@@ -315,6 +321,156 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     category: 'structures',
     // 图片路径延迟到选图后写入（handleImageSelected），默认空=占位提示
     defaultProps: () => ({ imageUrl: '', imageFit: 'fill' }),
+  },
+  'title-header-tech-desktop': {
+    type: 'title-header',
+    name: '科技蓝·大屏标题栏',
+    defaultWidth: 960,
+    defaultHeight: 72,
+    icon: Monitor,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-400',
+    description: '经典未来科技蓝宽屏大屏标题栏，带晶蓝发光切角翼展、数字时钟与在线状态。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'tech-blue',
+      headerDevice: 'desktop',
+      headerTitle: '工业互联网智能监控大屏',
+      headerSubtitle: 'INTELLIGENT SCADA MONITORING PLATFORM',
+      headerLogoText: 'SCADA 5G',
+      headerShowClock: true,
+      headerShowStatus: true,
+      headerStatusText: '系统运行正常',
+      headerGlowColor: '#38bdf8',
+      fontSize: 22,
+      bold: true,
+    }),
+  },
+  'title-header-tech-mobile': {
+    type: 'title-header',
+    name: '科技蓝·移动标题栏',
+    defaultWidth: 375,
+    defaultHeight: 56,
+    icon: Smartphone,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-400',
+    description: '科技蓝移动竖屏标题栏，紧凑机能流光切角与紧凑状态指示点。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'tech-blue',
+      headerDevice: 'mobile',
+      headerTitle: '车间移动监控中心',
+      headerSubtitle: 'MOBILE SCADA TERMINAL',
+      headerLogoText: '5G',
+      headerShowClock: false,
+      headerShowStatus: true,
+      headerStatusText: '在线',
+      headerGlowColor: '#38bdf8',
+      fontSize: 16,
+      bold: true,
+    }),
+  },
+  'title-header-eco-desktop': {
+    type: 'title-header',
+    name: '生态绿·大屏标题栏',
+    defaultWidth: 960,
+    defaultHeight: 72,
+    icon: Monitor,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-400',
+    description: '深青绿智慧能源与低碳生态大屏标题栏，带菱形光带与实时能效状态。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'eco-green',
+      headerDevice: 'desktop',
+      headerTitle: '智慧能源与双碳管控中心',
+      headerSubtitle: 'SMART ENERGY & CARBON MANAGEMENT',
+      headerLogoText: 'ECO ENERGY',
+      headerShowClock: true,
+      headerShowStatus: true,
+      headerStatusText: '绿电在线 99.8%',
+      headerGlowColor: '#34d399',
+      fontSize: 22,
+      bold: true,
+    }),
+  },
+  'title-header-eco-mobile': {
+    type: 'title-header',
+    name: '生态绿·移动标题栏',
+    defaultWidth: 375,
+    defaultHeight: 56,
+    icon: Smartphone,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-400',
+    description: '智慧能源绿移动竖屏标题栏，紧凑生机绿光与运行指示。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'eco-green',
+      headerDevice: 'mobile',
+      headerTitle: '微电网能效看板',
+      headerSubtitle: 'MICROGRID DASHBOARD',
+      headerLogoText: 'ECO',
+      headerShowClock: false,
+      headerShowStatus: true,
+      headerStatusText: '正常',
+      headerGlowColor: '#34d399',
+      fontSize: 16,
+      bold: true,
+    }),
+  },
+  'title-header-carbon-desktop': {
+    type: 'title-header',
+    name: '碳纤橙·大屏标题栏',
+    defaultWidth: 960,
+    defaultHeight: 72,
+    icon: Monitor,
+    iconKind: 'lucide',
+    iconColor: 'text-amber-500',
+    description: '高端硬核机能风与碳纤微质感标题栏，带工业警示斜纹与高精铆钉。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'carbon-orange',
+      headerDevice: 'desktop',
+      headerTitle: '数字孪生智能产线控制台',
+      headerSubtitle: 'DIGITAL TWIN FACTORY CONSOLE',
+      headerLogoText: 'HEAVY IND.',
+      headerShowClock: true,
+      headerShowStatus: true,
+      headerStatusText: 'PLC 通信中',
+      headerGlowColor: '#f59e0b',
+      fontSize: 22,
+      bold: true,
+    }),
+  },
+  'title-header-carbon-mobile': {
+    type: 'title-header',
+    name: '碳纤橙·移动标题栏',
+    defaultWidth: 375,
+    defaultHeight: 56,
+    icon: Smartphone,
+    iconKind: 'lucide',
+    iconColor: 'text-amber-500',
+    description: '工业机能碳纤移动竖屏标题栏，高对比硬核警示与设备状态。',
+    category: 'headers',
+    defaultProps: () => ({
+      ...baseProps('title-header'),
+      headerStyle: 'carbon-orange',
+      headerDevice: 'mobile',
+      headerTitle: '产线手持终端',
+      headerSubtitle: 'LINE TERMINAL',
+      headerLogoText: 'IND',
+      headerShowClock: false,
+      headerShowStatus: true,
+      headerStatusText: '同步中',
+      headerGlowColor: '#f59e0b',
+      fontSize: 16,
+      bold: true,
+    }),
   },
 };
 

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType } from '../types';
+import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType, HMILayer } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
 import { getWidgetDef } from '../widgetRegistry';
-import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand } from 'lucide-vue-next';
+import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-vue-next';
 import ImageLibraryDialog from './ImageLibraryDialog.vue';
 
 const props = defineProps<{
@@ -12,6 +12,8 @@ const props = defineProps<{
   currentPageId?: string;
   /** 背景选中态：非空时显示「页面属性」表单（背景 + 自适应屏幕配置） */
   backgroundPage?: ScadaPage | null;
+  /** 当前页面的图层列表 */
+  layers?: HMILayer[];
 }>();
 
 const emit = defineEmits<{
@@ -164,7 +166,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
 <template>
   <!-- 空态：未选中任何元件/背景 -->
   <div v-if="!selectedComponent && !backgroundPage"
-    class="h-full bg-[#fafafa] dark:bg-slate-950 border-l border-[#d9d9d9] dark:border-slate-800 p-6 text-gray-400 dark:text-slate-500 text-xs flex flex-col justify-between items-center text-center transition-colors relative">
+    class="h-full bg-[#fafafa] dark:bg-slate-950 p-6 text-gray-400 dark:text-slate-500 text-xs flex flex-col justify-between items-center text-center transition-colors relative">
     <div class="w-full flex justify-end">
       <button @click="emit('collapse')"
         class="p-1 rounded text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -185,7 +187,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
 
   <!-- 页面属性：点击画布背景后显示（背景设置 + 自适应屏幕设置） -->
   <div v-else-if="backgroundPage"
-    class="h-full flex flex-col bg-white dark:bg-slate-900 border-l border-[#d9d9d9] dark:border-slate-800 text-[#262626] dark:text-slate-100 overflow-y-auto transition-colors">
+    class="h-full flex flex-col bg-white dark:bg-slate-900 text-[#262626] dark:text-slate-100 overflow-y-auto transition-colors">
     <!-- Title -->
     <div
       class="p-4 border-b border-[#f0f0f0] dark:border-slate-800 bg-[#fafafa] dark:bg-slate-950 flex items-center justify-between">
@@ -268,7 +270,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">快速选择</label>
             <div class="grid grid-cols-8 gap-1.5 mt-1">
-              <button v-for="c in ['#ffffff', '#f5f5f5', '#e0f2fe', '#dcfce7', '#fef9c3', '#111827', '#0f172a', '#1e3a8a']"
+              <button
+                v-for="c in ['#ffffff', '#f5f5f5', '#e0f2fe', '#dcfce7', '#fef9c3', '#111827', '#0f172a', '#1e3a8a']"
                 :key="c" @click="updateBackground({ color: c })" :style="{ backgroundColor: c }"
                 class="h-6 rounded border border-[#d9d9d9] dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-[#1890ff] transition-shadow"
                 :title="c" />
@@ -377,7 +380,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
   </div>
 
   <div v-else
-    class="h-full flex flex-col bg-white dark:bg-slate-900 border-l border-[#d9d9d9] dark:border-slate-800 text-[#262626] dark:text-slate-100 overflow-y-auto transition-colors">
+    class="h-full flex flex-col bg-white dark:bg-slate-900 text-[#262626] dark:text-slate-100 overflow-y-auto transition-colors">
     <!-- Title -->
     <div
       class="p-4 border-b border-[#f0f0f0] dark:border-slate-800 bg-[#fafafa] dark:bg-slate-950 flex items-center justify-between">
@@ -451,6 +454,47 @@ const onPickBackgroundImage = (img: { url: string }) => {
           <input type="number" :value="selectedComponent.zIndex ?? 1"
             @input="updateComponentField('zIndex', parseInt(($event.target as HTMLInputElement).value) || 1)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none" />
+        </div>
+
+        <!-- PS-style Layer Assignment & Component State -->
+        <div v-if="layers && layers.length > 0">
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">所属图层 (PS 图层管理)</label>
+          <select :value="selectedComponent.layerId || (layers[0]?.id ?? 'layer-default')"
+            @change="updateComponentField('layerId', ($event.target as HTMLSelectElement).value)"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+            <option v-for="l in layers" :key="l.id" :value="l.id">
+              {{ l.name }} {{ l.locked ? '🔒' : '' }} {{ l.visible === false ? '👁️(隐)' : '' }}
+            </option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">元件可见性</label>
+            <button type="button"
+              @click="updateComponentField('visible', selectedComponent.visible === false ? true : false)"
+              class="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded border text-xs font-medium transition-colors mt-0.5 cursor-pointer"
+              :class="selectedComponent.visible !== false
+                ? 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-400'">
+              <Eye v-if="selectedComponent.visible !== false" class="w-3.5 h-3.5 text-[#1890ff]" />
+              <EyeOff v-else class="w-3.5 h-3.5 text-amber-500" />
+              <span>{{ selectedComponent.visible !== false ? '显示 (正常)' : '隐藏 (画布隐藏)' }}</span>
+            </button>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">元件锁定状态</label>
+            <button type="button"
+              @click="updateComponentField('locked', selectedComponent.locked === true ? false : true)"
+              class="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded border text-xs font-medium transition-colors mt-0.5 cursor-pointer"
+              :class="selectedComponent.locked === true
+                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-400'
+                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'">
+              <Lock v-if="selectedComponent.locked === true" class="w-3.5 h-3.5 text-rose-500" />
+              <Unlock v-else class="w-3.5 h-3.5 text-slate-400" />
+              <span>{{ selectedComponent.locked === true ? '已锁定 (禁止拖拽)' : '未锁定 (可编辑)' }}</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -564,7 +608,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
         </div>
 
         <!-- 量程设置：量程上限/下限/单位（百分比类与仪表类归一化基准） -->
-        <div v-if="['gauge-dial', 'gauge-level', 'digital-val', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
+        <div
+          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
           class="space-y-2">
           <div class="grid grid-cols-3 gap-2 text-xs">
             <div>
@@ -590,7 +635,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
         </div>
 
         <!-- 高/低限报警阈值：覆盖所有消费 isHighAlert/alertColor 的器件 -->
-        <div v-if="['gauge-dial', 'gauge-level', 'digital-val', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
+        <div
+          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
           class="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
@@ -660,7 +706,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
           <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider">图片配置</p>
 
           <!-- 预览 -->
-          <div class="h-28 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 flex items-center justify-center overflow-hidden">
+          <div
+            class="h-28 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 flex items-center justify-center overflow-hidden">
             <img v-if="(componentProps.imageUrl || '').trim()" :src="componentProps.imageUrl" alt=""
               class="max-h-full max-w-full object-contain" draggable="false" />
             <span v-else class="text-[10px] text-slate-400 dark:text-slate-500">未设置图片</span>
@@ -874,30 +921,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
           </div>
         </div>
 
-        <!-- STATE TEXT DICTIONARY MAPPING -->
-        <div v-if="selectedComponent.type === 'state-text'"
-          class="space-y-2 text-xs border border-gray-100 dark:border-slate-800 p-2 rounded bg-gray-50/50 dark:bg-slate-950/60">
-          <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider mb-1">汉字状态文本转换表</p>
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400 flex justify-between">
-              <span>状态转换规则字典 (分号隔开键值)</span>
-            </label>
-            <textarea rows="3" :value="componentProps.stateMappings ?? ''"
-              @input="updateProp('stateMappings', ($event.target as HTMLTextAreaElement).value)"
-              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 mt-0.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 text-xs font-mono text-gray-700 dark:text-slate-300 leading-relaxed"
-              placeholder="e.g. 0:停机;1:低速;2:正运转" />
-            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
-              格式：值:汉字,用分号或全角分号隔离。例如 <code
-                class="bg-gray-100 dark:bg-slate-800 px-1 py-0.5 rounded text-gray-600 dark:text-slate-300 font-mono">0:停止;1:开启</code>
-              或 <code
-                class="bg-gray-100 dark:bg-slate-800 px-1 py-0.5 rounded text-gray-600 dark:text-slate-300 font-mono">false:关闭;true:开启</code>。
-            </p>
-          </div>
-        </div>
-
         <!-- Custom fonts controls for Text boxes -->
-        <div v-if="['text', 'button', 'state-text', 'rounded-btn'].includes(selectedComponent.type)"
-          class="space-y-2 text-xs">
+        <div v-if="['text', 'button', 'rounded-btn'].includes(selectedComponent.type)" class="space-y-2 text-xs">
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">对齐方式</label>

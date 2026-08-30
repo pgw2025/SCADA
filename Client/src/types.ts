@@ -15,10 +15,19 @@ export type ComponentType =
   | 'button'       // 按钮控制：支持自锁(Toggle)或点动(Momentary)或设值(SetValue)
   | 'switch'       // 开关拨码
   | 'sys-time'     // 工业实时系统时间时钟
-  | 'state-text'   // PLC变量对应的多状态文本状态翻译 (e.g. 0=故障, 1=运行)
   | 'rounded-btn'  // 工业圆角按钮：支持变量绑定、自定义多状态背景/文字、取反/置位/复位/按1送0
-  | 'motor'        // 变频伺服电机 (带旋转定子、风扇叶动效)
+  | 'motor'        // 变频伺服电机 (带重载散热肋片、金属主轴与极速冷却风叶)
+  | 'title-header' // 工业大屏与移动端高精度矢量标题背景栏 (3套风格 x 桌面/手机)
   | 'image';       // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
+
+export interface HMILayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  opacity?: number;
+  colorBadge?: string;
+}
 
 export interface HMIComponent {
   id: string;
@@ -37,6 +46,9 @@ export interface HMIComponent {
   /** 阶段3 复合绑定：设备内变量键（对应后端 HmiComponent.BindVariableKey） */
   bindVariableKey?: string | null;
   zIndex: number;
+  layerId?: string; // 归属的图层 ID（例如 'layer-default'）
+  visible?: boolean;
+  locked?: boolean;
   props: {
     activeColor?: string;
     inactiveColor?: string;
@@ -69,15 +81,23 @@ export interface HMIComponent {
     state1BgColor?: string; // 状态1默认背景色
     state1TextColor?: string; // 状态1默认文字颜色
 
-    // 多状态文本映射属性
-    stateMappings?: string; // 用户可自定义配置: "0:停止;1:预热;2:满载运行" 或 "false:关闭;true:激活"
-
     // 有状态文本控件（开关/阀等）的状态文案
     onText?: string; // 开启状态文案
     offText?: string; // 关闭状态文案
 
     // 系统时间控件格式
     timeFormat?: 'HH:mm:ss' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD';
+
+    // 大屏标题背景图元专属属性（type === 'title-header'）
+    headerStyle?: 'tech-blue' | 'eco-green' | 'carbon-orange'; // 3套风格：科技蓝 / 生态绿 / 机能碳纤橙
+    headerDevice?: 'desktop' | 'mobile'; // 适配设备：桌面大屏 / 手机移动端
+    headerTitle?: string; // 主标题文本
+    headerSubtitle?: string; // 英文副标题
+    headerLogoText?: string; // 品牌/Logo 标识文字
+    headerShowClock?: boolean; // 是否展示动态时钟
+    headerShowStatus?: boolean; // 是否展示在线状态
+    headerStatusText?: string; // 运行状态文案
+    headerGlowColor?: string; // 自定义发光/主辅高亮色
 
     // 图片图元专属属性（type === 'image'）
     imageUrl?: string;   // 图片访问 URL（/api/HmiImage/file/... 相对路径，经代理转发）
@@ -414,6 +434,8 @@ export interface ScadaPage {
   background?: PageBackground | null;
   /** 运行端自适应屏幕模式（后端持久化；null/undefined=未配置回退兼容行为：等比缩小不放大） */
   adaptMode?: PageAdaptMode | null;
+  /** 页面图层管理列表（PS 式多图层系统，支持图层显隐、锁定、透明度与拖拽排序） */
+  layers?: HMILayer[];
   components: HMIComponent[];
 }
 

@@ -50,10 +50,11 @@ import { getDeviceVariableValue, setDeviceVariableValue } from '../services/data
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
-import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage } from '../types';
+import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, HMILayer } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
+import LayersPanel from './LayersPanel.vue';
 import BindingCheckPanel from './BindingCheckPanel.vue';
 import ConfirmModal from './ConfirmModal.vue';
 import ImageLibraryDialog from './ImageLibraryDialog.vue';
@@ -88,7 +89,29 @@ import {
 
 // 面板收起/展开控制状态
 const isWidgetLibraryOpen = ref<boolean>(true);
-const isInspectorOpen = ref<boolean>(true);
+// 右侧侧边栏（以选项卡模式整合属性配置与图层管理）
+const isRightSidebarOpen = ref<boolean>(true);
+const rightActiveTab = ref<'inspector' | 'layers'>('inspector');
+// 当前选中的活动图层
+const activeLayerId = ref<string | null>(null);
+
+const toggleRightTab = (tab: 'inspector' | 'layers') => {
+  if (!isRightSidebarOpen.value) {
+    isRightSidebarOpen.value = true;
+    rightActiveTab.value = tab;
+  } else if (rightActiveTab.value === tab) {
+    isRightSidebarOpen.value = false;
+  } else {
+    rightActiveTab.value = tab;
+  }
+};
+
+const handleInspectComponent = (id: string) => {
+  selectedIds.value = [id];
+  isBackgroundSelected.value = false;
+  isRightSidebarOpen.value = true;
+  rightActiveTab.value = 'inspector';
+};
 
 // Editor settings
 // 阶段5-2：选中模型由单值升级为集合（支持多选/框选）；selectedId 为「单选」派生值，供 Inspector 单组件编辑
@@ -393,6 +416,19 @@ const handleUpdatePage = (updates: Partial<ScadaPage>) => {
   persistPageUpdate(pg).catch(() => { });
 };
 
+// PS 图层管理：更新当前页面的图层配置
+const handleUpdateLayers = (layers: HMILayer[]) => {
+  const pg = currentPage.value;
+  if (!pg) return;
+  pg.layers = layers;
+  addLog('组态编辑', `更新图层架构: 共 ${layers.length} 个图层`, 'normal');
+  persistPageUpdate(pg).catch(() => { });
+};
+
+const handleSetActiveLayer = (layerId: string) => {
+  activeLayerId.value = layerId;
+};
+
 // Add a widget from panel library
 // 阶段5-5：默认尺寸 / props 取自 widgetRegistry（消除与图库两处散改）
 // extraProps：落布时覆盖默认 props（图片图元选图后传 imageUrl，确保首次落库即带图）
@@ -411,6 +447,12 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
   const w = defaultW || def?.defaultWidth || 100;
   const h = defaultH || def?.defaultHeight || 50;
 
+  // 确定新添加组件的归属图层（优先使用当前激活图层或首个可用图层）
+  const pageLayers = currentPage.value.layers || [];
+  const assignedLayerId = (activeLayerId.value && pageLayers.some(l => l.id === activeLayerId.value))
+    ? activeLayerId.value
+    : (pageLayers[0]?.id ?? 'layer-default');
+
   const newComponent: HMIComponent = {
     id: newId,
     type,
@@ -421,6 +463,7 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
     height: h,
     label: label,
     bindField: '',
+    layerId: assignedLayerId,
     zIndex: currentComps.length + 1,
     props: { ...(def?.defaultProps() ?? {}), ...(extraProps ?? {}) },
   };
@@ -435,8 +478,8 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
 };
 
 // 阶段5-4：组件库拖拽投放落点（由 CanvasPanel 反算坐标后调用，x/y 为画布内坐标）
-const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number) => {
-  handleAddWidget(type as ComponentType, w, h, name, x, y);
+const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>) => {
+  handleAddWidget(type as ComponentType, w, h, name, x, y, extraProps);
 };
 
 // ===== 图片图元：图库选图 → 按原图宽高比落布 =====
@@ -1186,7 +1229,7 @@ const handleExportPage = async (page: ScadaPage) => {
               </button>
             </div>
 
-            <!-- 面板显隐快捷切换 (图库/属性) -->
+            <!-- 面板显隐快捷切换 (图库/图层/属性) -->
             <div v-if="!isActiveMode"
               class="hidden sm:flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
               <button @click="isWidgetLibraryOpen = !isWidgetLibraryOpen"
@@ -1198,12 +1241,21 @@ const handleExportPage = async (page: ScadaPage) => {
                 <Package class="w-3.5 h-3.5" />
                 <span>图库</span>
               </button>
-              <button @click="isInspectorOpen = !isInspectorOpen"
+              <button @click="toggleRightTab('layers')"
                 class="px-2 py-1 rounded text-xs font-medium inline-flex items-center gap-1 border transition-all cursor-pointer select-none"
-                :class="isInspectorOpen
+                :class="isRightSidebarOpen && rightActiveTab === 'layers'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 shadow-2xs font-semibold'
+                  : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'"
+                :title="isRightSidebarOpen && rightActiveTab === 'layers' ? '收起图层面板' : '切换至PS图层管理选项卡'">
+                <Layers class="w-3.5 h-3.5" />
+                <span>图层</span>
+              </button>
+              <button @click="toggleRightTab('inspector')"
+                class="px-2 py-1 rounded text-xs font-medium inline-flex items-center gap-1 border transition-all cursor-pointer select-none"
+                :class="isRightSidebarOpen && rightActiveTab === 'inspector'
                   ? 'bg-blue-50 dark:bg-sky-950/50 text-blue-600 dark:text-sky-400 border-blue-200 dark:border-sky-800 shadow-2xs font-semibold'
                   : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'"
-                :title="isInspectorOpen ? '收起属性面板' : '展开属性面板'">
+                :title="isRightSidebarOpen && rightActiveTab === 'inspector' ? '收起属性面板' : '切换至属性配置选项卡'">
                 <Sliders class="w-3.5 h-3.5" />
                 <span>属性</span>
               </button>
@@ -1260,18 +1312,19 @@ const handleExportPage = async (page: ScadaPage) => {
                     :isActiveMode="isActiveMode" :component-values="componentValues" :canvas-width="pageWidth"
                     :canvas-height="pageHeight" :can-control-write="canControlWrite"
                     :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
-                    @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
-                    @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
-                    @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
-                    @duplicate-components="handleDuplicateComponents" @clearCanvas="handleClearCanvas"
-                    @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
-                    @navigate-to-page="handleNavigate" @select-background="handleSelectBackground" />
+                    :layers="currentPage.layers" @select-components="handleSelectComponents"
+                    @updateComponent="handleUpdateComponent" @update-components="handleUpdateComponents"
+                    @toggleMode="isActiveMode = !isActiveMode" @triggerToggleValue="handleTriggerToggleValue"
+                    @delete-components="handleDeleteComponents" @duplicate-components="handleDuplicateComponents"
+                    @clearCanvas="handleClearCanvas" @update-canvas-size="handleUpdateCanvasSize"
+                    @add-component-at="handleAddWidgetAt" @navigate-to-page="handleNavigate"
+                    @select-background="handleSelectBackground" />
                 </div>
               </div>
               <CanvasPanel v-else :components="currentPage.components" :selectedId="selectedId"
                 :selectedIds="selectedIds" :isActiveMode="isActiveMode" :component-values="componentValues"
                 :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite"
-                :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
+                :background="currentPage.background" :adapt-mode="currentPage.adaptMode" :layers="currentPage.layers"
                 @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
                 @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
                 @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
@@ -1283,24 +1336,78 @@ const handleExportPage = async (page: ScadaPage) => {
         </div>
       </div>
 
-      <!-- Right section: Inspector Property Editor -->
-      <!-- 属性面板展开态 -->
-      <div v-if="!isActiveMode && isInspectorOpen"
-        class="w-full md:w-80 bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 transition-colors">
-        <!-- Render Inspector Panel directly targeting chosen component -->
-        <InspectorPanel :selectedComponent="selectedCompObj" :current-page-id="currentPage.id"
-          :background-page="isBackgroundSelected ? currentPage : null"
-          @updateComponent="handleUpdateComponent" @updatePage="handleUpdatePage"
-          @collapse="isInspectorOpen = false" />
+      <!-- Right section: Tabbed Right Sidebar (属性配置 & PS 图层管理选项卡) -->
+      <div v-if="!isActiveMode && isRightSidebarOpen"
+        class="w-full md:w-80 lg:w-84 xl:w-90 bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-all overflow-hidden z-10 shadow-xs">
+
+        <!-- Tab Bar Header -->
+        <div
+          class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/90 shrink-0 select-none">
+          <!-- Segmented Tab Switcher -->
+          <div
+            class="flex items-center bg-slate-200/90 dark:bg-slate-800/90 p-0.5 rounded-lg gap-0.5 border border-slate-300/40 dark:border-slate-700/60">
+            <button @click="rightActiveTab = 'inspector'"
+              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              :class="rightActiveTab === 'inspector'
+                ? 'bg-white dark:bg-slate-900 text-[#1890ff] dark:text-sky-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
+              <Sliders class="w-3.5 h-3.5" />
+              <span>属性配置</span>
+            </button>
+            <button @click="rightActiveTab = 'layers'"
+              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              :class="rightActiveTab === 'layers'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
+              <Layers class="w-3.5 h-3.5" />
+              <span>图层管理</span>
+              <span class="px-1.5 py-0.2 text-[10px] font-bold rounded-full transition-colors" :class="rightActiveTab === 'layers'
+                ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300'
+                : 'bg-slate-300/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300'">
+                {{ (currentPage.layers || []).length || 1 }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Collapse Button -->
+          <button @click="isRightSidebarOpen = false"
+            class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="收起右侧面板">
+            <ChevronRight class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Tab Content Area -->
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <!-- 属性配置选项卡 -->
+          <div v-show="rightActiveTab === 'inspector'" class="h-full">
+            <InspectorPanel :selectedComponent="selectedCompObj" :current-page-id="currentPage.id"
+              :background-page="isBackgroundSelected ? currentPage : null" :layers="currentPage.layers"
+              @updateComponent="handleUpdateComponent" @updatePage="handleUpdatePage"
+              @collapse="isRightSidebarOpen = false" />
+          </div>
+
+          <!-- PS 图层管理选项卡 -->
+          <div v-show="rightActiveTab === 'layers'" class="h-full">
+            <LayersPanel :layers="currentPage.layers || []" :components="currentPage.components"
+              :selected-id="selectedId" :selected-ids="selectedIds" :active-layer-id="activeLayerId"
+              @update-layers="handleUpdateLayers" @update-component="handleUpdateComponent"
+              @update-components="handleUpdateComponents" @select-components="handleSelectComponents"
+              @set-active-layer="handleSetActiveLayer" @delete-components="handleDeleteComponents"
+              @duplicate-components="handleDuplicateComponents" @inspect-component="handleInspectComponent"
+              @collapse="isRightSidebarOpen = false" />
+          </div>
+        </div>
       </div>
 
-      <!-- 属性面板收起态把手 -->
-      <div v-if="!isActiveMode && !isInspectorOpen" @click="isInspectorOpen = true"
+      <!-- 右侧面板收起态把手 -->
+      <div v-if="!isActiveMode && !isRightSidebarOpen" @click="isRightSidebarOpen = true"
         class="hidden md:flex flex-col items-center justify-center w-7 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none py-4 gap-2.5 z-10 group shadow-xs"
-        title="点击展开属性配置面板">
+        title="点击展开右侧面板 (属性配置 / 图层管理)">
         <ChevronLeft class="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
         <span
-          class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">属性配置</span>
+          class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">属性
+          / 图层</span>
       </div>
 
     </div>
