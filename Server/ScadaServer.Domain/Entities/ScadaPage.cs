@@ -58,6 +58,12 @@ namespace ScadaServer.Domain.Entities
         public string? AdaptMode { get; set; }
 
         /// <summary>
+        /// 页面图层配置（JSON 数组，前端序列化）：[{id,name,visible,locked,opacity,colorBadge},...]。
+        /// NULL 表示未配置，前端回退默认单图层。
+        /// </summary>
+        public string? LayersJson { get; set; }
+
+        /// <summary>
         /// 页面包含的HMI组件列表
         /// </summary>
         [NotMapped]

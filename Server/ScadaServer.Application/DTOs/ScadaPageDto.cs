@@ -32,5 +32,10 @@ namespace ScadaServer.Application.DTOs
         /// NULL/空=未配置（回退兼容行为：等比缩小不放大）。
         /// </summary>
         public string? AdaptMode { get; set; }
+
+        /// <summary>
+        /// 页面图层配置 JSON 数组。NULL=未配置（前端回退默认单图层）。
+        /// </summary>
+        public string? LayersJson { get; set; }
     }
 }

@@ -1,6 +1,6 @@
 import { http } from './http';
 import { systemConfig } from '../store/configStore';
-import { HMIComponent, ScadaPage, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
+import { HMIComponent, HMILayer, ScadaPage, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
 
 /**
  * 组态设计后端 API 封装（对应阶段1的 ScadaProject / ScadaPage / HmiComponent 三组端点）。
@@ -36,6 +36,7 @@ export interface PageWithComponentsDto {
   height: number;
   backgroundJson: string | null;
   adaptMode: string | null;
+  layersJson: string | null;
   components: ComponentDto[];
 }
 export interface PageDto {
@@ -48,6 +49,7 @@ export interface PageDto {
   height: number;
   backgroundJson?: string | null;
   adaptMode?: string | null;
+  layersJson?: string | null;
 }
 export interface ComponentDto {
   id: number;
@@ -59,6 +61,7 @@ export interface ComponentDto {
   width: number;
   height: number;
   zIndex: number;
+  layerId: string | null;
   bindField: string;
   label: string | null;
   bindDeviceId: number | null;
@@ -164,6 +167,8 @@ export const toPageDto = (pg: ScadaPage, projectId: number) => ({
   // 背景配置对象 <-> 后端 BackgroundJson 字符串；未配置传 null（后端归一化为 NULL）
   backgroundJson: pg.background ? JSON.stringify(pg.background) : null,
   adaptMode: pg.adaptMode ?? null,
+  // 图层数组 <-> 后端 LayersJson 字符串；未配置/空数组传 null（后端归一化为 NULL，前端回退默认层）
+  layersJson: pg.layers && pg.layers.length > 0 ? JSON.stringify(pg.layers) : null,
 });
 
 export const toComponentDto = (c: HMIComponent, pageId: number) => ({
@@ -176,6 +181,7 @@ export const toComponentDto = (c: HMIComponent, pageId: number) => ({
   width: c.width,
   height: c.height,
   zIndex: c.zIndex,
+  layerId: c.layerId ?? null,
   // bindVariableKey 非空时强制置空 bindField，逐步清理历史遗留的同值冗余字段，
   // 避免运行态误用 bindField 作为兜底写指令键（界面显示未绑定、实际写旧变量）。
   bindField: c.bindVariableKey ? '' : (c.bindField || ''),
@@ -196,6 +202,7 @@ export const fromComponentDto = (d: ComponentDto): HMIComponent => ({
   width: d.width,
   height: d.height,
   zIndex: d.zIndex,
+  layerId: d.layerId ?? undefined,
   label: d.label || '',
   bindField: d.bindField || '',
   bindDeviceId: d.bindDeviceId ?? null,
@@ -213,8 +220,32 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   height: d.height,
   background: parseBackgroundJson(d.backgroundJson),
   adaptMode: d.adaptMode === 'FitScaleUp' || d.adaptMode === 'Stretch' ? (d.adaptMode as PageAdaptMode) : null,
+  layers: parseLayersJson(d.layersJson),
   components: (d.components || []).map(fromComponentDto),
 });
+
+/** 后端 LayersJson 字符串 -> 前端图层数组；非法/缺失返回 undefined（走 LayersPanel 默认图层兜底） */
+const parseLayersJson = (json: string | null | undefined): HMILayer[] | undefined => {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed) || parsed.length === 0) return undefined;
+    const valid = parsed.every(
+      (l: any) => l && typeof l === 'object' && typeof l.id === 'string' && l.id
+    );
+    if (!valid) return undefined;
+    return parsed.map((l: any): HMILayer => ({
+      id: l.id,
+      name: typeof l.name === 'string' ? l.name : l.id,
+      visible: l.visible !== false,
+      locked: l.locked === true,
+      opacity: typeof l.opacity === 'number' ? l.opacity : undefined,
+      colorBadge: typeof l.colorBadge === 'string' ? l.colorBadge : undefined,
+    }));
+  } catch {
+    return undefined;
+  }
+};
 
 /** 后端 BackgroundJson 字符串 -> 前端背景配置对象；非法/缺失返回 null（未配置） */
 const parseBackgroundJson = (json: string | null | undefined): PageBackground | null => {
@@ -253,6 +284,7 @@ const safeParse = (json: string): Record<string, any> => {
 export interface TransferComponentDto {
   type: string; name: string;
   x: number; y: number; width: number; height: number; zIndex: number;
+  layerId: string | null;
   bindField: string; label: string | null;
   bindDeviceKey: string | null; bindVariableKey: string | null;
   propsJson: string;
@@ -261,6 +293,7 @@ export interface TransferPageDto {
   name: string; isHome: boolean; platform: string;
   width: number; height: number;
   backgroundJson: string | null; adaptMode: string | null;
+  layersJson: string | null;
   components: TransferComponentDto[];
 }
 export interface TransferPackageDto {

@@ -62,7 +62,8 @@ namespace ScadaServer.Application.Services
                 Width = dto.Width > 0 ? dto.Width : 1100,
                 Height = dto.Height > 0 ? dto.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson),
-                AdaptMode = NormalizeAdaptMode(dto.AdaptMode)
+                AdaptMode = NormalizeAdaptMode(dto.AdaptMode),
+                LayersJson = ScadaLayerJson.Normalize(dto.LayersJson)
             };
             await _repository.InsertAsync(entity);
             return entity.Id;
@@ -86,6 +87,7 @@ namespace ScadaServer.Application.Services
             entity.Height = dto.Height > 0 ? dto.Height : entity.Height;
             entity.BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson);
             entity.AdaptMode = NormalizeAdaptMode(dto.AdaptMode);
+            entity.LayersJson = ScadaLayerJson.Normalize(dto.LayersJson);
             await _repository.UpdateAsync(entity);
             return true;
         }
@@ -117,7 +119,8 @@ namespace ScadaServer.Application.Services
             Width = entity.Width,
             Height = entity.Height,
             BackgroundJson = entity.BackgroundJson,
-            AdaptMode = entity.AdaptMode
+            AdaptMode = entity.AdaptMode,
+            LayersJson = entity.LayersJson
         };
 
         /// <summary>归一化归属端：空/非法值一律回退 Desktop。</summary>

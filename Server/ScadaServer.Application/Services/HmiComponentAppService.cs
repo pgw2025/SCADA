@@ -61,6 +61,7 @@ namespace ScadaServer.Application.Services
             entity.Label = dto.Label;
             entity.BindDeviceId = dto.BindDeviceId;
             entity.BindVariableKey = dto.BindVariableKey;
+            entity.LayerId = NormalizeLayerId(dto.LayerId);
             entity.PropsJson = dto.PropsJson;
             await _repository.UpdateAsync(entity);
             return true;
@@ -108,6 +109,7 @@ namespace ScadaServer.Application.Services
             Label = entity.Label,
             BindDeviceId = entity.BindDeviceId,
             BindVariableKey = entity.BindVariableKey,
+            LayerId = entity.LayerId,
             PropsJson = entity.PropsJson
         };
 
@@ -125,8 +127,17 @@ namespace ScadaServer.Application.Services
             Label = dto.Label,
             BindDeviceId = dto.BindDeviceId,
             BindVariableKey = dto.BindVariableKey,
+            LayerId = NormalizeLayerId(dto.LayerId),
             PropsJson = dto.PropsJson
         };
+
+        /// <summary>归一化图层 ID：空白归 NULL；截断至 64 字符（与列宽一致）。</summary>
+        private static string? NormalizeLayerId(string? layerId)
+        {
+            if (string.IsNullOrWhiteSpace(layerId)) return null;
+            var v = layerId.Trim();
+            return v.Length > 64 ? v[..64] : v;
+        }
 
         #endregion
     }

@@ -31,6 +31,12 @@ namespace ScadaServer.Application.DTOs
         [Range(0, 1000, ErrorMessage = "层级超出合理范围")]
         public int ZIndex { get; set; }
 
+        /// <summary>
+        /// 归属图层 ID（前端图层 uid，可选）
+        /// </summary>
+        [MaxLength(64)]
+        public string? LayerId { get; set; }
+
         public string BindField { get; set; } = string.Empty;
 
         /// <summary>

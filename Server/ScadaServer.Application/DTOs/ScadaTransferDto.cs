@@ -24,6 +24,41 @@ namespace ScadaServer.Application.DTOs
     }
 
     /// <summary>
+    /// 图层配置 JSON 归一化共享逻辑（ScadaPageAppService / ScadaProjectAppService 复用）。
+    /// 内容结构由前端负责，后端仅做轻量结构校验与透传。
+    /// </summary>
+    public static class ScadaLayerJson
+    {
+        /// <summary>
+        /// 归一化图层配置 JSON：空白归 NULL；
+        /// 结构校验：必须是 JSON 数组且每项含非空 id 字符串，否则归 NULL（前端回退默认单图层）。
+        /// </summary>
+        public static string? Normalize(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            var trimmed = json.Trim();
+            try
+            {
+                using var doc = JsonDocument.Parse(trimmed);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object
+                        || !item.TryGetProperty("id", out var idProp)
+                        || idProp.ValueKind != JsonValueKind.String
+                        || string.IsNullOrWhiteSpace(idProp.GetString()))
+                        return null;
+                }
+                return trimmed;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
     /// 组态迁移包根模型。工程级包（format=scada-project）携带 project + pages；
     /// 画面级包（format=scada-page）project 为空、pages 仅 1 项。
     /// 全部数据库自增 id 已剥离，导入时重新生成；变量绑定以设备业务键（Device.Key）携带。
@@ -56,6 +91,8 @@ namespace ScadaServer.Application.DTOs
         public int Height { get; set; } = 700;
         public string? BackgroundJson { get; set; }
         public string? AdaptMode { get; set; }
+        /// <summary>页面图层配置 JSON（导入导出透传；旧版包缺失时为 null，兼容）</summary>
+        public string? LayersJson { get; set; }
         public List<ScadaComponentTransferDto> Components { get; set; } = new();
     }
 
@@ -70,6 +107,8 @@ namespace ScadaServer.Application.DTOs
         public int Width { get; set; }
         public int Height { get; set; }
         public int ZIndex { get; set; }
+        /// <summary>组件归属图层 ID（uid 随包迁移，导入端不校验存在性，由前端兜底归层）</summary>
+        public string? LayerId { get; set; }
         public string BindField { get; set; } = string.Empty;
         public string? Label { get; set; }
         /// <summary>导出源系统的设备业务键（Device.Key），导入时据此映射本系统设备 id</summary>

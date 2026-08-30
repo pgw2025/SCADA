@@ -126,6 +126,7 @@ namespace ScadaServer.Application.Services
                         Label = c.Label,
                         BindDeviceId = c.BindDeviceId,
                         BindVariableKey = c.BindVariableKey,
+                        LayerId = c.LayerId,
                         PropsJson = c.PropsJson
                     })
                     .ToList();
@@ -141,6 +142,7 @@ namespace ScadaServer.Application.Services
                     Height = page.Height,
                     BackgroundJson = page.BackgroundJson,
                     AdaptMode = page.AdaptMode,
+                    LayersJson = page.LayersJson,
                     Components = pageComponents
                 });
             }
@@ -267,12 +269,14 @@ namespace ScadaServer.Application.Services
                         Height = page.Height,
                         BackgroundJson = page.BackgroundJson,
                         AdaptMode = page.AdaptMode,
+                        LayersJson = page.LayersJson,
                         Components = components.Select(c => new HmiComponentDto
                         {
                             Type = c.Type, Name = c.Name, X = c.X, Y = c.Y,
                             Width = c.Width, Height = c.Height, ZIndex = c.ZIndex,
                             BindField = c.BindField, Label = c.Label,
                             BindDeviceId = c.BindDeviceId, BindVariableKey = c.BindVariableKey,
+                            LayerId = c.LayerId,
                             PropsJson = c.PropsJson
                         }).ToList()
                     }, deviceKeys)
@@ -330,7 +334,8 @@ namespace ScadaServer.Application.Services
                     Width = source.Width > 0 ? source.Width : 1100,
                     Height = source.Height > 0 ? source.Height : 700,
                     BackgroundJson = NormalizeBackgroundJson(source.BackgroundJson),
-                    AdaptMode = NormalizeAdaptMode(source.AdaptMode)
+                    AdaptMode = NormalizeAdaptMode(source.AdaptMode),
+                    LayersJson = ScadaLayerJson.Normalize(source.LayersJson)
                 };
                 await _pageRepository.InsertAsync(pageEntity);
                 result.ImportedPages = 1;
@@ -355,6 +360,7 @@ namespace ScadaServer.Application.Services
                 Height = page.Height,
                 BackgroundJson = page.BackgroundJson,
                 AdaptMode = page.AdaptMode,
+                LayersJson = page.LayersJson,
                 Components = page.Components.Select(c => new ScadaComponentTransferDto
                 {
                     Type = c.Type,
@@ -362,6 +368,7 @@ namespace ScadaServer.Application.Services
                     X = c.X, Y = c.Y, Width = c.Width, Height = c.Height, ZIndex = c.ZIndex,
                     BindField = c.BindField,
                     Label = c.Label,
+                    LayerId = c.LayerId,
                     BindDeviceKey = c.BindDeviceId.HasValue && deviceKeys.TryGetValue(c.BindDeviceId.Value, out var key)
                         ? key : null,
                     BindVariableKey = c.BindVariableKey,
@@ -400,7 +407,8 @@ namespace ScadaServer.Application.Services
                 Width = page.Width > 0 ? page.Width : 1100,
                 Height = page.Height > 0 ? page.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(page.BackgroundJson),
-                AdaptMode = NormalizeAdaptMode(page.AdaptMode)
+                AdaptMode = NormalizeAdaptMode(page.AdaptMode),
+                LayersJson = ScadaLayerJson.Normalize(page.LayersJson)
             };
             await _pageRepository.InsertAsync(entity);
             result.ImportedPages++;
@@ -440,6 +448,7 @@ namespace ScadaServer.Application.Services
                     Label = c.Label,
                     BindDeviceId = bindDeviceId,
                     BindVariableKey = string.IsNullOrWhiteSpace(c.BindVariableKey) ? null : c.BindVariableKey.Trim(),
+                    LayerId = string.IsNullOrWhiteSpace(c.LayerId) ? null : c.LayerId.Trim(),
                     PropsJson = string.IsNullOrWhiteSpace(c.PropsJson) ? "{}" : c.PropsJson
                 });
             }

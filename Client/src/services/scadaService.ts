@@ -116,13 +116,37 @@ export const persistComponentDelete = async (comp: HMIComponent) => {
   if (comp.serverId) await withRetry(() => api.deleteComponent(comp.serverId));
 };
 
-export const persistPageUpdate = async (page: ScadaPage) => {
-  if (!page.serverId) return;
-  const proj = findProjectOf(page);
-  await withRetry(() => api.updatePage(api.toPageDto(page, proj?.serverId ?? 0)));
+// 防抖：页面属性/图层变更（已落库才 PUT）。key 用 serverId，
+// 透明度滑条 @input、画布尺寸拖拽等高频更新借此收敛为少量请求。
+// 返回 Promise 仅为兼容既有调用处的 `.catch(() => {})`，实际 PUT 由内部定时器触发。
+const _pageUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export const persistPageUpdate = (page: ScadaPage): Promise<void> => {
+  if (!page.serverId) return Promise.resolve();
+  const key = String(page.serverId);
+  if (_pageUpdateTimers.has(key)) clearTimeout(_pageUpdateTimers.get(key)!);
+  _pageUpdateTimers.set(key, setTimeout(() => {
+    _pageUpdateTimers.delete(key);
+    const proj = findProjectOf(page);
+    withRetry(() => api.updatePage(api.toPageDto(page, proj?.serverId ?? 0)))
+      .catch(() => { /* toast by interceptor */ });
+  }, 600));
+  return Promise.resolve();
+};
+
+/** 清除页面防抖定时器：删除页面前调用，避免残留 PUT 打到已删除的页面。 */
+export const clearPageUpdateTimer = (pageServerId: number | undefined) => {
+  if (pageServerId == null) return;
+  const key = String(pageServerId);
+  const t = _pageUpdateTimers.get(key);
+  if (t) {
+    clearTimeout(t);
+    _pageUpdateTimers.delete(key);
+  }
 };
 
 export const persistPageDelete = async (page: ScadaPage) => {
+  clearPageUpdateTimer(page.serverId);
   if (page.serverId) await withRetry(() => api.deletePage(page.serverId));
 };
 

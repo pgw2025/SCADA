@@ -285,6 +285,11 @@ namespace ScadaServer.Infrastructure.Persistence
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("FK_HmiComponents_Devices_BindDeviceId");
 
+            // 组件归属图层 ID（前端 uid 引用，最长约 30 字符，取 64 上限；无查询需求，不建索引）
+            modelBuilder.Entity<HmiComponent>()
+                .Property(c => c.LayerId)
+                .HasMaxLength(64);
+
             // 页面画布尺寸默认值（与前端硬编码 1100×700 对齐）
             modelBuilder.Entity<ScadaPage>()
                 .Property(p => p.Width)
@@ -303,6 +308,11 @@ namespace ScadaServer.Infrastructure.Persistence
             // 页面背景配置 JSON（长文本）与运行端自适应模式（可空，NULL=未配置回退默认）
             modelBuilder.Entity<ScadaPage>()
                 .Property(p => p.BackgroundJson)
+                .HasColumnType("longtext");
+
+            // 页面图层配置 JSON（长文本，结构由前端负责，后端透传）
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.LayersJson)
                 .HasColumnType("longtext");
 
             modelBuilder.Entity<ScadaPage>()

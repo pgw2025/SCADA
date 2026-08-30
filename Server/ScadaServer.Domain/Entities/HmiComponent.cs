@@ -50,6 +50,12 @@ namespace ScadaServer.Domain.Entities
         public int ZIndex { get; set; }
 
         /// <summary>
+        /// 归属图层 ID（前端图层 uid，如 'layer-default' / 'layer-1725000000000-ab12'）。
+        /// NULL=未归属，前端回退首个图层。图层实体存于 ScadaPage.LayersJson，此处仅为引用，无外键。
+        /// </summary>
+        public string? LayerId { get; set; }
+
+        /// <summary>
         /// 绑定字段（变量键，旧绑定模型，保留以兼容存量数据）
         /// </summary>
         public string BindField { get; set; } = string.Empty;
