@@ -284,12 +284,35 @@ const canControlWrite = computed(() => {
   const r = loginUser.value?.role;
   return r === ROLE_OPERATOR || r === ROLE_ADMIN;
 });
+// 画布尺寸变更：将越界组件拉回画布内（右/下边缘贴齐）并逐个防抖落库
+const clampComponentsToCanvas = (pg: ScadaPage) => {
+  const w = pg.width ?? 1100;
+  const h = pg.height ?? 700;
+  const moved = new Map<string, { x: number; y: number }>();
+  pg.components.forEach((c: HMIComponent) => {
+    const nx = Math.max(0, Math.min(c.x, Math.max(0, w - c.width)));
+    const ny = Math.max(0, Math.min(c.y, Math.max(0, h - c.height)));
+    if (nx !== c.x || ny !== c.y) moved.set(c.id, { x: nx, y: ny });
+  });
+  if (!moved.size) return;
+  const newComps = pg.components.map((comp) => {
+    const u = moved.get(comp.id);
+    return u ? { ...comp, x: u.x, y: u.y } : comp;
+  });
+  updateCurrentPageComponents(newComps);
+  newComps.forEach((c) => {
+    if (moved.has(c.id)) persistComponentUpdate(pg, c);
+  });
+  addLog('组态编辑', `画布尺寸变更，${moved.size} 个越界组件已拉回画面内`, 'normal');
+};
+
 const handleUpdateCanvasSize = (w: number, h: number) => {
   const pg = currentPage.value;
   if (!pg) return;
   pg.width = w;
   pg.height = h;
   addLog('组态编辑', `画布分辨率调整为 [${w} × ${h}]`, 'normal');
+  clampComponentsToCanvas(pg);
   // 阶段2：落库页面尺寸（新建未落库页面仅前端生效）
   persistPageUpdate(pg).catch(() => { });
 };
@@ -350,6 +373,8 @@ const handleUpdatePage = (updates: Partial<ScadaPage>) => {
   if (!pg) return;
   Object.assign(pg, updates);
   addLog('组态编辑', `页面属性更新: [${pg.name}]`, 'normal');
+  // 画布尺寸变更时同步拉回越界组件
+  if (updates.width != null || updates.height != null) clampComponentsToCanvas(pg);
   // 落库页面配置（新建未落库页面仅前端生效）
   persistPageUpdate(pg).catch(() => { });
 };

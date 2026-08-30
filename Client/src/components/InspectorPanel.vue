@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
@@ -21,6 +21,35 @@ const emit = defineEmits<{
 const componentProps = computed(() => {
   return props.selectedComponent?.props ?? {};
 });
+
+// 自定义画布尺寸：范围 200~10000，失焦/回车提交；非法值回退当前页面值
+const CANVAS_SIZE_MIN = 200;
+const CANVAS_SIZE_MAX = 10000;
+const canvasW = ref<number>(props.backgroundPage?.width ?? 1100);
+const canvasH = ref<number>(props.backgroundPage?.height ?? 700);
+watch(
+  () => [props.backgroundPage?.width, props.backgroundPage?.height] as const,
+  ([w, h]) => {
+    canvasW.value = w ?? 1100;
+    canvasH.value = h ?? 700;
+  }
+);
+const applyCanvasSize = () => {
+  const page = props.backgroundPage;
+  if (!page) return;
+  const clamp = (v: number, fallback: number) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(CANVAS_SIZE_MAX, Math.max(CANVAS_SIZE_MIN, n));
+  };
+  const w = clamp(canvasW.value, page.width ?? 1100);
+  const h = clamp(canvasH.value, page.height ?? 700);
+  canvasW.value = w;
+  canvasH.value = h;
+  if (w !== page.width || h !== page.height) {
+    emit('updatePage', { width: w, height: h });
+  }
+};
 
 // Prop mutator helper - emits change upwards
 const updateProp = (key: string, value: any) => {
@@ -159,8 +188,17 @@ const onAdaptModeChange = (val: string) => {
           </div>
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">画布尺寸 (px)</label>
-            <input type="text" disabled :value="`${backgroundPage.width ?? 1100} × ${backgroundPage.height ?? 700}`"
-              class="w-full bg-[#fafafa] dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 mt-0.5 text-gray-400 dark:text-slate-500 font-mono text-[10px] cursor-not-allowed" />
+            <div class="flex items-center gap-1 mt-0.5">
+              <input type="number" min="200" max="10000" step="10" v-model.number="canvasW" @change="applyCanvasSize"
+                @keyup.enter="applyCanvasSize"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 font-mono text-[10px] text-[#262626] dark:text-white focus:outline-none"
+                title="画布宽度（200~10000）" />
+              <span class="text-gray-400 text-[10px] shrink-0">×</span>
+              <input type="number" min="200" max="10000" step="10" v-model.number="canvasH" @change="applyCanvasSize"
+                @keyup.enter="applyCanvasSize"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 font-mono text-[10px] text-[#262626] dark:text-white focus:outline-none"
+                title="画布高度（200~10000）" />
+            </div>
           </div>
         </div>
       </section>
