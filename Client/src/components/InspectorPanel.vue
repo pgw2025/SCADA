@@ -734,6 +734,109 @@ const onPickBackgroundImage = (img: { url: string }) => {
           <ImageLibraryDialog v-model="showImagePicker" @select="onPickComponentImage" />
         </div>
 
+        <!-- 大屏标题背景图元专属配置（title-header）三套风格 -->
+        <div v-if="selectedComponent.type === 'title-header'"
+          class="space-y-3 text-xs border border-sky-200/80 dark:border-sky-900/60 p-3 rounded-lg bg-sky-50/40 dark:bg-sky-950/20">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-sky-600 dark:text-sky-400 text-[11px] uppercase tracking-wider">大屏标题背景设置
+            </p>
+            <span
+              class="text-[9px] font-mono bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 px-1.5 py-0.5 rounded">Title
+              Header</span>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题 (Style)</label>
+            <select :value="componentProps.headerStyle || 'tech-blue'"
+              @change="updateProp('headerStyle', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+              <option value="tech-blue">科技蓝 (Tech Blue)</option>
+              <option value="eco-green">生态绿 (Eco Green)</option>
+              <option value="carbon-orange">碳纤橙 (Carbon Orange)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">主标题 (Title)</label>
+              <input type="text" :value="componentProps.headerTitle ?? ''"
+                @input="updateProp('headerTitle', ($event.target as HTMLInputElement).value)"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+                placeholder="大屏主标题" />
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">副标题 (Subtitle)</label>
+              <input type="text" :value="componentProps.headerSubtitle ?? ''"
+                @input="updateProp('headerSubtitle', ($event.target as HTMLInputElement).value)"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+                placeholder="英文/副标题（可留空）" />
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">角标 / Logo 文字</label>
+            <input type="text" :value="componentProps.headerLogoText ?? ''"
+              @input="updateProp('headerLogoText', ($event.target as HTMLInputElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+              placeholder="SCADA">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <label class="flex items-center gap-2 text-gray-700 dark:text-slate-300 select-none cursor-pointer">
+              <input type="checkbox" id="headerClock"
+                :checked="componentProps.headerShowClock !== false"
+                @change="updateProp('headerShowClock', ($event.target as HTMLInputElement).checked)"
+                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] dark:text-sky-500 focus:ring-0" />
+              显示动态时钟
+            </label>
+            <label class="flex items-center gap-2 text-gray-700 dark:text-slate-300 select-none cursor-pointer">
+              <input type="checkbox" id="headerStatus"
+                :checked="componentProps.headerShowStatus !== false"
+                @change="updateProp('headerShowStatus', ($event.target as HTMLInputElement).checked)"
+                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] dark:text-sky-500 focus:ring-0" />
+              显示运行状态
+            </label>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">状态文案 (Status Text)</label>
+            <input type="text" :value="componentProps.headerStatusText ?? ''"
+              @input="updateProp('headerStatusText', ($event.target as HTMLInputElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
+              placeholder="系统运行正常" />
+          </div>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">发光 / 主辅高亮色</label>
+            <div class="flex items-center gap-1.5 mt-1">
+              <input type="color" :value="componentProps.headerGlowColor || '#38bdf8'"
+                @input="updateProp('headerGlowColor', ($event.target as HTMLInputElement).value)"
+                class="w-6 h-6 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+              <input type="text" :value="componentProps.headerGlowColor || '#38bdf8'"
+                @input="updateProp('headerGlowColor', ($event.target as HTMLInputElement).value)"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1 border-t border-sky-100 dark:border-sky-900/40">
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">字体大小 (px)</label>
+              <input type="number" :value="componentProps.fontSize ?? 22"
+                @input="updateProp('fontSize', numInput(($event.target as HTMLInputElement).value, 22))"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white mt-0.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 text-xs" />
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">字重</label>
+              <select :value="componentProps.bold ? 'bold' : 'normal'"
+                @change="updateProp('bold', ($event.target as HTMLSelectElement).value === 'bold')"
+                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white mt-0.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 text-xs">
+                <option value="bold">加粗 (Bold)</option>
+                <option value="normal">常规 (Normal)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- INDUSTRIAL ROUNDED BUTTON SPECIFIC CONTROLS (圆角按钮专属配置) -->
         <div v-if="selectedComponent.type === 'rounded-btn'"
           class="space-y-3 text-xs border border-emerald-200/80 dark:border-emerald-900/60 p-3 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20">

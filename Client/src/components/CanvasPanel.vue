@@ -589,15 +589,14 @@ const applyFitZoom = () => {
   if (!props.readonly) return;
   const el = workspaceRef.value;
   if (!el) return;
-  const pad = 16; // 与只读模式 p-2 对应
-  const availW = el.clientWidth - pad * 2;
-  const availH = el.clientHeight - pad * 2;
+  const availW = el.clientWidth;
+  const availH = el.clientHeight;
   if (availW <= 0 || availH <= 0) return;
 
   if (props.adaptMode === 'Stretch') {
-    // 拉伸填满：X/Y 各自独立缩放
-    zoom.value = Math.max(0.05, Math.round((availW / props.canvasWidth) * 100) / 100);
-    zoomY.value = Math.max(0.05, Math.round((availH / props.canvasHeight) * 100) / 100);
+    // 拉伸填满：X/Y 各自独立缩放（向下取整，避免取整后溢出视口出现滚动条）
+    zoom.value = Math.max(0.05, Math.floor((availW / props.canvasWidth) * 100) / 100);
+    zoomY.value = Math.max(0.05, Math.floor((availH / props.canvasHeight) * 100) / 100);
     return;
   }
 
@@ -609,7 +608,7 @@ const applyFitZoom = () => {
     // 兼容默认：等比缩小，上限 100%
     fit = Math.min(1, availW / props.canvasWidth, availH / props.canvasHeight);
   }
-  zoom.value = Math.max(0.2, Math.round(fit * 100) / 100);
+  zoom.value = Math.max(0.2, Math.floor(fit * 100) / 100);
   zoomY.value = zoom.value;
 };
 
@@ -826,26 +825,31 @@ onUnmounted(() => {
     <!-- Editor Inner Stage workspace -->
     <div ref="workspaceRef"
       class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
-      :class="readonly ? 'p-2' : 'p-8'" @mousedown="handleStageMouseDown" @mousemove="handleMouseMove"
+      :class="readonly ? 'p-0' : 'p-8'" @mousedown="handleStageMouseDown" @mousemove="handleMouseMove"
       @mouseup="handleStageMouseUp">
       <!-- Canvas bounding card container -->
       <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
-      <!-- 阶段5-7：只读模式 m-auto 安全居中（适配时居中，溢出时回退左顶对齐可滚动） -->
+      <!-- 阶段5-7：只读模式 mx-auto 水平居中、垂直顶部对齐（避免上方留白，溢出时可滚动） -->
       <!-- 拉伸填满（Stretch）模式下 X/Y 独立缩放，占位宽高分别按各轴 zoom 计算 -->
-      <div class="relative shrink-0" :class="readonly ? 'm-auto' : ''" :style="{
+      <div class="relative shrink-0" :class="readonly ? 'mx-auto' : ''" :style="{
         width: canvasWidth * zoom + 'px',
         height: canvasHeight * zoomY + 'px'
       }">
-        <div ref="canvasRef" class="border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
+        <!-- 边框/圆角/阴影仅设计态显示：运行态（readonly）纯净铺满，无边框卡片感 -->
+        <div ref="canvasRef"
+          :class="readonly ? 'border-none rounded-none shadow-none' : 'border border-[#d9d9d9] rounded shadow-lg'"
+          class="relative transition-shadow duration-150"
           @dragover.prevent @drop="onDrop" :style="{
             width: canvasWidth + 'px',
             height: canvasHeight + 'px',
             transform: `scale(${zoom}, ${zoomY})`,
             transformOrigin: 'top left',
             ...canvasBackgroundStyle,
-            boxShadow: isActiveMode
-              ? '0 0 30px rgba(24, 144, 255, 0.08)'
-              : '0 0 20px rgba(0, 0, 0, 0.05)',
+            boxShadow: readonly
+              ? 'none'
+              : isActiveMode
+                ? '0 0 30px rgba(24, 144, 255, 0.08)'
+                : '0 0 20px rgba(0, 0, 0, 0.05)',
           }">
           <!-- Running light watermarks or status tag -->
           <div

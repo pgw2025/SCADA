@@ -97,6 +97,51 @@ const tileStyle = computed(() => ({
   backgroundSize: 'auto',
 }));
 
+// ===== 大屏标题背景图元（title-header）三套风格 × 桌面/移动 =====
+// 所有内容从 props 读取（含注册表默认兜底），文案/风格/时钟/状态均可在属性面板编辑。
+const headerStyle = computed(() =>
+  (propOr('headerStyle', 'tech-blue') as 'tech-blue' | 'eco-green' | 'carbon-orange'));
+const headerDevice = computed<'desktop' | 'mobile'>(() =>
+  (propOr('headerDevice', 'desktop') as 'desktop' | 'mobile'));
+const headerTitle = computed(() => propOr('headerTitle', '工业互联网智能监控大屏'));
+const headerSubtitle = computed(() => propOr('headerSubtitle', ''));
+const headerLogoText = computed(() => propOr('headerLogoText', 'SCADA'));
+const headerShowClock = computed(() => propOr('headerShowClock', true));
+const headerShowStatus = computed(() => propOr('headerShowStatus', true));
+const headerStatusText = computed(() => propOr('headerStatusText', '系统运行正常'));
+const headerGlowColor = computed(() => propOr('headerGlowColor', '#38bdf8'));
+
+// 三套主题配色：科技蓝 / 生态绿 / 机能碳纤橙。发光色优先取用户配置 headerGlowColor。
+const headerTheme = computed(() => {
+  const glow = headerGlowColor.value;
+  if (headerStyle.value === 'eco-green') {
+    return {
+      background: 'linear-gradient(180deg, #073a26 0%, #052c1c 55%, #032015 100%)',
+      accent: glow || '#34d399',
+      accentSoft: 'rgba(52,211,153,0.16)',
+      text: '#eafff5',
+      subText: '#7fd9b8',
+    };
+  }
+  if (headerStyle.value === 'carbon-orange') {
+    return {
+      background: 'linear-gradient(180deg, #2a1b0c 0%, #201407 50%, #170d04 100%)',
+      accent: glow || '#f59e0b',
+      accentSoft: 'rgba(245,158,11,0.14)',
+      text: '#fff3e0',
+      subText: '#cfaa85',
+    };
+  }
+  // 默认 'tech-blue'
+  return {
+    background: 'linear-gradient(180deg, #0a2e57 0%, #082244 55%, #061a34 100%)',
+    accent: glow || '#38bdf8',
+    accentSoft: 'rgba(56,189,248,0.16)',
+    text: '#eaf6ff',
+    subText: '#7fb7e0',
+  };
+});
+
 // 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
 const onText = computed(() => props.component.props.onText || '开启');
 const offText = computed(() => props.component.props.offText || '关闭');
@@ -1083,6 +1128,99 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
           <polyline points="21 15 16 10 5 21" />
         </svg>
         <span class="text-[10px]">{{ imgError ? '图片加载失败' : '未设置图片' }}</span>
+      </div>
+    </div>
+
+    <!-- 21. 大屏标题背景图元（title-header）三套风格 × 桌面/移动 -->
+    <div v-else-if="component.type === 'title-header'"
+      class="relative w-full h-full overflow-hidden rounded-sm select-none"
+      :style="{ background: headerTheme.background, color: headerTheme.text }">
+      <!-- 装饰 SVG：纯图形、随画布等比拉伸，三套主题各自特征 -->
+      <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100"
+        preserveAspectRatio="none">
+        <!-- 顶部/底部高亮流光刻线（通用） -->
+        <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.35" />
+        <rect x="0" y="97" width="100" height="3" :fill="headerTheme.accent" opacity="0.5" />
+
+        <!-- 科技蓝：发光切角翼展 + 晶蓝流光斜线 -->
+        <template v-if="headerStyle === 'tech-blue'">
+          <polygon :points="'0,16 28,0 42,0 0,44'" :fill="headerTheme.accentSoft" />
+          <polygon :points="'100,84 72,100 58,100 100,56'" :fill="headerTheme.accentSoft" />
+          <rect x="34" y="0" width="1.4" height="100" :fill="headerTheme.accent" opacity="0.4"
+            transform="skewX(-18)" />
+          <rect x="38" y="0" width="0.9" height="100" :fill="headerTheme.accent" opacity="0.2"
+            transform="skewX(-18)" />
+        </template>
+
+        <!-- 生态绿：菱形光带 + 中心能效光环 -->
+        <template v-else-if="headerStyle === 'eco-green'">
+          <rect x="8" y="32" width="10" height="10" :fill="headerTheme.accent" opacity="0.25"
+            transform="rotate(45 13 37)" />
+          <rect x="82" y="32" width="10" height="10" :fill="headerTheme.accent" opacity="0.25"
+            transform="rotate(45 87 37)" />
+          <line x1="0" y1="50" x2="100" y2="50" :stroke="headerTheme.accent" stroke-width="0.6" opacity="0.22"
+            stroke-dasharray="2 3" />
+          <circle cx="50" cy="52" r="20" :fill="headerTheme.accentSoft" />
+          <circle cx="50" cy="52" r="8" :fill="headerTheme.accent" opacity="0.5" />
+          <circle cx="50" cy="52" r="3.4" :fill="headerTheme.text" opacity="0.85" />
+        </template>
+
+        <!-- 碳纤橙：工业警示斜纹 + 高精铆钉 + 右侧警示区 -->
+        <template v-else>
+          <g :stroke="headerTheme.accent" stroke-width="1.1" opacity="0.16" stroke-linecap="round">
+            <line x1="0" y1="108" x2="108" y2="0" />
+            <line x1="12" y1="112" x2="112" y2="12" />
+            <line x1="-12" y1="92" x2="92" y2="-12" />
+          </g>
+          <g :fill="headerTheme.accent" opacity="0.55">
+            <circle cx="4" cy="4" r="0.9" /><circle cx="28" cy="4" r="0.9" />
+            <circle cx="52" cy="4" r="0.9" /><circle cx="76" cy="4" r="0.9" /><circle cx="96" cy="4" r="0.9" />
+            <circle cx="4" cy="96" r="0.9" /><circle cx="28" cy="96" r="0.9" />
+            <circle cx="52" cy="96" r="0.9" /><circle cx="76" cy="96" r="0.9" /><circle cx="96" cy="96" r="0.9" />
+          </g>
+          <rect x="86" y="0" width="14" height="100" :fill="headerTheme.accent" opacity="0.12" />
+        </template>
+      </svg>
+
+      <!-- 桌面大屏布局：Logo｜主标题+副标题两行｜右端时钟+状态 -->
+      <div v-if="headerDevice === 'desktop'"
+        class="relative z-10 w-full h-full flex flex-col justify-center px-5 gap-0.5"
+        :style="{ fontWeight: bold ? '700' : '600' }">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="shrink-0 flex items-center gap-1.5 border-2 rounded-md px-2.5 h-7"
+            :style="{ color: headerTheme.accent, borderColor: headerTheme.accent, fontSize: `${fontSize}px` }">
+            <span class="w-1.5 h-1.5 rounded-full" :style="{ background: headerTheme.accent }" />
+            <span class="font-mono tracking-wider">{{ headerLogoText }}</span>
+          </div>
+          <span class="min-w-0 truncate"
+            :style="{ fontSize: `${fontSize + 3}px`, color: headerTheme.text }">{{ headerTitle }}</span>
+          <div class="ml-auto shrink-0 flex items-center gap-3">
+            <span v-if="headerShowClock" class="font-mono"
+              :style="{ fontSize: `${fontSize}px`, color: headerTheme.accent }">{{ timeString }}</span>
+            <span v-if="headerShowStatus" class="flex items-center gap-1.5 rounded-full px-2.5 h-6"
+              :style="{ background: headerTheme.accentSoft, color: headerTheme.text, fontSize: `${Math.max(10, fontSize - 3)}px` }">
+              <span class="w-1.5 h-1.5 rounded-full animate-pulse"
+                :style="{ background: headerTheme.accent }" />
+              {{ headerStatusText }}
+            </span>
+          </div>
+        </div>
+        <div v-if="headerSubtitle" class="truncate"
+          :style="{ fontSize: `${Math.max(10, fontSize - 2)}px`, color: headerTheme.subText, letterSpacing: '0.1em' }">
+          {{ headerSubtitle }}
+        </div>
+      </div>
+
+      <!-- 移动竖屏布局：Logo｜标题｜右端时钟+状态点（紧凑单行） -->
+      <div v-else
+        class="relative z-10 w-full h-full flex items-center gap-2 px-2"
+        :style="{ fontSize: `${fontSize}px`, fontWeight: bold ? '700' : '600' }">
+        <span class="shrink-0 font-mono tracking-wide" :style="{ color: headerTheme.accent }">{{ headerLogoText }}</span>
+        <span class="min-w-0 truncate" :style="{ color: headerTheme.text }">{{ headerTitle }}</span>
+        <span v-if="headerShowClock" class="ml-auto shrink-0 font-mono"
+          :style="{ fontSize: `${Math.max(10, fontSize - 2)}px`, color: headerTheme.accent }">{{ timeString }}</span>
+        <span v-if="headerShowStatus" class="shrink-0 w-2 h-2 rounded-full animate-pulse"
+          :style="{ background: headerTheme.accent }" :title="headerStatusText" />
       </div>
     </div>
 

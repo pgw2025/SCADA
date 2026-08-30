@@ -89,6 +89,8 @@ import {
 
 // 面板收起/展开控制状态
 const isWidgetLibraryOpen = ref<boolean>(true);
+// 工程列表侧边栏收起/展开控制状态
+const isProjectListOpen = ref<boolean>(true);
 // 右侧侧边栏（以选项卡模式整合属性配置与图层管理）
 const isRightSidebarOpen = ref<boolean>(true);
 const rightActiveTab = ref<'inspector' | 'layers'>('inspector');
@@ -933,7 +935,7 @@ const handleExportPage = async (page: ScadaPage) => {
     class="h-full overflow-y-auto md:overflow-y-hidden flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
 
     <!-- LEFT CONTROL BAR: Scada Projects and multiple subpages directory (全屏模式下隐藏) -->
-    <div v-show="!isScadaFullscreen"
+    <div v-show="!isScadaFullscreen && isProjectListOpen"
       class="w-full md:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 flex-1 md:flex-none transition-colors">
 
       <!-- Top Screen/Project select -->
@@ -958,6 +960,11 @@ const handleExportPage = async (page: ScadaPage) => {
               class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
               title="新建工程">
               <Plus class="w-4 h-4" />
+            </button>
+            <button @click="isProjectListOpen = false"
+              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer hidden md:block"
+              title="收起工程列表">
+              <ChevronLeft class="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1144,6 +1151,22 @@ const handleExportPage = async (page: ScadaPage) => {
 
     </div>
 
+    <!-- 工程列表收起态把手（md+：左侧竖条；移动端：顶部横条，点击展开） -->
+    <div v-show="!isScadaFullscreen && !isProjectListOpen" @click="isProjectListOpen = true"
+      class="bg-white dark:bg-slate-900 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none group shadow-xs">
+      <!-- 移动端：横向把手 -->
+      <div class="md:hidden flex items-center justify-center gap-1.5 py-2">
+        <ChevronRight class="w-4 h-4 rotate-90" />
+        <span class="text-[11px] font-bold tracking-widest">工程列表</span>
+      </div>
+      <!-- 桌面端：竖向把手 -->
+      <div class="hidden md:flex flex-col items-center justify-center w-7 h-full min-h-[120px] py-4 gap-2.5">
+        <ChevronRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+        <span
+          class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">工程列表</span>
+      </div>
+    </div>
+
     <!-- 加载态：整树拉取中 -->
     <div v-if="scadaLoading" class="flex-1 flex items-center justify-center bg-slate-50 dark:bg-transparent">
       <div class="text-center text-slate-400 dark:text-slate-500">
@@ -1229,9 +1252,18 @@ const handleExportPage = async (page: ScadaPage) => {
               </button>
             </div>
 
-            <!-- 面板显隐快捷切换 (图库/图层/属性) -->
+            <!-- 面板显隐快捷切换 (工程/图库/图层/属性) -->
             <div v-if="!isActiveMode"
               class="hidden sm:flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+              <button @click="isProjectListOpen = !isProjectListOpen"
+                class="px-2 py-1 rounded text-xs font-medium inline-flex items-center gap-1 border transition-all cursor-pointer select-none"
+                :class="isProjectListOpen
+                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 shadow-2xs font-semibold'
+                  : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'"
+                :title="isProjectListOpen ? '收起工程列表' : '展开工程列表'">
+                <FolderIcon class="w-3.5 h-3.5" />
+                <span>工程</span>
+              </button>
               <button @click="isWidgetLibraryOpen = !isWidgetLibraryOpen"
                 class="px-2 py-1 rounded text-xs font-medium inline-flex items-center gap-1 border transition-all cursor-pointer select-none"
                 :class="isWidgetLibraryOpen

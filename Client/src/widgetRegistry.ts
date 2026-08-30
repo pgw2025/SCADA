@@ -477,9 +477,10 @@ export const widgetRegistry: Record<string, WidgetDef> = {
 // 保持注册表声明顺序的列表（图库渲染用）
 export const widgetList: WidgetDef[] = Object.values(widgetRegistry);
 
-// 取某类型注册项（缺省回退到通用配置，避免新增类型未注册时报错）
+// 取某类型注册项：优先按注册键精确命中；未命中再按 type 字段泛化匹配第一个，
+// 兼容复合注册键（如标题栏 title-header-xxx 的 type 为 title-header），避免新增类型查不到。
 export const getWidgetDef = (type: string): WidgetDef | undefined =>
-  widgetRegistry[type];
+  widgetRegistry[type] ?? widgetList.find((d) => d.type === type);
 
 /** 可下发写指令的控制类器件（运行态可点击写值）；其余器件为纯展示 */
 export const CONTROL_WIDGET_TYPES: ReadonlySet<string> = new Set([
