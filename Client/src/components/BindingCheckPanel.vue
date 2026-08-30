@@ -11,7 +11,7 @@ const unboundComponents = computed(() => {
   const page = currentPage.value;
   if (!page || !page.components) return [];
   return page.components.filter(
-    (c) => c.bindDeviceId == null || c.bindDeviceId === '' || c.bindDeviceId === undefined
+    (c) => c.bindDeviceId == null || String(c.bindDeviceId) === ''
   );
 });
 

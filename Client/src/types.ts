@@ -70,6 +70,10 @@ export interface HMIComponent {
     // 多状态文本映射属性
     stateMappings?: string; // 用户可自定义配置: "0:停止;1:预热;2:满载运行" 或 "false:关闭;true:激活"
 
+    // 有状态文本控件（开关/阀等）的状态文案
+    onText?: string; // 开启状态文案
+    offText?: string; // 关闭状态文案
+
     // 系统时间控件格式
     timeFormat?: 'HH:mm:ss' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD';
   };

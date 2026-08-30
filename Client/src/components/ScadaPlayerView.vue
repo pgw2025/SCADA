@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   currentProject,
@@ -12,6 +12,7 @@ import { loginUser } from '../store/userStore';
 import { ROLE_OPERATOR, ROLE_ADMIN } from '../constants/roles';
 import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
@@ -77,6 +78,25 @@ const currentPage = computed(
 
 const pageWidth = computed(() => currentPage.value?.width ?? (runtimePlatform.value === 'Mobile' ? 375 : 1100));
 const pageHeight = computed(() => currentPage.value?.height ?? (runtimePlatform.value === 'Mobile' ? 812 : 700));
+
+// 设备级 SignalR 订阅：运行态实时值解析只消费当前页面已绑定组件的设备，
+// 按绑定设备集合订阅/退订（变量更新仅推送已订阅设备分组，替代全连接广播）。
+const boundDeviceIds = computed(() => {
+  const ids = new Set<number>();
+  (currentPage.value?.components ?? []).forEach((c: any) => {
+    if (c.bindDeviceId != null) ids.add(Number(c.bindDeviceId));
+  });
+  return ids;
+});
+
+watch(boundDeviceIds, (newIds, oldIds) => {
+  oldIds?.forEach(id => { if (!newIds.has(id)) unsubscribeDeviceTelemetry(id); });
+  newIds.forEach(id => { if (!oldIds?.has(id)) subscribeDeviceTelemetry(id); });
+}, { immediate: true });
+
+onUnmounted(() => {
+  boundDeviceIds.value.forEach(id => unsubscribeDeviceTelemetry(id));
+});
 
 // 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
 const warnedUnboundIds = new Set<string>();
@@ -157,7 +177,7 @@ const handleTriggerToggleValue = (
 
   const dev = devices.value.find((d) => String(d.id) === String(deviceId));
   const meta = dev?.variableMeta?.[key];
-  const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+  const isReadOnly = meta?.effectiveIsReadOnly ?? false;
   if (isReadOnly) {
     showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
     return;

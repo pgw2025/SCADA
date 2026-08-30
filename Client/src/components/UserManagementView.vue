@@ -95,8 +95,9 @@ const handleSaveUser = async () => {
   try {
     if (isEditing.value && editingUserId.value !== null) {
       // 后台管理员自降级确认：编辑的是当前登录账号且把角色从 Admin 降为非 Admin 时二次确认
+      // loginUser 不携带 id，按用户名唯一性比对（编辑前的原始用户名）
       if (
-        editingUserId.value === loginUser.value?.id &&
+        editingOriginalName.value === loginUser.value?.username &&
         editingOriginalName.value !== 'admin' &&
         uRole.value !== ROLE_ADMIN
       ) {

@@ -23,6 +23,12 @@ const preview = ref<VariableImportPreview | null>(null);
 const result = ref<VariableImportResult | null>(null);
 const strategy = ref<ConflictStrategy>('Skip');
 
+const strategyOptions: { value: ConflictStrategy; label: string }[] = [
+  { value: 'Skip', label: '跳过' },
+  { value: 'Overwrite', label: '覆盖更新' },
+  { value: 'Abort', label: '存在冲突即中止' }
+];
+
 // 仅当全部选择且预览完成时进入下一步
 const canNextFromPick = computed(() => !!selectedFile.value);
 const canSubmit = computed(() => !!preview.value && preview.value.validRows + preview.value.conflictRows > 0);
@@ -153,11 +159,7 @@ const rowBadgeClass = (hasError: boolean, isConflict: boolean) => {
             <span class="text-slate-500 dark:text-slate-400 font-bold shrink-0">冲突处理</span>
             <div class="flex gap-1.5">
               <button
-                v-for="opt in ([
-                  { value: 'Skip', label: '跳过' },
-                  { value: 'Overwrite', label: '覆盖更新' },
-                  { value: 'Abort', label: '存在冲突即中止' }
-                ] as { value: ConflictStrategy; label: string }[])"
+                v-for="opt in strategyOptions"
                 :key="opt.value"
                 @click="strategy = opt.value"
                 class="px-2.5 py-1 rounded-lg border text-[11px] font-bold"

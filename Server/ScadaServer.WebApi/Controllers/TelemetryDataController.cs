@@ -42,7 +42,8 @@ namespace ScadaServer.WebApi.Controllers
                 DeviceId = deviceId,
                 DeviceKey = runtime.Device.Key,
                 Variables = variables,
-                Timestamp = DateTime.Now
+                // 项目时间戳约定：统一 UTC（前端本地化展示）
+                Timestamp = DateTime.UtcNow
             });
         }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
 import { syncDevices } from '../services/deviceService';
+import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { writeDeviceVariable, fetchDeviceRealtime } from '../api/deviceApi';
 import { fetchDeviceVariables } from '../api/deviceVariableApi';
@@ -60,9 +61,6 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => String(m.id) === String(selectedDevice.value.modelId));
 });
 
-// Simulated variable values storage
-const simulatedValues = ref<Record<string, number | boolean>>({});
-
 // 设备变量实例列表（获取自 /api/DeviceVariable/by-device/{id}，与"设备变量"页同源）。
 // 实时监控页以此作为列表数据源头：只会展示该设备真正实例化的变量，
 // 而非数据模型里的全部模板（修复"数量=模型变量数而非设备变量数"的问题）。
@@ -95,6 +93,16 @@ const templateByKey = computed(() => {
   return map;
 });
 
+// 质量位 → 可读文案（变量读取失败时展示"通讯异常"标记，区分僵尸值与真实采集值）
+const qualityLabel = (quality?: string | null): string => {
+  switch (quality) {
+    case 'CommunicationError': return '通讯异常';
+    case 'Bad': return '坏质量';
+    case 'Uncertain': return '不确定';
+    default: return quality || '';
+  }
+};
+
 // Compile active variables array: 以设备变量实例为源头，结合模板元数据与实时遥测值渲染
 const renderedVariables = computed(() => {
   if (!selectedDevice.value) return [];
@@ -106,16 +114,14 @@ const renderedVariables = computed(() => {
       ? (tpl.type as 'digital' | 'analog')
       : (/BOOL/i.test(String(dv.dataType)) ? 'digital' : 'analog');
 
-    // 取值优先级：① 本地强制值（simulatedValues，写入后的即时反馈）
-    //            → ② SignalR/轮询写入设备的真实遥测值（selectedDevice.variables[key]）
-    //            → ③ 默认值（digital 反 false，analog 反 min）
-    const forcedValue = simulatedValues.value[dv.key];
+    // 取值优先级：SignalR/轮询写入设备的真实遥测值（selectedDevice.variables[key]）
+    //            → 默认值（digital 反 false，analog 反 min）。
+    // 手动写入成功后直接乐观写入 store（见 commitOverride），随后的 SignalR 真实遥测推送
+    // 会自然覆盖为设备实际值——不再使用独立的本地强制值表（旧实现永久遮蔽真实遥测）。
     const liveValue = selectedDevice.value?.variables?.[dv.key];
-    const value = forcedValue !== undefined
-      ? forcedValue
-      : (liveValue !== undefined && liveValue !== null
-        ? liveValue
-        : (type === 'digital' ? false : tpl?.min ?? 0));
+    const value = liveValue !== undefined && liveValue !== null
+      ? liveValue
+      : (type === 'digital' ? false : tpl?.min ?? 0);
 
     return {
       key: dv.key,
@@ -134,7 +140,9 @@ const renderedVariables = computed(() => {
       // 读写权限：优先取设备实例级有效权限（effectiveIsReadOnly，含 IsReadOnlyOverride 覆盖结果），
       // 缺省回退模板 isReadOnly，保证"设备变量"页覆盖为可写后此处可写。
       isReadOnly: dv.effectiveIsReadOnly ?? tpl?.isReadOnly ?? true,
-      // 优先展示变量级实时推送时间戳，无推送时回退设备更新时间
+      // 质量位（SignalR 结构化推送与 REST realtime 回填同源写入 variableMeta）
+      quality: selectedDevice.value?.variableMeta?.[dv.key]?.quality as string | undefined,
+      // 优先展示变量级实时推送时间戳（后端采集时刻），无推送时回退设备更新时间
       updatedAt: selectedDevice.value?.variableTimestamps?.[dv.key]
         || selectedDevice.value?.lastUpdated
         || new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -199,10 +207,16 @@ const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
 
   try {
     isSubmitting.value = true;
-    // 真实写入链路：后端下发到设备驱动，成功后经 SignalR 广播回所有客户端（含刷新后）。
+    // 真实写入链路：后端下发到设备驱动（服务端校验只读/越限/连接状态），失败直接抛错回滚 UI。
     await writeDeviceVariable(Number(selectedDevice.value.id as any), varKey, finalVal);
-    // 乐观更新本地即时反馈（SignalR 广播到达后被真实遥测值覆盖）
-    simulatedValues.value[varKey] = finalVal;
+
+    // 乐观更新：直接写入全局 store 的变量表（而非独立强制值表），
+    // 后续 SignalR 真实遥测推送（或下轮采集回读）会自然覆盖为设备实际值。
+    const dev = devices.value.find(d => String(d.id) === String(selectedDevice.value!.id));
+    if (dev) {
+      if (!dev.variables) dev.variables = {};
+      dev.variables[varKey] = finalVal;
+    }
 
     // Submit trace logger
     const typeLabel = type === 'digital' ? 'Boolean' : 'Analog';
@@ -245,13 +259,10 @@ const loadRealtime = async (deviceId: string | number) => {
 
 // 页面自举：直接进入实时监控页时主动拉取设备与数据模型，避免依赖"先访问设备管理页"
 // 填充全局 store 才能显示数据。devices/models 的全局兜底见 App.vue 登录后预载。
+// （实时值/变量实例的加载由下方 selectedDevId 的 immediate watch 统一驱动）
 onMounted(() => {
   syncDevices();
   fetchDataModelsFromBackend();
-  // 主动拉取当前选中设备实时值回填（刷新后手动写入值不丢失）
-  loadRealtime(selectedDevId.value);
-  // 拉取设备变量实例作为实时监控列表源头（与设备变量表同源）
-  loadDeviceVariables();
 });
 
 // selectedDevId 在 setup 时一次性取 devices[0]，若挂载时 store 为空会停在空串。
@@ -262,10 +273,18 @@ watch(() => devices.value.length, (len) => {
   }
 });
 
-// 切换设备时拉取该设备实时值与变量实例回填
-watch(selectedDevId, (id) => {
+// 切换设备时：退订旧设备 / 订阅新设备的 SignalR 实时变量分组推送，
+// 并拉取该设备实时值与变量实例回填（immediate 覆盖首挂载场景）。
+watch(selectedDevId, (id, oldId) => {
+  if (oldId) unsubscribeDeviceTelemetry(oldId);
+  if (id) subscribeDeviceTelemetry(id);
   loadRealtime(id);
   loadDeviceVariables();
+}, { immediate: true });
+
+// 卸载时退订当前设备，避免离开监控页后仍接收该设备全量变量推送
+onUnmounted(() => {
+  if (selectedDevId.value) unsubscribeDeviceTelemetry(selectedDevId.value);
 });
 </script>
 
@@ -523,6 +542,12 @@ watch(selectedDevId, (id) => {
 
                   <!-- Active Value display -->
                   <td class="px-4 py-3.5">
+                    <!-- 质量徽标：读取失败时值为最近一次有效"僵尸值"，显式标记避免误读 -->
+                    <span v-if="v.quality && v.quality !== 'Good'"
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 mr-1.5 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 align-middle">
+                      <AlertTriangle class="w-2.5 h-2.5" />
+                      {{ qualityLabel(v.quality) }}
+                    </span>
                     <!-- If boolean type -->
                     <span v-if="v.type === 'digital'"
                       class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
@@ -594,6 +619,12 @@ watch(selectedDevId, (id) => {
 
                 <!-- Active Value -->
                 <div class="shrink-0">
+                  <!-- 质量徽标：读取失败时值为最近一次有效"僵尸值"，显式标记避免误读 -->
+                  <span v-if="v.quality && v.quality !== 'Good'"
+                    class="inline-flex items-center gap-1 px-1.5 py-0.5 mb-1 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle class="w-2.5 h-2.5" />
+                    {{ qualityLabel(v.quality) }}
+                  </span>
                   <span v-if="v.type === 'digital'"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
                     :class="v.value ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400 border border-rose-100/30'">

@@ -20,7 +20,8 @@ export const startBackendPolling = () => {
             lastRun = now;
             // 复用 syncDevices：内部拉取 + normalize + setDevices，确保轮询结果真正写回全局 store。
             // 修复旧实现直接 fetchDevicesFromBackend() 丢弃返回值、设备列表不刷新的问题。
-            syncDevices();
+            // silent：周期兜底轮询不写同步日志（SignalR 在线时每 5 秒一次，避免日志刷屏）。
+            syncDevices({ silent: true });
         }
     }, 100);
 };

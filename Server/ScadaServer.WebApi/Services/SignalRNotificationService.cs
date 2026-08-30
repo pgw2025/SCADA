@@ -33,13 +33,27 @@ namespace ScadaServer.WebApi.Services
         }
 
         /// <inheritdoc/>
-        public async Task NotifyVariableUpdateAsync(int deviceId, string variableKey, object value)
+        public async Task NotifyVariableUpdateAsync(int deviceId, string variableKey, object? value, VariableQuality quality, DateTime updateTime)
         {
-            // SignalR通知：向所有连接的客户端广播变量更新
-            await _hubContext.Clients.All.SendAsync("ReceiveVariableUpdate", deviceId, variableKey, value);
+            // SignalR通知：结构化载荷（值 + 质量 + 采集时间 UTC）仅推送至订阅该设备的分组。
+            // 携带质量与采集时间使前端能区分"真实采集值"与"读取失败后的僵尸值"，
+            // 并以采集时刻（而非浏览器接收时刻）作为更新时间展示。
+            await _hubContext.Clients
+                .Group(ScadaHub.DeviceGroup(deviceId))
+                .SendAsync("ReceiveVariableUpdate", new
+                {
+                    DeviceId = deviceId,
+                    VariableKey = variableKey,
+                    Value = value,
+                    Quality = quality.ToString(),
+                    UpdateTime = updateTime
+                });
 
-            // MQTT通知：发布变量更新到MQTT服务器
-            await _mqttManager.PublishVariableUpdateAsync(deviceId, variableKey, value);
+            // MQTT通知：发布变量更新到MQTT服务器（质量降级且无有效值时不发布）
+            if (value != null)
+            {
+                await _mqttManager.PublishVariableUpdateAsync(deviceId, variableKey, value);
+            }
         }
 
         /// <inheritdoc/>

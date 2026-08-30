@@ -228,7 +228,7 @@ const openEditDeviceModal = (device: Device) => {
   devModel.value = String(device.modelId ?? '');
   devType.value = device.type;
   devIP.value = device.ipAddress || '';
-  devPort.value = device.port || '';
+  devPort.value = String(device.port ?? '');
   devStatus.value = device.status === 1 ? 'online' : 'offline';
 
   // S7 connections
@@ -309,7 +309,8 @@ const handleSaveDevice = async () => {
     name: devName.value,
     key: devKey.value.trim(),
     areaId: devArea.value,
-    modelId: devModel.value,
+    // Device.modelId 为 number；devModel 下拉值为 string，统一转 number 提交
+    modelId: Number(devModel.value) || 0,
     // 协议由后端从 modelId 推导,前端不再提交 type
     ipAddress: devIP.value,
     port: devPort.value,

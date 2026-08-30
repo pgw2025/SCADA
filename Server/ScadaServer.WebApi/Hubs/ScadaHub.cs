@@ -15,6 +15,22 @@ namespace ScadaServer.WebApi.Hubs
     [Authorize]
     public class ScadaHub : Hub
     {
-        // 可以根据需要扩展客户端调用服务端的方法
+        /// <summary>
+        /// 设备实时数据分组名：变量更新仅推送至订阅该设备的分组，
+        /// 避免 Clients.All 全连接广播随客户端数与变量数线性放大带宽。
+        /// </summary>
+        public static string DeviceGroup(int deviceId) => $"device-{deviceId}";
+
+        /// <summary>
+        /// 客户端订阅指定设备的实时变量更新（页面挂载/切换设备时调用，引用计数由前端管理）。
+        /// </summary>
+        public Task SubscribeDevice(int deviceId) =>
+            Groups.AddToGroupAsync(Context.ConnectionId, DeviceGroup(deviceId));
+
+        /// <summary>
+        /// 客户端取消订阅指定设备的实时变量更新。
+        /// </summary>
+        public Task UnsubscribeDevice(int deviceId) =>
+            Groups.RemoveFromGroupAsync(Context.ConnectionId, DeviceGroup(deviceId));
     }
 }

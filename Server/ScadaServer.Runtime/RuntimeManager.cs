@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -526,6 +527,16 @@ namespace ScadaServer.Runtime
             if (runtime.ConnectionState != DeviceConnectionState.Connected)
                 return await FailAsync("设备未连接，无法写入");
 
+            // 服务端强校验数值上下限：前端写值弹窗的 min/max 仅为 HTML 输入约束（可被绕过），
+            // 越限值禁止下发物理设备。布尔量（0/1 语义）不参与数值限幅校验。
+            if (value is not bool && TryToNumber(value) is double numericValue)
+            {
+                if (vr.Min.HasValue && numericValue < vr.Min.Value)
+                    return await FailAsync($"写入值 {numericValue} 低于变量 [{variableKey}] 下限 {vr.Min}");
+                if (vr.Max.HasValue && numericValue > vr.Max.Value)
+                    return await FailAsync($"写入值 {numericValue} 超过变量 [{variableKey}] 上限 {vr.Max}");
+            }
+
             // 驱动写入在设备锁外执行：网络 IO 可能耗时秒级，持锁会阻塞同设备采集循环
             // 的全部内存态更新。写驱动期间设备不持有 Lock，采集可正常进行。
             try
@@ -545,7 +556,7 @@ namespace ScadaServer.Runtime
             {
                 vr.PreviousValue = vr.Value;
                 vr.Value = value;
-                vr.UpdateTime = DateTime.Now;
+                vr.UpdateTime = DateTime.UtcNow;
                 vr.IsChanged = false; // 置 false，避免下轮轮询因"值变化"再重复广播同一写入
             }
             finally
@@ -556,7 +567,7 @@ namespace ScadaServer.Runtime
             // 写成功后已在临界区内同步运行时内存值（见上）。此处经 SignalR 广播，使所有客户端刷新后能看到新值。
             try
             {
-                await _notificationService.NotifyVariableUpdateAsync(deviceId, variableKey, value);
+                await _notificationService.NotifyVariableUpdateAsync(deviceId, variableKey, value, vr.Quality, vr.UpdateTime);
             }
             catch (Exception ex)
             {
@@ -575,8 +586,59 @@ namespace ScadaServer.Runtime
                 Source = VariableChangeSource.UserWrite
             });
 
+            // 同步更新实时快照：手动写入后不等下轮采集回读，MySQL 实时表即时反映新值
+            // （否则最长延迟一个轮询周期）。
+            try
+            {
+                _realtimeSnapshot.Update(
+                    deviceId,
+                    runtime.Device.Key,
+                    variableKey,
+                    vr.Name,
+                    ToNumericSnapshotValue(value),
+                    value?.ToString(),
+                    vr.Quality.ToString(),
+                    vr.UpdateTime);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入后更新实时快照失败。", deviceId, variableKey);
+            }
+
             await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, true, null);
             return (true, null);
+        }
+
+        /// <summary>
+        /// 尝试将变量值转为数值（写入限幅校验用）；无法转换返回 null。
+        /// </summary>
+        private static double? TryToNumber(object value)
+        {
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                if (value is bool b) return b ? 1.0 : 0.0;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 转为实时快照的数值列（布尔按 0/1，无法转换按 0），与 DeviceWorker.TryUpdateRealtime 同语义。
+        /// </summary>
+        private static double ToNumericSnapshotValue(object value)
+        {
+            if (value is bool flag) return flag ? 1 : 0;
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>

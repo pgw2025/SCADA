@@ -99,6 +99,9 @@ public class DeviceRuntime : IRuntimeDevice
     // 失败次数
     public long FailureCount { get; set; }
 
+    // 采集轮次总数（成功 + 失败），平均响应时间的移动平均分母
+    public long PollRoundCount { get; set; }
+
     // 平均响应时间
     public double AverageResponseTime { get; set; }
 

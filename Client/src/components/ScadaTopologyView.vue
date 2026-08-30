@@ -41,6 +41,7 @@ import { loginUser } from '../store/userStore';
 import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
@@ -248,6 +249,25 @@ const componentValues = computed(() => {
 const pageWidth = computed(() => currentPage.value.width ?? 1100);
 const pageHeight = computed(() => currentPage.value.height ?? 700);
 
+// 设备级 SignalR 订阅：运行态实时值解析只消费当前页面已绑定组件的设备，
+// 按绑定设备集合订阅/退订（变量更新仅推送已订阅设备分组，替代全连接广播）。
+const boundDeviceIds = computed(() => {
+  const ids = new Set<number>();
+  currentPage.value.components.forEach((c: any) => {
+    if (c.bindDeviceId != null) ids.add(Number(c.bindDeviceId));
+  });
+  return ids;
+});
+
+watch(boundDeviceIds, (newIds, oldIds) => {
+  oldIds?.forEach(id => { if (!newIds.has(id)) unsubscribeDeviceTelemetry(id); });
+  newIds.forEach(id => { if (!oldIds?.has(id)) subscribeDeviceTelemetry(id); });
+}, { immediate: true });
+
+onUnmounted(() => {
+  boundDeviceIds.value.forEach(id => unsubscribeDeviceTelemetry(id));
+});
+
 // 阶段6-2：写控制角色权限。仅 Operator/Admin 可在运行模式下发写指令；
 // 其它角色（如 Viewer）即便已通过 JWT 认证，前端也拦截写控件、后端以 [Authorize(Roles)] 兜底 403。
 const canControlWrite = computed(() => {
@@ -433,8 +453,7 @@ const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, 
   // 只读拦截：设备级有效只读权限优先于写操作（后端 RuntimeManager 仍会兜底校验 IsReadOnly）。
   const dev = devices.value.find((d) => String(d.id) === String(deviceId));
   const meta = dev?.variableMeta?.[key];
-  // 后端未配置 camelCase，DTO 默认 PascalCase；两种命名均兼容读取。
-  const isReadOnly = meta?.effectiveIsReadOnly ?? meta?.EffectiveIsReadOnly ?? false;
+  const isReadOnly = meta?.effectiveIsReadOnly ?? false;
   if (isReadOnly) {
     showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
     addLog('SCADA 写控', `写拦截：变量 [设备${deviceId}.${key}] 为只读`, 'warning');
@@ -565,7 +584,7 @@ const setHomePage = (page: ScadaPage) => {
 };
 
 // Copy / Duplicate child page
-const handleDuplicatePage = (page: { id: string; name: string; components: any[] }) => {
+const handleDuplicatePage = (page: ScadaPage) => {
   const proj = currentProject.value;
   if (!proj) return;
 
@@ -921,13 +940,13 @@ const selectedCompObj = computed(() => {
 
             <!-- 撤销/重做 -->
             <div class="hidden md:flex items-center gap-1">
-              <button @click="applyRestored(undo(currentPage.value.components))" :disabled="!undoAvailable"
+              <button @click="applyRestored(undo(currentPage.components))" :disabled="!undoAvailable"
                 title="撤销 (Ctrl+Z)"
                 class="p-1.5 rounded border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="undoAvailable ? 'border-[#d9d9d9] text-gray-500 hover:text-[#1890ff]' : 'border-transparent text-gray-300'">
                 <Undo2 class="w-3.5 h-3.5" />
               </button>
-              <button @click="applyRestored(redo(currentPage.value.components))" :disabled="!redoAvailable"
+              <button @click="applyRestored(redo(currentPage.components))" :disabled="!redoAvailable"
                 title="重做 (Ctrl+Shift+Z)"
                 class="p-1.5 rounded border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="redoAvailable ? 'border-[#d9d9d9] text-gray-500 hover:text-[#1890ff]' : 'border-transparent text-gray-300'">
@@ -967,7 +986,7 @@ const selectedCompObj = computed(() => {
             </button>
 
             <!-- 全屏模式切换按钮 -->
-            <button @click="toggleFullscreen"
+            <button @click="toggleFullscreen()"
               class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all active:translate-y-0.5 border"
               :class="isScadaFullscreen
                 ? 'bg-sky-600 hover:bg-sky-700 text-white border-sky-600 shadow-[0_0_8px_rgba(2,132,199,0.3)]'

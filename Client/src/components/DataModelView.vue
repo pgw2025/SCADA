@@ -204,7 +204,7 @@ const handleCreateModel = async () => {
 // Delete model template
 const handleDeleteModel = async (id: string, name: string) => {
   // Check if any devices rely on it
-  const reliesCount = devices.value.filter(d => d.modelId === id).length;
+  const reliesCount = devices.value.filter(d => String(d.modelId) === String(id)).length;
   if (reliesCount > 0) {
     alert(`无法删除此模型 [${name}]: 仍然有 ${reliesCount} 台在网物理设备实例依赖于该模型。`);
     return;
@@ -363,7 +363,7 @@ const handleSaveVariable = async () => {
 
       // Synchronize new variable in all existing online devices relying on this model!
       devices.value.forEach((d) => {
-        if (d.modelId === model.id) {
+        if (String(d.modelId) === String(model.id)) {
           if (d.variables[key] === undefined) {
             d.variables[key] = varType.value === 'digital' ? false : (newVar.min ?? 0);
           }
@@ -397,7 +397,7 @@ const handleDeleteVariable = async (v: ModelVariable) => {
 
   // Clean up in device instances
   devices.value.forEach((d) => {
-    if (d.modelId === model.id) {
+    if (String(d.modelId) === String(model.id)) {
       delete d.variables[v.key];
     }
   });

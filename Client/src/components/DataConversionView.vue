@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { dataConversions, devices, addLog } from '../store/index';
 import { checkCycleInConversions } from '../utils/algo';
+import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { DataConversion } from '../types';
 import { 
   fetchDataConversions,
@@ -42,6 +43,28 @@ onMounted(async () => {
   try {
     dataConversions.value = await fetchDataConversions();
   } catch { /* 拦截器已弹 toast，此处静默 */ }
+});
+
+// 设备级 SignalR 订阅：本页展示换算规则两端的设备实时值，
+// 按规则引用 + 弹窗当前选择的设备集合订阅/退订（变量更新仅推送已订阅设备分组）。
+const subscribedDeviceIds = computed(() => {
+  const ids = new Set<number>();
+  dataConversions.value.forEach(c => {
+    if (c.sourceDeviceId) ids.add(Number(c.sourceDeviceId));
+    if (c.targetDeviceId) ids.add(Number(c.targetDeviceId));
+  });
+  if (sourceDevId.value) ids.add(Number(sourceDevId.value));
+  if (targetDevId.value) ids.add(Number(targetDevId.value));
+  return ids;
+});
+
+watch(subscribedDeviceIds, (newIds, oldIds) => {
+  oldIds?.forEach(id => { if (!newIds.has(id)) unsubscribeDeviceTelemetry(id); });
+  newIds.forEach(id => { if (!oldIds?.has(id)) subscribeDeviceTelemetry(id); });
+}, { immediate: true });
+
+onUnmounted(() => {
+  subscribedDeviceIds.value.forEach(id => unsubscribeDeviceTelemetry(id));
 });
 
 // Filtered conversions

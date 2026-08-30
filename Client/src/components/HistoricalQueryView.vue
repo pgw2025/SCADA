@@ -97,6 +97,10 @@ const selectableVariables = computed<HistoryVariableOption[]>(() =>
 // ==================== 查询状态 ====================
 const searchInput = ref('');
 const isInputFocused = ref(false);
+// blur 延迟收起下拉：留出点击选项的响应窗口（模板作用域无 window，须在 script 定义）
+const onSearchBlur = () => {
+  setTimeout(() => { isInputFocused.value = false; }, 250);
+};
 const selectedVars = ref<SelectedVar[]>([]);
 const selectedTimeframe = ref<TimeframeKey>('all');
 const customStart = ref('');
@@ -692,7 +696,7 @@ const handleExportCSV = async () => {
           <input
             v-model="searchInput"
             @focus="isInputFocused = true"
-            @blur="setTimeout(() => isInputFocused = false, 250)"
+            @blur="onSearchBlur"
             type="text"
             placeholder="搜索设备 / 变量..."
             class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 pl-9 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-[#1890ff] shadow-xs"

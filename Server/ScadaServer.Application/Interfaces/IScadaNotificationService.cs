@@ -6,12 +6,14 @@ namespace ScadaServer.Application.Interfaces
     public interface IScadaNotificationService
     {
         /// <summary>
-        /// 通知变量更新
+        /// 通知变量更新（结构化载荷：值 + 质量状态 + 采集时间）。
         /// </summary>
         /// <param name="deviceId">设备ID</param>
         /// <param name="variableKey">变量键</param>
-        /// <param name="value">变量值</param>
-        Task NotifyVariableUpdateAsync(int deviceId, string variableKey, object value);
+        /// <param name="value">变量值（读取失败推送质量降级时可能为 null，表示无有效值）</param>
+        /// <param name="quality">变量质量（Good / Bad / Uncertain / CommunicationError 等）</param>
+        /// <param name="updateTime">采集时间（UTC，项目时间戳约定）</param>
+        Task NotifyVariableUpdateAsync(int deviceId, string variableKey, object? value, Domain.Enums.VariableQuality quality, DateTime updateTime);
 
         /// <summary>
         /// 通知设备运行时状态变更

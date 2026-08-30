@@ -66,7 +66,7 @@ namespace ScadaServer.Application.Services
             }
 
             entity.Acked = true;
-            entity.AckedAt = DateTime.Now;
+            entity.AckedAt = DateTime.UtcNow;
             entity.AckedBy = string.IsNullOrWhiteSpace(ackBy) ? "unknown" : ackBy;
             await _repository.UpdateAsync(entity);
             return true;
@@ -87,11 +87,14 @@ namespace ScadaServer.Application.Services
             ActualValue = e.ActualValue,
             Message = e.Message,
             Source = e.Source,
-            TriggeredAt = e.TriggeredAt,
-            RecoveredAt = e.RecoveredAt,
+            // MySQL datetime 读回为 Kind=Unspecified，序列化不带 Z 后缀会被前端按本地时间解析。
+            // 运行时已统一写入 UTC，此处显式标记 UTC 使 JSON 带 Z 后缀，前端 new Date() 正确本地化。
+            // 注意：切换前入库的历史记录为本地时间，展示会有时区偏移。
+            TriggeredAt = DateTime.SpecifyKind(e.TriggeredAt, DateTimeKind.Utc),
+            RecoveredAt = e.RecoveredAt.HasValue ? DateTime.SpecifyKind(e.RecoveredAt.Value, DateTimeKind.Utc) : null,
             RecoveryValue = e.RecoveryValue,
             Acked = e.Acked,
-            AckedAt = e.AckedAt,
+            AckedAt = e.AckedAt.HasValue ? DateTime.SpecifyKind(e.AckedAt.Value, DateTimeKind.Utc) : null,
             AckedBy = e.AckedBy
         };
     }

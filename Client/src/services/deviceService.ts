@@ -20,15 +20,18 @@ export interface DeviceOperationResult<T = any> {
  * - 当 options.realtime 为 true（登录、SignalR 握手成功/重连等显式全量刷新场景）时，
  *   额外逐设备拉取 /api/TelemetryData/{id}/realtime 回填最新实时值；轮询路径不传该参数，
  *   以免每 5 秒对全部设备发一轮 realtime 请求。
+ * - 当 options.silent 为 true（周期轮询兜底路径）时不写同步日志，避免约 720 条/小时的日志刷屏。
  */
-export const syncDevices = async (options?: { realtime?: boolean }) => {
+export const syncDevices = async (options?: { realtime?: boolean; silent?: boolean }) => {
   if (systemConfig.value.isSimulationActive) return;
 
   try {
     const { data } = await api.fetchDevicesFromBackend();
     const normalized = normalizeDevices(data, store.devices.value);
     store.setDevices(normalized);
-    addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
+    if (!options?.silent) {
+      addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
+    }
 
     if (options?.realtime) {
       await Promise.all((data ?? []).map(async (d: any) => {

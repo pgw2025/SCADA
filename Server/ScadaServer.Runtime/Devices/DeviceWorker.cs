@@ -96,7 +96,9 @@ namespace ScadaServer.Runtime.Devices
             // 主采集循环，直到收到取消信号
             while (!cancellationToken.IsCancellationRequested)
             {
-                var now = DateTime.Now;
+                // 项目时间戳约定：运行时统一使用 UTC（历史库 InfluxStore 会再做 ToUniversalTime，
+                // Kind=Utc 时为 no-op；跨时区部署 / 系统时区变更时不会产生偏移）。
+                var now = DateTime.UtcNow;
 
                 // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）
                 var due = new List<VariableRuntime>();
@@ -138,7 +140,8 @@ namespace ScadaServer.Runtime.Devices
                 var sw = Stopwatch.StartNew();
                 try
                 {
-                    var changed = new List<(string Key, object Value)>();
+                    // 待推送通知（值变化或质量跃迁）：携带质量与采集时间，由后台任务非阻塞推送。
+                    var notifications = new List<(string Key, object? Value, VariableQuality Quality, DateTime UpdateTime)>();
 
                     // 轮次级成功统计：本轮至少一个变量读取成功才视为通讯成功，
                     // 用于收尾时区分"部分成功=在线"与"全部失败=通讯故障"。
@@ -150,6 +153,7 @@ namespace ScadaServer.Runtime.Devices
                     // 驱动不再感知 ModelVariable 模板实体。
                     foreach (var vr in due)
                     {
+                        var previousQuality = vr.Quality;
                         try
                         {
                             var newValue = await _runtime.Driver.ReadAsync(vr);
@@ -159,6 +163,12 @@ namespace ScadaServer.Runtime.Devices
                             if (newValue == null)
                             {
                                 vr.Quality = VariableQuality.CommunicationError;
+                                // 质量降级（好→坏）推送一次：值保持最近一次有效值（僵尸值），
+                                // 前端据此在监控页标记"通讯异常"，而非无感知地继续展示旧值。
+                                if (previousQuality != VariableQuality.CommunicationError)
+                                {
+                                    notifications.Add((vr.Key, vr.Value, vr.Quality, now));
+                                }
                                 continue;
                             }
 
@@ -187,8 +197,6 @@ namespace ScadaServer.Runtime.Devices
 
                             if (vr.IsChanged && vr.Value != null)
                             {
-                                changed.Add((vr.Key, vr.Value));
-
                                 // 发布进程内变量变化事件（非阻塞），供绑定引擎等订阅者消费。
                                 _changeBus.Publish(new VariableChangeEvent
                                 {
@@ -200,6 +208,13 @@ namespace ScadaServer.Runtime.Devices
                                     UpdateTime = vr.UpdateTime,
                                     Source = VariableChangeSource.Polling
                                 });
+                            }
+
+                            // 值变化或质量跃迁（坏→好恢复）都推送：质量恢复时即使值未变，
+                            // 前端也需要清除"通讯异常"标记。
+                            if (vr.IsChanged || previousQuality != VariableQuality.Good)
+                            {
+                                notifications.Add((vr.Key, vr.Value, vr.Quality, vr.UpdateTime));
                             }
 
                             // 按变量存储策略记录历史采样点（异步入队，不阻塞采集）
@@ -218,6 +233,10 @@ namespace ScadaServer.Runtime.Devices
                         {
                             // 单个变量读取失败，标记通信错误但不中断其他变量
                             vr.Quality = VariableQuality.CommunicationError;
+                            if (previousQuality != VariableQuality.CommunicationError)
+                            {
+                                notifications.Add((vr.Key, vr.Value, vr.Quality, now));
+                            }
                             _logger.LogError(ex, "Read variable {VariableName} failed.", vr.Name);
                         }
                         finally
@@ -227,17 +246,12 @@ namespace ScadaServer.Runtime.Devices
                         }
                     }
 
-                    // 将发生变化的变量推送到 SignalR / MQTT
-                    foreach (var (key, value) in changed)
+                    // 推送本轮通知（SignalR / MQTT）到后台任务执行，不阻塞采集节奏：
+                    // 通知链路含 MQTT 发布（网络 IO 可能秒级），逐条 await 会挤占采集调度导致
+                    // NextPollTime 漂移。后台任务内保持顺序推送并逐条兜底异常。
+                    if (notifications.Count > 0)
                     {
-                        try
-                        {
-                            await _notificationService.NotifyVariableUpdateAsync(_runtime.Device.Id, key, value);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "通知变量 {Key} 更新失败。", key);
-                        }
+                        _ = PushNotificationsAsync(_runtime.Device.Id, notifications);
                     }
 
                     // 本轮采集结果（轮次级判定，due.Count > 0 时才会到达此处）：
@@ -247,7 +261,7 @@ namespace ScadaServer.Runtime.Devices
                     if (anySuccess)
                     {
                         _runtime.ConnectionState = DeviceConnectionState.Connected;
-                        _runtime.LastCommunicationTime = DateTime.Now;
+                        _runtime.LastCommunicationTime = DateTime.UtcNow;
                         _runtime.SuccessCount++;
                         _runtime.ConsecutiveFailureCount = 0;
                     }
@@ -276,19 +290,14 @@ namespace ScadaServer.Runtime.Devices
                 }
                 finally
                 {
-                    // 更新平均响应时间（基于成功次数的移动平均；尚未成功时直接取本轮耗时）。
-                    // 注：失败轮次耗时同样计入——反映真实通讯耗时，便于监控劣化趋势。
+                    // 更新平均响应时间：基于总轮次（成功 + 失败）的累积移动平均。
+                    // 修复旧公式缺陷——失败轮次走 SuccessCount>0 分支时 N 不增长，失败样本以
+                    // "替换"而非"累积"方式混入，数学上不成立且数值系统性漂移。
+                    // 失败轮次耗时同样计入，反映真实通讯耗时，便于监控劣化趋势。
                     sw.Stop();
-                    if (_runtime.SuccessCount > 0)
-                    {
-                        _runtime.AverageResponseTime =
-                            (_runtime.AverageResponseTime * (_runtime.SuccessCount - 1) + sw.Elapsed.TotalMilliseconds)
-                            / _runtime.SuccessCount;
-                    }
-                    else
-                    {
-                        _runtime.AverageResponseTime = sw.Elapsed.TotalMilliseconds;
-                    }
+                    _runtime.PollRoundCount++;
+                    _runtime.AverageResponseTime +=
+                        (sw.Elapsed.TotalMilliseconds - _runtime.AverageResponseTime) / _runtime.PollRoundCount;
                 }
 
                 // 节奏完全由变量级 NextPollTime 控制，此处不再使用设备级固定延迟。
@@ -297,6 +306,27 @@ namespace ScadaServer.Runtime.Devices
             // 循环结束，标记设备断开
             _runtime.ConnectionState = DeviceConnectionState.Disconnected;
             _logger.LogInformation("DeviceWorker {DeviceKey} stopped.", _runtime.Device.Key);
+        }
+
+        /// <summary>
+        /// 后台推送本轮变量通知（SignalR 分组 + MQTT），由采集循环 fire-and-forget 调用：
+        /// 保持轮内顺序、逐条兜底异常，任何单条失败不影响后续推送，也不阻塞采集节奏。
+        /// </summary>
+        private async Task PushNotificationsAsync(
+            int deviceId,
+            List<(string Key, object? Value, VariableQuality Quality, DateTime UpdateTime)> notifications)
+        {
+            foreach (var n in notifications)
+            {
+                try
+                {
+                    await _notificationService.NotifyVariableUpdateAsync(deviceId, n.Key, n.Value, n.Quality, n.UpdateTime);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "通知变量 {Key} 更新失败。", n.Key);
+                }
+            }
         }
 
         /// <summary>
@@ -464,6 +494,11 @@ namespace ScadaServer.Runtime.Devices
             }
 
             var rules = _alarmRuleEngine.GetRules(_runtime.Device.Id, vr.Key);
+
+            // 规则热更新/删除后清理残留状态：规则已移除的状态若不清，重新上架同 ID 规则时
+            // 旧状态 IsActive=true 会导致该规则永远不再触发（只有设备整体重载才重置）。
+            PruneStaleRuleStates(vr.Key, rules);
+
             if (rules.Count > 0)
             {
                 // 已配置规则：规则为权威，兜底不再参与，避免双报。
@@ -506,7 +541,7 @@ namespace ScadaServer.Runtime.Devices
                     // 防抖观察：首次命中记录起点，持续命中超过防抖窗口才正式报警。
                     if (state.DebouncePending)
                     {
-                        if ((DateTime.Now - state.TriggerTime) >= TimeSpan.FromSeconds(rule.DebounceSeconds))
+                        if ((DateTime.UtcNow - state.TriggerTime) >= TimeSpan.FromSeconds(rule.DebounceSeconds))
                         {
                             state.DebouncePending = false;
                             state.IsActive = true;
@@ -516,7 +551,7 @@ namespace ScadaServer.Runtime.Devices
                     else
                     {
                         state.DebouncePending = true;
-                        state.TriggerTime = DateTime.Now;
+                        state.TriggerTime = DateTime.UtcNow;
                     }
                 }
                 else
@@ -568,6 +603,45 @@ namespace ScadaServer.Runtime.Devices
         /// 构造规则报警状态键（保证同变量多规则状态互不干扰；兜底用 "$Key#"）。
         /// </summary>
         private static string BuildRuleStateKey(string variableKey, long ruleId) => variableKey + "#" + ruleId.ToString();
+
+        /// <summary>
+        /// 清理该变量下已不存在的规则残留状态（规则热更新周期 Reload 后规则可能被删除/换绑）。
+        /// 状态键格式为 <c>variableKey#ruleId</c>，按前缀匹配并校验 ruleId 是否仍在活跃规则集合内。
+        /// </summary>
+        private void PruneStaleRuleStates(string variableKey, IReadOnlyList<AlarmRuleSnapshot> rules)
+        {
+            if (_ruleStates.Count == 0)
+            {
+                return;
+            }
+
+            var prefix = variableKey + "#";
+            List<string>? staleKeys = null;
+            foreach (var pair in _ruleStates)
+            {
+                if (!pair.Key.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var separatorIndex = pair.Key.LastIndexOf('#');
+                var idPart = separatorIndex >= 0 ? pair.Key[(separatorIndex + 1)..] : string.Empty;
+                var isStale = !long.TryParse(idPart, out var ruleId)
+                              || rules.All(r => r.Id != ruleId);
+                if (isStale)
+                {
+                    (staleKeys ??= new List<string>()).Add(pair.Key);
+                }
+            }
+
+            if (staleKeys != null)
+            {
+                foreach (var key in staleKeys)
+                {
+                    _ruleStates.Remove(key);
+                }
+            }
+        }
 
         /// <summary>
         /// 将条件枚举映射为可读文本（用于默认报警文案）。
@@ -658,7 +732,7 @@ namespace ScadaServer.Runtime.Devices
                                     ? $"{vr.Name} {ConditionText(rule.Condition)} {rule.Threshold.ToString(CultureInfo.InvariantCulture)}"
                                     : $"{vr.Name} 越界报警"),
                     Source = rule != null ? AlarmSourceEnum.Rule : AlarmSourceEnum.MinMaxLimit,
-                    TriggeredAt = DateTime.Now
+                    TriggeredAt = DateTime.UtcNow
                 };
 
                 // 通知（SignalR）与落库均为异步安全路径：fire-and-forget 通知 + 非阻塞入队落库。
