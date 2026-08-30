@@ -9,24 +9,25 @@ import {
 } from 'lucide-vue-next';
 
 const emit = defineEmits<{
-  (e: 'addWidget', type: ComponentType, w: number, h: number, name: string): void;
+  (e: 'addWidget', type: ComponentType, w: number, h: number, name: string, extraProps?: Record<string, any>): void;
   (e: 'collapse'): void;
 }>();
 
-// 阶段5-4：HTML5 拖拽投放（拖拽时写入组件类型/尺寸/名称，由 CanvasPanel 计算落点）
+// 阶段5-4：HTML5 拖拽投放（拖拽时写入组件类型/尺寸/名称/默认属性，由 CanvasPanel 计算落点）
 const onDragStart = (e: DragEvent, widget: WidgetDef) => {
   const payload = JSON.stringify({
     type: widget.type,
     w: widget.defaultWidth,
     h: widget.defaultHeight,
     name: widget.name,
+    extraProps: widget.defaultProps(),
   });
   e.dataTransfer?.setData('application/x-scada-widget', payload);
   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
 };
 
 const searchTerm = ref('');
-const activeTab = ref<'all' | 'equipment' | 'sensors' | 'structures'>('all');
+const activeTab = ref<'all' | 'equipment' | 'sensors' | 'structures' | 'headers'>('all');
 
 // 阶段5-5：列表来自注册表，分类按注册项 category 过滤（不再硬编码类型数组）
 const filteredWidgets = computed(() => {
@@ -99,6 +100,14 @@ const filteredWidgets = computed(() => {
       ]">
         结构
       </button>
+      <button @click="activeTab = 'headers'" :class="[
+        'flex-1 py-2 font-medium transition-all cursor-pointer',
+        activeTab === 'headers'
+          ? 'text-[#1890ff] dark:text-sky-400 border-b-2 border-[#1890ff] dark:border-sky-400 bg-white dark:bg-slate-900 font-bold'
+          : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-slate-800/40'
+      ]">
+        标题背景
+      </button>
     </div>
 
     <!-- Grid List -->
@@ -106,9 +115,9 @@ const filteredWidgets = computed(() => {
       <div v-if="filteredWidgets.length === 0" class="text-center py-6 text-gray-400 dark:text-slate-500 text-xs">
         未找到相关组态器件
       </div>
-      <div v-else v-for="widget in filteredWidgets" :key="widget.type" draggable="true"
+      <div v-else v-for="widget in filteredWidgets" :key="widget.name" draggable="true"
         @dragstart="onDragStart($event, widget)"
-        @click="emit('addWidget', widget.type, widget.defaultWidth, widget.defaultHeight, widget.name)"
+        @click="emit('addWidget', widget.type, widget.defaultWidth, widget.defaultHeight, widget.name, widget.defaultProps())"
         class="group flex gap-3 p-2.5 bg-[#fafafa] dark:bg-slate-950/60 hover:bg-white dark:hover:bg-slate-800 border border-[#f0f0f0] dark:border-slate-800 hover:border-[#1890ff] dark:hover:border-sky-500 hover:shadow-sm rounded cursor-grab active:cursor-grabbing transition-all duration-200">
         <div
           class="w-10 h-10 rounded bg-white dark:bg-slate-900 border border-[#f0f0f0] dark:border-slate-800 flex items-center justify-center group-hover:scale-105 transition-all shadow-sm">

@@ -720,8 +720,8 @@ onUnmounted(() => {
           <span class="text-[10px] font-mono font-bold w-12 text-center text-gray-600">
             {{ Math.round(zoom * 100) }}%
           </span>
-          <button @click="zoomIn"
-            class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer" title="放大">
+          <button @click="zoomIn" class="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-800 cursor-pointer"
+            title="放大">
             <Maximize class="w-3.5 h-3.5" />
           </button>
         </div>
@@ -836,8 +836,7 @@ onUnmounted(() => {
         width: canvasWidth * zoom + 'px',
         height: canvasHeight * zoomY + 'px'
       }">
-        <div ref="canvasRef"
-          class="border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
+        <div ref="canvasRef" class="border border-[#d9d9d9] rounded shadow-lg relative transition-shadow duration-150"
           @dragover.prevent @drop="onDrop" :style="{
             width: canvasWidth + 'px',
             height: canvasHeight + 'px',
@@ -873,10 +872,8 @@ onUnmounted(() => {
             }" />
 
           <!-- Render individual canvas components -->
-          <div v-for="component in components" :key="component.id"
-            v-show="isComponentVisible(component)"
-            @mousedown="handleDragStart($event, component)"
-            @click.stop :class="[
+          <div v-for="component in components" :key="component.id" v-show="isComponentVisible(component)"
+            @mousedown="handleDragStart($event, component)" @click.stop :class="[
               'absolute rounded transition-shadow',
               isActiveMode
                 ? 'cursor-pointer hover:brightness-105'
@@ -887,14 +884,14 @@ onUnmounted(() => {
                   : (isComponentLocked(component) ? 'ring-1 ring-rose-400/60 z-40' : 'ring-1 ring-[#1890ff]/60 z-40')
                 : ''
             ]" :style="{
-            left: `${component.x}px`,
-            top: `${component.y}px`,
-            width: `${component.width}px`,
-            height: `${component.height}px`,
-            zIndex: component.zIndex || 1,
-            opacity: getComponentOpacity(component),
-            '--tw-ring-color': isComponentLocked(component) ? '#f43f5e' : '#1890ff'
-          }">
+              left: `${component.x}px`,
+              top: `${component.y}px`,
+              width: `${component.width}px`,
+              height: `${component.height}px`,
+              zIndex: component.zIndex || 1,
+              opacity: getComponentOpacity(component),
+              '--tw-ring-color': isComponentLocked(component) ? '#f43f5e' : '#1890ff'
+            }">
             <!-- Visual rendering logic box -->
             <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
               :history="trendHistory[component.id]"
@@ -923,7 +920,8 @@ onUnmounted(() => {
             </div>
 
             <!-- Edit overlay elements like resize pointers (仅对未锁定组件展示) -->
-            <template v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1 && !isComponentLocked(component)">
+            <template
+              v-if="component.id === selectedId && !isActiveMode && selectedIds.length === 1 && !isComponentLocked(component)">
               <!-- NW Handle -->
               <div
                 class="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nwse-resize z-50 shadow"
