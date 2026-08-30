@@ -21,6 +21,10 @@ export const validateSystemScript = (dto: SystemScript) =>
 /** 手动执行脚本（服务端沙箱执行，返回执行结果含 log 输出）。 */
 export const runSystemScript = (id: number) => http.post(`${base()}/${id}/run`);
 
+/** 组态运行端触发脚本（HMI 按钮点击）：Operator/Admin 权限，与变量写入口径一致。 */
+export const runScriptRuntime = (id: number) =>
+  http.post(`${systemConfig.value.backendApiUrl}/api/ScriptRuntime/${id}/run`);
+
 /** 试运行（dry-run）：不写真实变量、不落库、不更新熔断态。 */
 export const testSystemScript = (dto: SystemScript, deviceKey?: string | null, variableKey?: string | null) =>
   http.post(`${base()}/test`, { script: dto, deviceKey, variableKey });

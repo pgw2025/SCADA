@@ -278,7 +278,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     icon: Sparkles,
     iconKind: 'lucide',
     iconColor: 'text-emerald-500',
-    description: '可绑定变量的高级圆角控制按钮，支持自定义多状态颜色/文本，提供取反、置位、按1送0、复位多种控制模式。',
+    description: '可绑定变量的高级圆角控制按钮：背景/操作变量可分离绑定，支持取反/置位/复位/按1送0/设值/画面跳转/执行脚本，内置启动/停止/复位/点动/急停 5 种预设风格。',
     category: 'structures',
     defaultProps: () => ({
       ...baseProps('rounded-btn'),
@@ -295,6 +295,11 @@ export const widgetRegistry: Record<string, WidgetDef> = {
       state1TextColor: '#ffffff',
       customStates: '0:停止:#334155:#94a3b8;1:运行:#0284c7:#ffffff;2:报警:#dc2626:#ffffff',
       targetPageId: null,
+      targetScriptId: null,
+      showModeBadge: true,
+      opDeviceId: null,
+      opVariableKey: null,
+      presetStyle: '',
     }),
   },
   switch: {

@@ -904,12 +904,14 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
           {{ roundedBtnState.text }}
         </span>
 
-        <!-- Mode badge / hint -->
-        <span class="text-[8px] opacity-75 font-sans pointer-events-none mt-0.5 select-none z-10">
+        <!-- Mode badge / hint（可配置隐藏：props.showModeBadge === false 时不渲染） -->
+        <span v-if="component.props.showModeBadge !== false"
+          class="text-[8px] opacity-75 font-sans pointer-events-none mt-0.5 select-none z-10">
           {{ component.props.buttonMode === 'momentary' ? '[按1送0]' : component.props.buttonMode === 'set-bit' ? '[置位1]'
             :
             component.props.buttonMode === 'reset-bit' ? '[复位0]' : component.props.buttonMode === 'set-value' ?
-              `[设值:${component.props.clickValue ?? 0}]` : component.props.buttonMode === 'navigate' ? '[跳转]' : '[取反]' }}
+              `[设值:${component.props.clickValue ?? 0}]` : component.props.buttonMode === 'navigate' ? '[跳转]' :
+              component.props.buttonMode === 'run-script' ? '[脚本]' : '[取反]' }}
         </span>
       </div>
     </div>

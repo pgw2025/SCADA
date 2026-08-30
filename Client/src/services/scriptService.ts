@@ -6,6 +6,7 @@ import {
   deleteSystemScript,
   validateSystemScript,
   runSystemScript,
+  runScriptRuntime,
   testSystemScript,
   resetSystemScriptTripped,
   fetchSystemScriptRecords
@@ -51,6 +52,12 @@ export const validateScript = (dto: SystemScript): Promise<ScriptValidationResul
 /** 手动执行脚本（服务端沙箱）。返回后端 ScriptEngineResult。 */
 export const runScript = async (id: number): Promise<any> => {
   const { data } = await runSystemScript(id);
+  return data;
+};
+
+/** 组态按钮运行态触发脚本（走 /api/ScriptRuntime，Operator/Admin 可用）。 */
+export const triggerRuntimeScript = async (id: number): Promise<any> => {
+  const { data } = await runScriptRuntime(id);
   return data;
 };
 

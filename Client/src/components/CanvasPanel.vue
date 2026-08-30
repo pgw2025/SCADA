@@ -49,6 +49,7 @@ const emit = defineEmits<{
   (e: 'updateCanvasSize', w: number, h: number): void;
   (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>): void;
   (e: 'navigateToPage', pageId: string): void;
+  (e: 'triggerRunScript', scriptId: number): void;
   (e: 'selectBackground'): void;
 }>();
 
@@ -208,11 +209,26 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
     // 阶段6-2：非授权角色（非 Operator/Admin）在运行模式禁止下发写指令，
     // 控件仅作只读展示；后端 [Authorize(Roles)] 仍兜底返回 403。
     if (props.canControlWrite === false) return;
+
+    // 执行脚本模式——点击触发服务端系统脚本（/api/ScriptRuntime，Operator/Admin 可用）
+    if ((component.type === 'button' || component.type === 'rounded-btn') && component.props.buttonMode === 'run-script') {
+      const scriptId = Number(component.props.targetScriptId);
+      if (scriptId) emit('triggerRunScript', scriptId);
+      return;
+    }
+
     // 仅控制类器件可写：显式按钮/圆角按钮/开关/阀。其余（tank/pipe/led/图表等）为纯展示，
     // 点击不产生副作用，避免运行态误向 PLC 写值。
-    if (isControlWidget(component.type) && (component.bindVariableKey || component.bindField)) {
-      const devId = component.bindDeviceId ?? null;
-      const varKey = component.bindVariableKey ?? component.bindField ?? '';
+    // 圆角按钮支持「背景显示变量」与「操作写入变量」分离：配置了 op* 绑定时优先生效。
+    const hasOpBinding = component.type === 'rounded-btn'
+      && (component.props.opDeviceId != null || !!component.props.opVariableKey);
+    if (isControlWidget(component.type) && (component.bindVariableKey || component.bindField || component.props.opVariableKey)) {
+      const devId = hasOpBinding
+        ? (component.props.opDeviceId ?? component.bindDeviceId ?? null)
+        : (component.bindDeviceId ?? null);
+      const varKey = hasOpBinding
+        ? (component.props.opVariableKey || component.bindVariableKey || component.bindField || '')
+        : (component.bindVariableKey ?? component.bindField ?? '');
       const legacy = component.bindField;
       if (component.type === 'button' || component.type === 'rounded-btn') {
         const mode = component.props.buttonMode || 'toggle';

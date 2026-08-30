@@ -65,10 +65,15 @@ export interface HMIComponent {
     bold?: boolean;
 
     // 按钮/开关专属属性
-    buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'set-bit' | 'reset-bit' | 'navigate'; // 按钮操作模式（toggle=取反, momentary=按1送0/点动, set-bit=置位1, reset-bit=复位0, set-value=设值, navigate=跳转）
+    buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'set-bit' | 'reset-bit' | 'navigate' | 'run-script'; // 按钮操作模式（toggle=取反, momentary=按1送0/点动, set-bit=置位1, reset-bit=复位0, set-value=设值, navigate=跳转, run-script=执行系统脚本）
     clickValue?: number; // 设值模式下点击写入的具体数值
     buttonText?: string; // 按钮上静态/动态显示的文本
     targetPageId?: string | null; // 导航模式下跳转目标画面 id（仅限同端）
+    targetScriptId?: number | null; // run-script 模式下点击触发执行的系统脚本 id
+    showModeBadge?: boolean; // 是否显示模式角标文字（[取反]/[置位1]/[复位0]/[按1送0]/[设值:x]/[跳转]/[脚本]），默认 true
+    opDeviceId?: number | null; // 操作变量绑定设备（写入目标；null=沿用主绑定 bindDeviceId）
+    opVariableKey?: string | null; // 操作变量键（写入目标；空=沿用主绑定 bindVariableKey）
+    presetStyle?: string; // 圆角按钮预设风格标记（start/stop/reset/jog/estop，仅用于回显当前预设）
 
     // 圆角按钮/自定义状态专属属性
     borderRadius?: number; // 圆角弧度（px，如 4/8/12/20/999）

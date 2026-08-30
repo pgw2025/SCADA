@@ -50,6 +50,7 @@ import { getDeviceVariableValue, setDeviceVariableValue } from '../services/data
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
+import { triggerRuntimeScript } from '../services/scriptService';
 import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, HMILayer } from '../types';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
@@ -304,6 +305,8 @@ const boundDeviceIds = computed(() => {
   const ids = new Set<number>();
   currentPageSafe.value.components.forEach((c: any) => {
     if (c.bindDeviceId != null) ids.add(Number(c.bindDeviceId));
+    // 圆角按钮「操作变量」独立绑定的设备也纳入订阅：取反模式需读取操作变量当前值
+    if (c.type === 'rounded-btn' && c.props?.opDeviceId != null) ids.add(Number(c.props.opDeviceId));
   });
   return ids;
 });
@@ -622,6 +625,18 @@ const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, 
     }
   }
   setDeviceVariableValue(deviceId, key, targetVal);
+};
+
+// 圆角按钮 run-script 模式：点击触发服务端系统脚本（/api/ScriptRuntime，Operator/Admin）
+const handleTriggerRunScript = async (scriptId: number) => {
+  if (!scriptId) return;
+  try {
+    await triggerRuntimeScript(scriptId);
+    showToast(`脚本 #${scriptId} 已触发执行`, 'success');
+    addLog('组态拓扑', `按钮触发脚本 #${scriptId} 执行`, 'normal');
+  } catch {
+    // 失败提示由 http 拦截器统一弹出（403/404/脚本熔断等）
+  }
 };
 
 // Create new SCADA project screen
@@ -1350,7 +1365,7 @@ const handleExportPage = async (page: ScadaPage) => {
                     @delete-components="handleDeleteComponents" @duplicate-components="handleDuplicateComponents"
                     @clearCanvas="handleClearCanvas" @update-canvas-size="handleUpdateCanvasSize"
                     @add-component-at="handleAddWidgetAt" @navigate-to-page="handleNavigate"
-                    @select-background="handleSelectBackground" />
+                    @trigger-run-script="handleTriggerRunScript" @select-background="handleSelectBackground" />
                 </div>
               </div>
               <CanvasPanel v-else :components="currentPage.components" :selectedId="selectedId"
@@ -1362,7 +1377,8 @@ const handleExportPage = async (page: ScadaPage) => {
                 @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
                 @duplicate-components="handleDuplicateComponents" @clearCanvas="handleClearCanvas"
                 @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
-                @navigate-to-page="handleNavigate" @select-background="handleSelectBackground" />
+                @navigate-to-page="handleNavigate" @trigger-run-script="handleTriggerRunScript"
+                @select-background="handleSelectBackground" />
             </div>
           </div>
         </div>
