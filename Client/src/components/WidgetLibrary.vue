@@ -9,7 +9,8 @@ import {
 } from 'lucide-vue-next';
 
 const emit = defineEmits<{
-  (e: 'addWidget', type: ComponentType, w: number, h: number, name: string, extraProps?: Record<string, any>): void;
+  // 签名与 ScadaTopologyView.handleAddWidget 对齐：点击落布无 x/y（传 undefined 取默认 40/60），extraProps 居第 7 位
+  (e: 'addWidget', type: ComponentType, w: number, h: number, name: string, x?: number, y?: number, extraProps?: Record<string, any>): void;
   (e: 'collapse'): void;
 }>();
 

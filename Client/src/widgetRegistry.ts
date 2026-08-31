@@ -1,4 +1,4 @@
-import { ComponentType } from './types';
+import { ComponentType, HmiMenuItem } from './types';
 import {
   Activity,
   Cpu,
@@ -18,6 +18,25 @@ import {
   Image as ImageIcon,
   Monitor,
   Smartphone,
+  PanelTop,
+  // nav-menu 内置图标集（Inspector 选择器与 HMIWidget 渲染共用此映射）
+  Home,
+  Factory,
+  Bell,
+  LineChart,
+  Settings,
+  Database,
+  Zap,
+  Wrench,
+  ShieldAlert,
+  FileText,
+  Users,
+  Camera,
+  Server,
+  Boxes,
+  GaugeCircle,
+  Route,
+  ClipboardList,
 } from 'lucide-vue-next';
 
 /**
@@ -377,7 +396,78 @@ export const widgetRegistry: Record<string, WidgetDef> = {
       bold: true,
     }),
   },
+  'nav-menu-desktop': {
+    type: 'nav-menu',
+    name: '桌面端·顶部导航条',
+    defaultWidth: 960,
+    defaultHeight: 56,
+    icon: PanelTop,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-400',
+    description: '桌面端横向导航菜单条：图标+文字+同端画面跳转，3~5 项，运行态自动高亮当前画面。',
+    category: 'headers',
+    defaultProps: () => ({
+      menuDevice: 'desktop' as const,
+      menuItems: [
+        { icon: 'home', text: '总览', targetPageId: null },
+        { icon: 'factory', text: '工艺监控', targetPageId: null },
+        { icon: 'bell', text: '报警中心', targetPageId: null },
+      ] as HmiMenuItem[],
+      menuAccentColor: '#38bdf8',
+      menuFontSize: 14,
+    }),
+  },
+  'nav-menu-mobile': {
+    type: 'nav-menu',
+    name: '移动端·底部标签栏',
+    defaultWidth: 375,
+    defaultHeight: 64,
+    icon: Smartphone,
+    iconKind: 'lucide',
+    iconColor: 'text-emerald-400',
+    description: '移动端底部 Tab 导航栏：图标+文字+同端画面跳转，3~5 项，运行态自动高亮当前画面。',
+    category: 'headers',
+    defaultProps: () => ({
+      menuDevice: 'mobile' as const,
+      menuItems: [
+        { icon: 'home', text: '首页', targetPageId: null },
+        { icon: 'line-chart', text: '趋势', targetPageId: null },
+        { icon: 'bell', text: '报警', targetPageId: null },
+      ] as HmiMenuItem[],
+      menuAccentColor: '#38bdf8',
+      menuFontSize: 12,
+    }),
+  },
 };
+
+/**
+ * nav-menu 内置图标集：Inspector 图标选择网格与 HMIWidget 渲染共用的单一映射。
+ * name 即存库值（props.menuItems[].icon），新增图标只需在此追加。
+ */
+export const MENU_ICON_OPTIONS: { name: string; label: string; icon: any }[] = [
+  { name: 'home', label: '首页', icon: Home },
+  { name: 'factory', label: '工厂', icon: Factory },
+  { name: 'bell', label: '报警', icon: Bell },
+  { name: 'line-chart', label: '趋势', icon: LineChart },
+  { name: 'settings', label: '设置', icon: Settings },
+  { name: 'database', label: '数据', icon: Database },
+  { name: 'zap', label: '电力', icon: Zap },
+  { name: 'wrench', label: '运维', icon: Wrench },
+  { name: 'shield-alert', label: '安全', icon: ShieldAlert },
+  { name: 'file-text', label: '报表', icon: FileText },
+  { name: 'users', label: '用户', icon: Users },
+  { name: 'camera', label: '摄像', icon: Camera },
+  { name: 'server', label: '服务器', icon: Server },
+  { name: 'boxes', label: '库存', icon: Boxes },
+  { name: 'gauge-circle', label: '仪表', icon: GaugeCircle },
+  { name: 'route', label: '工艺路线', icon: Route },
+  { name: 'clipboard-list', label: '工单', icon: ClipboardList },
+  { name: 'activity', label: '实时曲线', icon: Activity },
+];
+
+/** 按存库名取图标组件；未命中回退 Home（渲染兜底） */
+export const getMenuIcon = (name: string): any =>
+  MENU_ICON_OPTIONS.find((o) => o.name === name)?.icon ?? Home;
 
 // 保持注册表声明顺序的列表（图库渲染用）
 export const widgetList: WidgetDef[] = Object.values(widgetRegistry);

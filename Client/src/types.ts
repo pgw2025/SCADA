@@ -18,7 +18,18 @@ export type ComponentType =
   | 'rounded-btn'  // 工业圆角按钮：支持变量绑定、自定义多状态背景/文字、取反/置位/复位/按1送0
   | 'motor'        // 变频伺服电机 (带重载散热肋片、金属主轴与极速冷却风叶)
   | 'title-header' // 工业大屏与移动端高精度矢量标题背景栏 (3套风格 x 桌面/手机)
+  | 'nav-menu'     // 组态导航菜单：桌面顶部横向导航条 / 移动底部 Tab 栏（图标+文字+页面跳转）
   | 'image';       // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
+
+/** 导航菜单项（存于 HMIComponent.props.menuItems，随 PropsJson 落库） */
+export interface HmiMenuItem {
+  /** lucide 图标名（MENU_ICON_OPTIONS 内置集合中的 name） */
+  icon: string;
+  /** 显示文字 */
+  text: string;
+  /** 跳转目标页面 id（同端；null=未配置） */
+  targetPageId: string | null;
+}
 
 export interface HMILayer {
   id: string;
@@ -176,6 +187,11 @@ export interface HMIComponent {
 
     // 组件事件配置（事件属性面板；运行态优先于 buttonMode 旧逻辑）
     events?: HmiEventConfig[];
+    // ===== nav-menu 导航菜单专属 props =====
+    menuDevice?: 'desktop' | 'mobile';
+    menuItems?: HmiMenuItem[];
+    menuAccentColor?: string;
+    menuFontSize?: number;
   };
 }
 

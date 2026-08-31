@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { HMIComponent } from '../types';
-import { getWidgetDef } from '../widgetRegistry';
+import { HMIComponent, HmiMenuItem } from '../types';
+import { getWidgetDef, getMenuIcon } from '../widgetRegistry';
 // 全局共享动画时钟：单实例 rAF 驱动所有动画器件，避免每组件独立 rAF（见 #13）
 import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
 
@@ -12,6 +12,8 @@ const props = defineProps<{
   controlLocked?: boolean;
   /** 趋势图真实数据窗口（父级维护的滚动缓冲，无则显示占位） */
   history?: number[];
+  /** 当前页面 id：nav-menu 运行态据此高亮“当前画面”对应的菜单项 */
+  currentPageId?: string;
 }>();
 
 // 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件。
@@ -141,6 +143,22 @@ const headerTheme = computed(() => {
     subText: '#7fb7e0',
   };
 });
+
+// ===== 导航菜单图元（nav-menu）：桌面顶部横条 / 移动底部 Tab 栏 =====
+// 数据全部来自 props.menuItems（Inspector 编辑，PropsJson 落库），此处仅渲染。
+// 跳转不在本组件处理：菜单项带 data-nav-page 标记，由 CanvasPanel 统一分发 navigateToPage。
+const menuDevice = computed<'desktop' | 'mobile'>(() =>
+  (propOr('menuDevice', 'desktop') as 'desktop' | 'mobile'));
+const menuItems = computed<HmiMenuItem[]>(() => {
+  const raw = props.component.props.menuItems;
+  return Array.isArray(raw) && raw.length
+    ? (raw as HmiMenuItem[])
+    : (getWidgetDef('nav-menu')?.defaultProps().menuItems as HmiMenuItem[]);
+});
+const menuAccentColor = computed(() => propOr('menuAccentColor', '#38bdf8'));
+const menuFontSize = computed(() => Number(propOr('menuFontSize', 14)));
+const isCurrentMenuItem = (item: HmiMenuItem) =>
+  !!item.targetPageId && item.targetPageId === props.currentPageId;
 
 // 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
 const onText = computed(() => props.component.props.onText || '开启');
@@ -1223,6 +1241,56 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
           :style="{ fontSize: `${Math.max(10, fontSize - 2)}px`, color: headerTheme.accent }">{{ timeString }}</span>
         <span v-if="headerShowStatus" class="shrink-0 w-2 h-2 rounded-full animate-pulse"
           :style="{ background: headerTheme.accent }" :title="headerStatusText" />
+      </div>
+    </div>
+
+    <!-- 22. 导航菜单图元（nav-menu）：桌面顶部横条 / 移动底部 Tab 栏 -->
+    <div v-else-if="component.type === 'nav-menu'"
+      class="relative w-full h-full overflow-hidden select-none flex items-stretch"
+      :style="{ background: 'linear-gradient(180deg, #0c2a4d 0%, #082244 60%, #061a34 100%)' }">
+      <!-- 顶部流光刻线（与标题栏呼应） -->
+      <div class="absolute inset-x-0 top-0 h-[2px]" :style="{ background: menuAccentColor, opacity: 0.55 }" />
+
+      <!-- 桌面端：横向均分导航项（图标+文字水平排列，当前项底部高亮条） -->
+      <div v-if="menuDevice === 'desktop'" class="relative z-10 flex w-full h-full">
+        <div v-for="item in menuItems" :key="item.text + item.targetPageId"
+          class="relative flex-1 flex items-center justify-center gap-2 h-full transition-colors duration-200"
+          :class="isActiveMode && item.targetPageId ? 'cursor-pointer hover:bg-white/5' : ''"
+          :data-nav-page="item.targetPageId || undefined" :style="{
+            color: isCurrentMenuItem(item) ? menuAccentColor : '#9fb6cc',
+          }">
+          <component :is="getMenuIcon(item.icon)" class="w-4 h-4 shrink-0"
+            :style="{ color: isCurrentMenuItem(item) ? menuAccentColor : '#7f9cb5' }" />
+          <span class="truncate font-medium tracking-wide"
+            :style="{ fontSize: `${menuFontSize}px`, textShadow: isCurrentMenuItem(item) ? `0 0 8px ${menuAccentColor}` : 'none' }">
+            {{ item.text }}
+          </span>
+          <!-- 当前项底部高亮条 -->
+          <div v-if="isCurrentMenuItem(item)" class="absolute bottom-0 left-0 right-0 h-[3px]"
+            :style="{ background: menuAccentColor, boxShadow: `0 0 10px ${menuAccentColor}` }" />
+        </div>
+      </div>
+
+      <!-- 移动端：底部 Tab 栏（图标在上文字在下，当前项整体提亮） -->
+      <div v-else class="relative z-10 flex w-full h-full">
+        <div v-for="item in menuItems" :key="item.text + item.targetPageId"
+          class="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-0 transition-colors duration-200"
+          :class="isActiveMode && item.targetPageId ? 'cursor-pointer active:bg-white/10' : ''"
+          :data-nav-page="item.targetPageId || undefined" :style="{
+            color: isCurrentMenuItem(item) ? menuAccentColor : '#8aa3bd',
+          }">
+          <component :is="getMenuIcon(item.icon)" class="w-[18px] h-[18px] shrink-0" :style="{
+            color: isCurrentMenuItem(item) ? menuAccentColor : '#7f9cb5',
+            filter: isCurrentMenuItem(item) ? `drop-shadow(0 0 6px ${menuAccentColor})` : 'none',
+          }" />
+          <span class="truncate max-w-full px-0.5 leading-none"
+            :style="{ fontSize: `${menuFontSize}px`, fontWeight: isCurrentMenuItem(item) ? '600' : '400' }">
+            {{ item.text }}
+          </span>
+          <!-- 当前项顶部高亮条 -->
+          <div v-if="isCurrentMenuItem(item)" class="absolute top-0 left-0 right-0 h-[3px]"
+            :style="{ background: menuAccentColor, boxShadow: `0 0 10px ${menuAccentColor}` }" />
+        </div>
       </div>
     </div>
 

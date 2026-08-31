@@ -35,6 +35,8 @@ const props = defineProps<{
   adaptMode?: PageAdaptMode | null;
   /** 页面图层列表 */
   layers?: HMILayer[];
+  /** 当前页面 id：nav-menu 运行态高亮“当前画面”菜单项 */
+  currentPageId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -221,6 +223,14 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
       };
       window.addEventListener('mouseup', onRelease);
       window.addEventListener('touchend', onRelease);
+      return;
+    }
+
+    // nav-menu：按点击的菜单项跳转（目标页 id 由 HMIWidget 以 data-nav-page 标记上送）
+    if (component.type === 'nav-menu') {
+      const navEl = (e.target as HTMLElement).closest('[data-nav-page]');
+      const target = navEl?.getAttribute('data-nav-page');
+      if (target) emit('navigateToPage', target);
       return;
     }
 
@@ -939,7 +949,7 @@ onUnmounted(() => {
             }">
             <!-- Visual rendering logic box -->
             <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
-              :history="trendHistory[component.id]"
+              :history="trendHistory[component.id]" :currentPageId="props.currentPageId"
               :control-locked="props.isActiveMode && props.canControlWrite === false" />
 
             <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->
