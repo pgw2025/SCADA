@@ -52,6 +52,8 @@ const emit = defineEmits<{
   (e: 'addComponentAt', type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>): void;
   (e: 'navigateToPage', pageId: string): void;
   (e: 'triggerRunScript', scriptId: number): void;
+  /** var-display 设值请求：运行态点击可设定的数值显示组件，上抛组件由父级弹数字键盘写值 */
+  (e: 'requestSetValue', component: HMIComponent): void;
   /** 事件系统：运行态组件事件触发（press 立即；click/release 在松开时），由父级分发执行 */
   (e: 'componentEvent', component: HMIComponent, eventType: string): void;
   (e: 'selectBackground'): void;
@@ -244,6 +246,14 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
     // 阶段6-2：非授权角色（非 Operator/Admin）在运行模式禁止下发写指令，
     // 控件仅作只读展示；后端 [Authorize(Roles)] 仍兜底返回 403。
     if (props.canControlWrite === false) return;
+
+    // var-display：可设定的数值显示组件——点击不直接写值，上抛组件由父级弹数字键盘，
+    // 范围/小数位/只读校验在弹窗与父级写管道（handleTriggerToggleValue）中完成。
+    if (component.type === 'var-display' && component.props.settable === true
+      && (component.bindVariableKey || component.bindField)) {
+      emit('requestSetValue', component);
+      return;
+    }
 
     // 执行脚本模式——点击触发服务端系统脚本（/api/ScriptRuntime，Operator/Admin 可用）
     if ((component.type === 'button' || component.type === 'rounded-btn') && component.props.buttonMode === 'run-script') {
@@ -950,6 +960,7 @@ onUnmounted(() => {
             <!-- Visual rendering logic box -->
             <HMIWidget :component="component" :value="componentValues[component.id] ?? 0" :isActiveMode="isActiveMode"
               :history="trendHistory[component.id]" :currentPageId="props.currentPageId"
+              :quality="componentQualities?.[component.id]"
               :control-locked="props.isActiveMode && props.canControlWrite === false" />
 
             <!-- 阶段2-2：质量分级显示——绑定变量质量非 Good 时叠加角标，提示数据不可信 -->

@@ -15,6 +15,7 @@ export type ComponentType =
   | 'button'       // 按钮控制：支持自锁(Toggle)或点动(Momentary)或设值(SetValue)
   | 'switch'       // 开关拨码
   | 'sys-time'     // 工业实时系统时间时钟
+  | 'var-display'  // 数据变量显示：大字号数值显示（可配小数位），可选「可设定」点击弹窗写值
   | 'rounded-btn'  // 工业圆角按钮：支持变量绑定、自定义多状态背景/文字、取反/置位/复位/按1送0
   | 'motor'        // 变频伺服电机 (带重载散热肋片、金属主轴与极速冷却风叶)
   | 'title-header' // 工业大屏与移动端高精度矢量标题背景栏 (3套风格 x 桌面/手机)
@@ -169,6 +170,13 @@ export interface HMIComponent {
 
     // 系统时间控件格式
     timeFormat?: 'HH:mm:ss' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD';
+
+    // 数据变量显示（var-display）专属属性
+    decimals?: number;        // 显示/写入小数位数（0~4），写入前按位数四舍五入
+    settable?: boolean;       // 是否可设定：运行态点击弹出数字键盘写入（需绑定变量且有写权限）
+    writeMin?: number | null; // 写入范围下限（null/undefined=不限制）
+    writeMax?: number | null; // 写入范围上限（null/undefined=不限制）
+    confirmRequired?: boolean; // 确认写入前是否二次确认（高危变量防误写）
 
     // 大屏标题背景图元专属属性（type === 'title-header'）
     headerStyle?: 'tech-blue' | 'eco-green' | 'carbon-orange'; // 3套风格：科技蓝 / 生态绿 / 机能碳纤橙

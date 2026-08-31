@@ -22,6 +22,7 @@ import { refreshActiveAlarms } from '../store/alarmStore';
 import { HMIComponent, HmiEventType } from '../types';
 import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
+import SetValueDialog from './SetValueDialog.vue';
 
 const route = useRoute();
 
@@ -223,6 +224,41 @@ const handleTriggerToggleValue = (
   setDeviceVariableValue(deviceId, key, targetVal);
 };
 
+// ===== var-display 设值弹窗 =====
+// 点击可设定的数值显示组件 → 记录目标组件弹数字键盘；确认后走既有 setValue 写管道（含只读/权限拦截）。
+// 写入冷却 1.2s：防触摸屏抖动/连点重复下发。
+const setValueTarget = ref<HMIComponent | null>(null);
+const setValueCurrentValue = computed<number | boolean | undefined>(() => {
+  const c = setValueTarget.value;
+  if (!c || c.bindDeviceId == null || !c.bindVariableKey) return undefined;
+  return getDeviceVariableValue(c.bindDeviceId, c.bindVariableKey);
+});
+let lastSetValueAt = 0;
+const SET_VALUE_COOLDOWN_MS = 1200;
+
+const handleRequestSetValue = (component: HMIComponent) => {
+  if (component.bindDeviceId == null || !(component.bindVariableKey || component.bindField)) {
+    showToast('该组件未绑定设备/变量，无法设定', 'warning');
+    return;
+  }
+  setValueTarget.value = component;
+};
+
+const handleSetValueConfirm = (value: number | boolean) => {
+  const c = setValueTarget.value;
+  if (!c) return;
+  const now = Date.now();
+  if (now - lastSetValueAt < SET_VALUE_COOLDOWN_MS) {
+    showToast('写入冷却中，请稍候', 'warning');
+    return;
+  }
+  lastSetValueAt = now;
+  const varKey = c.bindVariableKey || c.bindField || '';
+  setValueTarget.value = null;
+  addLog('组态运行', `设值弹窗写入: 设备${c.bindDeviceId}.${varKey} → ${typeof value === 'boolean' ? (value ? '开' : '关') : value}`, 'normal');
+  handleTriggerToggleValue(c.bindDeviceId ?? null, varKey, c.bindField, 'setValue', value);
+};
+
 // 圆角按钮 run-script 模式：点击触发服务端系统脚本（/api/ScriptRuntime，Operator/Admin）
 const handleTriggerRunScript = async (scriptId: number) => {
   if (!scriptId) return;
@@ -302,7 +338,12 @@ onMounted(() => {
         :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
         :layers="currentPage.layers" :current-page-id="currentPage.id"
         @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate"
-        @triggerRunScript="handleTriggerRunScript" @component-event="handleComponentEvent" />
+        @triggerRunScript="handleTriggerRunScript" @component-event="handleComponentEvent"
+        @request-set-value="handleRequestSetValue" />
     </div>
+
+    <!-- var-display 设值弹窗：确认后走 handleTriggerToggleValue('setValue') 写管道 -->
+    <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
+      @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
   </div>
 </template>

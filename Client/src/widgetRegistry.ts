@@ -37,6 +37,7 @@ import {
   GaugeCircle,
   Route,
   ClipboardList,
+  Hash,
 } from 'lucide-vue-next';
 
 /**
@@ -204,6 +205,25 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     description: '工业LED高亮七段数值显示面板，可绑定任意PLC点。',
     category: 'sensors',
     defaultProps: () => baseProps('digital-val'),
+  },
+  'var-display': {
+    type: 'var-display',
+    name: '数据变量显示框',
+    defaultWidth: 150,
+    defaultHeight: 70,
+    icon: Hash,
+    iconKind: 'lucide',
+    iconColor: 'text-lime-500',
+    description: '大字号数值显示，可设小数位与阈值变色；开启「可设定」后点击弹出数字键盘写入变量。',
+    category: 'sensors',
+    defaultProps: () => ({
+      ...baseProps('var-display'),
+      decimals: 2,
+      settable: false,
+      writeMin: null,
+      writeMax: null,
+      confirmRequired: false,
+    }),
   },
   'trend-chart': {
     type: 'trend-chart',

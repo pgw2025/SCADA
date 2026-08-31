@@ -699,7 +699,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
         </div>
 
         <!-- 阶段5-6：状态文本解耦——阀/数显/开关等有状态控件的开/关文案可配置，去除硬编码英/中文 -->
-        <div v-if="['valve', 'digital-val', 'switch', 'led'].includes(selectedComponent.type)"
+        <div v-if="['valve', 'digital-val', 'switch', 'led', 'var-display'].includes(selectedComponent.type)"
           class="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">开启状态文本</label>
@@ -732,7 +732,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
 
         <!-- 量程设置：量程上限/下限/单位（百分比类与仪表类归一化基准） -->
         <div
-          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
+          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'var-display', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
           class="space-y-2">
           <div class="grid grid-cols-3 gap-2 text-xs">
             <div>
@@ -759,7 +759,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
 
         <!-- 高/低限报警阈值：覆盖所有消费 isHighAlert/alertColor 的器件 -->
         <div
-          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
+          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'var-display', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
           class="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
@@ -773,6 +773,63 @@ const onPickBackgroundImage = (img: { url: string }) => {
               @input="updateProp('thresholdMin', numInput(($event.target as HTMLInputElement).value, typeDefaults.thresholdMin ?? 10))"
               class="w-full bg-white dark:bg-slate-950 border border-amber-300 dark:border-amber-800 rounded px-2.5 py-1 text-amber-700 dark:text-amber-300 focus:outline-none focus:border-amber-500" />
           </div>
+        </div>
+
+        <!-- var-display 数据变量显示专属配置：小数位 / 可设定 / 写入范围 / 二次确认 -->
+        <div v-if="selectedComponent.type === 'var-display'"
+          class="space-y-2.5 text-xs border border-gray-100 dark:border-slate-800 p-2.5 rounded bg-gray-50/50 dark:bg-slate-950/60">
+          <p class="font-bold text-[#1890ff] dark:text-sky-400 text-[10px] uppercase tracking-wider">变量显示配置</p>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">小数位数 (0~4)</label>
+            <select :value="componentProps.decimals ?? 2"
+              @change="updateProp('decimals', numInput(($event.target as HTMLSelectElement).value, 2))"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+              <option v-for="n in [0, 1, 2, 3, 4]" :key="n" :value="n">{{ n }} 位</option>
+            </select>
+            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5 leading-snug">
+              显示与设值弹窗输入同步约束；写入前按位数四舍五入。
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="settableDef" :checked="componentProps.settable === true"
+              @change="updateProp('settable', ($event.target as HTMLInputElement).checked)"
+              class="accent-[#1890ff] dark:accent-sky-500" />
+            <label for="settableDef" class="text-[11px] text-gray-700 dark:text-slate-300 cursor-pointer">
+              可设定（运行态点击弹出数字键盘写值）
+            </label>
+          </div>
+          <p v-if="componentProps.settable !== true" class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug -mt-1.5">
+            未开启时组件仅作显示；写值仍需绑定设备/变量且有 Operator/Admin 权限。
+          </p>
+
+          <template v-if="componentProps.settable === true">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">写入下限（空=不限）</label>
+                <input type="number" :value="componentProps.writeMin ?? ''"
+                  @input="updateProp('writeMin', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 0))"
+                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500"
+                  placeholder="不限制" />
+              </div>
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">写入上限（空=不限）</label>
+                <input type="number" :value="componentProps.writeMax ?? ''"
+                  @input="updateProp('writeMax', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 0))"
+                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500"
+                  placeholder="不限制" />
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="confirmReqDef" :checked="componentProps.confirmRequired === true"
+                @change="updateProp('confirmRequired', ($event.target as HTMLInputElement).checked)"
+                class="accent-[#1890ff] dark:accent-sky-500" />
+              <label for="confirmReqDef" class="text-[11px] text-gray-700 dark:text-slate-300 cursor-pointer">
+                写入前二次确认（高危变量防误写）
+              </label>
+            </div>
+          </template>
         </div>
 
         <!-- INDUSTRIAL BUTTON SPECIFIC CONTROLS -->

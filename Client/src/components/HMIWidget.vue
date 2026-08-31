@@ -15,6 +15,8 @@ const props = defineProps<{
   history?: number[];
   /** 当前页面 id：nav-menu 运行态据此高亮“当前画面”对应的菜单项 */
   currentPageId?: string;
+  /** 绑定变量质量（非 Good 时 var-display 显示 -- 而非旧值，避免误判） */
+  quality?: string;
 }>();
 
 // 阶段6-2：运行模式下当前角色无写权限且本组件绑定了变量 → 标记为只读锁定控件。
@@ -174,6 +176,23 @@ const textContent = computed(() => {
     ? (props.value ? onText.value : offText.value)
     : numValue.value.toFixed(2) + (unit.value || '');
   return label.replaceAll('{value}', val);
+});
+
+// ===== var-display 数据变量显示 =====
+// 小数位数：0~4 钳制，非法值回退 2（与 Inspector 面板/设值弹窗共用同一口径）
+const decimals = computed(() => {
+  const d = Number(props.component.props.decimals);
+  if (!Number.isFinite(d)) return 2;
+  return Math.min(4, Math.max(0, Math.round(d)));
+});
+// 是否可设定：点击弹数字键盘写值（点击分发在 CanvasPanel，此处仅控制角标/光标）
+const isSettable = computed(() => props.component.props.settable === true);
+// 变量质量非 Good 时显示 -- 而非旧值（配合 CanvasPanel 质量角标）
+const qualityBad = computed(() => !!props.quality && props.quality !== 'Good');
+const varDisplayText = computed(() => {
+  if (qualityBad.value) return '--';
+  if (typeof props.value === 'boolean') return props.value ? onText.value : offText.value;
+  return numValue.value.toFixed(decimals.value);
 });
 
 // 阶段5-6：趋势图过渡占位——未绑定设备/变量（无数据源）时不绘制伪造曲线，展示占位提示
@@ -700,6 +719,42 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
         backgroundColor: boolValue ? '#10b981' : '#ef4444',
         animation: boolValue ? 'pulse 1.2s infinite' : 'none',
       }" />
+    </div>
+
+    <!-- 9.5 VAR DISPLAY（数据变量显示） -->
+    <div v-else-if="component.type === 'var-display'"
+      class="w-full h-full bg-white dark:bg-slate-950 border-2 rounded-lg flex flex-col justify-center items-center px-3 py-1 relative overflow-hidden select-none"
+      :class="[
+        isActiveMode && isSettable && !isLockedControl ? 'cursor-pointer hover:shadow-md' : '',
+        isHighAlert ? 'border-red-500 dark:border-red-500' : (isLowAlert ? 'border-amber-400 dark:border-amber-500' : 'border-slate-300 dark:border-slate-700')
+      ]">
+      <div class="absolute top-1 left-2.5 text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80%] font-mono pointer-events-none">
+        {{ component.label || '变量' }}
+      </div>
+      <div class="font-mono font-bold tracking-wide leading-none mt-1.5 tabular-nums"
+        :style="{
+          fontSize: `${fontSize * 1.6}px`,
+          color: isHighAlert ? '#ef4444' : isLowAlert ? '#f59e0b' : (qualityBad ? '#94a3b8' : activeColor)
+        }">
+        {{ varDisplayText }}
+        <span v-if="typeof value === 'number' && unit && !qualityBad"
+          class="text-xs font-normal text-slate-400 dark:text-slate-500 ml-0.5">{{ unit }}</span>
+      </div>
+      <!-- 可设定角标：提示操作员可点击写值 -->
+      <span v-if="isSettable && isActiveMode"
+        class="absolute bottom-1 right-1.5 text-[9px] leading-none pointer-events-none"
+        :class="isLockedControl ? 'text-amber-500' : 'text-sky-500 dark:text-sky-400'">
+        {{ isLockedControl ? '只读' : '✎' }}
+      </span>
+      <!-- 运行模式无写权限：绑定显示组件显示只读锁标记（与按钮口径一致） -->
+      <span v-if="isLockedControl && !isSettable"
+        class="absolute bottom-1 left-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
+        title="当前角色无写权限，控件为只读">
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
+        </svg>
+        只读
+      </span>
     </div>
 
     <!-- 10. REAL-TIME TREND CHART -->
