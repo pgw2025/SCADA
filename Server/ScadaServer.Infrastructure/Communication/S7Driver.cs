@@ -18,6 +18,14 @@ namespace ScadaServer.Infrastructure.Communication
     /// 西门子 S7 系列 PLC 通信驱动（基于 S7netplus）。
     /// 负责连接管理、单点/批量读取、地址解析与线程安全的 PLC 访问。
     /// 接口严格遵循 IProtocolDriver，不引入任何第三方库。
+    /// <para>
+    /// 地址与数据类型的职责划分：地址（DeviceVariable.Address）只描述
+    /// <b>位置</b>（Area / DB 号 / 字节偏移 / 位偏移）与 <b>访问宽度</b>（1/2/4 字节）；
+    /// 值的<b>解释类型</b>（BIT/BYTE/INT/DINT/REAL/...）唯一由
+    /// <see cref="IRuntimeVariable.DataType"/>（来源 ModelVariable.DataType）决定。
+    /// 地址助记符（DBW/DBD/DBR 等）不再决定数据类型，消除"DBD 固定按 DINT 解析"与
+    /// DataType=REAL 的冲突。
+    /// </para>
     /// </summary>
     public class S7Driver : IProtocolDriver
     {
@@ -57,7 +65,8 @@ namespace ScadaServer.Infrastructure.Communication
         ///   I0.0 / IB0 / IW0 / ID0
         ///   Q0.0 / QB0 / QW0 / QD0
         ///   M0.0 / MB0 / MW0 / MD0
-        /// DBR 为新增 REAL 类型支持。
+        /// 助记符仅决定访问宽度（X/B=1 字节、W=2 字节、D/R=4 字节），不决定数据类型；
+        /// 值的解释类型由 IRuntimeVariable.DataType 决定（DBR 与 DBD 同为 4 字节宽度）。
         /// </summary>
         private static readonly Regex S7AddressRegex = new Regex(
             @"^(?:DB(?<db>\d+)\.)?(?<type>DBX|DBB|DBW|DBD|DBR|I|Q|M|IB|IW|ID|QB|QW|QD|MB|MW|MD)(?<offset>\d+)(?:\.(?<bit>\d+))?$",
@@ -169,9 +178,23 @@ namespace ScadaServer.Infrastructure.Communication
                 if (_plc == null || !_plc.IsConnected)
                     return null;
 
-                // 单点读取仍委托 S7netplus 解析地址（DBX/DBW/DBD/IB/IW/... 均原生支持）。
+                // 地址只提供位置与宽度，值的解释类型由 DataType 决定：
+                // 按地址宽度读取原始字节，再按 DataType 提取，消除地址助记符
+                // 与 DataType 的类型冲突（如 DB1.DBD20 + REAL 按 REAL 解析而非 DINT）。
                 // 地址来源：RuntimeVariable.Address（由 DeviceVariable.Address 解析，驱动不感知 ModelVariable）。
-                return await _plc.ReadAsync(variable.Address);
+                var info = ParseAddress(variable.Address);
+                if (info == null)
+                    return null;
+
+                var typeError = ValidateTypeMatch(info, variable.DataType);
+                if (typeError != null)
+                    return null;
+
+                var buffer = await _plc.ReadBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, info.ByteLength);
+                if (buffer == null || buffer.Length < info.ByteLength)
+                    return null;
+
+                return ExtractValue(buffer, info, variable.DataType, info.ByteOffset);
             }
             catch (Exception)
             {
@@ -188,8 +211,9 @@ namespace ScadaServer.Infrastructure.Communication
         /// 批量读取多个变量值。
         /// </summary>
         /// <remarks>
-        /// 返回字典的值为两类之一：真实读取值（bool/byte/short/int/float，S7 驱动的真实值不会是 string），
-        /// 或诊断标记字符串 —— <see cref="ReadError"/>（未连接 / 读取失败）与 <see cref="InvalidAddress"/>（地址非法）。
+        /// 返回字典的值为两类之一：真实读取值（bool/byte/ushort/short/uint/int/float，S7 驱动的真实值不会是 string），
+        /// 或诊断标记字符串 —— <see cref="ReadError"/>（未连接 / 读取失败）与 <see cref="InvalidAddress"/>
+        /// （地址非法，或地址宽度/位形式与 <see cref="IRuntimeVariable.DataType"/> 不匹配的点表配置错误）。
         /// 调用方应先比对标记再做类型转换；该约定与接口 <c>ReadAsync</c> 以 null 表示失败的语义不同
         /// （接口签名共享于所有驱动，统一需接口级变更）。
         /// </remarks>
@@ -202,7 +226,9 @@ namespace ScadaServer.Infrastructure.Communication
             await _plcLock.WaitAsync();
             try
             {
-                // 1) 解析地址：非法地址立即反馈 INVALID_ADDRESS，空变量跳过
+                // 1) 解析地址并校验地址-数据类型匹配：非法地址或类型不匹配（点表配置错误）
+                //    立即反馈 INVALID_ADDRESS，空变量跳过。
+                //    地址只提供位置与宽度；值的解释类型由 RuntimeVariable.DataType 决定。
                 // 地址来源：RuntimeVariable.Address（DeviceVariable.Address 权威，驱动不感知 ModelVariable）。
                 var valid = new List<(IRuntimeVariable Variable, S7AddressInfo Info)>();
                 foreach (var v in variables)
@@ -214,6 +240,13 @@ namespace ScadaServer.Infrastructure.Communication
 
                     var info = ParseAddress(v.Address);
                     if (info == null)
+                    {
+                        results[v.Key] = InvalidAddress;
+                        continue;
+                    }
+
+                    // 地址宽度/位形式与 DataType 不匹配：视为点表配置错误，按非法地址反馈
+                    if (ValidateTypeMatch(info, v.DataType) != null)
                     {
                         results[v.Key] = InvalidAddress;
                         continue;
@@ -291,10 +324,10 @@ namespace ScadaServer.Infrastructure.Communication
                             continue;
                         }
 
-                        // 5) 解析（缓冲区长度已校验，ExtractValue 内的边界检查为兜底防御）
+                        // 5) 按变量 DataType 解析（缓冲区长度已校验，ExtractValue 内的边界检查为兜底防御）
                         foreach (var item in cluster)
                         {
-                            var value = ExtractValue(buffer, item.Info, minOffset);
+                            var value = ExtractValue(buffer, item.Info, item.Variable.DataType, minOffset);
                             results[item.Variable.Key] = value ?? (object)ReadError;
                         }
                     }
@@ -317,38 +350,88 @@ namespace ScadaServer.Infrastructure.Communication
             return results;
         }
 
-        /// <summary>从批量读取缓冲区中按地址信息提取值，越界或解析失败返回 null。</summary>
-        private static object? ExtractValue(byte[] buffer, S7AddressInfo info, int minOffset)
+        /// <summary>
+        /// 从读取缓冲区中按 <see cref="DataTypeEnum"/> 提取值。
+        /// 地址信息仅提供位置（字节/位偏移）；值的解释类型由 DataType 决定。
+        /// 越界或解析失败返回 null。
+        /// </summary>
+        private static object? ExtractValue(byte[] buffer, S7AddressInfo info, DataTypeEnum dataType, int minOffset)
         {
             int rel = info.ByteOffset - minOffset;
             if (rel < 0)
                 return null;
 
-            switch (info.ValueType)
+            switch (dataType)
             {
-                case "BIT":
+                case DataTypeEnum.BOOL or DataTypeEnum.BIT:
                     if (rel >= buffer.Length) return null;
                     return (buffer[rel] & (1 << info.BitOffset)) != 0;
 
-                case "BYTE":
+                case DataTypeEnum.BYTE:
                     if (rel >= buffer.Length) return null;
                     return buffer[rel];
 
-                case "INT":
+                case DataTypeEnum.INT:
                     if (rel + 1 >= buffer.Length) return null;
                     return S7.Net.Types.Int.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1] });
 
-                case "REAL":
-                    if (rel + 3 >= buffer.Length) return null;
-                    return S7.Net.Types.Real.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1], buffer[rel + 2], buffer[rel + 3] });
+                case DataTypeEnum.UINT16 or DataTypeEnum.WORD:
+                    if (rel + 1 >= buffer.Length) return null;
+                    return S7.Net.Types.Word.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1] });
 
-                case "DINT":
+                case DataTypeEnum.DINT:
                     if (rel + 3 >= buffer.Length) return null;
                     return S7.Net.Types.DInt.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1], buffer[rel + 2], buffer[rel + 3] });
 
+                case DataTypeEnum.UINT32:
+                    if (rel + 3 >= buffer.Length) return null;
+                    return S7.Net.Types.DWord.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1], buffer[rel + 2], buffer[rel + 3] });
+
+                case DataTypeEnum.REAL or DataTypeEnum.FLOAT:
+                    if (rel + 3 >= buffer.Length) return null;
+                    return S7.Net.Types.Real.FromByteArray(new byte[] { buffer[rel], buffer[rel + 1], buffer[rel + 2], buffer[rel + 3] });
+
                 default:
+                    // 不支持的类型已在 ValidateTypeMatch 阶段拒绝，此处为兜底防御
                     return null;
             }
+        }
+
+        /// <summary>
+        /// 校验地址与 <see cref="DataTypeEnum"/> 的匹配关系：
+        /// 位类型（BIT/BOOL）必须使用位地址；非位类型的字节宽度必须与地址宽度一致。
+        /// 返回 null 表示匹配合法；否则返回明确的错误描述（供调用方拒绝/诊断）。
+        /// </summary>
+        private static string? ValidateTypeMatch(S7AddressInfo info, DataTypeEnum dataType)
+        {
+            // 位类型：必须使用位地址（DBX/I/Q/M + .bit 后缀，地址宽度恒为 1 字节）
+            if (dataType == DataTypeEnum.BIT || dataType == DataTypeEnum.BOOL)
+            {
+                if (!info.HasBit)
+                    return $"数据类型 {dataType} 需要位地址（如 DB1.DBX0.1 / M0.0），当前地址不是位形式";
+                return null;
+            }
+
+            // 非位类型不允许使用位地址
+            if (info.HasBit)
+                return $"地址为位形式，数据类型 {dataType} 应为 BOOL/BIT，或改用字节/字/双字地址";
+
+            // 类型期望的访问宽度（字节）；-1 表示 S7 地址助记符无法表达该类型
+            int expected = dataType switch
+            {
+                DataTypeEnum.BYTE => 1,
+                DataTypeEnum.INT or DataTypeEnum.UINT16 or DataTypeEnum.WORD => 2,
+                DataTypeEnum.DINT or DataTypeEnum.UINT32 or DataTypeEnum.REAL or DataTypeEnum.FLOAT => 4,
+                _ => -1
+            };
+
+            if (expected < 0)
+                return $"数据类型 {dataType} 不受 S7 驱动支持（可用：BOOL/BIT、BYTE、INT、UINT16、WORD、DINT、UINT32、REAL、FLOAT）";
+
+            if (info.ByteLength != expected)
+                return $"地址宽度（{info.ByteLength} 字节）与数据类型 {dataType}（{expected} 字节）不匹配";
+
+            return null;
         }
 
         #endregion
@@ -369,10 +452,31 @@ namespace ScadaServer.Infrastructure.Communication
                 if (_plc == null || !_plc.IsConnected)
                     throw new InvalidOperationException("PLC 未连接");
 
-                // 按变量数据类型转换为设备期望类型（DBW->Int16 / DBD->Int32 / DBR->Single / DBX->bool）。
-                // S7netplus WriteAsync(address, value) 会依据地址推断目标类型与字节长度，类型不匹配会抛异常。
-                var converted = ConvertForWrite(variable.DataType, value);
-                await _plc.WriteAsync(variable.Address, converted);
+                // 地址-数据类型匹配校验：宽度/位形式不匹配时在驱动层明确拒绝，
+                // 不再把类型转换交给 S7netplus 按地址助记符隐式推断（其类型语义与 DataType 冲突）。
+                var info = ParseAddress(variable.Address)
+                    ?? throw new ArgumentException($"变量地址 [{variable.Address}] 不是合法的 S7 地址", nameof(variable));
+
+                var typeError = ValidateTypeMatch(info, variable.DataType);
+                if (typeError != null)
+                    throw new InvalidOperationException($"变量 [{variable.Key}] 地址 {variable.Address} 与数据类型不匹配：{typeError}");
+
+                if (info.HasBit)
+                {
+                    // 位写入：按地址串写位（S7netplus 原生支持 DBX/I/Q/M 位地址）
+                    var bitValue = ConvertToBit(value);
+                    if (bitValue == null)
+                        throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
+                    await _plc.WriteAsync(variable.Address, bitValue.Value);
+                    return;
+                }
+
+                // 非位写入：按 DataType 转换为 S7 大端字节序列后写原始字节，
+                // 目标解释类型由 DataType 决定（如 DB1.DBD20 + REAL 写 4 字节 REAL 位模式）。
+                var bytes = ConvertToS7Bytes(variable.DataType, value);
+                if (bytes == null)
+                    throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
+                await _plc.WriteBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, bytes);
             }
             finally
             {
@@ -380,29 +484,51 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
-        /// <summary>
-        /// 将前端传入的原始值按变量数据类型转换为设备写入类型。
-        /// 位 BOOL/BIT -> bool；BYTE -> byte；INT -> short；DINT -> int；REAL/FLOAT -> float；DOUBLE -> double。
-        /// </summary>
-        private static object ConvertForWrite(DataTypeEnum dataType, object value)
+        /// <summary>将写入值转换为位值（BOOL/BIT）。转换失败返回 null。</summary>
+        private static bool? ConvertToBit(object value)
         {
             try
             {
-                return dataType switch
+                return Convert.ToBoolean(value);
+            }
+            catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 将写入值按 <see cref="DataTypeEnum"/> 转换为 S7 大端字节序列。
+        /// BYTE -> 1 字节；INT/UINT16/WORD -> 2 字节；DINT/UINT32/REAL/FLOAT -> 4 字节。
+        /// 转换失败（字符串格式错误/数值溢出/类型不兼容）返回 null，由调用方以明确异常拒绝。
+        /// </summary>
+        private static byte[]? ConvertToS7Bytes(DataTypeEnum dataType, object value)
+        {
+            try
+            {
+                switch (dataType)
                 {
-                    DataTypeEnum.BOOL or DataTypeEnum.BIT => (bool)Convert.ToBoolean(value),
-                    DataTypeEnum.BYTE => Convert.ToByte(value),
-                    DataTypeEnum.INT => (short)Convert.ToInt16(value),
-                    DataTypeEnum.DINT => Convert.ToInt32(value),
-                    DataTypeEnum.REAL or DataTypeEnum.FLOAT => Convert.ToSingle(value),
-                    DataTypeEnum.DOUBLE => Convert.ToDouble(value),
-                    _ => value
-                };
+                    case DataTypeEnum.BYTE:
+                        return new[] { Convert.ToByte(value) };
+                    case DataTypeEnum.INT:
+                        return S7.Net.Types.Int.ToByteArray(Convert.ToInt16(value));
+                    case DataTypeEnum.UINT16 or DataTypeEnum.WORD:
+                        return S7.Net.Types.Word.ToByteArray(Convert.ToUInt16(value));
+                    case DataTypeEnum.DINT:
+                        return S7.Net.Types.DInt.ToByteArray(Convert.ToInt32(value));
+                    case DataTypeEnum.UINT32:
+                        return S7.Net.Types.DWord.ToByteArray(Convert.ToUInt32(value));
+                    case DataTypeEnum.REAL or DataTypeEnum.FLOAT:
+                        return S7.Net.Types.Real.ToByteArray(Convert.ToSingle(value));
+                    default:
+                        // BOOL/BIT 走位写入路径；其余类型已在 ValidateTypeMatch 阶段拒绝
+                        return null;
+                }
             }
             catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
             {
                 // 覆盖 Convert 的全部典型转换失败：字符串格式错误（Format）、数值溢出（Overflow）、类型不兼容（InvalidCast）
-                throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {dataType}", ex);
+                return null;
             }
         }
 
@@ -489,8 +615,9 @@ namespace ScadaServer.Infrastructure.Communication
         #region 地址解析
 
         /// <summary>
-        /// 解析 S7 地址字符串为内部表示。
+        /// 解析 S7 地址字符串为内部表示（位置 + 访问宽度，不含数据类型语义）。
         /// 非法地址（格式错误、Bit 偏移超出 0~7、位类型缺失 bit 后缀等）返回 null。
+        /// 值的解释类型不在此判定——统一由 <see cref="IRuntimeVariable.DataType"/> 决定。
         /// </summary>
         private S7AddressInfo? ParseAddress(string address)
         {
@@ -545,32 +672,36 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 ByteOffset = offset,
                 BitOffset = bit,
+                HasBit = hasBit,
                 DbNumber = db
             };
 
+            // 地址助记符仅决定访问宽度（位/字节=1、字=2、双字=4），不决定值的解释类型：
+            // 值类型统一由 ModelVariable.DataType（经 RuntimeVariable.DataType）决定。
+            // DBR 与 DBD 同为 4 字节宽度（DBR 是 REAL 的习惯地址写法，仅表宽度）。
             switch (typeStr)
             {
                 // DataBlock
-                case "DBX": info.S7Area = DataType.DataBlock; info.ValueType = "BIT";  info.ByteLength = 1; break;
-                case "DBB": info.S7Area = DataType.DataBlock; info.ValueType = "BYTE"; info.ByteLength = 1; break;
-                case "DBW": info.S7Area = DataType.DataBlock; info.ValueType = "INT";  info.ByteLength = 2; break;
-                case "DBD": info.S7Area = DataType.DataBlock; info.ValueType = "DINT"; info.ByteLength = 4; break;
-                case "DBR": info.S7Area = DataType.DataBlock; info.ValueType = "REAL"; info.ByteLength = 4; break;
+                case "DBX": info.S7Area = DataType.DataBlock; info.ByteLength = 1; break;
+                case "DBB": info.S7Area = DataType.DataBlock; info.ByteLength = 1; break;
+                case "DBW": info.S7Area = DataType.DataBlock; info.ByteLength = 2; break;
+                case "DBD": info.S7Area = DataType.DataBlock; info.ByteLength = 4; break;
+                case "DBR": info.S7Area = DataType.DataBlock; info.ByteLength = 4; break;
                 // Input
-                case "I":  info.S7Area = DataType.Input;  info.ValueType = "BIT";  info.ByteLength = 1; break;
-                case "IB": info.S7Area = DataType.Input;  info.ValueType = "BYTE"; info.ByteLength = 1; break;
-                case "IW": info.S7Area = DataType.Input;  info.ValueType = "INT";  info.ByteLength = 2; break;
-                case "ID": info.S7Area = DataType.Input;  info.ValueType = "DINT"; info.ByteLength = 4; break;
+                case "I":  info.S7Area = DataType.Input;  info.ByteLength = 1; break;
+                case "IB": info.S7Area = DataType.Input;  info.ByteLength = 1; break;
+                case "IW": info.S7Area = DataType.Input;  info.ByteLength = 2; break;
+                case "ID": info.S7Area = DataType.Input;  info.ByteLength = 4; break;
                 // Output
-                case "Q":  info.S7Area = DataType.Output; info.ValueType = "BIT";  info.ByteLength = 1; break;
-                case "QB": info.S7Area = DataType.Output; info.ValueType = "BYTE"; info.ByteLength = 1; break;
-                case "QW": info.S7Area = DataType.Output; info.ValueType = "INT";  info.ByteLength = 2; break;
-                case "QD": info.S7Area = DataType.Output; info.ValueType = "DINT"; info.ByteLength = 4; break;
+                case "Q":  info.S7Area = DataType.Output; info.ByteLength = 1; break;
+                case "QB": info.S7Area = DataType.Output; info.ByteLength = 1; break;
+                case "QW": info.S7Area = DataType.Output; info.ByteLength = 2; break;
+                case "QD": info.S7Area = DataType.Output; info.ByteLength = 4; break;
                 // Memory
-                case "M":  info.S7Area = DataType.Memory; info.ValueType = "BIT";  info.ByteLength = 1; break;
-                case "MB": info.S7Area = DataType.Memory; info.ValueType = "BYTE"; info.ByteLength = 1; break;
-                case "MW": info.S7Area = DataType.Memory; info.ValueType = "INT";  info.ByteLength = 2; break;
-                case "MD": info.S7Area = DataType.Memory; info.ValueType = "DINT"; info.ByteLength = 4; break;
+                case "M":  info.S7Area = DataType.Memory; info.ByteLength = 1; break;
+                case "MB": info.S7Area = DataType.Memory; info.ByteLength = 1; break;
+                case "MW": info.S7Area = DataType.Memory; info.ByteLength = 2; break;
+                case "MD": info.S7Area = DataType.Memory; info.ByteLength = 4; break;
                 default:
                     return null;
             }
@@ -582,13 +713,28 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 内部类型
 
+        /// <summary>
+        /// S7 地址解析结果：仅描述位置（区域/DB 号/字节偏移/位偏移）与访问宽度，
+        /// 不携带数据类型语义（值的解释类型由 IRuntimeVariable.DataType 决定）。
+        /// </summary>
         private sealed class S7AddressInfo
         {
+            /// <summary>S7 存储区域（DataBlock / Input / Output / Memory）。</summary>
             public DataType S7Area { get; set; }
+
+            /// <summary>DB 号（非 DB 区域为 0）。</summary>
             public int DbNumber { get; set; }
-            public string ValueType { get; set; } = "BYTE";
+
+            /// <summary>字节偏移。</summary>
             public int ByteOffset { get; set; }
+
+            /// <summary>位偏移（仅位地址有效，0~7）。</summary>
             public int BitOffset { get; set; }
+
+            /// <summary>是否为位地址（DBX/I/Q/M 助记符且带 .bit 后缀）。</summary>
+            public bool HasBit { get; set; }
+
+            /// <summary>地址访问宽度（字节）：位/字节地址 1，字地址 2，双字地址 4。</summary>
             public int ByteLength { get; set; }
         }
 
