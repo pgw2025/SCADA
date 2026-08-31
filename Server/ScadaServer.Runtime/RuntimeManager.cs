@@ -354,23 +354,27 @@ namespace ScadaServer.Runtime
                 // 驱动创建与连接异常同样视为连接失败（进入占位重连路径），避免初始化异常被外层
                 // catch 吞掉后设备永不重试。
                 bool connected;
+                IProtocolDriver? driver = null;
                 try
                 {
-                    var driver = _driverFactory.CreateDriver(driverKey);
+                    driver = _driverFactory.CreateDriver(driverKey);
                     connected = await driver.ConnectAsync(runtime);
-                    if (connected)
-                    {
-                        runtime.Driver = driver;
-                    }
-                    else
-                    {
-                        await driver.DisposeAsync();
-                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "设备 {Key} ({Protocol}) 连接时发生异常。", device.Key, protocolLabel);
                     connected = false;
+                }
+
+                // 连接成功则由运行时持有驱动；任何失败路径（返回 false 或抛异常）都必须释放驱动，
+                // 避免异常路径遗留驱动内部资源（如半开的 OPC UA 会话）。
+                if (connected)
+                {
+                    runtime.Driver = driver!;
+                }
+                else if (driver != null)
+                {
+                    await driver.DisposeAsync();
                 }
 
                 if (!connected)
