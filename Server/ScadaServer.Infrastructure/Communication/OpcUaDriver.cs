@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Interfaces;
 using Opc.Ua;
@@ -24,9 +25,46 @@ namespace ScadaServer.Infrastructure.Communication
     /// - _drainTcs 使用 TaskCreationOptions.RunContinuationsAsynchronously 唤醒等待方，
     ///   避免释放 IO 计数的线程在仍持有 _ioStateLock 时被内联执行等待方延续。
     /// - 与 S7Driver 约定一致：SemaphoreSlim 从不 Dispose，避免与并发 WaitAsync 竞态。
+    ///
+    /// 连接状态机（<see cref="_state"/>，volatile；写操作仅发生在 _lifecycleLock 内或 Dispose 路径）：
+    /// - 正常流转：Disconnected → (ConnectAsync) → Connecting → Connected
+    /// - 自动重连：Connected → (KeepAlive Bad) → Reconnecting → Connected（成功）；
+    ///   失败后保持 Reconnecting（保留会话、退避重试，普通 Read/Write 被状态门拒绝，不会"假连接"），
+    ///   连续失败达到上限 → 释放失效会话 → Disconnected（交还运行时层重连）
+    /// - 主动断开：任意状态 → (DisconnectAsync) → Disconnecting → Disconnected
+    /// - 释放：任意状态 → (DisposeAsync) → Disposed（终态）
+    /// - Disconnect 一旦置为 Disconnecting/Disposed，KeepAlive 回调不再启动新的后台重连任务；
+    ///   已启动的任务通过 <see cref="_reconnectCts"/> 取消，并由 <see cref="_lastReconnectTask"/> 追踪，
+    ///   DisposeAsync 等待其结束后才返回（不允许 Driver 释放后仍有后台任务运行）。
     /// </summary>
     public class OpcUaDriver : IProtocolDriver
     {
+        /// <summary>驱动连接状态机。写操作仅在 _lifecycleLock 内或 Dispose 路径执行。</summary>
+        private enum DriverState
+        {
+            Disconnected = 0,
+            Connecting = 1,
+            Connected = 2,
+            Reconnecting = 3,
+            Disconnecting = 4,
+            Disposed = 5,
+        }
+
+        /// <summary>重连退避间隔（秒），索引 = 连续失败次数 - 1（封顶 60s）。</summary>
+        private static readonly int[] ReconnectBackoffSeconds = { 5, 10, 20, 30, 60 };
+
+        /// <summary>单次 ReconnectAsync 的超时上限，防止无限挂起占住生命周期锁。</summary>
+        private static readonly TimeSpan ReconnectTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// 连续自动重连失败次数达到该值后释放失效会话，交还运行时层重连。
+        /// 配合退避 {5,10,20,30,60}s：约 65 秒持续不可达才放弃当前会话；
+        /// 短于该时间的临时网络故障（如 30 秒断网）可在原会话上恢复、订阅由 SDK 转移不丢失。
+        /// </summary>
+        private const int MaxConsecutiveReconnectFailures = 5;
+
+        private readonly ILogger<OpcUaDriver> _logger;
+
         private volatile Session? _session;   // 仅在持有 _lifecycleLock 时写入；volatile 保证 KeepAlive 线程读到最新引用
         private readonly ISessionFactory _sessionFactory = new DefaultSessionFactory(DefaultTelemetry.Create(configure: _ => { }));
         private readonly Dictionary<int, Subscription> _subscriptions = new();  // 仅在持有 _lifecycleLock 时读写
@@ -38,6 +76,21 @@ namespace ScadaServer.Infrastructure.Communication
         private TaskCompletionSource<bool>? _drainTcs;  // 非空 = 生命周期操作正在等待 IO 排他，新的 IO 请求直接失败
         private volatile bool _disposed;
 
+        private volatile DriverState _state = DriverState.Disconnected;
+        private CancellationTokenSource? _reconnectCts;             // 当前会话的后台重连取消令牌；仅 _lifecycleLock 内替换/释放，Cancel 可在锁外（线程安全且幂等）
+        private volatile Task? _lastReconnectTask;                  // 最近一次后台重连任务；DisposeAsync 等待其结束
+        private int _consecutiveReconnectFailures;                  // 连续重连失败计数
+        private long _nextReconnectAttemptUtcTicks;                 // 下次允许触发重连的 UTC 时刻（Ticks，Interlocked 读写）
+
+        /// <summary>
+        /// 初始化驱动。注入 <see cref="ILogger{OpcUaDriver}"/> 用于记录自动重连失败/恢复与
+        /// 断开清理日志（不允许吞掉异常导致现场问题无法诊断）。
+        /// </summary>
+        public OpcUaDriver(ILogger<OpcUaDriver> logger)
+        {
+            _logger = logger;
+        }
+
         public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
             if (_disposed) return false;
@@ -45,9 +98,12 @@ namespace ScadaServer.Infrastructure.Communication
             try
             {
                 if (_disposed) return false;   // 等锁期间驱动可能已被 Dispose
+                _state = DriverState.Connecting;
 
-                // 建立新连接前彻底清理旧会话与订阅状态，避免重连后残留绑定在死会话上的订阅；
-                // 清理在 IO 排他保护下执行，确保没有在途 Read/Write 仍持有旧 Session
+                // 建立新连接前彻底清理旧会话与订阅状态（含取消旧的后台重连令牌），
+                // 避免重连后残留绑定在死会话上的订阅；
+                // 清理在 IO 排他保护下执行，确保没有在途 Read/Write 仍持有旧 Session，
+                // 且清理本身持有 _lifecycleLock，与旧会话上的自动 Reconnect 互斥
                 await CleanupUnderExclusiveIoAsync();
 
                 // 从 JSON 反序列化配置（配置来自 RuntimeDevice.ConfigJson，驱动不感知 Device 实体）
@@ -118,13 +174,28 @@ namespace ScadaServer.Infrastructure.Communication
                 // 与 Disconnect / Reconnect 对该字段的读取/替换互斥
                 _session = concreteSession;
 
+                // 新会话配套新的重连取消令牌（旧的已在 CleanupUnderExclusiveIoAsync 中 Cancel+Dispose）
+                _reconnectCts = new CancellationTokenSource();
+                _consecutiveReconnectFailures = 0;
+                Interlocked.Exchange(ref _nextReconnectAttemptUtcTicks, 0);
+
                 // 启用 KeepAlive 断线检测：连接异常时自动触发重连
                 concreteSession.KeepAliveInterval = 5000;
                 concreteSession.KeepAlive += OnSessionKeepAlive;
+
+                _state = DriverState.Connected;
+                // "会话已建立/重建"日志：初次连接与运行时层重连（旧会话已由上方清理路径关闭释放）均走此路径；
+                // 仅记录状态，不打印端点配置等可能含凭据的信息
+                _logger.LogInformation("OPC UA 会话已建立（状态：Connected）。");
                 return true;
             }
             finally
             {
+                // 异常/失败路径统一回落到 Disconnected，避免状态机卡在 Connecting
+                if (_state == DriverState.Connecting)
+                {
+                    _state = _disposed ? DriverState.Disposed : DriverState.Disconnected;
+                }
                 _lifecycleLock.Release();
             }
         }
@@ -228,6 +299,9 @@ namespace ScadaServer.Infrastructure.Communication
             await _lifecycleLock.WaitAsync();
             try
             {
+                // 状态门：仅 Connected 状态允许订阅（重连中/断开中的会话可能已失效）
+                if (_state != DriverState.Connected) return;
+
                 // 快照当前会话：持有 _lifecycleLock 期间会话不会被断开、替换或清理
                 var session = _session;
                 if (session == null || !session.Connected) return;
@@ -333,6 +407,15 @@ namespace ScadaServer.Infrastructure.Communication
 
         public async Task DisconnectAsync()
         {
+            // 立即进入 Disconnecting：从这一刻起 KeepAlive 回调不再启动新的后台重连任务
+            // （即使本方法还在等待 _lifecycleLock —— 正在进行的 Reconnect 持有该锁）
+            if (_state != DriverState.Disposed) _state = DriverState.Disconnecting;
+
+            // 尽力取消在途的后台 Reconnect（CTS 的 Cancel 线程安全且幂等），
+            // 让其尽快结束并释放 _lifecycleLock，缩短本方法的等待时间；
+            // 即便此处与 ConnectAsync 存在交错误取消新令牌，随后持锁清理也会完整释放，不影响正确性
+            CancelAndDisposeReconnectToken();
+
             await _lifecycleLock.WaitAsync();
             try
             {
@@ -367,29 +450,36 @@ namespace ScadaServer.Infrastructure.Communication
         /// 旧会话可能已失效（CloseAsync 会抛异常），但清理仍必须完成。
         /// 调用方必须已持有 _lifecycleLock，且已通过 BeginExclusiveIoAsync 获得 IO 排他权
         /// （此时不存在任何在途 Read/Write，可安全关闭并释放 Session）。
+        /// 持有 _lifecycleLock 同时保证此刻没有后台 Reconnect 在执行（其同样需要该锁），
+        /// 因此这里取消并释放重连令牌是安全的。
         /// </summary>
         private async Task CleanupConnectionAsync()
         {
+            // 取消并释放当前会话的后台重连令牌（防止清理后仍有残留重连引用旧会话）
+            CancelAndDisposeReconnectToken();
+
             var session = _session;
             _session = null;   // 先摘引用：新的 IO 请求与 KeepAlive 身份检查立即失效
 
             if (session != null)
             {
+                _logger.LogInformation("OPC UA 会话已断开，正在关闭并释放（状态：{State}）。", _state);
                 try
                 {
                     session.KeepAlive -= OnSessionKeepAlive;   // 断开旧会话事件，避免清理后误触发重连
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 事件解绑失败不影响清理流程
+                    _logger.LogDebug(ex, "OPC UA 解绑 KeepAlive 事件时出现异常（不影响清理流程）。");
                 }
                 try
                 {
                     await session.CloseAsync();   // 尽力通知服务器正常关闭
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 会话已断开时 CloseAsync 抛异常属预期，忽略，继续本地清理
+                    // 会话已断开时 CloseAsync 抛异常属预期，记录后继续本地清理
+                    _logger.LogDebug(ex, "OPC UA 关闭会话时出现异常（会话可能已断开，继续本地清理）。");
                 }
                 finally
                 {
@@ -401,6 +491,30 @@ namespace ScadaServer.Infrastructure.Communication
             // Clear 不会与集合读写并发执行导致状态损坏
             _subscriptions.Clear();
             _monitoredItems.Clear();
+
+            // 状态回落：若驱动已 Dispose 则保持终态 Disposed
+            if (_state != DriverState.Disposed) _state = DriverState.Disconnected;
+        }
+
+        /// <summary>
+        /// 取消并释放当前的后台重连取消令牌。
+        /// Cancel 可在 _lifecycleLock 外调用（CTS 线程安全、幂等、Dispose 后为 no-op）；
+        /// Dispose 本身仅在持锁路径（Cleanup/DisposeAsync 排空后台任务后）触发，避免与在途注册竞态。
+        /// </summary>
+        private void CancelAndDisposeReconnectToken()
+        {
+            var cts = _reconnectCts;
+            _reconnectCts = null;
+            if (cts == null) return;
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 已被释放：幂等，无需处理
+            }
+            cts.Dispose();
         }
 
         /// <summary>
@@ -417,6 +531,10 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 // 生命周期操作持有排他权（_drainTcs 非空）期间，拒绝新的 IO
                 if (_drainTcs != null) return null;
+
+                // 状态门：仅 Connected 状态允许普通读写。Reconnecting（会话已确认失效、退避重试中）、
+                // Connecting/Disconnecting/Disposed 等状态一律拒绝，避免"假连接"（拿到 Session 引用但通道已断）
+                if (_state != DriverState.Connected) return null;
 
                 var session = _session;
                 if (session == null || !session.Connected) return null;
@@ -499,53 +617,93 @@ namespace ScadaServer.Infrastructure.Communication
         private void OnSessionKeepAlive(ISession session, KeepAliveEventArgs e)
         {
             if (!ServiceResult.IsBad(e.Status)) return;
-            if (_disposed) return;
+            // Connected 正常触发；Reconnecting（上次重连失败、退避等待中）也允许触发以驱动下次重试；
+            // Disconnecting/Connecting/Disposed 等状态不再触发
+            var triggerState = _state;
+            if (_disposed || (triggerState != DriverState.Connected && triggerState != DriverState.Reconnecting)) return;
 
             // 身份检查：只处理"当前会话"的事件；清理时 _session 先置 null，
-            // 旧会话（已关闭/待释放）的残留事件在这里被直接忽略
+            // 旧会话（已关闭/待释放）的残留事件在这里被直接忽略，不可能影响新会话
             var current = _session;
             if (current == null || !ReferenceEquals(session, current)) return;
 
-            // 后台重连，避免阻塞 KeepAlive 线程
-            _ = Task.Run(TryReconnectAsync);
+            // 失败退避：仍在退避窗口内则跳过，避免 KeepAlive 高频触发造成 CPU/网络压力
+            if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _nextReconnectAttemptUtcTicks)) return;
+
+            var cts = _reconnectCts;
+            if (cts == null) return;   // 令牌已被清理（断开中），不启动新任务
+
+            // 后台重连：任务被 _lastReconnectTask 追踪（DisposeAsync 等待其结束），
+            // 令牌在启动前物化为快照，避免闭包执行时 CTS 已被释放；
+            // 传入的必须是已通过身份检查的 current（Session），而非回调参数（ISession）
+            var token = cts.Token;
+            _lastReconnectTask = Task.Run(() => TryReconnectAsync(current, token));
         }
 
         /// <summary>
         /// 自动重连：在同一会话对象上重建通道，SDK 会自动恢复（转移）原有订阅，
         /// _subscriptions / _monitoredItems 引用保持有效。
+        /// 与 Disconnect/Connect 通过 _lifecycleLock 互斥；ReconnectAsync 可被取消且带超时，
+        /// 不会无限占住锁。
         /// </summary>
-        private async Task TryReconnectAsync()
+        private async Task TryReconnectAsync(Session expectedSession, CancellationToken ct)
         {
             if (_disposed) return;
-            // 非阻塞抢锁：已有生命周期操作（连接/断开/重连）在进行则直接退出（KeepAlive 每次触发都会进来）
+            // 非阻塞抢锁：已有生命周期操作（连接/断开/重连）在进行则直接退出
+            // （多个 KeepAlive 触发的并发任务在此收敛为单实例）
             if (!await _lifecycleLock.WaitAsync(0)) return;
             try
             {
-                if (_disposed) return;   // 等锁期间驱动可能已被释放
+                if (_disposed) return;                       // 等锁期间驱动可能已被释放
+                if (_state is not (DriverState.Connected or DriverState.Reconnecting)) return;   // Disconnecting/Disposed 等状态：禁止自动重连
 
                 var session = _session;
-                if (session == null) return;   // 已被主动断开/清理
+                if (session == null || !ReferenceEquals(session, expectedSession)) return;   // 会话已被替换/清理
 
-                // IO 排他：重连期间阻止新的 Read/Write 获取会话（通道正在重建），
-                // 并等待在途 IO 结束，避免与 ReconnectAsync 竞争同一会话通道
+                _state = DriverState.Reconnecting;
+
                 await BeginExclusiveIoAsync();
                 try
                 {
-                    // 重新校验：进入排他等待期间会话可能已被断开清理
+                    // 重新校验：等待 IO 排空期间会话可能已被断开清理（此时 _session == null，
+                    // 后续状态由清理方决定），或驱动已释放
                     session = _session;
-                    if (session == null) return;
+                    if (session == null || !ReferenceEquals(session, expectedSession) ||
+                        _state != DriverState.Reconnecting || _disposed)
+                    {
+                        return;
+                    }
 
-                    await session.ReconnectAsync(CancellationToken.None);
+                    // 链接令牌：Disconnect/Dispose/Cleanup 时主动取消以打断在途 Reconnect；
+                    // 30s 超时防止 ReconnectAsync 无限挂起并占住 _lifecycleLock
+                    using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeoutCts.CancelAfter(ReconnectTimeout);
+
+                    _logger.LogInformation("OPC UA 开始自动重连（第 {Attempt} 次尝试）。", _consecutiveReconnectFailures + 1);
+                    try
+                    {
+                        await session.ReconnectAsync(timeoutCts.Token);
+
+                        _consecutiveReconnectFailures = 0;
+                        if (_state != DriverState.Disposed) _state = DriverState.Connected;   // 恢复
+                        _logger.LogInformation("OPC UA 会话自动重连成功，通信已恢复。");
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        // 被主动取消（Disconnect/Dispose/Cleanup 打断）：预期行为，
+                        // 直接终止且不计入失败；会话的关闭与状态回落由清理方在锁内完成
+                        _logger.LogDebug("OPC UA 自动重连被主动断开/释放操作取消。");
+                    }
+                    catch (Exception ex)
+                    {
+                        // 重连失败或超时：记录日志（不吞异常），进入退避与失败计数
+                        await NoteReconnectFailureAsync(ex);
+                    }
                 }
                 finally
                 {
                     await EndExclusiveIoAsync();
                 }
-            }
-            catch
-            {
-                // 重连失败（服务器仍不可达等）：不做处理，
-                // KeepAlive 定时器下次触发会再次进入重试
             }
             finally
             {
@@ -553,11 +711,64 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
+        /// <summary>
+        /// 记录一次重连失败并决定后续策略：退避重试，或连续失败达到上限后释放失效会话。
+        /// 调用方必须已持有 <see cref="_lifecycleLock"/>。
+        /// </summary>
+        private async Task NoteReconnectFailureAsync(Exception ex)
+        {
+            _consecutiveReconnectFailures++;
+            var backoffSeconds = ReconnectBackoffSeconds[Math.Min(_consecutiveReconnectFailures, ReconnectBackoffSeconds.Length) - 1];
+            Interlocked.Exchange(ref _nextReconnectAttemptUtcTicks, DateTime.UtcNow.AddSeconds(backoffSeconds).Ticks);
+            _logger.LogWarning(ex,
+                "OPC UA 自动重连失败（连续第 {FailureCount} 次），最早 {BackoffSeconds} 秒后重试。",
+                _consecutiveReconnectFailures, backoffSeconds);
+
+            if (_consecutiveReconnectFailures >= MaxConsecutiveReconnectFailures)
+            {
+                // 不无限持有一个已失效的会话：释放 Session 与订阅、回到 Disconnected，
+                // 后续恢复交由 Runtime 层重连机制重新走 ConnectAsync 建立全新会话。
+                // 直接调用 CleanupConnectionAsync（而非 CleanupUnderExclusiveIoAsync）：
+                // 调用方（重连任务）已持有 _lifecycleLock 与 IO 排他权，不可重入 BeginExclusiveIoAsync
+                _logger.LogWarning(
+                    "OPC UA 连续 {FailureCount} 次自动重连失败，释放失效会话，等待运行时层重连。",
+                    _consecutiveReconnectFailures);
+                await CleanupConnectionAsync();
+                _consecutiveReconnectFailures = 0;
+                Interlocked.Exchange(ref _nextReconnectAttemptUtcTicks, 0);
+            }
+            // 未达阈值：保持 Reconnecting 状态（会话保留、退避后由 KeepAlive 再次触发重试）。
+            // 不再置回 Connected——那会让 Read/Write 误以为会话可用（"假连接"）；
+            // 普通 Read/Write 由状态门拒绝，直到重连成功（→ Connected）或达到阈值（→ Disconnected）
+        }
+
         public async ValueTask DisposeAsync()
         {
-            // 先标记：阻止新的连接/IO/订阅进入；DisconnectAsync 负责清理现存会话
+            // 先标记终态：阻止新的连接/IO/订阅/后台重连进入
             _disposed = true;
+            _state = DriverState.Disposed;
+
+            // 立即打断在途的后台 Reconnect（让其尽快释放 _lifecycleLock）
+            CancelAndDisposeReconnectToken();
+
+            // 持锁清理现存会话与订阅（会等待在途 IO 与生命周期操作结束）
             await DisconnectAsync();
+
+            // 等待后台重连任务结束：Dispose 返回后不存在仍在运行的后台任务。
+            // 此时任务必已结束或即将结束（其内部仅有的阻塞点是可被取消/超时的 ReconnectAsync），
+            // 此处兜底 await 保证"Dispose 完成后无泄漏"的强保证
+            var task = _lastReconnectTask;
+            if (task != null)
+            {
+                try
+                {
+                    await task;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "OPC UA 后台重连任务以异常结束。");
+                }
+            }
             // 与 S7Driver 约定一致：不 Dispose SemaphoreSlim，避免与并发 WaitAsync 竞态
         }
     }

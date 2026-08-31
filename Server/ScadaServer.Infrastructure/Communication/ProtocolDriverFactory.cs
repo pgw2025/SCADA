@@ -58,7 +58,7 @@ namespace ScadaServer.Infrastructure.Communication
             return driverKey?.Trim().ToUpperInvariant() switch
             {
                 "S7DRIVER" or "S7" => new S7Driver(_loggerFactory.CreateLogger<S7Driver>()),
-                "OPCUADRIVER" or "OPCUA" => new OpcUaDriver(),
+                "OPCUADRIVER" or "OPCUA" => new OpcUaDriver(_loggerFactory.CreateLogger<OpcUaDriver>()),
                 "VIRTUALDRIVER" or "VIRTUAL" => new VirtualDriver(),
                 "MODBUSTCPDRIVER" or "MODBUSTCP" => throw new NotSupportedException($"驱动 {driverKey} 尚未实现（ModbusTcp 驱动待开发）"),
                 "MQTTDRIVER" or "MQTT" => throw new NotSupportedException($"驱动 {driverKey} 尚未实现（MQTT 驱动待开发）"),
