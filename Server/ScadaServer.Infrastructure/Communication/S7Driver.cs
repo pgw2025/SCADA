@@ -34,11 +34,38 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>PLC 对象。S7netplus 的 Plc 非线程安全，所有访问必须经由 _plcLock 串行化。</summary>
         private Plc? _plc;
 
-        /// <summary>PLC 访问互斥锁。保证任意时刻仅一个采集任务与 PLC 通信，避免 Socket 异常/数据错乱/ObjectDisposedException。</summary>
+        /// <summary>
+        /// PLC 访问互斥锁。保证任意时刻仅一个采集任务与 PLC 通信，避免 Socket 异常/数据错乱。
+        /// <para>
+        /// 生命周期约定：本信号量<b>永不 Dispose</b>。纯 WaitAsync/Release 用法下
+        /// SemaphoreSlim 不会分配底层等待句柄（仅访问 AvailableWaitHandle 或带
+        /// CancellationToken 的 WaitAsync 才会分配），不 Dispose 不泄漏任何资源；
+        /// 反之，在仍有并发等待者时 Dispose 信号量本身就是竞态源（等待者抛
+        /// ObjectDisposedException 或挂死），且"入口检查 → WaitAsync"之间存在
+        /// 无法消除的间隙。因此以"不 Dispose"换取与任意并发组合的绝对安全。
+        /// 释放语义由 <see cref="_state"/> 状态机承担：终态后所有方法在锁内复检即退出，
+        /// 锁本身始终处于已 Release 状态，随 Driver 实例一同被 GC 回收。
+        /// </para>
+        /// </summary>
         private readonly SemaphoreSlim _plcLock = new SemaphoreSlim(1, 1);
 
-        /// <summary>已释放标志，防止重复 Dispose 与释放后的锁访问。</summary>
-        private bool _disposed;
+        /// <summary>生命周期状态：Active（活动，可接受全部操作）。</summary>
+        private const int StateActive = 0;
+
+        /// <summary>生命周期状态：Closed（终态：DisposeAsync 已进入释放流程，含"释放中/已释放"）。</summary>
+        private const int StateClosed = 1;
+
+        /// <summary>
+        /// 生命周期状态（Active → Closed 单向迁移）。
+        /// <para>
+        /// 迁移仅由 <see cref="DisposeAsync"/> 通过 Interlocked.Exchange 原子完成，
+        /// 保证：a) 并发/重复 Dispose 只有一个调用者执行释放流程；
+        /// b) 所有操作方法在获取 _plcLock 之后<b>锁内复检</b>本状态，
+        ///    与 DisposeAsync 的 PLC 关闭在锁上完全串行化，杜绝使用已关闭的 Plc。
+        /// 读侧使用 Volatile.Read 保证可见性（写侧 Interlocked 具有全栅栏语义）。
+        /// </para>
+        /// </summary>
+        private int _state;
 
         /// <summary>点表诊断用：地址非法标记。</summary>
         private const string InvalidAddress = "INVALID_ADDRESS";
@@ -78,7 +105,7 @@ namespace ScadaServer.Infrastructure.Communication
 
         public async Task<bool> ConnectAsync(IRuntimeDevice device)
         {
-            if (_disposed)
+            if (Volatile.Read(ref _state) != StateActive)
                 return false;
 
             var configJson = device.ConfigJson;
@@ -95,6 +122,11 @@ namespace ScadaServer.Infrastructure.Communication
             await _plcLock.WaitAsync();
             try
             {
+                // 锁内复检：入口检查（无锁）与获锁之间存在间隙，DisposeAsync 可能已原子迁移状态。
+                // 终态下直接放弃连接，避免"连接成功即被 Dispose 关闭"之外的资源窗口。
+                if (Volatile.Read(ref _state) != StateActive)
+                    return false;
+
                 // 已有连接：先安全断开旧连接，避免句柄/套接字泄漏
                 if (_plc != null)
                 {
@@ -169,12 +201,16 @@ namespace ScadaServer.Infrastructure.Communication
 
         public async Task<object?> ReadAsync(IRuntimeVariable variable)
         {
-            if (_disposed || variable == null)
+            if (Volatile.Read(ref _state) != StateActive || variable == null)
                 return null;
 
             await _plcLock.WaitAsync();
             try
             {
+                // 锁内复检：DisposeAsync 可能已在入口检查与获锁之间迁移状态
+                if (Volatile.Read(ref _state) != StateActive)
+                    return null;
+
                 if (_plc == null || !_plc.IsConnected)
                     return null;
 
@@ -220,12 +256,16 @@ namespace ScadaServer.Infrastructure.Communication
         public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
         {
             var results = new Dictionary<string, object>();
-            if (_disposed || variables == null)
+            if (Volatile.Read(ref _state) != StateActive || variables == null)
                 return results;
 
             await _plcLock.WaitAsync();
             try
             {
+                // 锁内复检：DisposeAsync 可能已在入口检查与获锁之间迁移状态
+                if (Volatile.Read(ref _state) != StateActive)
+                    return results;
+
                 // 1) 解析地址并校验地址-数据类型匹配：非法地址或类型不匹配（点表配置错误）
                 //    立即反馈 INVALID_ADDRESS，空变量跳过。
                 //    地址只提供位置与宽度；值的解释类型由 RuntimeVariable.DataType 决定。
@@ -440,7 +480,7 @@ namespace ScadaServer.Infrastructure.Communication
 
         public async Task WriteAsync(IRuntimeVariable variable, object value)
         {
-            if (_disposed || variable == null)
+            if (Volatile.Read(ref _state) != StateActive || variable == null)
                 throw new InvalidOperationException("驱动已释放或变量无效");
 
             if (string.IsNullOrWhiteSpace(variable.Address))
@@ -449,6 +489,10 @@ namespace ScadaServer.Infrastructure.Communication
             await _plcLock.WaitAsync();
             try
             {
+                // 锁内复检：DisposeAsync 可能已在入口检查与获锁之间迁移状态
+                if (Volatile.Read(ref _state) != StateActive)
+                    throw new InvalidOperationException("驱动已释放");
+
                 if (_plc == null || !_plc.IsConnected)
                     throw new InvalidOperationException("PLC 未连接");
 
@@ -553,23 +597,36 @@ namespace ScadaServer.Infrastructure.Communication
 
         public async Task DisconnectAsync()
         {
-            if (_disposed)
+            // 终态（DisposeAsync 已进入释放流程）：PLC 由 DisposeAsync 负责最终关闭
+            if (Volatile.Read(ref _state) != StateActive)
                 return;
 
             await _plcLock.WaitAsync();
             try
             {
-                if (_plc != null)
-                {
-                    // 保持原有防止 Close 阻塞设计：卸载到线程池执行
-                    await Task.Run(() => ClosePlcInstance(_plc));
-                    _plc = null;
-                }
+                // 锁内复检：获锁前 DisposeAsync 可能已迁移状态，此时由其负责关闭，本调用直接返回
+                if (Volatile.Read(ref _state) != StateActive)
+                    return;
+
+                await ClosePlcUnderLockAsync();
             }
             finally
             {
                 _plcLock.Release();
             }
+        }
+
+        /// <summary>
+        /// 在已持有 _plcLock 的前提下关闭当前 _plc 并清空引用（DisconnectAsync 与 DisposeAsync 共用）。
+        /// 关闭动作卸载到线程池执行，保持原有防止 Close 阻塞设计。
+        /// </summary>
+        private async Task ClosePlcUnderLockAsync()
+        {
+            if (_plc == null)
+                return;
+
+            await Task.Run(() => ClosePlcInstance(_plc));
+            _plc = null;
         }
 
         /// <summary>安全关闭单个 Plc 实例（不触碰 _plc 字段、不再次加锁）。</summary>
@@ -588,25 +645,38 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
+        /// <summary>
+        /// 释放驱动：关闭 PLC 连接并进入终态（Active → Closed 单向迁移）。
+        /// <para>
+        /// 并发/重复调用安全：Interlocked.Exchange 原子占位，仅第一个调用者执行释放流程，
+        /// 其余调用（无论并发中还是终态后）直接返回——不会重复关闭 Plc、不会重复释放。
+        /// </para>
+        /// <para>
+        /// 与在途操作（Connect/Read/Write/Disconnect）的并发安全：
+        /// 状态迁移先于获锁发生，随后在锁内关闭 PLC；在途操作在获锁后经锁内复检发现终态即退出，
+        /// 与 PLC 关闭在 _plcLock 上完全串行化。若在途的 ConnectAsync 已持有锁并先完成连接，
+        /// 本方法获锁后同样会关闭该新连接——任何交错下 Plc 恰好被关闭一次，无泄漏。
+        /// </para>
+        /// <para>
+        /// 注：_plcLock 按"永不 Dispose"约定保留（见字段注释），不持有非托管资源，
+        /// 此处确保其最终处于已 Release 状态后随 Driver 一同被 GC 回收。
+        /// </para>
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
-            if (_disposed)
+            // 原子占位：Active→Closed 仅允许一次；返回值非 Active 说明已有 Dispose 在途/完成
+            if (Interlocked.Exchange(ref _state, StateClosed) != StateActive)
                 return;
 
-            // 必须先断开连接、再置位 _disposed：DisconnectAsync 开头会检查 _disposed，
-            // 若先置位会导致其直接返回，PLC 连接永不关闭（句柄/套接字泄漏）
-            await DisconnectAsync();
-
-            _disposed = true;
-
-            // 最后释放信号量，避免重复释放
+            await _plcLock.WaitAsync();
             try
             {
-                _plcLock.Dispose();
+                // 终态下最终确保 PLC 已关闭并清空引用（ConnectAsync 竞态插入的新连接也会在此被关闭）
+                await ClosePlcUnderLockAsync();
             }
-            catch
+            finally
             {
-                // 忽略重复释放
+                _plcLock.Release();
             }
         }
 
