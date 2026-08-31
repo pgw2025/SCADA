@@ -192,12 +192,14 @@ const onBindVariableChange = (val: string) => {
 
 // 阶段3：导航目标候选（仅限当前端画面，排除自身）。编辑器内按 currentPlatform 过滤，
 // 保证「跨端跳转不允许」由设计约束（目标下拉不含异端画面）。
+// value 用稳定引用：已落库存 `srv-{serverId}`（跨会话可比）；未落库页面暂存本地 id，
+// 由跳转侧 normalizePageRef 兜底比较。
 const navTargetOptions = computed(() => {
   const list = currentPlatform.value === 'Mobile' ? mobilePages.value : desktopPages.value;
   return list
     // 排除「当前页面」本身：页面 id 与组件 id 不可比，须用父级传入的 currentPageId
     .filter(p => p.id !== props.currentPageId)
-    .map(p => ({ id: p.id, name: p.name }));
+    .map(p => ({ id: p.serverId ? `srv-${p.serverId}` : p.id, name: p.name }));
 });
 
 // ===== nav-menu 菜单项编辑器：3~5 项，图标/文字/跳转目标，支持增删与上下排序 =====

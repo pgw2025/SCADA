@@ -48,6 +48,7 @@ import { ROLE_ADMIN, ROLE_OPERATOR } from '../constants/roles';
 import { addLog } from '../store/index';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
+import { isSamePageRef } from '../utils/pageId';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
@@ -749,9 +750,10 @@ const switchPlatform = (platform: 'Desktop' | 'Mobile') => {
 
 // 阶段3：运行模式（预览）下点击「导航」按钮 → 切换到目标画面（目标必为同端，编辑器不跨端）。
 const handleNavigate = (pageId: string) => {
-  const target = currentProject.value?.pages.find(p => p.id === pageId);
+  // 归一化兜底比较（与播放器一致）：兼容 srv-{serverId} 与本地 id 双轨
+  const target = currentProject.value?.pages.find(p => isSamePageRef(pageId, p.id));
   if (!target) return;
-  selectedPageId.value = pageId;
+  selectedPageId.value = target.id;
   currentPlatform.value = (target.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
 };
 

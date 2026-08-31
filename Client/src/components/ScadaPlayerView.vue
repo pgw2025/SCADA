@@ -14,6 +14,7 @@ import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
+import { isSamePageRef } from '../utils/pageId';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
 import { dispatchComponentEvent, useHmiDataEvents, HmiEventDispatchContext } from '../services/hmiEventService';
@@ -170,9 +171,11 @@ const componentQualities = computed(() => {
 
 // 阶段3：导航按钮跳转（同端切换，跨端不允许）
 const handleNavigate = (pageId: string) => {
-  const target = runtimePages.value.find((p) => p.id === pageId);
+  // 归一化兜底比较：目标可能存的是 srv-{serverId}（新配置）或本地 page-{时间戳}（历史遗留），
+  // 页面列表 id 在重新加载后为 srv-N，直接字符串相等会失配导致静默不跳转。
+  const target = runtimePages.value.find(p => isSamePageRef(pageId, p.id));
   if (!target) return;
-  selectedRuntimePageId.value = pageId;
+  selectedRuntimePageId.value = target.id;
   addLog('组态运行', `跳转到画面: [${target.name}]`, 'normal');
 };
 

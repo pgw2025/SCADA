@@ -4,6 +4,7 @@ import { HMIComponent, HmiMenuItem } from '../types';
 import { getWidgetDef, getMenuIcon } from '../widgetRegistry';
 // 全局共享动画时钟：单实例 rAF 驱动所有动画器件，避免每组件独立 rAF（见 #13）
 import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
+import { isSamePageRef } from '../utils/pageId';
 
 const props = defineProps<{
   component: HMIComponent;
@@ -157,8 +158,9 @@ const menuItems = computed<HmiMenuItem[]>(() => {
 });
 const menuAccentColor = computed(() => propOr('menuAccentColor', '#38bdf8'));
 const menuFontSize = computed(() => Number(propOr('menuFontSize', 14)));
+// 归一化比较：targetPageId 可能是 srv-{serverId}（新配置）或本地 id，currentPageId 亦随会话双轨
 const isCurrentMenuItem = (item: HmiMenuItem) =>
-  !!item.targetPageId && item.targetPageId === props.currentPageId;
+  !!item.targetPageId && isSamePageRef(item.targetPageId, props.currentPageId);
 
 // 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
 const onText = computed(() => props.component.props.onText || '开启');
