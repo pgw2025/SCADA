@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ScadaServer.Domain.Interfaces;
 
 namespace ScadaServer.Infrastructure.Communication
@@ -39,12 +40,24 @@ namespace ScadaServer.Infrastructure.Communication
     /// </remarks>
     public class ProtocolDriverFactory : IProtocolDriverFactory
     {
+        private readonly ILoggerFactory _loggerFactory;
+
+        /// <summary>
+        /// 初始化工厂。注入 <see cref="ILoggerFactory"/> 为各驱动创建类别化日志
+        /// （如 ILogger&lt;S7Driver&gt;），驱动本身保持按设备独立实例化。
+        /// </summary>
+        /// <param name="loggerFactory">日志工厂（来自 DI）</param>
+        public ProtocolDriverFactory(ILoggerFactory loggerFactory)
+        {
+            _loggerFactory = loggerFactory;
+        }
+
         /// <inheritdoc/>
         public IProtocolDriver CreateDriver(string driverKey)
         {
             return driverKey?.Trim().ToUpperInvariant() switch
             {
-                "S7DRIVER" or "S7" => new S7Driver(),
+                "S7DRIVER" or "S7" => new S7Driver(_loggerFactory.CreateLogger<S7Driver>()),
                 "OPCUADRIVER" or "OPCUA" => new OpcUaDriver(),
                 "VIRTUALDRIVER" or "VIRTUAL" => new VirtualDriver(),
                 "MODBUSTCPDRIVER" or "MODBUSTCP" => throw new NotSupportedException($"驱动 {driverKey} 尚未实现（ModbusTcp 驱动待开发）"),

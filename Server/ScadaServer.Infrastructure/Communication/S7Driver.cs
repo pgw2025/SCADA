@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using S7.Net;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Enums;
@@ -72,6 +73,32 @@ namespace ScadaServer.Infrastructure.Communication
 
         /// <summary>点表诊断用：PLC 读取异常标记。</summary>
         private const string ReadError = "READ_ERROR";
+
+        /// <summary>日志组件。驱动为每设备独立实例，日志天然按设备隔离。</summary>
+        private readonly ILogger<S7Driver> _logger;
+
+        /// <summary>
+        /// 最近一次成功解析的连接上下文（ConnectAsync 捕获），供读/写/释放日志定位 PLC。
+        /// Driver 无常驻 DeviceId 字段，此为日志专用快照，不参与业务逻辑。
+        /// </summary>
+        private string? _deviceKey;
+        private string? _lastIp;
+        private int _lastRack;
+        private int _lastSlot;
+
+        /// <summary>
+        /// 通信失败日志闸门：首次失败 Warning（含异常详情），持续失败降为 Debug，
+        /// 恢复时记 Information 并复位。避免 PLC 长时间离线时高频采集把日志刷爆。
+        /// </summary>
+        private bool _commFailureLogged;
+
+        /// <summary>
+        /// 初始化 S7 驱动。日志由 ProtocolDriverFactory 注入（ILoggerFactory.CreateLogger）。
+        /// </summary>
+        public S7Driver(ILogger<S7Driver> logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         /// <summary>协议配置反序列化选项：属性名大小写不敏感，兼容 camelCase / PascalCase 两种存储格式。</summary>
         private static readonly JsonSerializerOptions ConfigJsonOptions = new JsonSerializerOptions
@@ -143,6 +170,15 @@ namespace ScadaServer.Infrastructure.Communication
                     _ => CpuType.S71200
                 };
 
+                // 捕获连接上下文快照，供后续读/写/释放日志定位 PLC（不参与业务逻辑）
+                _deviceKey = device.Key;
+                _lastIp = config.IpAddress;
+                _lastRack = config.Rack;
+                _lastSlot = config.Slot;
+
+                _logger.LogDebug("S7 连接开始 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot} Cpu={CpuType}",
+                    device.Key, config.IpAddress, config.Port, config.Rack, config.Slot, cpuType);
+
                 Plc? newPlc = null;
                 try
                 {
@@ -152,18 +188,25 @@ namespace ScadaServer.Infrastructure.Communication
                     if (newPlc.IsConnected)
                     {
                         _plc = newPlc;
+                        _commFailureLogged = false; // 新连接：复位通信失败闸门
+                        _logger.LogInformation("S7 PLC 连接成功 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                            device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                         return true;
                     }
 
                     // OpenAsync 未抛异常但连接未建立：清理并返回失败
                     ClosePlcInstance(newPlc);
+                    _logger.LogWarning("S7 PLC 连接未建立（OpenAsync 未抛异常但 IsConnected=false）Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                        device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                     return false;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     // 连接失败：自动清理 _plc，避免半开连接残留
                     ClosePlcInstance(newPlc);
                     _plc = null;
+                    _logger.LogWarning(ex, "S7 PLC 连接失败 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                        device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                     return false;
                 }
             }
@@ -212,7 +255,10 @@ namespace ScadaServer.Infrastructure.Communication
                     return null;
 
                 if (_plc == null || !_plc.IsConnected)
+                {
+                    LogCommFailure("Read", variable.Address, null);
                     return null;
+                }
 
                 // 地址只提供位置与宽度，值的解释类型由 DataType 决定：
                 // 按地址宽度读取原始字节，再按 DataType 提取，消除地址助记符
@@ -220,21 +266,37 @@ namespace ScadaServer.Infrastructure.Communication
                 // 地址来源：RuntimeVariable.Address（由 DeviceVariable.Address 解析，驱动不感知 ModelVariable）。
                 var info = ParseAddress(variable.Address);
                 if (info == null)
+                {
+                    // 点表配置错误（非通信故障）：Debug 级即可，批量路径会反馈 INVALID_ADDRESS 供诊断
+                    _logger.LogDebug("S7 地址非法 Variable={VariableKey} Address={Address}", variable.Key, variable.Address);
                     return null;
+                }
 
                 var typeError = ValidateTypeMatch(info, variable.DataType);
                 if (typeError != null)
+                {
+                    _logger.LogDebug("S7 地址与数据类型不匹配 Variable={VariableKey} Address={Address} DataType={DataType}：{Reason}",
+                        variable.Key, variable.Address, variable.DataType, typeError);
                     return null;
+                }
 
                 var buffer = await _plc.ReadBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, info.ByteLength);
                 if (buffer == null || buffer.Length < info.ByteLength)
+                {
+                    LogCommFailure("Read", variable.Address, null);
                     return null;
+                }
 
-                return ExtractValue(buffer, info, variable.DataType, info.ByteOffset);
+                var value = ExtractValue(buffer, info, variable.DataType, info.ByteOffset);
+                if (value != null)
+                    NoteCommRecovered();
+
+                return value;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 防止单个变量异常导致整个采集循环崩溃
+                // 防止单个变量异常导致整个采集循环崩溃；日志经闸门限流（首次 Warning，持续 Debug）
+                LogCommFailure("Read", variable.Address, ex);
                 return null;
             }
             finally
@@ -299,6 +361,7 @@ namespace ScadaServer.Infrastructure.Communication
                 {
                     foreach (var item in valid)
                         results[item.Variable.Key] = ReadError;
+                    LogCommFailure("ReadBatch", null, null);
                     return results;
                 }
 
@@ -348,11 +411,13 @@ namespace ScadaServer.Infrastructure.Communication
                         {
                             buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length);
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
-                            // 该簇读取异常：整簇标记 READ_ERROR，便于点表诊断
+                            // 该簇读取异常：整簇标记 READ_ERROR，便于点表诊断；日志经闸门限流
                             foreach (var item in cluster)
                                 results[item.Variable.Key] = ReadError;
+                            LogCommFailure("ReadBatch",
+                                $"{group.Key.S7Area} DB={dbNumber} Offset={minOffset} Len={length}", ex);
                             continue;
                         }
 
@@ -361,8 +426,13 @@ namespace ScadaServer.Infrastructure.Communication
                         {
                             foreach (var item in cluster)
                                 results[item.Variable.Key] = ReadError;
+                            LogCommFailure("ReadBatch",
+                                $"{group.Key.S7Area} DB={dbNumber} Offset={minOffset} Len={length}", null);
                             continue;
                         }
+
+                        // 至少一个簇读取成功：记录通信恢复（若此前处于失败状态）
+                        NoteCommRecovered();
 
                         // 5) 按变量 DataType 解析（缓冲区长度已校验，ExtractValue 内的边界检查为兜底防御）
                         foreach (var item in cluster)
@@ -373,9 +443,12 @@ namespace ScadaServer.Infrastructure.Communication
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 整体兜底：任何意外异常均不抛出，避免采集宿主崩溃
+                // 整体兜底：任何意外异常均不抛出，避免采集宿主崩溃。
+                // 内层簇读取异常已被捕获，到达此处的大多是驱动自身缺陷（如分组/聚簇逻辑错误）→ Error。
+                _logger.LogError(ex, "S7 批量读取发生未预期异常 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                    _deviceKey, _lastIp, _lastRack, _lastSlot);
                 foreach (var v in variables)
                 {
                     if (v != null && !string.IsNullOrWhiteSpace(v.Key) && !results.ContainsKey(v.Key))
@@ -386,6 +459,13 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 _plcLock.Release();
             }
+
+            // 正常批量读取统计（单行 Debug，含失败计数；不含变量值，避免高频采集刷量）
+            _logger.LogDebug("S7 批量读取完成 Device={DeviceKey} Ip={Ip} Total={Total} Ok={Ok} ReadError={ReadError} InvalidAddress={InvalidAddress}",
+                _deviceKey, _lastIp, results.Count,
+                results.Values.Count(x => x is not string),
+                results.Values.Count(x => ReferenceEquals(x, ReadError)),
+                results.Values.Count(x => ReferenceEquals(x, InvalidAddress)));
 
             return results;
         }
@@ -494,7 +574,11 @@ namespace ScadaServer.Infrastructure.Communication
                     throw new InvalidOperationException("驱动已释放");
 
                 if (_plc == null || !_plc.IsConnected)
+                {
+                    _logger.LogWarning("S7 写入失败：PLC 未连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
                     throw new InvalidOperationException("PLC 未连接");
+                }
 
                 // 地址-数据类型匹配校验：宽度/位形式不匹配时在驱动层明确拒绝，
                 // 不再把类型转换交给 S7netplus 按地址助记符隐式推断（其类型语义与 DataType 冲突）。
@@ -510,8 +594,23 @@ namespace ScadaServer.Infrastructure.Communication
                     // 位写入：按地址串写位（S7netplus 原生支持 DBX/I/Q/M 位地址）
                     var bitValue = ConvertToBit(value);
                     if (bitValue == null)
+                    {
+                        _logger.LogWarning("S7 写入失败：值转换失败 Device={DeviceKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
+                            _deviceKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
                         throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
-                    await _plc.WriteAsync(variable.Address, bitValue.Value);
+                    }
+
+                    try
+                    {
+                        await _plc.WriteAsync(variable.Address, bitValue.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "S7 位写入通信失败 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                            _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
+                        throw;
+                    }
+
                     return;
                 }
 
@@ -519,8 +618,22 @@ namespace ScadaServer.Infrastructure.Communication
                 // 目标解释类型由 DataType 决定（如 DB1.DBD20 + REAL 写 4 字节 REAL 位模式）。
                 var bytes = ConvertToS7Bytes(variable.DataType, value);
                 if (bytes == null)
+                {
+                    _logger.LogWarning("S7 写入失败：值转换失败 Device={DeviceKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
+                        _deviceKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
                     throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
-                await _plc.WriteBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, bytes);
+                }
+
+                try
+                {
+                    await _plc.WriteBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, bytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "S7 写入通信失败 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
+                    throw;
+                }
             }
             finally
             {
@@ -608,6 +721,8 @@ namespace ScadaServer.Infrastructure.Communication
                 if (Volatile.Read(ref _state) != StateActive)
                     return;
 
+                _logger.LogDebug("S7 断开连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                    _deviceKey, _lastIp, _lastRack, _lastSlot);
                 await ClosePlcUnderLockAsync();
             }
             finally
@@ -630,7 +745,7 @@ namespace ScadaServer.Infrastructure.Communication
         }
 
         /// <summary>安全关闭单个 Plc 实例（不触碰 _plc 字段、不再次加锁）。</summary>
-        private static void ClosePlcInstance(Plc? plc)
+        private void ClosePlcInstance(Plc? plc)
         {
             if (plc == null)
                 return;
@@ -639,9 +754,12 @@ namespace ScadaServer.Infrastructure.Communication
                 if (plc.IsConnected)
                     plc.Close();
             }
-            catch
+            catch (Exception ex)
             {
-                // 关闭过程中的异常（如套接字已断开）忽略，确保资源释放
+                // 关闭过程中的异常（如套接字已断开）不阻断释放流程，降为 Debug 记录
+                // （连接本就断开时 Close 抛异常属常态，Warning 会随每次断线刷屏）
+                _logger.LogDebug(ex, "S7 PLC 关闭时出现异常（已忽略，通常为套接字已断开）Device={DeviceKey} Ip={Ip}",
+                    _deviceKey, _lastIp);
             }
         }
 
@@ -668,6 +786,9 @@ namespace ScadaServer.Infrastructure.Communication
             if (Interlocked.Exchange(ref _state, StateClosed) != StateActive)
                 return;
 
+            _logger.LogInformation("S7 驱动释放 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                _deviceKey, _lastIp, _lastRack, _lastSlot);
+
             await _plcLock.WaitAsync();
             try
             {
@@ -678,6 +799,55 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 _plcLock.Release();
             }
+        }
+
+        #endregion
+
+        #region 日志辅助
+
+        /// <summary>
+        /// 通信失败日志（闸门限流）：首次失败记 Warning（含异常详情与 PLC 定位信息），
+        /// 持续失败降为 Debug——PLC 长时间离线期间高频采集（每秒每设备）不会刷爆日志，
+        /// 且首条 Warning 已携带完整异常（SocketException 等）供定位。
+        /// </summary>
+        /// <param name="operation">操作名（Read / ReadBatch）</param>
+        /// <param name="address">涉及的地址或簇范围（可为 null）</param>
+        /// <param name="ex">通信异常（无异常时为 null，如仅是未连接）</param>
+        private void LogCommFailure(string operation, string? address, Exception? ex)
+        {
+            if (!_commFailureLogged)
+            {
+                _commFailureLogged = true;
+                if (ex == null)
+                {
+                    _logger.LogWarning("S7 通信失败：PLC 未连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
+                        _deviceKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "S7 通信异常 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
+                        _deviceKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
+                }
+            }
+            else
+            {
+                _logger.LogDebug("S7 通信持续失败（详情见首条 Warning）Device={DeviceKey} Ip={Ip} Operation={Operation} Address={Address}",
+                    _deviceKey, _lastIp, operation, address ?? "-");
+            }
+        }
+
+        /// <summary>
+        /// 通信恢复标记：此前处于失败状态时记 Information（含 PLC 定位信息）并复位闸门；
+        /// 正常运行期间调用为无操作（不产生日志）。
+        /// </summary>
+        private void NoteCommRecovered()
+        {
+            if (!_commFailureLogged)
+                return;
+
+            _commFailureLogged = false;
+            _logger.LogInformation("S7 通信恢复 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                _deviceKey, _lastIp, _lastRack, _lastSlot);
         }
 
         #endregion
