@@ -856,10 +856,11 @@ namespace ScadaServer.Infrastructure.Communication
 
         /// <summary>
         /// 解析 S7 地址字符串为内部表示（位置 + 访问宽度，不含数据类型语义）。
-        /// 非法地址（格式错误、Bit 偏移超出 0~7、位类型缺失 bit 后缀等）返回 null。
+        /// <b>任意非法地址（含超大数字导致的数值溢出）均安全返回 null，绝不抛出异常。</b>
+        /// 非法地址（格式错误、数字溢出、Bit 偏移超出 0~7、位类型缺失 bit 后缀等）返回 null。
         /// 值的解释类型不在此判定——统一由 <see cref="IRuntimeVariable.DataType"/> 决定。
         /// </summary>
-        private S7AddressInfo? ParseAddress(string address)
+        internal S7AddressInfo? ParseAddress(string address)
         {
             if (string.IsNullOrWhiteSpace(address))
                 return null;
@@ -869,9 +870,18 @@ namespace ScadaServer.Infrastructure.Communication
                 return null;
 
             string typeStr = match.Groups["type"].Value.ToUpperInvariant();
-            int offset = int.Parse(match.Groups["offset"].Value, CultureInfo.InvariantCulture);
+
+            // 数字段全部使用 TryParse 安全解析：正则的 \d+ 可匹配任意长数字串
+            // （如 "M999999999999999999999"），int.Parse 会抛 OverflowException——
+            // 本方法承诺对任意用户输入只返回 null，不依赖外层 catch 兜底。
+            if (!int.TryParse(match.Groups["offset"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int offset))
+                return null;
+
             bool hasBit = match.Groups["bit"].Success && !string.IsNullOrEmpty(match.Groups["bit"].Value);
-            int bit = hasBit ? int.Parse(match.Groups["bit"].Value, CultureInfo.InvariantCulture) : 0;
+            int bit = 0;
+            if (hasBit && !int.TryParse(match.Groups["bit"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out bit))
+                return null;
+
             bool hasDb = match.Groups["db"].Success && !string.IsNullOrEmpty(match.Groups["db"].Value);
 
             bool isBitType = typeStr is "DBX" or "I" or "Q" or "M";
@@ -896,8 +906,7 @@ namespace ScadaServer.Infrastructure.Communication
                 if (!hasDb)
                     return null;
 
-                db = int.Parse(match.Groups["db"].Value, CultureInfo.InvariantCulture);
-                if (db < 1)
+                if (!int.TryParse(match.Groups["db"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out db) || db < 1)
                     return null;
             }
             else
@@ -956,8 +965,9 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>
         /// S7 地址解析结果：仅描述位置（区域/DB 号/字节偏移/位偏移）与访问宽度，
         /// 不携带数据类型语义（值的解释类型由 IRuntimeVariable.DataType 决定）。
+        /// （internal 供单元测试直接断言解析结果）
         /// </summary>
-        private sealed class S7AddressInfo
+        internal sealed class S7AddressInfo
         {
             /// <summary>S7 存储区域（DataBlock / Input / Output / Memory）。</summary>
             public DataType S7Area { get; set; }
