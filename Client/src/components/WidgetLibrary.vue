@@ -117,7 +117,7 @@ const filteredWidgets = computed(() => {
       </div>
       <div v-else v-for="widget in filteredWidgets" :key="widget.name" draggable="true"
         @dragstart="onDragStart($event, widget)"
-        @click="emit('addWidget', widget.type, widget.defaultWidth, widget.defaultHeight, widget.name, widget.defaultProps())"
+        @click="emit('addWidget', widget.type, widget.defaultWidth, widget.defaultHeight, widget.name, undefined, undefined, widget.defaultProps())"
         class="group flex gap-3 p-2.5 bg-[#fafafa] dark:bg-slate-950/60 hover:bg-white dark:hover:bg-slate-800 border border-[#f0f0f0] dark:border-slate-800 hover:border-[#1890ff] dark:hover:border-sky-500 hover:shadow-sm rounded cursor-grab active:cursor-grabbing transition-all duration-200">
         <div
           class="w-10 h-10 rounded bg-white dark:bg-slate-900 border border-[#f0f0f0] dark:border-slate-800 flex items-center justify-center group-hover:scale-105 transition-all shadow-sm">
