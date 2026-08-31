@@ -130,6 +130,10 @@ namespace ScadaServer.Infrastructure.Communication
                     endpointUrl = $"opc.tcp://{endpointUrl}";
                 }
 
+                // 连接开始：Information（仅含端点 URL，不含用户名/密码等敏感配置）
+                _logger.LogInformation("OPC UA 开始连接设备 {DeviceKey}，端点 {EndpointUrl}。",
+                    device.Key, endpointUrl);
+
                 var appConfig = new ApplicationConfiguration()
                 {
                     ApplicationName = "ScadaServer",
@@ -152,9 +156,21 @@ namespace ScadaServer.Infrastructure.Communication
                     {
                         selectedEndpoint = endpoints.FirstOrDefault() ?? throw new Exception("未找到可用的 OPC UA 端点");
                     }
+
+                    // Endpoint 选择细节：Debug（候选数量 + 选中端点的安全模式/策略，便于诊断选错端点）
+                    _logger.LogDebug(
+                        "OPC UA Endpoint 选择：发现 {Count} 个端点，选中 SecurityMode={SecurityMode}，SecurityPolicy={SecurityPolicy}（配置要求：{RequestedPolicy}）。",
+                        endpoints.Count,
+                        selectedEndpoint?.SecurityMode.ToString() ?? "N/A",
+                        selectedEndpoint?.SecurityPolicyUri ?? "N/A",
+                        string.IsNullOrEmpty(config.SecurityPolicy) ? "未指定" : config.SecurityPolicy);
                 }
 
-                if (selectedEndpoint == null) return false;
+                if (selectedEndpoint == null)
+                {
+                    _logger.LogError("OPC UA 连接失败：服务器 {EndpointUrl} 未返回可用端点。", endpointUrl);
+                    return false;
+                }
 
                 var endpointConfiguration = EndpointConfiguration.Create(appConfig);
                 var managedEndpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
@@ -166,18 +182,33 @@ namespace ScadaServer.Infrastructure.Communication
                     identity = new UserIdentity(config.Username, System.Text.Encoding.UTF8.GetBytes(config.Password));
                 }
 
-                var session = await _sessionFactory.CreateAsync(
-                    appConfig, managedEndpoint, false, "ScadaServer", 60000, identity, new List<string>());
-
-                if (session is not Session concreteSession)
+                Session concreteSession;
+                try
                 {
-                    session.Dispose();          // 转型失败也不能泄漏刚创建的会话（尚未发布，无并发使用风险）
-                    return false;
+                    var session = await _sessionFactory.CreateAsync(
+                        appConfig, managedEndpoint, false, "ScadaServer", 60000, identity, new List<string>());
+
+                    if (session is not Session casted)
+                    {
+                        session.Dispose();      // 转型失败也不能泄漏刚创建的会话（尚未发布，无并发使用风险）
+                        _logger.LogError("OPC UA 创建 Session 失败：工厂返回类型 {ActualType}，无法转换为 Session。", session.GetType().Name);
+                        return false;
+                    }
+                    concreteSession = casted;
+                }
+                catch (Exception ex)
+                {
+                    // 认证失败（BadUserAccessDenied 等）/ 证书失败 / 网络不可达均经 CreateAsync 抛出：
+                    // Error 级记录后原样重抛（异常消息含 ServiceResult 详情，不含密码明文）
+                    _logger.LogError(ex, "OPC UA 创建 Session 异常（端点 {EndpointUrl}，认证方式：{AuthMode}）。",
+                        endpointUrl, identity != null ? "用户名密码" : "匿名");
+                    throw;
                 }
 
                 if (!concreteSession.Connected)
                 {
                     concreteSession.Dispose();  // 失败路径不留脏状态（尚未发布到 _session，直接释放即可）
+                    _logger.LogError("OPC UA Session 创建后未处于连接状态（端点 {EndpointUrl}）。", endpointUrl);
                     return false;
                 }
 
@@ -235,6 +266,8 @@ namespace ScadaServer.Infrastructure.Communication
                 // Bad/Uncertain：不能静默当成正常值。抛异常（而非返回 null）以保留
                 // 具体失败原因——Runtime 侧 catch 后标记 CommunicationError 并记录日志，
                 // 现场可据此区分配置错误（节点/权限）与通信故障
+                _logger.LogWarning("OPC UA 读取变量 {VariableKey} 返回非 Good 状态：StatusCode=0x{StatusCode:X8}。",
+                    variable.Key, code);
                 throw BuildReadQualityException(variable, code);
             }
             finally
@@ -285,6 +318,9 @@ namespace ScadaServer.Infrastructure.Communication
                 {
                     // 用友好文案替代状态码，便于上层直接展示失败原因
                     var code = response.Results.Count > 0 ? response.Results[0].Code : (uint)0;
+                    // 写入被拒：Warning（含变量键与状态码）
+                    _logger.LogWarning("OPC UA 写入变量 {VariableKey} 被拒绝：StatusCode=0x{StatusCode:X8}。",
+                        variable.Key, code);
                     throw new InvalidOperationException($"OPC UA 写入被拒绝: 状态码 0x{code:X8}");
                 }
             }
@@ -384,10 +420,22 @@ namespace ScadaServer.Infrastructure.Communication
                             DisplayName = $"Sub_{interval}ms"
                         };
                         session.AddSubscription(sub);
-                        await sub.CreateAsync();
+                        try
+                        {
+                            await sub.CreateAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            // 服务器端创建失败：Warning 记录后原样重抛（不吞异常，保持既有传播语义）
+                            _logger.LogWarning(ex, "OPC UA 创建 Subscription 失败（发布间隔 {Interval}ms）。", interval);
+                            throw;
+                        }
                         _subscriptions[interval] = sub;
+                        // Subscription 创建成功：Information（仅在真正创建时记录，重复订阅跳过不刷屏）
+                        _logger.LogInformation("OPC UA Subscription 已创建（发布间隔 {Interval}ms）。", interval);
                     }
 
+                    var newItems = new List<MonitoredItem>();
                     foreach (var variable in group)
                     {
                         // 已订阅的变量直接跳过，避免重复创建 MonitoredItem 导致回调重复触发
@@ -411,8 +459,28 @@ namespace ScadaServer.Infrastructure.Communication
 
                         sub.AddItem(item);
                         _monitoredItems.Add(item);
+                        newItems.Add(item);
                     }
-                    await sub.ApplyChangesAsync();
+
+                    // MonitoredItem 细节：Debug（变量键 + NodeId，便于点表核对）
+                    foreach (var item in newItems)
+                    {
+                        _logger.LogDebug("OPC UA MonitoredItem 已加入订阅 {Subscription}：{VariableKey} → NodeId {NodeId}（采样间隔 {Interval}ms）。",
+                            sub.DisplayName, item.DisplayName, item.StartNodeId, interval);
+                    }
+
+                    try
+                    {
+                        await sub.ApplyChangesAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        // 服务器确认失败：Warning 记录后原样重抛
+                        _logger.LogWarning(ex,
+                            "OPC UA ApplyChanges 失败（订阅 {Subscription}，本次新增 {ItemCount} 个 MonitoredItem）。",
+                            sub.DisplayName, newItems.Count);
+                        throw;
+                    }
                 }
             }
             finally
@@ -451,7 +519,22 @@ namespace ScadaServer.Infrastructure.Communication
                     if (sub.MonitoredItemCount == 0)
                     {
                         // 订阅已空：整条删除，服务器端会一并删除其 MonitoredItem
-                        if (serverReachable) await sub.DeleteAsync(true);
+                        if (serverReachable)
+                        {
+                            try
+                            {
+                                await sub.DeleteAsync(true);
+                            }
+                            catch (Exception ex)
+                            {
+                                // 服务器端删除失败：Warning 记录后原样重抛
+                                _logger.LogWarning(ex, "OPC UA 删除 Subscription 失败（订阅 {Subscription}）。", sub.DisplayName);
+                                throw;
+                            }
+                        }
+                        // Subscription 删除：Information（含是否已通知服务器的上下文）
+                        _logger.LogInformation("OPC UA Subscription 已删除（订阅 {Subscription}，服务器可达：{ServerReachable}）。",
+                            sub.DisplayName, serverReachable);
                         sub.Dispose();                  // 释放客户端订阅对象
                         var kv = _subscriptions.FirstOrDefault(x => x.Value == sub);
                         if (kv.Value != null) _subscriptions.Remove(kv.Key);
@@ -459,7 +542,17 @@ namespace ScadaServer.Infrastructure.Communication
                     else if (serverReachable)
                     {
                         // 提交挂起的删除，让服务器真正停止推送该变量
-                        await sub.ApplyChangesAsync();
+                        try
+                        {
+                            await sub.ApplyChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex,
+                                "OPC UA 取消订阅时 ApplyChanges 失败（订阅 {Subscription}，剩余 {ItemCount} 个 MonitoredItem）。",
+                                sub.DisplayName, sub.MonitoredItemCount);
+                            throw;
+                        }
                     }
                 }
             }
@@ -693,7 +786,9 @@ namespace ScadaServer.Infrastructure.Communication
             //（任何竞态窗口内的意外异常都在此吸收，绝不向协议栈线程传播）
             try
             {
-                if (!ServiceResult.IsBad(e.Status)) return;
+                // KeepAliveEventArgs.Status 可能为 null：先判空再使用
+                var status = e.Status;
+                if (status == null || !ServiceResult.IsBad(status)) return;
                 // Connected 正常触发；Reconnecting（上次重连失败、退避等待中）也允许触发以驱动下次重试；
                 // Disconnecting/Connecting/Disposed 等状态不再触发
                 var triggerState = _state;
@@ -704,8 +799,16 @@ namespace ScadaServer.Infrastructure.Communication
                 var current = _session;
                 if (current == null || !ReferenceEquals(session, current)) return;
 
+                // KeepAlive Bad：Warning（含状态码，用于定位断线时刻）
+                _logger.LogWarning("OPC UA KeepAlive 异常：设备会话健康检测失败，StatusCode=0x{StatusCode:X8}，当前状态：{State}。",
+                    status.StatusCode.Code, triggerState);
+
                 // 失败退避：仍在退避窗口内则跳过，避免 KeepAlive 高频触发造成 CPU/网络压力
-                if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _nextReconnectAttemptUtcTicks)) return;
+                if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _nextReconnectAttemptUtcTicks))
+                {
+                    _logger.LogDebug("OPC UA KeepAlive Bad 处于退避窗口内，本次不触发重连。");
+                    return;
+                }
 
                 var cts = _reconnectCts;
                 if (cts == null) return;   // 令牌已被清理（断开中），不启动新任务
