@@ -34,8 +34,12 @@ namespace ScadaServer.Infrastructure.Communication
     /// - 主动断开：任意状态 → (DisconnectAsync) → Disconnecting → Disconnected
     /// - 释放：任意状态 → (DisposeAsync) → Disposed（终态）
     /// - Disconnect 一旦置为 Disconnecting/Disposed，KeepAlive 回调不再启动新的后台重连任务；
-    ///   已启动的任务通过 <see cref="_reconnectCts"/> 取消，并由 <see cref="_lastReconnectTask"/> 追踪，
-    ///   DisposeAsync 等待其结束后才返回（不允许 Driver 释放后仍有后台任务运行）。
+    ///   已启动的任务通过 <see cref="_reconnectCts"/> 取消，并由 <see cref="_reconnectTask"/> 追踪，
+    ///   Disconnect/Dispose 等待其结束后才返回（不允许 Driver 释放后仍有后台任务运行）。
+    /// - 后台重连任务采用"单飞门"（<see cref="_reconnectGate"/>，Interlocked CAS）：
+    ///   同一时刻至多存在一个有效重连任务（多次 KeepAlive Bad 收敛为单个流程），
+    ///   Dispose 将门永久置为 Terminated，此后任何回调都无法再创建后台任务；
+    ///   任务由 <see cref="RunTrackedReconnectAsync"/> 包裹，内部捕获全部异常，不产生未观察的 Task 异常。
     /// </summary>
     public class OpcUaDriver : IProtocolDriver
     {
@@ -78,7 +82,14 @@ namespace ScadaServer.Infrastructure.Communication
 
         private volatile DriverState _state = DriverState.Disconnected;
         private CancellationTokenSource? _reconnectCts;             // 当前会话的后台重连取消令牌；仅 _lifecycleLock 内替换/释放，Cancel 可在锁外（线程安全且幂等）
-        private volatile Task? _lastReconnectTask;                  // 最近一次后台重连任务；DisposeAsync 等待其结束
+
+        /// <summary>后台重连任务单飞门状态：0=空闲（可创建新任务），1=任务在途，2=已终止（Dispose 后永久禁止创建）。</summary>
+        private const int ReconnectGateIdle = 0;
+        private const int ReconnectGateRunning = 1;
+        private const int ReconnectGateTerminated = 2;
+
+        private volatile Task? _reconnectTask;      // 当前（唯一）被追踪的后台重连任务；Disconnect/Dispose 等待其结束
+        private int _reconnectGate;                 // 单飞门：CAS 保证同一时刻至多一个后台重连任务，Dispose 后永久关闭
         private int _consecutiveReconnectFailures;                  // 连续重连失败计数
         private long _nextReconnectAttemptUtcTicks;                 // 下次允许触发重连的 UTC 时刻（Ticks，Interlocked 读写）
 
@@ -427,6 +438,15 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 _lifecycleLock.Release();
             }
+
+            // 等待后台重连任务彻底结束（在已释放 _lifecycleLock 之后 await，无死锁风险）：
+            // 任务在释放锁后不再执行任何工作，此处兜底保证 DisconnectAsync 返回后
+            // 不存在仍在运行的重连任务。RunTrackedReconnectAsync 内部已吞异常，await 不会抛。
+            var task = _reconnectTask;
+            if (task != null)
+            {
+                await task;
+            }
         }
 
         /// <summary>
@@ -616,28 +636,68 @@ namespace ScadaServer.Infrastructure.Communication
         /// </summary>
         private void OnSessionKeepAlive(ISession session, KeepAliveEventArgs e)
         {
-            if (!ServiceResult.IsBad(e.Status)) return;
-            // Connected 正常触发；Reconnecting（上次重连失败、退避等待中）也允许触发以驱动下次重试；
-            // Disconnecting/Connecting/Disposed 等状态不再触发
-            var triggerState = _state;
-            if (_disposed || (triggerState != DriverState.Connected && triggerState != DriverState.Reconnecting)) return;
+            // 运行在协议栈 KeepAlive 线程上：禁止阻塞、禁止抛异常，整体做异常防护
+            //（任何竞态窗口内的意外异常都在此吸收，绝不向协议栈线程传播）
+            try
+            {
+                if (!ServiceResult.IsBad(e.Status)) return;
+                // Connected 正常触发；Reconnecting（上次重连失败、退避等待中）也允许触发以驱动下次重试；
+                // Disconnecting/Connecting/Disposed 等状态不再触发
+                var triggerState = _state;
+                if (_disposed || (triggerState != DriverState.Connected && triggerState != DriverState.Reconnecting)) return;
 
-            // 身份检查：只处理"当前会话"的事件；清理时 _session 先置 null，
-            // 旧会话（已关闭/待释放）的残留事件在这里被直接忽略，不可能影响新会话
-            var current = _session;
-            if (current == null || !ReferenceEquals(session, current)) return;
+                // 身份检查：只处理"当前会话"的事件；清理时 _session 先置 null，
+                // 旧会话（已关闭/待释放）的残留事件在这里被直接忽略，不可能影响新会话
+                var current = _session;
+                if (current == null || !ReferenceEquals(session, current)) return;
 
-            // 失败退避：仍在退避窗口内则跳过，避免 KeepAlive 高频触发造成 CPU/网络压力
-            if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _nextReconnectAttemptUtcTicks)) return;
+                // 失败退避：仍在退避窗口内则跳过，避免 KeepAlive 高频触发造成 CPU/网络压力
+                if (DateTime.UtcNow.Ticks < Interlocked.Read(ref _nextReconnectAttemptUtcTicks)) return;
 
-            var cts = _reconnectCts;
-            if (cts == null) return;   // 令牌已被清理（断开中），不启动新任务
+                var cts = _reconnectCts;
+                if (cts == null) return;   // 令牌已被清理（断开中），不启动新任务
 
-            // 后台重连：任务被 _lastReconnectTask 追踪（DisposeAsync 等待其结束），
-            // 令牌在启动前物化为快照，避免闭包执行时 CTS 已被释放；
-            // 传入的必须是已通过身份检查的 current（Session），而非回调参数（ISession）
-            var token = cts.Token;
-            _lastReconnectTask = Task.Run(() => TryReconnectAsync(current, token));
+                // 令牌在门通过前物化为快照，避免闭包执行时 CTS 已被释放
+                var token = cts.Token;
+
+                // 单飞门：CAS(Idle→Running) 失败说明已有在途任务（或驱动已终止），本次 Bad 不产生新任务
+                // —— 多次 KeepAlive Bad 收敛为单个有效重连流程，杜绝无法追踪的任务堆积
+                if (Interlocked.CompareExchange(ref _reconnectGate, ReconnectGateRunning, ReconnectGateIdle) != ReconnectGateIdle)
+                    return;
+
+                // 唯一的任务创建点：引用被 _reconnectTask 追踪（Disconnect/Dispose 等待其结束），
+                // 传入的必须是已通过身份检查的 current（Session），而非回调参数（ISession）
+                _reconnectTask = Task.Run(() => RunTrackedReconnectAsync(current, token));
+            }
+            catch (Exception ex)
+            {
+                // 极端竞态（如 CAS 已通过但 Task.Run 前出现异常）：回滚单飞门，避免门被卡死在 Running
+                Interlocked.CompareExchange(ref _reconnectGate, ReconnectGateIdle, ReconnectGateRunning);
+                _logger.LogDebug(ex, "OPC UA KeepAlive 触发自动重连时出现异常（已忽略）。");
+            }
+        }
+
+        /// <summary>
+        /// 唯一的后台重连任务入口：包裹 <see cref="TryReconnectAsync"/>，
+        /// 保证任务不携带未观察异常（所有逃逸异常在此捕获并记录），
+        /// 并在任务结束时回落单飞门（若驱动已终止则保持终止态，永久阻止后续任务创建）。
+        /// </summary>
+        private async Task RunTrackedReconnectAsync(Session expectedSession, CancellationToken ct)
+        {
+            try
+            {
+                await TryReconnectAsync(expectedSession, ct);
+            }
+            catch (Exception ex)
+            {
+                // 兜底：TryReconnectAsync 内部已处理预期异常（取消/失败），
+                // 此处防止任何逃逸异常成为未观察的 Task 异常
+                _logger.LogError(ex, "OPC UA 后台重连任务出现未预期的异常。");
+            }
+            finally
+            {
+                Interlocked.CompareExchange(ref _reconnectGate, ReconnectGateIdle, ReconnectGateRunning);
+            }
         }
 
         /// <summary>
@@ -748,26 +808,22 @@ namespace ScadaServer.Infrastructure.Communication
             _disposed = true;
             _state = DriverState.Disposed;
 
+            // 永久关闭单飞门：即便某个 KeepAlive 回调恰好越过上面的 _disposed 检查，
+            // 其 CAS(Idle→Running) 也会因门已为 Terminated 而失败 —— Dispose 后不可能再创建任何后台任务
+            Interlocked.Exchange(ref _reconnectGate, ReconnectGateTerminated);
+
             // 立即打断在途的后台 Reconnect（让其尽快释放 _lifecycleLock）
             CancelAndDisposeReconnectToken();
 
-            // 持锁清理现存会话与订阅（会等待在途 IO 与生命周期操作结束）
+            // 持锁清理现存会话与订阅，并等待后台重连任务结束（DisconnectAsync 内部已 await _reconnectTask）
             await DisconnectAsync();
 
-            // 等待后台重连任务结束：Dispose 返回后不存在仍在运行的后台任务。
-            // 此时任务必已结束或即将结束（其内部仅有的阻塞点是可被取消/超时的 ReconnectAsync），
-            // 此处兜底 await 保证"Dispose 完成后无泄漏"的强保证
-            var task = _lastReconnectTask;
+            // 兜底再等待一次（此时任务必已完成；await 已完成 Task 为 no-op）：
+            // 强保证 Dispose 返回后不存在任何仍在运行的后台重连任务
+            var task = _reconnectTask;
             if (task != null)
             {
-                try
-                {
-                    await task;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "OPC UA 后台重连任务以异常结束。");
-                }
+                await task;   // RunTrackedReconnectAsync 内部已吞异常，不会抛
             }
             // 与 S7Driver 约定一致：不 Dispose SemaphoreSlim，避免与并发 WaitAsync 竞态
         }
