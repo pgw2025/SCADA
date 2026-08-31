@@ -46,6 +46,12 @@ namespace ScadaServer.Runtime.Devices
         private readonly Dictionary<string, AlarmRuleState> _ruleStates = new();
 
         /// <summary>
+        /// 断线判定阈值：连续 N 个采集轮次全部失败即判定设备断线，转入自动重连流程。
+        /// N=3：按默认 1s 轮询约 3s 检测延迟，兼顾对短暂网络抖动的容忍与故障发现速度。
+        /// </summary>
+        private const int ReconnectAfterConsecutiveFailures = 3;
+
+        /// <summary>
         /// 初始化设备工作器
         /// </summary>
         /// <param name="runtime">设备运行时，包含设备配置、驱动实例和变量集合</param>
@@ -277,6 +283,20 @@ namespace ScadaServer.Runtime.Devices
                             _logger.LogWarning(
                                 "Device {DeviceKey} 本轮 {Count} 个到期变量全部读取失败，设备转为 Error。",
                                 _runtime.Device.Key, due.Count);
+                        }
+
+                        // 断线判定：连续多轮全部失败（容忍短暂网络抖动）即判定设备断线，
+                        // 置位 NeedsReconnect 并退出采集循环，转入运行时自动重连流程——
+                        // 调度器发现标记后按退避窗口触发 ReconnectDeviceAsync，重建驱动
+                        // 连接与采集 Worker（复用初始连接失败的占位重连机制），
+                        // 无需人工重启服务。任一轮成功会在上方清零计数自动解除判定。
+                        if (_runtime.ConsecutiveFailureCount >= ReconnectAfterConsecutiveFailures)
+                        {
+                            _logger.LogWarning(
+                                "设备 {DeviceKey} 连续 {Count} 轮采集全部失败，判定断线，转入自动重连流程。",
+                                _runtime.Device.Key, _runtime.ConsecutiveFailureCount);
+                            _runtime.NeedsReconnect = true;
+                            break;
                         }
                     }
                 }

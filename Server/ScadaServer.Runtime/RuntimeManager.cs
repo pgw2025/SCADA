@@ -209,31 +209,34 @@ namespace ScadaServer.Runtime
 
         /// <summary>
         /// 自动重连待重连设备（由 DeviceScheduler 按退避窗口触发）。
-        /// 移除占位运行时后重新走完整注册流程（加载设备图 → 连接驱动 → 注册）；
+        /// 移除旧运行时后重新走完整注册流程（加载设备图 → 连接新驱动 → 注册）；
         /// 若连接仍失败，注册流程会再次注册占位运行时，形成退避重试循环。
+        /// <para>
+        /// 适用两类入口：初始连接失败的占位运行时（无 Worker/驱动，各清理步骤自然跳过）；
+        /// 以及<b>运行中因断线转入重连</b>的运行时（Worker 判定连续失败已置
+        /// NeedsReconnect 并退出）——此时必须先停 Worker 收尾、Dispose 旧驱动，
+        /// 避免旧 Plc 连接泄漏与重建期间的双重采集。
+        /// </para>
         /// </summary>
         /// <param name="deviceId">设备 ID</param>
         public async Task ReconnectDeviceAsync(int deviceId)
         {
-            // 重入门闸：仅当当前在册运行时确为待重连占位时才执行，避免并发重连。
+            // 重入门闸：仅当当前在册运行时确为待重连状态时才执行，避免并发重连。
             // 后续 TryRemove 作为原子闸门：并发调用中只有一个能成功移除并继续。
             if (!DeviceRuntimes.TryGetValue(deviceId, out var current) || !current.NeedsReconnect)
             {
                 return;
             }
 
-            if (!DeviceRuntimes.TryRemove(deviceId, out var placeholder))
+            if (!DeviceRuntimes.TryRemove(deviceId, out var runtime))
             {
                 return;
             }
 
             _lastPushedStatus.TryRemove(deviceId, out _);
 
-            // 占位运行时无 Worker 与驱动，仅防御性取消（无副作用）。
-            lock (placeholder.DispatchSync)
-            {
-                placeholder.CancelWorker();
-            }
+            // 停止残留 Worker 并释放旧驱动（占位运行时无 Worker/驱动，自然跳过）。
+            await StopWorkerAndDisposeDriverAsync(runtime);
 
             // 重新走完整注册流程（内部先幂等移除，再加载、连接、注册）。
             await RegisterDeviceAsync(deviceId);
@@ -249,10 +252,40 @@ namespace ScadaServer.Runtime
 
             _lastPushedStatus.TryRemove(deviceId, out _);
 
-            // 1) 取消当前 Worker 并等待其收尾，避免在驱动断开期间仍被采集访问。
-            // 在 DispatchSync 锁内取消并读取 WorkerTask：与调度器派发临界区串行化，
-            // 确保读到的句柄必然属于"最后一个派发的 Worker"——设备已从 DeviceRuntimes
-            // 移除，此后调度器派发校验（在册 + 同引用）必然失败，不会再有新 Worker。
+            // 1) 停止 Worker 并释放驱动（先收尾再释放，串行化驱动访问）。
+            await StopWorkerAndDisposeDriverAsync(runtime);
+
+            // 2) 推送 Offline，使界面即时反映设备已移除/被禁用。
+            StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
+            {
+                DeviceId = deviceId,
+                Status = DeviceStatus.Offline
+            });
+            try
+            {
+                await _notificationService.NotifyDeviceStatusAsync(deviceId, DeviceStatus.Offline);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 注销状态通知推送失败。", deviceId);
+            }
+        }
+
+        /// <summary>
+        /// 停止指定运行时的采集 Worker 并释放其驱动（RemoveDeviceAsync 与 ReconnectDeviceAsync 共用）。
+        /// <para>
+        /// 顺序保证：先取消 Worker 并等待收尾（3s 超时容忍），再 Dispose 驱动——
+        /// 确保 Worker 不再访问驱动后才释放底层连接（如 S7 的 Plc），
+        /// 避免使用已关闭连接与 Plc 泄漏。占位运行时（无 Worker / 无驱动）各步骤自然跳过。
+        /// </para>
+        /// <para>
+        /// 在 DispatchSync 锁内取消并读取 WorkerTask：与调度器派发临界区串行化，
+        /// 确保读到的句柄必然属于"最后一个派发的 Worker"——调用方已先从 DeviceRuntimes
+        /// 移除该运行时，此后调度器派发校验（在册 + 同引用）必然失败，不会再有新 Worker。
+        /// </para>
+        /// </summary>
+        private async Task StopWorkerAndDisposeDriverAsync(Devices.DeviceRuntime runtime)
+        {
             Task? workerTask;
             lock (runtime.DispatchSync)
             {
@@ -272,7 +305,6 @@ namespace ScadaServer.Runtime
                 }
             }
 
-            // 2) 断开设备驱动并释放资源。
             if (runtime.Driver != null)
             {
                 try
@@ -283,21 +315,6 @@ namespace ScadaServer.Runtime
                 {
                     _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
                 }
-            }
-
-            // 3) 推送 Offline，使界面即时反映设备已移除/被禁用。
-            StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
-            {
-                DeviceId = deviceId,
-                Status = DeviceStatus.Offline
-            });
-            try
-            {
-                await _notificationService.NotifyDeviceStatusAsync(deviceId, DeviceStatus.Offline);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "设备 {DeviceId} 注销状态通知推送失败。", deviceId);
             }
         }
 
