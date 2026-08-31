@@ -74,6 +74,7 @@ const baseProps = (type: ComponentType): Record<string, any> => ({
   minValue: 0, // 量程下限（百分比类/仪表类归一化基准）
   unit: type === 'gauge-dial' ? '℃' : '',
   showValue: false,
+  showLabel: false, // 外框浮签标签名称默认隐藏，需显示时在属性面板单独开启
   fontSize: 12,
   bold: false,
   align: 'center',

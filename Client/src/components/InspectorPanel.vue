@@ -671,6 +671,17 @@ const onPickBackgroundImage = (img: { url: string }) => {
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs" />
         </div>
 
+        <!-- showLabel — 外框浮签标签默认隐藏，勾选后显示（与 widgetRegistry.baseProps 真相源一致；排除本就无浮签的内部标签型组件） -->
+        <div class="flex items-center gap-2"
+          v-if="!['text', 'led', 'gauge-level', 'gauge-dial', 'digital-val'].includes(selectedComponent.type)">
+          <input type="checkbox" id="showLabelDef" :checked="componentProps.showLabel || false"
+            @change="updateProp('showLabel', ($event.target as HTMLInputElement).checked)"
+            class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+          <label htmlFor="showLabelDef" class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">
+            显示外框标签名称
+          </label>
+        </div>
+
         <!-- States color picks -->
         <div class="grid grid-cols-2 gap-2 text-xs">
           <div>

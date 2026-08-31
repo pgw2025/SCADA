@@ -979,8 +979,9 @@ onUnmounted(() => {
             </div>
 
             <!-- Editable labels in component container -->
+            <!-- showLabel：外框浮签默认隐藏（显式开启才显示），与 widgetRegistry.baseProps 真相源一致 -->
             <div
-              v-if="!component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
+              v-if="component.props.showLabel === true && !component.props.showValue && component.type !== 'text' && component.type !== 'led' && component.type !== 'gauge-level' && component.type !== 'gauge-dial' && component.type !== 'digital-val'"
               class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] bg-white/95 border border-[#d9d9d9] text-gray-600 font-mono px-1.5 py-0.5 rounded shadow-sm truncate max-w-full pointer-events-none">
               {{ component.label }}
             </div>
