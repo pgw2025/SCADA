@@ -211,6 +211,9 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
+        /// <summary>点表诊断用：OPC UA 批量读取中单个变量读取失败/质量异常的标记（与 S7Driver 的 READ_ERROR 约定一致）。</summary>
+        private const string ReadError = "READ_ERROR";
+
         public async Task<object?> ReadAsync(IRuntimeVariable variable)
         {
             // 获取 Session 快照并登记 IO 引用计数；不可用（未连接/正在断开或重连/已释放）返回 null
@@ -222,12 +225,41 @@ namespace ScadaServer.Infrastructure.Communication
                 // 节点地址来源：RuntimeVariable.Address（DeviceVariable.Address）
                 // IO 引用计数归零前 Session 不会被关闭或替换，此处使用是安全的
                 var result = await session.ReadValueAsync(variable.Address);
-                return result.Value;
+
+                // StatusCode 质量：OPC UA DataValue 即使读取完成也可能携带 Bad/Uncertain
+                // （节点不存在、访问被拒绝、服务器端质量降级等）。忽略它会把无效值
+                // （甚至 Value=null 但 StatusCode=Bad 的组合）当作有效数据交给上层。
+                var code = result.StatusCode.Code;
+                if (ServiceResult.IsGood(code)) return result.Value;
+
+                // Bad/Uncertain：不能静默当成正常值。抛异常（而非返回 null）以保留
+                // 具体失败原因——Runtime 侧 catch 后标记 CommunicationError 并记录日志，
+                // 现场可据此区分配置错误（节点/权限）与通信故障
+                throw BuildReadQualityException(variable, code);
             }
             finally
             {
                 await ReleaseSessionIoAsync();
             }
+        }
+
+        /// <summary>
+        /// 根据变量与 OPC UA StatusCode 构造带具体语义的读取质量异常。
+        /// 区分：节点不存在 / 访问被拒绝 / 会话未连接 / 通信超时 / 通信异常 / 数据不确定 / 其他 Bad。
+        /// 消息仅含变量键、状态码数值与分类描述，不含敏感信息。
+        /// </summary>
+        private static InvalidOperationException BuildReadQualityException(IRuntimeVariable variable, uint code)
+        {
+            var description = code switch
+            {
+                StatusCodes.BadNodeIdUnknown => "节点不存在（地址或命名空间配置错误）",
+                StatusCodes.BadUserAccessDenied => "访问被拒绝（权限不足）",
+                StatusCodes.BadNotConnected => "会话未连接",
+                StatusCodes.BadTimeout => "通信超时",
+                StatusCodes.BadCommunicationError => "通信异常",
+                _ => ServiceResult.IsUncertain(code) ? "数据不确定（服务器报告 Uncertain 质量）" : "读取失败",
+            };
+            return new InvalidOperationException($"OPC UA 读取变量 {variable.Key} 失败: {description}，状态码 0x{code:X8}");
         }
 
         public async Task WriteAsync(IRuntimeVariable variable, object value)
@@ -287,13 +319,34 @@ namespace ScadaServer.Infrastructure.Communication
                 var values = response.Results;
 
                 int i = 0;
+                int failedCount = 0;
                 foreach (var variable in variables)
                 {
                     if (i < values.Count)
                     {
-                        results[variable.Key] = values[i].Value;
+                        // 与 ReadAsync 同样的质量判定：仅 StatusCode 为 Good 的值才作为有效数据返回；
+                        // Bad/Uncertain 的变量写入 READ_ERROR 诊断标记（S7Driver 同约定），
+                        // 调用方比对标记即可识别，避免无效值被当作有效数据
+                        var dataValue = values[i];
+                        if (ServiceResult.IsGood(dataValue.StatusCode.Code))
+                        {
+                            results[variable.Key] = dataValue.Value;
+                        }
+                        else
+                        {
+                            results[variable.Key] = ReadError;
+                            failedCount++;
+                        }
                     }
                     i++;
+                }
+
+                if (failedCount > 0)
+                {
+                    // 汇总一条 Debug（每批一条，避免逐变量刷日志）；
+                    // 具体状态码可由调用方对 READ_ERROR 变量单独调 ReadAsync 获取
+                    _logger.LogDebug("OPC UA 批量读取：{FailedCount} 个变量状态码非 Good，已标记 {Marker}。",
+                        failedCount, ReadError);
                 }
             }
             finally
