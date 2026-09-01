@@ -301,7 +301,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     iconColor: 'text-red-500',
     description: '动态微积分平滑滤波趋势图，记录历史PLC模拟参数，支持多变量序列与逐线颜色/粗细自定义。',
     category: 'sensors',
-    defaultProps: () => ({ ...baseProps('trend-chart'), trendSeries: [], trendShowLegend: true, trendLegendFontSize: 9, trendUseGlobalRange: true }),
+    defaultProps: () => ({ ...baseProps('trend-chart'), trendSeries: [], trendShowLegend: true, trendLegendFontSize: 9, trendUseGlobalRange: true, trendAxisMode: 'absolute', trendAxisMin: null, trendAxisMax: null, trendShowGrid: true, trendShowAxisLabels: true, trendAxisLabelFontSize: 8, trendShowPointValues: false, trendPointValueFontSize: 8, trendPointValueColor: 'auto', trendPointValueEveryN: null }),
   },
   led: {
     type: 'led',

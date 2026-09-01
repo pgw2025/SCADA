@@ -8,14 +8,16 @@ import { LayoutDashboard } from 'lucide-vue-next';
 import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
 import { isSamePageRef } from '../utils/pageId';
 import { getEffectiveTrendSeries } from '../utils/trendSeries';
+import type { TrendSample } from '../utils/trendHistory';
+import { niceTicks, relTimeLabel, fmtTick } from '../utils/axisTicks';
 
 const props = defineProps<{
   component: HMIComponent;
   value: number | boolean;
   isActiveMode: boolean;
   controlLocked?: boolean;
-  /** 趋势图多序列数据窗口：组件 id → (序列 id → 数值滚动缓冲)，无则显示占位 */
-  history?: Record<string, number[]>;
+  /** 趋势图多序列数据窗口：组件 id → (序列 id → 采样点滚动缓冲 {t,v})，无则显示占位 */
+  history?: Record<string, TrendSample[]>;
   /** 当前页面 id：nav-menu 运行态据此高亮“当前画面”对应的菜单项 */
   currentPageId?: string;
   /** 绑定变量质量（非 Good 时 var-display 显示 -- 而非旧值，避免误判） */
@@ -406,6 +408,23 @@ const trendReady = computed(() => {
   return Object.values(map).some((buf) => (buf?.length ?? 0) >= 2);
 });
 
+// ===== trend-chart 坐标轴 / 刻度 / 显示增强 配置读取 =====
+const numOrNull = (k: string): number | null => {
+  const v = props.component.props[k as keyof HMIComponent['props']];
+  return (v === undefined || v === null || v === '') ? null : Number(v);
+};
+const trendAxisMode = computed(() => (propOr('trendAxisMode', 'absolute') === 'relative' ? 'relative' : 'absolute'));
+const manualAxisMin = computed(() => numOrNull('trendAxisMin'));
+const manualAxisMax = computed(() => numOrNull('trendAxisMax'));
+const useGlobalRange = computed(() => propOr('trendUseGlobalRange', true));
+const showGrid = computed(() => propOr('trendShowGrid', true) === true);
+const showAxisLabels = computed(() => propOr('trendShowAxisLabels', true) === true);
+const axisLabelFontSize = computed(() => Number(propOr('trendAxisLabelFontSize', 8)));
+const showPointValues = computed(() => propOr('trendShowPointValues', false) === true);
+const pointValueFontSize = computed(() => Number(propOr('trendPointValueFontSize', 8)));
+const pointValueColor = computed(() => propOr('trendPointValueColor', 'auto'));
+const pointEveryN = computed(() => numOrNull('trendPointValueEveryN'));
+
 const hasExplicitThresholdMax = computed(() => {
   const v = props.component.props.thresholdMax;
   return v !== undefined && v !== null && !isNaN(Number(v));
@@ -730,55 +749,125 @@ const dialMinorTicks = computed(() => {
 
 // 6. Trend chart multi-series paths —— 基于 history 真实数据窗口 + 量程归一化（替代伪造正弦波）
 // 每条序列独立产出 d 路径与图形属性（颜色/线宽/图例/当前值/报警），支持多变量对比。
-const chartSeries = computed(() => {
-  const seriesMap = props.history ?? {};
+/**
+ * trend-chart 统一渲染模型：产出共享轴范围、Y/X 刻度、逐序列 path 与点位值标签。
+ * - 共享轴优先级：手动范围(trendAxisMin/Max) > 相对模式(0-100%) > 全局自适应 > 逐序列独立(无共享轴)
+ * - X 轴以采样时间戳定位（真实相对时间刻度）；无时间跨度时回退等距索引。
+ * - 点位值标签自动抽稀（间距 <28px 隔点显示，始终保留最新点）。
+ */
+const trendChart = computed(() => {
   const series = trendSeriesList.value;
-  const padding = 10;
-  const innerW = width.value - padding * 2;
-  const innerH = height.value - padding * 2.5;
+  const map = (props.history ?? {}) as Record<string, TrendSample[]>;
+  const W = width.value, H = height.value;
+  const padL = 32, padR = 8, padT = 6, padB = 16; // 左留 Y 刻度，下留 X 刻度
+  const innerW = Math.max(1, W - padL - padR);
+  const innerH = Math.max(1, H - padT - padB);
+  const left = padL, top = padT;
 
-  // D3-A：默认全局共享 Y 轴量程（便于多序列对比）；序列显式配 minValue/maxValue 时按各自量程
-  const useGlobal = propOr('trendUseGlobalRange', true);
-  let gMin = Infinity, gMax = -Infinity;
-  if (useGlobal) {
+  // 共享轴参考范围 mapLo/mapHi（数值归一化用）；yTickVals 为刻度数值
+  let mapLo = 0, mapHi = 1, hasShared = false, yTickVals: number[] = [];
+  const mMin = manualAxisMin.value, mMax = manualAxisMax.value;
+  const isRel = trendAxisMode.value === 'relative';
+
+  if (mMin != null && mMax != null && mMax > mMin) {
+    // 手动固定范围（图表级覆盖逐序列 minValue/maxValue）
+    mapLo = mMin; mapHi = mMax; hasShared = true;
+    yTickVals = niceTicks(mMin, mMax, 4);
+  } else if (isRel) {
+    // 相对坐标：以全局数据范围作参考，轴标 0-100%
+    let rMin = Infinity, rMax = -Infinity;
+    series.forEach((s) => { const buf = map[s.id] ?? []; if (buf.length) { const vs = buf.map(p => p.v); rMin = Math.min(rMin, ...vs); rMax = Math.max(rMax, ...vs); } });
+    if (!Number.isFinite(rMin)) { rMin = 0; rMax = 100; } else if (rMax <= rMin) { rMax = rMin + 1; }
+    mapLo = rMin; mapHi = rMax; hasShared = true;
+    yTickVals = niceTicks(0, 100, 4);
+  } else if (useGlobalRange.value) {
+    // 绝对 + 全局共享自适应
+    let gMin = Infinity, gMax = -Infinity;
     series.forEach((s) => {
-      const buf = seriesMap[s.id] ?? [];
+      const buf = map[s.id] ?? [];
       const lo = Number(s.minValue), hi = Number(s.maxValue);
       if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) { gMin = Math.min(gMin, lo); gMax = Math.max(gMax, hi); }
-      else if (buf.length) { gMin = Math.min(gMin, Math.min(...buf)); gMax = Math.max(gMax, Math.max(...buf)); }
+      else if (buf.length) { const vs = buf.map(p => p.v); gMin = Math.min(gMin, ...vs); gMax = Math.max(gMax, ...vs); }
     });
     if (!Number.isFinite(gMin) || !Number.isFinite(gMax) || gMax <= gMin) { gMin = 0; gMax = 100; }
     else { const m = (gMax - gMin) * 0.1 || 1; gMin -= m; gMax += m; }
+    mapLo = gMin; mapHi = gMax; hasShared = true;
+    yTickVals = niceTicks(gMin, gMax, 4);
   }
 
-  return series.map((s) => {
-    const buf = seriesMap[s.id] ?? [];
-    let yMin: number, yMax: number;
-    const lo = Number(s.minValue), hi = Number(s.maxValue);
-    if (!useGlobal && Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
-      yMin = lo; yMax = hi;
-    } else if (!useGlobal && buf.length) {
-      const dMin = Math.min(...buf), dMax = Math.max(...buf);
-      const m = (dMax - dMin) * 0.1 || 1; yMin = dMin - m; yMax = dMax + m;
-    } else { yMin = gMin; yMax = gMax; }
+  const yTicks = yTickVals.map((v) => {
+    const r = (mapHi - mapLo) || 1;
+    const ratio = Math.max(0, Math.min(1, (v - mapLo) / r));
+    return { value: v, y: top + (innerH - ratio * innerH) };
+  });
+  // 无共享轴（绝对 + 逐序列独立）时仍画 3 条默认网格线
+  const grid: { y: number; label?: string }[] = hasShared
+    ? yTicks.map((t) => ({ y: t.y, label: fmtTick(t.value) + (isRel ? '%' : '') }))
+    : [0.25, 0.5, 0.75].map((f) => ({ y: top + innerH - f * innerH }));
 
+  // X 时间基准（基于全部序列最新时间戳）
+  let tOldest = Infinity, tNewest = -Infinity, nowMs = Date.now();
+  for (const s of Object.values(map)) for (const p of s) { if (p.t < tOldest) tOldest = p.t; if (p.t > tNewest) tNewest = p.t; }
+  if (Number.isFinite(tNewest) && tNewest > tOldest) nowMs = tNewest;
+  const span = (tNewest > tOldest) ? (tNewest - tOldest) : 0;
+  const xTicks: { x: number; label: string }[] = [];
+  if (showAxisLabels.value && Number.isFinite(tOldest) && span > 0) {
+    const N = 4;
+    for (let i = 0; i <= N; i++) {
+      const frac = i / N;
+      xTicks.push({ x: left + frac * innerW, label: relTimeLabel(tOldest + span * frac, nowMs) });
+    }
+  }
+
+  const seriesOut = series.map((s) => {
+    const buf = map[s.id] ?? [];
+    let lo = mapLo, hi = mapHi;
+    if (!hasShared) {
+      const loS = Number(s.minValue), hiS = Number(s.maxValue);
+      if (Number.isFinite(loS) && Number.isFinite(hiS) && hiS > loS) { lo = loS; hi = hiS; }
+      else if (buf.length) { const vs = buf.map(p => p.v); lo = Math.min(...vs); hi = Math.max(...vs); if (hi <= lo) hi = lo + 1; else { const m = (hi - lo) * 0.1 || 1; lo -= m; hi += m; } }
+    }
     const window = buf.slice(-Math.max(2, Math.floor(innerW / 6)));
-    const intervalX = window.length > 1 ? innerW / (window.length - 1) : 0;
+    const wlen = window.length;
+    const xOf = (p: TrendSample) => {
+      if (span > 0 && wlen > 1) return left + Math.max(0, Math.min(1, (p.t - tOldest) / span)) * innerW;
+      const idx = window.indexOf(p);
+      return left + (wlen <= 1 ? innerW : (idx / (wlen - 1)) * innerW);
+    };
+    const yNorm = (v: number) => {
+      const r = (hi - lo) || 1;
+      const ratio = Math.max(0, Math.min(1, (v - lo) / r));
+      return top + (innerH - ratio * innerH);
+    };
     let d = '';
-    window.forEach((val, i) => {
-      const x = padding + i * intervalX;
-      const ratio = Math.max(0, Math.min(1, (val - yMin) / (yMax - yMin || 1)));
-      const y = padding + (innerH - ratio * innerH);
-      d += `${i === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    });
+    window.forEach((p, i) => { const x = xOf(p); const y = yNorm(p.v); d += `${i === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`; });
 
-    const current = buf.length ? buf[buf.length - 1] : 0;
+    const current = buf.length ? buf[buf.length - 1].v : 0;
     const alert = (s.thresholdMax != null && current >= s.thresholdMax) ? 'high'
       : (s.thresholdMin != null && current <= s.thresholdMin) ? 'low' : null;
     const color = alert === 'high' ? '#ef4444' : alert === 'low' ? '#f59e0b' : (s.color || '#10b981');
     const label = s.label?.trim() || s.variableKey || '变量';
-    return { id: s.id, d, color, lineWidth: s.lineWidth || 2, label, current, unit: s.unit || '' };
+    const unit = s.unit || '';
+    const prec = (s.precision != null && s.precision >= 0) ? s.precision : 1;
+
+    const pts: { x: number; y: number; text: string }[] = [];
+    if (showPointValues.value && wlen > 0) {
+      const spacing = wlen > 1 ? innerW / (wlen - 1) : innerW;
+      const autoStep = spacing > 0 ? Math.max(1, Math.ceil(28 / spacing)) : 1;
+      const dec = Math.max(1, pointEveryN.value ?? autoStep);
+      window.forEach((p, i) => {
+        if (i % dec !== 0 && i !== wlen - 1) return; // 始终保留最新点
+        pts.push({ x: xOf(p), y: yNorm(p.v) - 6, text: p.v.toFixed(prec) + (unit ? ' ' + unit : '') });
+      });
+    }
+    return { id: s.id, d, color, lineWidth: s.lineWidth || 2, label, current, unit, points: pts };
   });
+
+  return {
+    left, top, innerW, innerH, padB, hasShared, grid, xTicks, series: seriesOut, isRel,
+    showGrid: showGrid.value, showAxisLabels: showAxisLabels.value,
+    axisLabelFontSize: axisLabelFontSize.value, pointColor: pointValueColor.value, pointFontSize: pointValueFontSize.value,
+  };
 });
 
 // 图例数值格式化（保留 1 位小数）
@@ -1182,21 +1271,21 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </span>
     </div>
 
-    <!-- 10. REAL-TIME TREND CHART (multi-series) -->
+    <!-- 10. REAL-TIME TREND CHART (multi-series + 坐标轴/刻度/点位值) -->
     <div v-else-if="component.type === 'trend-chart'"
       class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 font-mono text-slate-400 flex flex-col">
       <div class="flex items-center justify-between mb-1 border-b border-slate-800 pb-1 gap-2">
         <span class="font-bold text-slate-300 truncate text-[9px]">{{ component.label || component.name || '实时趋势' }}</span>
         <div v-if="trendShowLegend && hasTrendData" class="flex flex-col items-end gap-0.5 min-w-0"
           :style="{ fontSize: trendLegendFontSize + 'px' }">
-          <div v-for="s in chartSeries" :key="s.id" class="flex items-center gap-1 leading-none">
+          <div v-for="s in trendChart.series" :key="s.id" class="flex items-center gap-1 leading-none">
             <span class="w-2 h-0.5 rounded-full" :style="{ background: s.color }" />
             <span class="truncate max-w-[90px] text-slate-300">{{ s.label }}</span>
             <span class="font-bold text-slate-100">{{ trendValFmt(s.current) }}<template v-if="s.unit"> {{ s.unit }}</template></span>
           </div>
         </div>
       </div>
-      <!-- 阶段5-6：趋势图占位——未绑定数据源或采样点不足时不绘制伪造曲线 -->
+      <!-- 占位：未绑定数据源或采样点不足时不绘制伪造曲线 -->
       <div v-if="!trendReady" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
         <span class="w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse" />
         <span class="text-[9px]">{{ hasTrendData ? '等待采样…' : '暂无数据' }}</span>
@@ -1204,11 +1293,30 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </div>
       <div v-else class="flex-1 relative">
         <svg width="100%" height="100%">
-          <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
-          <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
-          <line x1="0" y1="75%" x2="100%" y2="75%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
-          <path v-for="s in chartSeries" :key="s.id" :d="s.d" fill="none" :stroke="s.color"
+          <!-- 网格线 + Y 轴刻度数值 -->
+          <template v-if="trendChart.showGrid || trendChart.showAxisLabels">
+            <g v-for="(gl, i) in trendChart.grid" :key="'g' + i">
+              <line v-if="trendChart.showGrid" :x1="trendChart.left" :y1="gl.y" :x2="trendChart.left + trendChart.innerW" :y2="gl.y"
+                stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
+              <text v-if="trendChart.showAxisLabels && gl.label" :x="trendChart.left - 3" :y="gl.y + 3" text-anchor="end"
+                :font-size="trendChart.axisLabelFontSize" fill="#64748b">{{ gl.label }}</text>
+            </g>
+            <!-- X 轴相对时间刻度 -->
+            <g v-for="(xt, i) in trendChart.xTicks" :key="'x' + i">
+              <line v-if="trendChart.showGrid" :x1="xt.x" :y1="trendChart.top" :x2="xt.x" :y2="trendChart.top + trendChart.innerH"
+                stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
+              <text :x="xt.x" :y="trendChart.top + trendChart.innerH + 11" text-anchor="middle"
+                :font-size="trendChart.axisLabelFontSize" fill="#64748b">{{ xt.label }}</text>
+            </g>
+          </template>
+          <!-- 序列线条 -->
+          <path v-for="s in trendChart.series" :key="s.id" :d="s.d" fill="none" :stroke="s.color"
             :stroke-width="s.lineWidth" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- 点位值标签（自动抽稀，始终保留最新点） -->
+          <g v-for="(s, si) in trendChart.series" :key="'pv' + si">
+            <text v-for="(pt, pi) in s.points" :key="pi" :x="pt.x" :y="pt.y" text-anchor="middle"
+              :font-size="trendChart.pointFontSize" :fill="trendChart.pointColor === 'auto' ? s.color : trendChart.pointColor">{{ pt.text }}</text>
+          </g>
         </svg>
       </div>
     </div>

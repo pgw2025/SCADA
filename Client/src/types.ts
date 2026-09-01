@@ -262,6 +262,18 @@ export interface HMIComponent {
     trendShowLegend?: boolean;         // 是否显示图例（色块+名称+当前值）
     trendLegendFontSize?: number;      // 图例字号 (px，默认 9)
     trendUseGlobalRange?: boolean;     // 多序列是否共用同一 Y 轴量程（默认 true，便于对比）
+
+    // ===== trend-chart 坐标轴 / 刻度 / 显示增强 props =====
+    trendAxisMode?: 'absolute' | 'relative'; // Y 轴坐标模式：绝对工程量值 / 相对量程百分比 0-100%
+    trendAxisMin?: number | null;            // 手动 Y 轴下限（与 trendAxisMax 同时有效时固定范围，优先于自适应）
+    trendAxisMax?: number | null;            // 手动 Y 轴上限
+    trendShowGrid?: boolean;                 // 是否显示网格线（默认 true）
+    trendShowAxisLabels?: boolean;           // 是否显示坐标轴刻度数值（默认 true）
+    trendAxisLabelFontSize?: number;         // 刻度数值字号 (px，默认 8)
+    trendShowPointValues?: boolean;          // 是否在图形上显示每个点位数值（默认 false）
+    trendPointValueFontSize?: number;        // 点位数值字号 (px，默认 8)
+    trendPointValueColor?: string;           // 点位数值颜色（'auto'=取序列色，否则颜色字符串，默认 'auto'）
+    trendPointValueEveryN?: number | null;   // 仅每 N 个点显示（null=自动抽稀）
   };
 }
 

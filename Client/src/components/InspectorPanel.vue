@@ -1467,6 +1467,84 @@ const applyThemePreset = (preset: typeof THEME_CANVAS_PRESETS[0]) => {
             </div>
           </div>
 
+          <!-- 坐标轴与显示配置 -->
+          <div class="pt-2 mt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider">坐标轴与显示</p>
+
+            <!-- 坐标模式 -->
+            <div class="flex items-center gap-2">
+              <label class="text-[9px] text-slate-400 w-14 shrink-0">坐标模式</label>
+              <select :value="componentProps.trendAxisMode ?? 'absolute'"
+                @change="updateProp('trendAxisMode', ($event.target as HTMLSelectElement).value)"
+                class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+                <option value="absolute">绝对坐标（工程量值）</option>
+                <option value="relative">相对坐标（0–100%）</option>
+              </select>
+            </div>
+
+            <!-- 手动范围 -->
+            <div class="grid grid-cols-2 gap-1.5">
+              <div>
+                <label class="text-[9px] text-slate-400">Y 轴下限（空=自动）</label>
+                <input type="number" :value="componentProps.trendAxisMin ?? ''"
+                  @input="updateProp('trendAxisMin', ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))"
+                  placeholder="自动"
+                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-800 dark:text-slate-200 focus:outline-none" />
+              </div>
+              <div>
+                <label class="text-[9px] text-slate-400">Y 轴上限（空=自动）</label>
+                <input type="number" :value="componentProps.trendAxisMax ?? ''"
+                  @input="updateProp('trendAxisMax', ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))"
+                  placeholder="自动"
+                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-800 dark:text-slate-200 focus:outline-none" />
+              </div>
+            </div>
+
+            <!-- 开关：网格 / 刻度 / 点位值 -->
+            <div class="grid grid-cols-3 gap-1.5">
+              <label class="flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
+                <input type="checkbox" :checked="componentProps.trendShowGrid !== false"
+                  @change="updateProp('trendShowGrid', ($event.target as HTMLInputElement).checked)" class="accent-[#1890ff]" /> 网格
+              </label>
+              <label class="flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
+                <input type="checkbox" :checked="componentProps.trendShowAxisLabels !== false"
+                  @change="updateProp('trendShowAxisLabels', ($event.target as HTMLInputElement).checked)" class="accent-[#1890ff]" /> 刻度
+              </label>
+              <label class="flex items-center gap-1 text-[9px] text-slate-500 cursor-pointer">
+                <input type="checkbox" :checked="componentProps.trendShowPointValues === true"
+                  @change="updateProp('trendShowPointValues', ($event.target as HTMLInputElement).checked)" class="accent-[#1890ff]" /> 点位值
+              </label>
+            </div>
+
+            <!-- 字号 -->
+            <div class="grid grid-cols-2 gap-1.5">
+              <div>
+                <label class="text-[9px] text-slate-400">刻度字号: {{ componentProps.trendAxisLabelFontSize ?? 8 }}px</label>
+                <input type="range" min="6" max="16" step="1" :value="componentProps.trendAxisLabelFontSize ?? 8"
+                  @input="updateProp('trendAxisLabelFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+              </div>
+              <div>
+                <label class="text-[9px] text-slate-400">点位值字号: {{ componentProps.trendPointValueFontSize ?? 8 }}px</label>
+                <input type="range" min="6" max="16" step="1" :value="componentProps.trendPointValueFontSize ?? 8"
+                  @input="updateProp('trendPointValueFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+              </div>
+            </div>
+
+            <!-- 点位值颜色 -->
+            <div class="flex items-center gap-1.5">
+              <label class="text-[9px] text-slate-400 w-14 shrink-0">点位值色</label>
+              <select :value="componentProps.trendPointValueColor ?? 'auto'"
+                @change="updateProp('trendPointValueColor', ($event.target as HTMLSelectElement).value)"
+                class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+                <option value="auto">跟随序列色</option>
+                <option value="#e2e8f0">浅灰 #e2e8f0</option>
+                <option value="#f8fafc">白色 #f8fafc</option>
+                <option value="#facc15">黄 #facc15</option>
+                <option value="#f87171">红 #f87171</option>
+              </select>
+            </div>
+          </div>
+
           <!-- 底部新增按钮 -->
           <button type="button" @click="addTrendSeries"
             class="w-full py-1.5 rounded border border-dashed border-sky-400 dark:border-sky-700 bg-white/70 dark:bg-slate-900/70 hover:bg-sky-50 dark:hover:bg-sky-950/40 text-sky-700 dark:text-sky-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
