@@ -805,32 +805,44 @@ const trendChart = computed(() => {
     ? yTicks.map((t) => ({ y: t.y, label: fmtTick(t.value) + (isRel ? '%' : '') }))
     : [0.25, 0.5, 0.75].map((f) => ({ y: top + innerH - f * innerH }));
 
-  // X 时间基准（基于全部序列最新时间戳）
-  let tOldest = Infinity, tNewest = -Infinity, nowMs = Date.now();
-  for (const s of Object.values(map)) for (const p of s) { if (p.t < tOldest) tOldest = p.t; if (p.t > tNewest) tNewest = p.t; }
-  if (Number.isFinite(tNewest) && tNewest > tOldest) nowMs = tNewest;
-  const span = (tNewest > tOldest) ? (tNewest - tOldest) : 0;
+  // 可见窗口（最多 innerW/6 个采样，按时间定位铺满整宽）
+  const wins = series.map((s) => {
+    const buf = map[s.id] ?? [];
+    const window = buf.slice(-Math.max(2, Math.floor(innerW / 6)));
+    return { s, buf, window };
+  });
+
+  // X 时间基准：以「可见窗口」的联合时间范围为轴。
+  // 修复：此前用全量缓冲的 tOldest/span 作基准，而只绘制最近 innerW/6 个采样，
+  // 导致这些点都被映射到靠近右边缘，曲线被压缩、X 轴 0 点（最旧可见采样）不在画面内。
+  // 现改为基于可见窗口自身时间范围，最旧采样落在 left（X 轴原点），曲线铺满整宽。
+  let winTMin = Infinity, winTMax = -Infinity;
+  for (const w of wins) for (const p of w.window) {
+    if (p.t < winTMin) winTMin = p.t;
+    if (p.t > winTMax) winTMax = p.t;
+  }
+  const winSpan = Number.isFinite(winTMin) && winTMax > winTMin ? winTMax - winTMin : 0;
+  const nowMs = Number.isFinite(winTMax) ? winTMax : Date.now();
+
   const xTicks: { x: number; label: string }[] = [];
-  if (showAxisLabels.value && Number.isFinite(tOldest) && span > 0) {
+  if (showAxisLabels.value && winSpan > 0) {
     const N = 4;
     for (let i = 0; i <= N; i++) {
       const frac = i / N;
-      xTicks.push({ x: left + frac * innerW, label: relTimeLabel(tOldest + span * frac, nowMs) });
+      xTicks.push({ x: left + frac * innerW, label: relTimeLabel(winTMin + winSpan * frac, nowMs) });
     }
   }
 
-  const seriesOut = series.map((s) => {
-    const buf = map[s.id] ?? [];
+  const seriesOut = wins.map(({ s, buf, window }) => {
     let lo = mapLo, hi = mapHi;
     if (!hasShared) {
       const loS = Number(s.minValue), hiS = Number(s.maxValue);
       if (Number.isFinite(loS) && Number.isFinite(hiS) && hiS > loS) { lo = loS; hi = hiS; }
       else if (buf.length) { const vs = buf.map(p => p.v); lo = Math.min(...vs); hi = Math.max(...vs); if (hi <= lo) hi = lo + 1; else { const m = (hi - lo) * 0.1 || 1; lo -= m; hi += m; } }
     }
-    const window = buf.slice(-Math.max(2, Math.floor(innerW / 6)));
     const wlen = window.length;
     const xOf = (p: TrendSample) => {
-      if (span > 0 && wlen > 1) return left + Math.max(0, Math.min(1, (p.t - tOldest) / span)) * innerW;
+      if (winSpan > 0 && wlen > 1) return left + Math.max(0, Math.min(1, (p.t - winTMin) / winSpan)) * innerW;
       const idx = window.indexOf(p);
       return left + (wlen <= 1 ? innerW : (idx / (wlen - 1)) * innerW);
     };
