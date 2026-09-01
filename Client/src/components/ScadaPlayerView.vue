@@ -14,6 +14,7 @@ import { addLog } from '../store';
 import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
+import { getEffectiveTrendSeries, resolveSeriesValue } from '../utils/trendSeries';
 import { isSamePageRef } from '../utils/pageId';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
@@ -110,6 +111,19 @@ const boundDeviceIds = computed(() => {
       // 此处读取 devices.value 会建立依赖，设备加载/重排后 watch 自动重新对账订阅。
       if (hasUnboundItem && devices.value.length > 0) ids.add(Number(devices.value[0].id));
     }
+    // trend-chart 多变量趋势图：每个序列可独立绑定设备，需纳入订阅，
+    // 否则服务端不会推送这些设备的 ReceiveVariableUpdate（趋势序列读取 devices store 会陈旧）。
+    // 注意：getEffectiveTrendSeries 在「序列无 deviceId 且组件无 bindDeviceId」时回退读
+    // devices.value[0]（首台设备），此分支同样需把首台设备纳入订阅。
+    if (c.type === 'trend-chart') {
+      let hasUnboundSeries = false;
+      for (const s of getEffectiveTrendSeries(c)) {
+        const devId = s.deviceId != null ? s.deviceId : c.bindDeviceId;
+        if (devId != null) ids.add(Number(devId));
+        else hasUnboundSeries = true;
+      }
+      if (hasUnboundSeries && devices.value.length > 0) ids.add(Number(devices.value[0].id));
+    }
   });
   return ids;
 });
@@ -153,10 +167,14 @@ const componentValues = computed(() => {
   return result;
 });
 
-// 趋势图真实数据源：把当前页 trend-chart 组件的实时值推入滚动缓冲
-watch(componentValues, (vals) => {
-  (currentPage.value?.components ?? []).forEach((c) => {
-    if (c.type === 'trend-chart') pushTrendPoint(c.id, vals[c.id] ?? 0);
+// 趋势图真实数据源：把当前页 trend-chart 各序列实时值推入滚动缓冲（支持多变量序列）
+watch(componentValues, () => {
+  (currentPage.value?.components ?? []).forEach((c: any) => {
+    if (c.type !== 'trend-chart') return;
+    for (const s of getEffectiveTrendSeries(c)) {
+      const v = resolveSeriesValue(devices.value, s.deviceId, c.bindDeviceId, s.variableKey);
+      pushTrendPoint(c.id, s.id, v);
+    }
   });
 }, { immediate: true });
 

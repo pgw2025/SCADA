@@ -36,6 +36,22 @@ export interface HmiDashboardItem {
   thresholdMax?: number | null; // 高限预警阈值 (数值高于此值标红/报警)
 }
 
+/** 实时波段趋势图（trend-chart）单条曲线序列：支持多变量绑定与逐线颜色/粗细自定义 */
+export interface HmiTrendSeries {
+  id: string;                 // 稳定主键（缓冲 key，增删/重排不变）
+  deviceId?: number | null;   // 绑定设备；空则继承组件 bindDeviceId / 全局首设备
+  variableKey: string;       // 变量键名
+  label?: string;            // 图例名称（空则取变量模板名/键名）
+  unit?: string;             // 单位（空则继承）
+  color: string;             // 线条颜色（必填，默认调色板轮转）
+  lineWidth: number;         // 线条粗细（px，默认 2）
+  minValue?: number | null;  // 该序列量程下限（空→参与全局自适应）
+  maxValue?: number | null;  // 该序列量程上限
+  precision?: number | null; // 小数位数 (0~4)
+  thresholdMin?: number | null; // 低限预警阈值（超限线条标黄）
+  thresholdMax?: number | null; // 高限预警阈值（超限线条标红）
+}
+
 /** 导航菜单项（存于 HMIComponent.props.menuItems，随 PropsJson 落库） */
 export interface HmiMenuItem {
   /** lucide 图标名（MENU_ICON_OPTIONS 内置集合中的 name） */
@@ -240,6 +256,12 @@ export interface HMIComponent {
     dashboardLabelFontSize?: number;    // 变量标签字号大小 (px)
     dashboardZebra?: boolean;           // 表格模式隔行交替底色 (斑马纹)
     dashboardTheme?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost'; // 看板内置快速主题
+
+    // ===== trend-chart 实时波段趋势图专属 props（多变量序列）=====
+    trendSeries?: HmiTrendSeries[];     // 绑定的多变量序列（每条含 deviceId/variableKey/color/lineWidth 等）
+    trendShowLegend?: boolean;         // 是否显示图例（色块+名称+当前值）
+    trendLegendFontSize?: number;      // 图例字号 (px，默认 9)
+    trendUseGlobalRange?: boolean;     // 多序列是否共用同一 Y 轴量程（默认 true，便于对比）
   };
 }
 

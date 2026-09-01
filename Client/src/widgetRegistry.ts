@@ -98,6 +98,18 @@ const baseProps = (type: ComponentType): Record<string, any> => ({
     : {}),
 });
 
+/** 趋势图「从设备导入全部变量」时序列线条颜色轮转调色板 */
+export const TREND_SERIES_PALETTE: string[] = [
+  '#10b981', // emerald
+  '#3b82f6', // blue
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#a855f7', // purple
+  '#14b8a6', // teal
+  '#ec4899', // pink
+  '#84cc16', // lime
+];
+
 export const widgetRegistry: Record<string, WidgetDef> = {
   boiler: {
     type: 'boiler',
@@ -287,9 +299,9 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     icon: Activity,
     iconKind: 'lucide',
     iconColor: 'text-red-500',
-    description: '动态微积分平滑滤波趋势图，记录历史PLC模拟参数。',
+    description: '动态微积分平滑滤波趋势图，记录历史PLC模拟参数，支持多变量序列与逐线颜色/粗细自定义。',
     category: 'sensors',
-    defaultProps: () => baseProps('trend-chart'),
+    defaultProps: () => ({ ...baseProps('trend-chart'), trendSeries: [], trendShowLegend: true, trendLegendFontSize: 9, trendUseGlobalRange: true }),
   },
   led: {
     type: 'led',

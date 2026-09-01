@@ -7,14 +7,15 @@ import { LayoutDashboard } from 'lucide-vue-next';
 // 全局共享动画时钟：单实例 rAF 驱动所有动画器件，避免每组件独立 rAF（见 #13）
 import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
 import { isSamePageRef } from '../utils/pageId';
+import { getEffectiveTrendSeries } from '../utils/trendSeries';
 
 const props = defineProps<{
   component: HMIComponent;
   value: number | boolean;
   isActiveMode: boolean;
   controlLocked?: boolean;
-  /** 趋势图真实数据窗口（父级维护的滚动缓冲，无则显示占位） */
-  history?: number[];
+  /** 趋势图多序列数据窗口：组件 id → (序列 id → 数值滚动缓冲)，无则显示占位 */
+  history?: Record<string, number[]>;
   /** 当前页面 id：nav-menu 运行态据此高亮“当前画面”对应的菜单项 */
   currentPageId?: string;
   /** 绑定变量质量（非 Good 时 var-display 显示 -- 而非旧值，避免误判） */
@@ -393,12 +394,17 @@ const varDisplayText = computed(() => {
   return numValue.value.toFixed(decimals.value);
 });
 
-// 阶段5-6：趋势图过渡占位——未绑定设备/变量（无数据源）时不绘制伪造曲线，展示占位提示
-const hasTrendData = computed(() =>
-  props.component.bindDeviceId != null && !!props.component.bindVariableKey
-);
-// 是否有 ≥2 个真实采样点可绘制（未绑定或刚绑定待采样时显示占位）
-const trendReady = computed(() => (props.history?.length ?? 0) >= 2);
+// 阶段5-6：趋势图过渡占位——未绑定数据源时不绘制伪造曲线，展示占位提示
+// 多序列：有效序列（props.trendSeries 或旧式单绑定合成）存在即视为有数据源
+const trendSeriesList = computed(() => getEffectiveTrendSeries(props.component));
+const trendShowLegend = computed(() => propOr('trendShowLegend', true));
+const trendLegendFontSize = computed(() => Number(propOr('trendLegendFontSize', 9)));
+const hasTrendData = computed(() => trendSeriesList.value.length > 0);
+// 是否任一序列已采到 ≥2 个真实采样点可绘制
+const trendReady = computed(() => {
+  const map = props.history ?? {};
+  return Object.values(map).some((buf) => (buf?.length ?? 0) >= 2);
+});
 
 const hasExplicitThresholdMax = computed(() => {
   const v = props.component.props.thresholdMax;
@@ -722,40 +728,61 @@ const dialMinorTicks = computed(() => {
   return list;
 });
 
-// 6. Trend chart path —— 基于 history 真实数据窗口 + 量程归一化（替代伪造正弦波）
-const chartPath = computed(() => {
-  const pts = props.history ?? [];
-  if (pts.length < 2) return '';
-
+// 6. Trend chart multi-series paths —— 基于 history 真实数据窗口 + 量程归一化（替代伪造正弦波）
+// 每条序列独立产出 d 路径与图形属性（颜色/线宽/图例/当前值/报警），支持多变量对比。
+const chartSeries = computed(() => {
+  const seriesMap = props.history ?? {};
+  const series = trendSeriesList.value;
   const padding = 10;
   const innerW = width.value - padding * 2;
   const innerH = height.value - padding * 2.5;
-  if (innerW <= 0 || innerH <= 0) return '';
 
-  // Y 轴量程：优先配置量程（minValue/maxValue），未配置时按数据自适应（±10% 余量）
-  const lo = minValue.value, hi = maxValue.value;
-  let yMin: number, yMax: number;
-  if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
-    yMin = lo; yMax = hi;
-  } else {
-    const dMin = Math.min(...pts), dMax = Math.max(...pts);
-    const margin = (dMax - dMin) * 0.1 || 1;
-    yMin = dMin - margin; yMax = dMax + margin;
+  // D3-A：默认全局共享 Y 轴量程（便于多序列对比）；序列显式配 minValue/maxValue 时按各自量程
+  const useGlobal = propOr('trendUseGlobalRange', true);
+  let gMin = Infinity, gMax = -Infinity;
+  if (useGlobal) {
+    series.forEach((s) => {
+      const buf = seriesMap[s.id] ?? [];
+      const lo = Number(s.minValue), hi = Number(s.maxValue);
+      if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) { gMin = Math.min(gMin, lo); gMax = Math.max(gMax, hi); }
+      else if (buf.length) { gMin = Math.min(gMin, Math.min(...buf)); gMax = Math.max(gMax, Math.max(...buf)); }
+    });
+    if (!Number.isFinite(gMin) || !Number.isFinite(gMax) || gMax <= gMin) { gMin = 0; gMax = 100; }
+    else { const m = (gMax - gMin) * 0.1 || 1; gMin -= m; gMax += m; }
   }
 
-  // 将采样窗口压缩到可视宽度（约每 6px 一个点），窗口过大时降采样
-  const window = pts.slice(-Math.max(2, Math.floor(innerW / 6)));
-  const intervalX = innerW / (window.length - 1);
+  return series.map((s) => {
+    const buf = seriesMap[s.id] ?? [];
+    let yMin: number, yMax: number;
+    const lo = Number(s.minValue), hi = Number(s.maxValue);
+    if (!useGlobal && Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
+      yMin = lo; yMax = hi;
+    } else if (!useGlobal && buf.length) {
+      const dMin = Math.min(...buf), dMax = Math.max(...buf);
+      const m = (dMax - dMin) * 0.1 || 1; yMin = dMin - m; yMax = dMax + m;
+    } else { yMin = gMin; yMax = gMax; }
 
-  let pathStr = '';
-  window.forEach((val, index) => {
-    const x = padding + index * intervalX;
-    const ratio = Math.max(0, Math.min(1, (val - yMin) / (yMax - yMin)));
-    const y = padding + (innerH - ratio * innerH);
-    pathStr += `${index === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    const window = buf.slice(-Math.max(2, Math.floor(innerW / 6)));
+    const intervalX = window.length > 1 ? innerW / (window.length - 1) : 0;
+    let d = '';
+    window.forEach((val, i) => {
+      const x = padding + i * intervalX;
+      const ratio = Math.max(0, Math.min(1, (val - yMin) / (yMax - yMin || 1)));
+      const y = padding + (innerH - ratio * innerH);
+      d += `${i === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    });
+
+    const current = buf.length ? buf[buf.length - 1] : 0;
+    const alert = (s.thresholdMax != null && current >= s.thresholdMax) ? 'high'
+      : (s.thresholdMin != null && current <= s.thresholdMin) ? 'low' : null;
+    const color = alert === 'high' ? '#ef4444' : alert === 'low' ? '#f59e0b' : (s.color || '#10b981');
+    const label = s.label?.trim() || s.variableKey || '变量';
+    return { id: s.id, d, color, lineWidth: s.lineWidth || 2, label, current, unit: s.unit || '' };
   });
-  return pathStr;
 });
+
+// 图例数值格式化（保留 1 位小数）
+const trendValFmt = (v: number) => (typeof v === 'number' ? v.toFixed(1) : `${v}`);
 
 // 7. Conveyor Speed steps —— 位移周期与箱子间距(80)对齐，消除 step 跳变回退的箱体瞬移
 const conveyorBeltStep = computed(() => numValue.value > 0 ? (ticks.value * (numValue.value / 40)) % 80 : 0);
@@ -1155,30 +1182,33 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </span>
     </div>
 
-    <!-- 10. REAL-TIME TREND CHART -->
+    <!-- 10. REAL-TIME TREND CHART (multi-series) -->
     <div v-else-if="component.type === 'trend-chart'"
-      class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-[9px] text-slate-400 flex flex-col">
-      <div class="flex justify-between items-center mb-1 text-[9px] border-b border-slate-800 pb-1">
-        <span class="font-bold text-slate-300 truncate max-w-[70%]">{{ component.label || component.name || '实时趋势'
-        }}</span>
-        <span v-if="hasTrendData" class="text-emerald-400 font-bold">
-          {{ numValue.toFixed(1) }}<template v-if="unit"> {{ unit }}</template>
-        </span>
-        <span v-else class="text-slate-500">--</span>
+      class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 font-mono text-slate-400 flex flex-col">
+      <div class="flex items-center justify-between mb-1 border-b border-slate-800 pb-1 gap-2">
+        <span class="font-bold text-slate-300 truncate text-[9px]">{{ component.label || component.name || '实时趋势' }}</span>
+        <div v-if="trendShowLegend && hasTrendData" class="flex flex-col items-end gap-0.5 min-w-0"
+          :style="{ fontSize: trendLegendFontSize + 'px' }">
+          <div v-for="s in chartSeries" :key="s.id" class="flex items-center gap-1 leading-none">
+            <span class="w-2 h-0.5 rounded-full" :style="{ background: s.color }" />
+            <span class="truncate max-w-[90px] text-slate-300">{{ s.label }}</span>
+            <span class="font-bold text-slate-100">{{ trendValFmt(s.current) }}<template v-if="s.unit"> {{ s.unit }}</template></span>
+          </div>
+        </div>
       </div>
       <!-- 阶段5-6：趋势图占位——未绑定数据源或采样点不足时不绘制伪造曲线 -->
       <div v-if="!trendReady" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
         <span class="w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse" />
         <span class="text-[9px]">{{ hasTrendData ? '等待采样…' : '暂无数据' }}</span>
-        <span class="text-[8px] text-slate-600">{{ hasTrendData ? '采集 ≥2 点后自动绘制' : '请在编辑器中绑定变量' }}</span>
+        <span class="text-[8px] text-slate-600">{{ hasTrendData ? '采集 ≥2 点后自动绘制' : '请在编辑器中绑定变量/序列' }}</span>
       </div>
       <div v-else class="flex-1 relative">
         <svg width="100%" height="100%">
           <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
           <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
           <line x1="0" y1="75%" x2="100%" y2="75%" stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
-          <path :d="chartPath" fill="none" :stroke="isHighAlert ? '#ef4444' : '#10b981'" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round" />
+          <path v-for="s in chartSeries" :key="s.id" :d="s.d" fill="none" :stroke="s.color"
+            :stroke-width="s.lineWidth" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
     </div>
