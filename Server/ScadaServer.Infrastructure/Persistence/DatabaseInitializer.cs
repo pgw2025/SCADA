@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Domain.Addresses;
 using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Persistence;
@@ -61,6 +62,7 @@ public class DatabaseInitializer
             await CreateDefaultAreaAsync();
             await CreateDefaultProtocolsAsync();
             await CreateDefaultAdminAsync();
+            await BackfillDeviceVariableAddressConfigAsync();
             await SaveDbVersionAsync();
 
             _logger.LogInformation("种子数据初始化完成");
@@ -161,6 +163,59 @@ public class DatabaseInitializer
 
         _logger.LogWarning(
             "默认管理员账号已创建: admin/123456。此为开发占位弱口令，请立即修改，避免尚未改密即接入生产。");
+    }
+
+    /// <summary>
+    /// 一次性回填：为历史 <c>DeviceVariable.Address</c>（旧展示串）生成结构化
+    /// <c>AddressConfigJson</c>（JSON 权威源）。此后地址以 JSON 为唯一信任，展示串由后端重新生成。
+    /// <para>
+    /// 幂等：仅处理 <c>AddressConfigJson</c> 为空、<c>Address</c> 非空且协议解析成功的行；
+    /// 无法解析的旧地址保持 JSON 为空、原字符串保留，交由前端后续人工重配。
+    /// </para>
+    /// </summary>
+    private async Task BackfillDeviceVariableAddressConfigAsync()
+    {
+        try
+        {
+            // 需解析的设备变量：延迟加载设备数据模型与协议，以拿到 DriverKey 判别协议。
+            var rows = await _db.Set<DeviceVariable>()
+                .Include(dv => dv.Device)!.ThenInclude(d => d!.Model).ThenInclude(m => m!.Protocol)
+                .Where(dv => dv.AddressConfigJson == null && dv.Address != null && dv.Address != "")
+                .ToListAsync();
+
+            if (rows.Count == 0) return;
+
+            var changed = 0;
+            foreach (var dv in rows)
+            {
+                var driverKey = dv.Device?.Model?.Protocol?.DriverKey;
+                var protocol = driverKey?.Trim().ToUpperInvariant() switch
+                {
+                    "S7" or "S7DRIVER" => "S7",
+                    "OPCUA" or "OPCUADRIVER" => "OPCUA",
+                    "MODBUSTCP" or "MODBUSTCPDRIVER" => "Modbus",
+                    _ => null
+                };
+                if (protocol == null) continue;
+
+                var config = AddressConfigSerializer.BuildFromDisplay(dv.Address, protocol);
+                if (config == null) continue; // 无法解析，保留原字符串，交由前端补配
+
+                dv.AddressConfigJson = AddressConfigSerializer.Serialize(config);
+                changed++;
+            }
+
+            if (changed > 0)
+            {
+                await _db.SaveChangesAsync();
+                _logger.LogInformation("已回填 {Count} 条设备变量的结构化地址（AddressConfigJson）。", changed);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 回填属尽力而为，失败不应阻断启动
+            _logger.LogError(ex, "回填设备变量结构化地址（AddressConfigJson）失败，已跳过。");
+        }
     }
 
     /// <summary>

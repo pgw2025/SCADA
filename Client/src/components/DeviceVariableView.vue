@@ -17,7 +17,7 @@ import {
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
-import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, DeviceVariable, ModelVariable } from '../types';
+import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DeviceVariable, ModelVariable, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { extractApiError } from '../api/http';
@@ -129,22 +129,63 @@ const confirmAdd = async () => {
 // ---------- 编辑实例 ----------
 const showEditModal = ref<boolean>(false);
 const editingForm = ref<DeviceVariable | null>(null);
+const editingCfg = ref<AddressConfig | null>(null); // 结构化地址（权威编辑对象）
 
 const openEditModal = (v: DeviceVariable) => {
   // 浅拷贝到可编辑副本；覆盖字段保留 null（null 表示"用模板值"，见下方提示文案）
   // isReadOnlyOverride 归一化：undefined → null，保证三态下拉"继承"项能正确选中。
   editingForm.value = { ...v, isReadOnlyOverride: v.isReadOnlyOverride ?? null };
+  // 结构化地址（JSON 权威）：优先解析已有 JSON，否则按当前设备协议给默认骨架。
+  editingCfg.value = parseAddressConfig(v.addressConfigJson) ?? newAddressConfig(selectedDevice.value?.type || 'Virtual');
   showEditModal.value = true;
 };
 
 // 协议 → 实例字段需求：虚拟设备无地址/位偏移，无需采集属性配置
-const fieldConfig = computed(() => PROTOCOL_FIELD_CONFIG[selectedDevice.value?.type || 'Virtual'] || {});
+const emptyFieldConfig = (): ProtocolFieldConfig => ({
+  addressLabel: undefined, addressPlaceholder: undefined, addressRequired: false,
+  needsBitOffset: false, addressFields: []
+});
+const fieldConfig = computed<ProtocolFieldConfig>(() =>
+  (selectedDevice.value?.type && PROTOCOL_FIELD_CONFIG[selectedDevice.value.type]) ?? emptyFieldConfig());
 const needsAddress = computed(() => !!fieldConfig.value.addressLabel);
 const needsBitOffset = computed(() => !!fieldConfig.value.needsBitOffset);
+// 结构化字段是否已含位信息（S7/Modbus）；若含则隐藏独立的"位偏移"输入，避免重复编辑
+const structuredHasBit = computed(() => !!fieldConfig.value.addressFields?.some(f => f.key === 'bitOffset' || f.key === 'bitIndex'));
 const tableColspan = computed(() => 7 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
+
+// 编辑弹窗内地址展示串预览（仅预览，最终展示串由后端权威生成）
+const displayPreview = computed(() =>
+  editingForm.value && (fieldConfig.value.addressFields?.length ?? 0) > 0
+    ? buildAddressDisplay(editingCfg.value)
+    : editingForm.value?.address || '');
+
+/** 校验编辑表单，返回错误文案；空串表示通过。 */
+const validateEditForm = (): string => {
+  const cfg = editingCfg.value;
+  if (!editingForm.value || !cfg) return '地址配置缺失';
+  for (const f of fieldConfig.value.addressFields || []) {
+    const val = (cfg as any)[f.key];
+    if (f.required && (val == null || val === '')) return `请填写地址字段：${f.label}`;
+    if (f.validate) {
+      const err = f.validate(cfg);
+      if (err) return `地址字段[${f.label}]：${err}`;
+    }
+  }
+  return '';
+};
 
 const saveEdit = async () => {
   if (!editingForm.value || !selectedDevice.value) return;
+  if ((fieldConfig.value.addressFields?.length ?? 0) > 0) {
+    const err = validateEditForm();
+    if (err) {
+      addLog('设备变量', err, 'warning');
+      return;
+    }
+    // 地址以 JSON 为权威：写回 addressConfigJson，展示串提交供参考（后端会权威重算）
+    editingForm.value.addressConfigJson = stringifyAddressConfig(editingCfg.value);
+    editingForm.value.address = buildAddressDisplay(editingCfg.value) || editingForm.value.address;
+  }
   try {
     await updateDeviceVariable(editingForm.value);
     addLog('设备变量', `已保存设备变量实例 [${editingForm.value.key}]`, 'normal');
@@ -595,7 +636,34 @@ onMounted(async () => {
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-500" />
             </div>
           </div>
-          <div v-if="needsAddress">
+          <div v-if="needsAddress && (fieldConfig.addressFields?.length ?? 0) > 0">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+              {{ fieldConfig.addressLabel }} <span class="text-rose-400"
+                v-if="fieldConfig.addressRequired && !displayPreview">（必填，空地址采集失败）</span>
+            </label>
+            <!-- 展示串预览（只读，最终由后端权威生成） -->
+            <input :value="displayPreview" disabled
+              :placeholder="fieldConfig.addressPlaceholder"
+              class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-600 dark:text-slate-300" />
+            <!-- 结构化地址字段（按协议渲染，JSON 权威） -->
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <div v-for="f in fieldConfig.addressFields" :key="f.key">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{ f.label
+                  }}<span class="text-rose-400" v-if="f.required"> *</span></label>
+                <select v-if="f.type === 'select'" v-model="(editingCfg as any)[f.key]"
+                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+                  <option v-for="opt in f.options" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</option>
+                </select>
+                <input v-else :type="f.type === 'number' ? 'number' : 'text'"
+                  v-model.number="(editingCfg as any)[f.key]" :min="f.min" :max="f.max"
+                  :placeholder="f.placeholder" :disabled="f.key === 'dbNumber' && editingCfg.area !== 'DB'"
+                  class="w-full disabled:opacity-40 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
+              </div>
+            </div>
+            <p v-if="displayPreview" class="mt-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">生成地址：
+              {{ displayPreview }}</p>
+          </div>
+          <div v-else-if="needsAddress">
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">
               {{ fieldConfig.addressLabel }} <span class="text-rose-400"
                 v-if="fieldConfig.addressRequired && !editingForm.address">（必填，空地址采集失败）</span>
@@ -604,13 +672,13 @@ onMounted(async () => {
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <div v-if="needsBitOffset">
+            <div v-if="needsBitOffset && !structuredHasBit">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">位偏移（BOOL/BIT）</label>
               <input v-model.number="editingForm.bitOffset" type="number" min="0" max="7"
                 :disabled="!isBitType(editingForm.dataType)"
                 class="w-full disabled:opacity-40 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
-            <div :class="needsBitOffset ? '' : 'col-span-2'">
+            <div :class="needsBitOffset && !structuredHasBit ? '' : 'col-span-2'">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">轮询间隔（ms）</label>
               <input v-model.number="editingForm.pollingIntervalMs" type="number" min="100"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />

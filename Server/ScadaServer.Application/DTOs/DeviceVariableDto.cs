@@ -39,6 +39,9 @@ public class DeviceVariableDto
     /// <summary>设备实例上的实际寄存器地址。空 → 回退模板（过渡期兼容）。</summary>
     public string? Address { get; set; }
 
+    /// <summary>设备实例结构化地址（JSON，<c>AddressConfig</c>）。地址权威机读形态，前端仅编辑本字段。</summary>
+    public string? AddressConfigJson { get; set; }
+
     /// <summary>位偏移（用于位操作）。空 → 回退模板。</summary>
     public int? BitOffset { get; set; }
 

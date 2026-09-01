@@ -359,7 +359,8 @@ export interface DeviceVariable {
   name: string;              // 来自模板 ModelVariable.Name
   dataType: DataTypeEnum;    // 来自模板 ModelVariable.DataType
   unit?: string;             // 来自模板 ModelVariable.Unit
-  address?: string | null;           // 实例级：实际寄存器地址；空字符串采集会失败
+  address?: string | null;           // 实例级：实际寄存器地址（展示串，由后端从 addressConfigJson 自动生成，只读）
+  addressConfigJson?: string | null; // 实例级：结构化地址 JSON（权威机读形态），前端仅编辑本字段
   bitOffset?: number | null;         // 实例级：位偏移（BOOL/BIT 用）
   pollingIntervalMs?: number | null; // 实例级：轮询间隔，空=运行时默认 1000ms
   isEnabled: boolean;                // 实例级：是否启用采集
@@ -422,23 +423,155 @@ export const DEVICE_TYPES: { value: DeviceType; label: string; implemented: bool
  * - addressLabel 缺省 = 该协议不需要地址（如虚拟设备），不渲染地址列/输入框
  * - addressRequired 用于编辑弹窗的"必填"提示
  * - needsBitOffset 控制是否渲染位偏移字段
+ * - addressFields = 结构化地址表单字段（S7/OPC UA/Modbus 各异）
  */
 export interface ProtocolFieldConfig {
   addressLabel?: string;
   addressPlaceholder?: string;
   addressRequired?: boolean;
   needsBitOffset?: boolean;
+  addressFields: StructuredAddressField[];
 }
+
+/** 结构化地址表单字段描述：前端据此按协议渲染输入控件，后端据此生成展示串。 */
+export interface StructuredAddressField {
+  key: keyof AddressConfig;
+  label: string;
+  type: 'text' | 'number' | 'select';
+  placeholder?: string;
+  options?: { value: string | number; label: string }[];
+  min?: number;
+  max?: number;
+  required?: boolean;
+  /** 值合法判定（如 S7 位偏移需 0~7）；返回错误文案或空串表示合法。 */
+  validate?: (cfg: AddressConfig) => string;
+}
+
+/** 结构化地址配置（映射后端 AddressConfig，camelCase 键）。JSON 为地址唯一权威身份。 */
+export interface AddressConfig {
+  protocol: string;      // S7 / OPCUA / Modbus / Virtual
+  area?: string;         // S7: DB / I / Q / M
+  dbNumber?: number;     // S7: DB 号（DB 区域）
+  byteOffset?: number;   // S7: 字节偏移
+  bitOffset?: number;    // S7: 位偏移（-1 = 非位地址）
+  width?: string;        // S7: BIT / BYTE / WORD / DWORD
+  nodeId?: string;       // OPC UA: 节点标识
+  function?: number;     // Modbus: 功能码
+  startAddress?: number; // Modbus: 起始地址
+  registerCount?: number;// Modbus: 寄存器数量
+  bitIndex?: number;     // Modbus: 位索引（-1 = 非位）
+}
+
+/** 按协议返回一个空的地址配置骨架（填充协议判别与默认值）。 */
+export const newAddressConfig = (protocol: string): AddressConfig => {
+  const proto = (protocol || '').toUpperCase();
+  switch (proto) {
+    case 'S7':
+      return { protocol: 'S7', area: 'DB', dbNumber: 1, byteOffset: 0, bitOffset: -1, width: 'WORD' };
+    case 'OPCUA':
+      return { protocol: 'OPCUA', nodeId: '' };
+    case 'MODBUSTCP':
+      return { protocol: 'Modbus', function: 3, startAddress: 0, registerCount: 1, bitIndex: -1 };
+    default:
+      return { protocol: proto || 'Virtual' };
+  }
+};
+
+/** 将后端返回的 JSON 串解析为地址配置对象；空/非法返回 null。 */
+export const parseAddressConfig = (json?: string | null): AddressConfig | null => {
+  if (!json) return null;
+  try {
+    const obj = JSON.parse(json);
+    if (!obj || typeof obj !== 'object' || !obj.protocol) return null;
+    return obj as AddressConfig;
+  } catch {
+    return null;
+  }
+};
+
+/** 将地址配置对象序列化为 JSON 串（提交后端用）。 */
+export const stringifyAddressConfig = (cfg?: AddressConfig | null): string | null => {
+  if (!cfg) return null;
+  try {
+    return JSON.stringify(cfg);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * 本地生成地址展示串（仅作编辑弹窗预览；最终展示串由后端权威生成）。
+ * 与后端 AddressConfigSerializer.ToDisplay 对齐。
+ */
+export const buildAddressDisplay = (cfg?: AddressConfig | null): string => {
+  if (!cfg) return '';
+  const proto = (cfg.protocol || '').toUpperCase();
+  if (proto === 'S7') return buildS7Display(cfg);
+  if (proto === 'OPCUA') return cfg.nodeId?.trim() || '';
+  if (proto === 'MODBUS') return cfg.startAddress != null ? String(cfg.startAddress) : '';
+  return '';
+};
+
+const buildS7Display = (c: AddressConfig): string => {
+  const area = (c.area || '').toUpperCase();
+  const width = (c.width || '').toUpperCase();
+  if (c.byteOffset == null || c.byteOffset < 0) return '';
+  const isBit = c.bitOffset != null && c.bitOffset >= 0 && c.bitOffset <= 7 && width === 'BIT';
+  if (isBit) {
+    if (area === 'DB') return `DB${c.dbNumber}.DBX${c.byteOffset}.${c.bitOffset}`;
+    if (area === 'I' || area === 'Q' || area === 'M') return `${area}${c.byteOffset}.${c.bitOffset}`;
+    return '';
+  }
+  if (area === 'DB') return `DB${c.dbNumber}.DB${s7Suffix(width)}${c.byteOffset}`;
+  if (area === 'I' || area === 'Q' || area === 'M') return `${area}${s7Prefix(area, width)}${c.byteOffset}`;
+  return '';
+};
+const s7Suffix = (w: string) => (w === 'BYTE' ? 'B' : w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B');
+const s7Prefix = (area: string, w: string) =>
+  area === 'I' ? (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B')
+  : area === 'Q' ? (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B')
+  : (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B');
 
 /** 协议字段配置表：新增协议只需在此补一行，页面自动适配 */
 export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
-  S7: { addressLabel: '寄存器地址', addressPlaceholder: '如 DB1.DBD4 / DB1.DBX0.0', addressRequired: true, needsBitOffset: true },
-  OPCUA: { addressLabel: '节点ID', addressPlaceholder: '如 ns=2;i=5', addressRequired: true, needsBitOffset: false },
-  ModbusTcp: { addressLabel: '寄存器地址', addressPlaceholder: '如 40001', addressRequired: true, needsBitOffset: true },
-  MQTT: { addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level', addressRequired: true, needsBitOffset: false },
-  BACnet: { addressLabel: '对象地址', addressPlaceholder: '如 AV:1', addressRequired: true, needsBitOffset: false },
-  DNP3: { addressLabel: '点表索引', addressPlaceholder: '如 2-3', addressRequired: true, needsBitOffset: false },
-  Virtual: {}
+  S7: {
+    addressLabel: '寄存器地址', addressPlaceholder: '如 DB1.DBD4 / DB1.DBX0.0', addressRequired: true, needsBitOffset: true,
+    addressFields: [
+      { key: 'area', label: '区域', type: 'select', options: [{ value: 'DB', label: 'DB 数据块' }, { value: 'I', label: 'I 输入' }, { value: 'Q', label: 'Q 输出' }, { value: 'M', label: 'M 存储' }], required: true },
+      { key: 'dbNumber', label: 'DB 号', type: 'number', min: 1, placeholder: '区域为 DB 时必填' },
+      { key: 'byteOffset', label: '字节偏移', type: 'number', min: 0, required: true },
+      { key: 'width', label: '访问宽度', type: 'select', options: [{ value: 'BIT', label: 'BIT 位' }, { value: 'BYTE', label: 'BYTE 字节' }, { value: 'WORD', label: 'WORD 字' }, { value: 'DWORD', label: 'DWORD 双字' }], required: true },
+      { key: 'bitOffset', label: '位偏移', type: 'number', min: -1, max: 7, placeholder: '宽度 BIT 时填 0~7，否则填 -1', validate: (cfg) => (cfg.width === 'BIT' && (cfg.bitOffset == null || cfg.bitOffset < 0 || cfg.bitOffset > 7)) ? '位地址需在 0~7 之间' : '' }
+    ]
+  },
+  OPCUA: {
+    addressLabel: '节点ID', addressPlaceholder: '如 ns=2;i=5', addressRequired: true, needsBitOffset: false,
+    addressFields: [
+      { key: 'nodeId', label: '节点ID', type: 'text', placeholder: '如 ns=2;i=5', required: true }
+    ]
+  },
+  ModbusTcp: {
+    addressLabel: '寄存器地址', addressPlaceholder: '如 40001', addressRequired: true, needsBitOffset: true,
+    addressFields: [
+      { key: 'function', label: '功能码', type: 'select', options: [{ value: 3, label: '03 读保持寄存器' }, { value: 4, label: '04 读输入寄存器' }, { value: 6, label: '06 写单个寄存器' }, { value: 16, label: '16 写多个寄存器' }], required: true },
+      { key: 'startAddress', label: '起始地址', type: 'number', min: 0, required: true },
+      { key: 'registerCount', label: '寄存器数量', type: 'number', min: 1 },
+      { key: 'bitIndex', label: '位索引', type: 'number', min: -1, placeholder: '位访问时填 0~15，否则 -1' }
+    ]
+  },
+  MQTT: {
+    addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level', addressRequired: true, needsBitOffset: false,
+    addressFields: [{ key: 'nodeId', label: 'Topic', type: 'text', placeholder: '如 plant1/pump/level', required: true }]
+  },
+  BACnet: {
+    addressLabel: '对象地址', addressPlaceholder: '如 AV:1', addressRequired: true, needsBitOffset: false,
+    addressFields: [{ key: 'nodeId', label: '对象地址', type: 'text', placeholder: '如 AV:1', required: true }]
+  },
+  DNP3: {
+    addressLabel: '点表索引', addressPlaceholder: '如 2-3', addressRequired: true, needsBitOffset: false,
+    addressFields: [{ key: 'nodeId', label: '点表索引', type: 'text', placeholder: '如 2-3', required: true }]
+  },
+  Virtual: { addressFields: [] }
 };
 
 export interface DataModel {

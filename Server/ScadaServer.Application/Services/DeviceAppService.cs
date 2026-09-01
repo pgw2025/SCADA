@@ -135,6 +135,7 @@ namespace ScadaServer.Application.Services
                 DataType = mv?.DataType ?? default,
                 Unit = mv?.Unit,
                 Address = dv.Address,
+                AddressConfigJson = dv.AddressConfigJson,
                 BitOffset = dv.BitOffset,
                 PollingIntervalMs = dv.PollingIntervalMs,
                 IsEnabled = dv.IsEnabled,

@@ -64,6 +64,17 @@ namespace ScadaServer.Domain.Entities
         public int? BitOffset { get; set; }
 
         /// <summary>
+        /// 设备实例结构化地址（JSON，<see cref="ScadaServer.Domain.Addresses.AddressConfig"/>）。
+        /// <para>
+        /// 地址的<strong>权威机读形态</strong>：前端仅编辑本字段，后端据此经
+        /// <see cref="ScadaServer.Domain.Addresses.AddressConfigSerializer.ToDisplay"/> 自动生成
+        /// <see cref="Address"/> 展示串并持久化，保证"JSON 权威、字符串展示冗余"的一致性。
+        /// </para>
+        /// </summary>
+        [Column(TypeName = "longtext")]
+        public string? AddressConfigJson { get; set; }
+
+        /// <summary>
         /// 是否启用该设备实例变量，默认 true。
         /// <para>
         /// 与 <see cref="Device.IsEnabled"/>（设备级启用）、<see cref="ModelVariable"/>（模板）相互独立，

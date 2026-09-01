@@ -1,5 +1,6 @@
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Addresses;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Exceptions;
@@ -122,8 +123,18 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             throw new BusinessException($"ID 为 {dto.Id} 的设备变量不存在");
         }
 
-        // 仅更新设备实例级配置：地址、位偏移、轮询间隔、启用状态、缩放/死区覆盖。
-        entity.Address = dto.Address;
+        // 仅更新设备实例级配置：地址（JSON 权威）+ 展示串、位偏移、轮询间隔、启用状态、缩放/死区覆盖。
+        if (!string.IsNullOrWhiteSpace(dto.AddressConfigJson))
+        {
+            entity.AddressConfigJson = NormalizeAddressConfig(dto.AddressConfigJson, out var display);
+            entity.Address = display; // 展示串由 JSON 权威生成
+        }
+        else
+        {
+            // 兼容旧客户端/旧数据：未回传 JSON 时沿用回传展示串，不清空地信息。
+            entity.AddressConfigJson = null;
+            entity.Address = dto.Address;
+        }
         entity.BitOffset = dto.BitOffset;
         entity.PollingIntervalMs = dto.PollingIntervalMs;
         entity.IsEnabled = dto.IsEnabled;
@@ -152,6 +163,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         DataType = mv?.DataType ?? default,
         Unit = mv?.Unit,
         Address = dv.Address,
+        AddressConfigJson = dv.AddressConfigJson,
         BitOffset = dv.BitOffset,
         PollingIntervalMs = dv.PollingIntervalMs,
         IsEnabled = dv.IsEnabled,
@@ -162,4 +174,26 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         TemplateIsReadOnly = mv?.IsReadOnly ?? true,
         EffectiveIsReadOnly = dv.IsReadOnlyOverride ?? (mv?.IsReadOnly ?? true)
     };
+
+    /// <summary>
+    /// 归一化结构化地址：JSON 为唯一权威源。前端仅回传 <paramref name="addressConfigJson"/>，
+    /// 后端解析并据此生成展示串（<c>Address</c>）。返回规范化后的 JSON，并输出展示串。
+    /// <para>
+    /// 兼容旧客户端：若未回传 JSON（空）则保持展示串不变（返回 null JSON、沿用原 Address）。
+    /// </para>
+    /// </summary>
+    private static string? NormalizeAddressConfig(string? addressConfigJson, out string? display)
+    {
+        if (string.IsNullOrWhiteSpace(addressConfigJson))
+        {
+            display = null; // 未提供 JSON：由调用方决定是否保留旧展示串
+            return null;
+        }
+
+        var config = AddressConfigSerializer.Deserialize(addressConfigJson)
+            ?? throw new BusinessException("设备变量结构化地址（JSON）格式无效");
+
+        display = AddressConfigSerializer.ToDisplay(config);
+        return AddressConfigSerializer.Serialize(config);
+    }
 }
