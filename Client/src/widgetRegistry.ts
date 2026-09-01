@@ -353,7 +353,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
   },
   'rounded-btn': {
     type: 'rounded-btn',
-    name: '工业圆角多态按钮',
+    name: '圆角按钮',
     defaultWidth: 110,
     defaultHeight: 46,
     icon: Sparkles,
