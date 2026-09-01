@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { HMIComponent, HmiMenuItem } from '../types';
+import { HMIComponent, HmiMenuItem, HmiDashboardItem } from '../types';
 import { getWidgetDef, getMenuIcon } from '../widgetRegistry';
+import { devices } from '../store/deviceStore';
+import { LayoutDashboard } from 'lucide-vue-next';
 // 全局共享动画时钟：单实例 rAF 驱动所有动画器件，避免每组件独立 rAF（见 #13）
 import { ticks, subscribeAnimation, unsubscribeAnimation } from '../utils/animationTicker';
 import { isSamePageRef } from '../utils/pageId';
@@ -70,8 +72,18 @@ const fillColor = computed(() => propOr('fillColor', '#cbd5e1'));
 const minValue = computed(() => Number(propOr('minValue', 0)));
 const maxValue = computed(() => Number(propOr('maxValue', 100)) || 100); // ||100 防 maxValue=0 除零
 const unit = computed(() => propOr('unit', ''));
-const thresholdMin = computed(() => Number(propOr('thresholdMin', 10)));
-const thresholdMax = computed(() => Number(propOr('thresholdMax', 90)));
+const thresholdMin = computed<number | null>(() => {
+  const v = props.component.props.thresholdMin;
+  if (v !== undefined && v !== null && !isNaN(Number(v))) return Number(v);
+  const def = defDefaults.value.thresholdMin;
+  return (def !== undefined && def !== null && !isNaN(Number(def))) ? Number(def) : null;
+});
+const thresholdMax = computed<number | null>(() => {
+  const v = props.component.props.thresholdMax;
+  if (v !== undefined && v !== null && !isNaN(Number(v))) return Number(v);
+  const def = defDefaults.value.thresholdMax;
+  return (def !== undefined && def !== null && !isNaN(Number(def))) ? Number(def) : null;
+});
 const fontSize = computed(() => Number(propOr('fontSize', 12)));
 const align = computed<'left' | 'center' | 'right'>(() =>
   (propOr('align', 'center') as 'left' | 'center' | 'right') || 'center');
@@ -106,10 +118,10 @@ const tileStyle = computed(() => ({
   backgroundSize: 'auto',
 }));
 
-// ===== 大屏标题背景图元（title-header）三套风格 × 桌面/移动 =====
+// ===== 大屏标题背景图元（title-header）5套简约大方风格（含浅色/深色/通透） × 桌面/移动 =====
 // 所有内容从 props 读取（含注册表默认兜底），文案/风格/时钟/状态均可在属性面板编辑。
 const headerStyle = computed(() =>
-  (propOr('headerStyle', 'tech-blue') as 'tech-blue' | 'eco-green' | 'carbon-orange'));
+  (propOr('headerStyle', 'navy-midnight') as string));
 const headerDevice = computed<'desktop' | 'mobile'>(() =>
   (propOr('headerDevice', 'desktop') as 'desktop' | 'mobile'));
 const headerTitle = computed(() => propOr('headerTitle', '工业互联网智能监控大屏'));
@@ -120,40 +132,119 @@ const headerShowStatus = computed(() => propOr('headerShowStatus', true));
 const headerStatusText = computed(() => propOr('headerStatusText', '系统运行正常'));
 const headerGlowColor = computed(() => propOr('headerGlowColor', '#38bdf8'));
 
-// 三套主题配色：科技蓝 / 生态绿 / 机能碳纤橙。发光色优先取用户配置 headerGlowColor。
+// 5 套风格主题（2 浅色 + 2 深色 + 1 通透悬浮）：极简亮白 / 工业钛灰 / 经典石板深灰 / 深海商务暗蓝 / 悬浮通透胶囊
 const headerTheme = computed(() => {
   const glow = headerGlowColor.value;
-  if (headerStyle.value === 'eco-green') {
+  const style = headerStyle.value;
+
+  // 1. 浅色系：极简亮白 (Pure Crisp White)
+  if (style === 'pure-white') {
+    return {
+      background: '#ffffff',
+      border: '1px solid #e2e8f0',
+      borderRadius: '2px',
+      backdropFilter: 'none',
+      accent: glow && glow !== '#38bdf8' ? glow : '#2563eb',
+      accentSoft: 'rgba(37,99,235,0.08)',
+      text: '#0f172a',
+      subText: '#64748b',
+      isLight: true,
+    };
+  }
+
+  // 2. 浅色系：工业钛灰浅色 (Titanium Light Grey)
+  if (style === 'titanium-light') {
+    return {
+      background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+      border: '1px solid #cbd5e1',
+      borderRadius: '2px',
+      backdropFilter: 'none',
+      accent: glow && glow !== '#38bdf8' ? glow : '#0284c7',
+      accentSoft: 'rgba(2,132,199,0.1)',
+      text: '#1e293b',
+      subText: '#475569',
+      isLight: true,
+    };
+  }
+
+  // 3. 深色系：经典石板深灰 (Classic Slate Dark)
+  if (style === 'slate-dark') {
+    return {
+      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+      border: '1px solid #334155',
+      borderRadius: '2px',
+      backdropFilter: 'none',
+      accent: glow || '#38bdf8',
+      accentSoft: 'rgba(56,189,248,0.15)',
+      text: '#f8fafc',
+      subText: '#94a3b8',
+      isLight: false,
+    };
+  }
+
+  // 4. 通透系：悬浮通透胶囊 (Adaptive Frost Capsule)
+  if (style === 'translucent-frost') {
+    return {
+      background: 'rgba(15, 23, 42, 0.82)',
+      border: '1px solid rgba(255,255,255,0.15)',
+      borderRadius: '8px',
+      backdropFilter: 'blur(8px)',
+      accent: glow || '#38bdf8',
+      accentSoft: 'rgba(56,189,248,0.18)',
+      text: '#ffffff',
+      subText: '#cbd5e1',
+      isLight: false,
+    };
+  }
+
+  // 兼容旧预设：生态绿 (Eco Green)
+  if (style === 'eco-green') {
     return {
       background: 'linear-gradient(180deg, #073a26 0%, #052c1c 55%, #032015 100%)',
+      border: '1px solid #064e3b',
+      borderRadius: '2px',
+      backdropFilter: 'none',
       accent: glow || '#34d399',
       accentSoft: 'rgba(52,211,153,0.16)',
       text: '#eafff5',
       subText: '#7fd9b8',
+      isLight: false,
     };
   }
-  if (headerStyle.value === 'carbon-orange') {
+
+  // 兼容旧预设：机能碳纤橙 (Carbon Orange)
+  if (style === 'carbon-orange') {
     return {
       background: 'linear-gradient(180deg, #2a1b0c 0%, #201407 50%, #170d04 100%)',
+      border: '1px solid #78350f',
+      borderRadius: '2px',
+      backdropFilter: 'none',
       accent: glow || '#f59e0b',
       accentSoft: 'rgba(245,158,11,0.14)',
       text: '#fff3e0',
       subText: '#cfaa85',
+      isLight: false,
     };
   }
-  // 默认 'tech-blue'
+
+  // 默认（第4种）：深海商务暗蓝 (Navy Midnight / tech-blue)
   return {
-    background: 'linear-gradient(180deg, #0a2e57 0%, #082244 55%, #061a34 100%)',
+    background: 'linear-gradient(180deg, #0b172a 0%, #081a36 60%, #061426 100%)',
+    border: '1px solid #1e293b',
+    borderRadius: '2px',
+    backdropFilter: 'none',
     accent: glow || '#38bdf8',
     accentSoft: 'rgba(56,189,248,0.16)',
-    text: '#eaf6ff',
-    subText: '#7fb7e0',
+    text: '#ffffff',
+    subText: '#7dd3fc',
+    isLight: false,
   };
 });
 
 // ===== 导航菜单图元（nav-menu）：桌面顶部横条 / 移动底部 Tab 栏 =====
 // 数据全部来自 props.menuItems（Inspector 编辑，PropsJson 落库），此处仅渲染。
 // 跳转不在本组件处理：菜单项带 data-nav-page 标记，由 CanvasPanel 统一分发 navigateToPage。
+const menuStyle = computed(() => propOr('menuStyle', 'navy-midnight'));
 const menuDevice = computed<'desktop' | 'mobile'>(() =>
   (propOr('menuDevice', 'desktop') as 'desktop' | 'mobile'));
 const menuItems = computed<HmiMenuItem[]>(() => {
@@ -167,6 +258,109 @@ const menuFontSize = computed(() => Number(propOr('menuFontSize', 14)));
 // 归一化比较：targetPageId 可能是 srv-{serverId}（新配置）或本地 id，currentPageId 亦随会话双轨
 const isCurrentMenuItem = (item: HmiMenuItem) =>
   !!item.targetPageId && isSamePageRef(item.targetPageId, props.currentPageId);
+
+// 5 套风格主题计算：桌面顶部导航条 / 移动端底部标签栏
+const navMenuTheme = computed(() => {
+  const style = menuStyle.value;
+  const customAccent = menuAccentColor.value;
+
+  if (style === 'pure-white') {
+    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#2563eb';
+    return {
+      background: '#ffffff',
+      border: '1px solid #e2e8f0',
+      backdropFilter: 'none',
+      accent,
+      accentSoft: 'rgba(37,99,235,0.08)',
+      itemText: '#64748b',
+      activeText: accent,
+      isLight: true,
+    };
+  }
+
+  if (style === 'titanium-light') {
+    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#0284c7';
+    return {
+      background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+      border: '1px solid #cbd5e1',
+      backdropFilter: 'none',
+      accent,
+      accentSoft: 'rgba(2,132,199,0.1)',
+      itemText: '#475569',
+      activeText: accent,
+      isLight: true,
+    };
+  }
+
+  if (style === 'slate-dark') {
+    const accent = customAccent || '#38bdf8';
+    return {
+      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+      border: '1px solid #334155',
+      backdropFilter: 'none',
+      accent,
+      accentSoft: 'rgba(56,189,248,0.15)',
+      itemText: '#94a3b8',
+      activeText: accent,
+      isLight: false,
+    };
+  }
+
+  if (style === 'translucent-frost') {
+    const accent = customAccent || '#38bdf8';
+    return {
+      background: 'rgba(15, 23, 42, 0.82)',
+      border: '1px solid rgba(255,255,255,0.15)',
+      backdropFilter: 'blur(8px)',
+      accent,
+      accentSoft: 'rgba(56,189,248,0.18)',
+      itemText: '#cbd5e1',
+      activeText: accent,
+      isLight: false,
+    };
+  }
+
+  if (style === 'eco-green') {
+    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#34d399';
+    return {
+      background: 'linear-gradient(180deg, #073a26 0%, #052c1c 55%, #032015 100%)',
+      border: '1px solid #064e3b',
+      backdropFilter: 'none',
+      accent,
+      accentSoft: 'rgba(52,211,153,0.16)',
+      itemText: '#7fd9b8',
+      activeText: accent,
+      isLight: false,
+    };
+  }
+
+  if (style === 'carbon-orange') {
+    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#f59e0b';
+    return {
+      background: 'linear-gradient(180deg, #2a1b0c 0%, #201407 50%, #170d04 100%)',
+      border: '1px solid #78350f',
+      backdropFilter: 'none',
+      accent,
+      accentSoft: 'rgba(245,158,11,0.14)',
+      itemText: '#cfaa85',
+      activeText: accent,
+      isLight: false,
+    };
+  }
+
+  // 默认：深海商务暗蓝 (Navy Midnight)
+  const accent = customAccent || '#38bdf8';
+  return {
+    background: 'linear-gradient(180deg, #0b172a 0%, #081a36 60%, #061426 100%)',
+    border: '1px solid #1e293b',
+    backdropFilter: 'none',
+    accent,
+    accentSoft: 'rgba(56,189,248,0.16)',
+    itemText: '#9fb6cc',
+    activeText: accent,
+    isLight: false,
+  };
+});
 
 // 阶段5-6：text 解耦——开关/阀/数显等有状态文本控件，状态文案改为 props 可配置，默认中文
 const onText = computed(() => props.component.props.onText || '开启');
@@ -206,9 +400,206 @@ const hasTrendData = computed(() =>
 // 是否有 ≥2 个真实采样点可绘制（未绑定或刚绑定待采样时显示占位）
 const trendReady = computed(() => (props.history?.length ?? 0) >= 2);
 
-const isHighAlert = computed(() => numValue.value >= thresholdMax.value);
-const isLowAlert = computed(() => numValue.value <= thresholdMin.value);
+const hasExplicitThresholdMax = computed(() => {
+  const v = props.component.props.thresholdMax;
+  return v !== undefined && v !== null && !isNaN(Number(v));
+});
+
+const hasExplicitThresholdMin = computed(() => {
+  const v = props.component.props.thresholdMin;
+  return v !== undefined && v !== null && !isNaN(Number(v));
+});
+
+const isHighAlert = computed(() => {
+  if (typeof props.value === 'boolean') return false;
+  if (thresholdMax.value === null || thresholdMax.value === undefined) return false;
+  return numValue.value >= thresholdMax.value;
+});
+const isLowAlert = computed(() => {
+  if (typeof props.value === 'boolean') return false;
+  if (thresholdMin.value === null || thresholdMin.value === undefined) return false;
+  return numValue.value <= thresholdMin.value;
+});
 const alertColor = computed(() => isHighAlert.value ? '#ef4444' : isLowAlert.value ? '#f59e0b' : activeColor.value);
+
+// var-display 容器样式计算（支持边框颜色、粗细、线条、圆角、背景底色与报警变色）
+const varDisplayContainerStyle = computed(() => {
+  const p = props.component.props || {};
+  const hasBorder = p.showBorder === true || p.showBorder === 'true' as any;
+  const hasBg = p.showBackground === true || p.showBackground === 'true' as any;
+  const enableAlarm = p.enableAlarmBorder !== false;
+
+  // 检查是否发生报警且启用了报警变色联动（仅当显式配置了有效阈值且产生超限时才触发报警边框）
+  const isAlarm = enableAlarm && (
+    (hasExplicitThresholdMax.value && isHighAlert.value) ||
+    (hasExplicitThresholdMin.value && isLowAlert.value)
+  );
+
+  let borderColor = 'transparent';
+  let borderWidth = '0px';
+  let borderStyle = (p.borderStyle as string) || 'solid';
+
+  if (isAlarm) {
+    const bw = p.borderWidth !== undefined && p.borderWidth !== null ? Math.max(2, Number(p.borderWidth)) : 2;
+    borderWidth = `${bw}px`;
+    borderColor = isHighAlert.value ? '#ef4444' : '#f59e0b';
+    borderStyle = 'solid';
+  } else if (hasBorder) {
+    const bw = p.borderWidth !== undefined && p.borderWidth !== null ? Number(p.borderWidth) : 1.5;
+    borderWidth = `${bw}px`;
+    borderColor = p.borderColor || p.strokeColor || '#cbd5e1';
+    borderStyle = (p.borderStyle as string) || 'solid';
+  }
+
+  const borderRadius = p.borderRadius !== undefined && p.borderRadius !== null ? `${p.borderRadius}px` : '8px';
+  const backgroundColor = hasBg
+    ? (p.bgColor || '#ffffff')
+    : 'transparent';
+
+  return {
+    borderWidth,
+    borderStyle,
+    borderColor,
+    borderRadius,
+    backgroundColor,
+    boxSizing: 'border-box' as const,
+  };
+});
+
+// ===== multi-var-dashboard 实时多变量看板 computed =====
+const dashboardTitle = computed(() => propOr('dashboardTitle', '实时参数监控看板'));
+const showDashboardTitle = computed(() => propOr('showDashboardTitle', true));
+const dashboardTitleBgColor = computed(() => propOr('dashboardTitleBgColor', ''));
+const dashboardTitleColor = computed(() => propOr('dashboardTitleColor', ''));
+const dashboardLayout = computed<'grid' | 'table' | 'compact'>(() => propOr('dashboardLayout', 'grid'));
+const dashboardColumns = computed(() => Number(propOr('dashboardColumns', 2)));
+const dashboardGap = computed(() => Number(propOr('dashboardGap', 8)));
+const dashboardShowItemBorder = computed(() => propOr('dashboardShowItemBorder', true));
+const dashboardItemBorderColor = computed(() => propOr('dashboardItemBorderColor', '#e2e8f0'));
+const dashboardItemBgColor = computed(() => propOr('dashboardItemBgColor', '#f8fafc'));
+const dashboardValueFontSize = computed(() => Number(propOr('dashboardValueFontSize', 16)));
+const dashboardLabelFontSize = computed(() => Number(propOr('dashboardLabelFontSize', 11)));
+const dashboardZebra = computed(() => propOr('dashboardZebra', false));
+
+const dashboardItems = computed<HmiDashboardItem[]>(() => {
+  const items = props.component.props.dashboardItems;
+  if (Array.isArray(items) && items.length > 0) return items;
+  const def = defDefaults.value.dashboardItems;
+  return Array.isArray(def) ? def : [];
+});
+
+// 解析每个多变量子项的实时数据、元数据与报警状态
+const dashboardResolvedItems = computed(() => {
+  return dashboardItems.value.map((item, idx) => {
+    // 优先取 item 本身指定的 deviceId，若无则取组件全局 bindDeviceId，否则取第一个设备
+    const devId = item.deviceId != null ? item.deviceId : props.component.bindDeviceId;
+    const dev = devId != null
+      ? devices.value.find(d => String(d.id) === String(devId))
+      : devices.value[0];
+
+    const rawVal = dev?.variables?.[item.variableKey];
+    const meta = dev?.variableMeta?.[item.variableKey];
+    const label = item.label?.trim() || meta?.name || item.variableKey || `变量 ${idx + 1}`;
+    const unit = item.unit !== undefined && item.unit !== '' ? item.unit : (meta?.unit || '');
+    const quality = meta?.quality || (dev?.runtimeStatus === 'Offline' ? 'Offline' : 'Good');
+    const isQualityBad = quality !== 'Good';
+
+    const isBool = typeof rawVal === 'boolean';
+    const isNum = typeof rawVal === 'number';
+
+    let displayVal = '--';
+    if (isQualityBad) {
+      displayVal = '--';
+    } else if (isBool) {
+      displayVal = rawVal ? onText.value : offText.value;
+    } else if (isNum) {
+      const prec = item.precision != null && item.precision !== undefined && item.precision >= 0
+        ? Math.min(4, Math.max(0, Math.round(Number(item.precision))))
+        : null;
+      displayVal = prec !== null ? rawVal.toFixed(prec) : `${rawVal}`;
+    } else if (rawVal !== undefined && rawVal !== null) {
+      displayVal = String(rawVal);
+    }
+
+    const isHigh = !isQualityBad && isNum && item.thresholdMax != null && item.thresholdMax !== undefined && rawVal >= item.thresholdMax;
+    const isLow = !isQualityBad && isNum && item.thresholdMin != null && item.thresholdMin !== undefined && rawVal <= item.thresholdMin;
+    const isAlarm = isHigh || isLow;
+
+    let statusColor = '#10b981'; // 正常绿
+    let statusText = '正常';
+    if (isQualityBad) {
+      statusColor = '#94a3b8';
+      statusText = '离线';
+    } else if (isHigh) {
+      statusColor = '#ef4444'; // 高限红
+      statusText = '高限报警';
+    } else if (isLow) {
+      statusColor = '#f59e0b'; // 低限黄
+      statusText = '低限预警';
+    } else if (isBool) {
+      statusColor = rawVal ? '#10b981' : '#94a3b8';
+      statusText = rawVal ? '运行' : '停止';
+    }
+
+    return {
+      id: item.id || `item-${idx}`,
+      variableKey: item.variableKey,
+      label,
+      unit,
+      rawVal,
+      displayVal,
+      isBool,
+      isNum,
+      isQualityBad,
+      isHigh,
+      isLow,
+      isAlarm,
+      statusColor,
+      statusText,
+      showStatusDot: item.showStatusDot !== false,
+      devName: dev?.name || '',
+    };
+  });
+});
+
+// 看板整体容器样式
+const dashboardContainerStyle = computed(() => {
+  const p = props.component.props;
+  const hasBorder = p.showBorder !== false;
+  const hasBg = p.showBackground !== false;
+
+  const borderWidth = hasBorder ? `${p.borderWidth ?? 1.5}px` : '0px';
+  const borderColor = hasBorder ? (p.borderColor || '#cbd5e1') : 'transparent';
+  const borderStyle = hasBorder ? (p.borderStyle || 'solid') : 'none';
+  const borderRadius = p.borderRadius !== undefined ? `${p.borderRadius}px` : '8px';
+  const backgroundColor = hasBg ? (p.bgColor || '#ffffff') : 'transparent';
+
+  return {
+    borderWidth,
+    borderStyle,
+    borderColor,
+    borderRadius,
+    backgroundColor,
+  };
+});
+
+// 网格列数样式
+const dashboardGridStyle = computed(() => {
+  const cols = dashboardColumns.value;
+  const gap = `${dashboardGap.value}px`;
+  if (cols === 0) {
+    return {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+      gap,
+    };
+  }
+  return {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+    gap,
+  };
+});
 
 const width = computed(() => props.component.width);
 const height = computed(() => props.component.height);
@@ -726,25 +1117,21 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     </div>
 
     <!-- 9.5 VAR DISPLAY（数据变量显示） -->
-    <!-- 外观显隐：边框/背景/内部标签默认隐藏；阈值报警变色边框为功能性报警指示，始终保留 -->
+    <!-- 外观显隐：边框/背景/内部标签独立开关；支持边框颜色、粗细、圆角及报警指示 -->
     <div v-else-if="component.type === 'var-display'"
-      class="w-full h-full rounded-lg flex flex-col justify-center items-center px-3 py-1 relative overflow-hidden select-none"
+      class="w-full h-full flex flex-col justify-center items-center px-3 py-1 relative overflow-hidden select-none transition-all duration-150"
       :class="[
         isActiveMode && isSettable && !isLockedControl ? 'cursor-pointer hover:shadow-md' : '',
-        showBackground ? 'bg-white dark:bg-slate-950' : 'bg-transparent',
-        isHighAlert ? 'border-2 border-red-500 dark:border-red-500'
-          : (isLowAlert ? 'border-2 border-amber-400 dark:border-amber-500'
-            : (showBorder ? 'border-2 border-slate-300 dark:border-slate-700' : 'border-none'))
-      ]">
+        showBackground && !component.props.bgColor ? 'bg-white dark:bg-slate-950' : '',
+      ]" :style="varDisplayContainerStyle">
       <div v-if="showInnerLabel"
         class="absolute top-1 left-2.5 text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80%] font-mono pointer-events-none">
         {{ component.label || '变量' }}
       </div>
-      <div class="font-mono font-bold tracking-wide leading-none tabular-nums"
-        :class="showInnerLabel ? 'mt-1.5' : ''"
+      <div class="font-mono font-bold tracking-wide leading-none tabular-nums" :class="showInnerLabel ? 'mt-1.5' : ''"
         :style="{
           fontSize: `${fontSize * 1.6}px`,
-          color: isHighAlert ? '#ef4444' : isLowAlert ? '#f59e0b' : (qualityBad ? '#94a3b8' : activeColor)
+          color: (component.props.enableAlarmBorder !== false && hasExplicitThresholdMax && isHighAlert) ? '#ef4444' : ((component.props.enableAlarmBorder !== false && hasExplicitThresholdMin && isLowAlert) ? '#f59e0b' : (qualityBad ? '#94a3b8' : activeColor))
         }">
         {{ varDisplayText }}
         <span v-if="typeof value === 'number' && unit && !qualityBad"
@@ -761,7 +1148,8 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
         class="absolute bottom-1 left-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
         title="当前角色无写权限，控件为只读">
         <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
+          <path
+            d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 0 1 6 0v3z" />
         </svg>
         只读
       </span>
@@ -853,10 +1241,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
           isActiveMode ? 'active:translate-y-0.5 active:shadow-inner cursor-pointer' : '',
           boolValue ? 'shadow-inner' : 'shadow-md border-t-white border-l-white border-b-slate-900 border-r-slate-900'
         ]" :style="{
-        backgroundColor: boolValue ? activeColor : fillColor || '#cbd5e1',
-        borderColor: boolValue ? (strokeColor || '#0284c7') : '#94a3b8',
-        color: boolValue ? '#ffffff' : '#1e293b'
-      }">
+          backgroundColor: boolValue ? activeColor : fillColor || '#cbd5e1',
+          borderColor: boolValue ? (strokeColor || '#0284c7') : '#94a3b8',
+          color: boolValue ? '#ffffff' : '#1e293b'
+        }">
         <!-- Led Indicator inside the button -->
         <div class="absolute top-1 right-2 w-1.5 h-1.5 rounded-full border border-slate-600/30" :style="{
           backgroundColor: boolValue ? '#22c55e' : '#dc2626',
@@ -954,12 +1342,12 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
           isActiveMode ? 'active:scale-95 active:brightness-90 cursor-pointer' : '',
           boolValue ? 'shadow-md' : 'shadow-xs'
         ]" :style="{
-        borderRadius: `${component.props.borderRadius ?? 10}px`,
-        borderWidth: `${component.props.borderWidth ?? 1}px`,
-        borderColor: roundedBtnState.borderColor || component.props.strokeColor || '#38bdf8',
-        backgroundColor: roundedBtnState.bgColor,
-        color: roundedBtnState.textColor,
-      }">
+          borderRadius: `${component.props.borderRadius ?? 10}px`,
+          borderWidth: `${component.props.borderWidth ?? 1}px`,
+          borderColor: roundedBtnState.borderColor || component.props.strokeColor || '#38bdf8',
+          backgroundColor: roundedBtnState.bgColor,
+          color: roundedBtnState.textColor,
+        }">
         <!-- Subtle top gloss highlight for industrial tactility -->
         <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none"
           :style="{ borderTopLeftRadius: `${component.props.borderRadius ?? 10}px`, borderTopRightRadius: `${component.props.borderRadius ?? 10}px` }" />
@@ -996,7 +1384,7 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
             :
             component.props.buttonMode === 'reset-bit' ? '[复位0]' : component.props.buttonMode === 'set-value' ?
               `[设值:${component.props.clickValue ?? 0}]` : component.props.buttonMode === 'navigate' ? '[跳转]' :
-              component.props.buttonMode === 'run-script' ? '[脚本]' : '[取反]' }}
+                component.props.buttonMode === 'run-script' ? '[脚本]' : '[取反]' }}
         </span>
       </div>
     </div>
@@ -1218,54 +1606,69 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </div>
     </div>
 
-    <!-- 21. 大屏标题背景图元（title-header）三套风格 × 桌面/移动 -->
-    <div v-else-if="component.type === 'title-header'"
-      class="relative w-full h-full overflow-hidden rounded-sm select-none"
-      :style="{ background: headerTheme.background, color: headerTheme.text }">
-      <!-- 装饰 SVG：纯图形、随画布等比拉伸，三套主题各自特征 -->
-      <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100"
-        preserveAspectRatio="none">
-        <!-- 顶部/底部高亮流光刻线（通用） -->
-        <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.35" />
-        <rect x="0" y="97" width="100" height="3" :fill="headerTheme.accent" opacity="0.5" />
+    <!-- 21. 大屏标题背景图元（title-header）5套风格 × 桌面/移动 -->
+    <div v-else-if="component.type === 'title-header'" class="relative w-full h-full overflow-hidden select-none"
+      :style="{
+        background: headerTheme.background,
+        color: headerTheme.text,
+        border: headerTheme.border,
+        borderRadius: headerTheme.borderRadius || '2px',
+        backdropFilter: headerTheme.backdropFilter || 'none',
+      }">
+      <!-- 装饰 SVG：随画布等比拉伸，极简线条设计 -->
+      <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <!-- 极简亮白风格：极致清爽，底部 1px 细分界线 -->
+        <template v-if="headerStyle === 'pure-white'">
+          <line x1="0" y1="99.5" x2="100" y2="99.5" stroke="#e2e8f0" stroke-width="0.8" />
+          <line x1="0" y1="0.5" x2="100" y2="0.5" stroke="#f1f5f9" stroke-width="0.5" />
+        </template>
 
-        <!-- 科技蓝：发光切角翼展 + 晶蓝流光斜线 -->
-        <template v-if="headerStyle === 'tech-blue'">
-          <polygon :points="'0,16 28,0 42,0 0,44'" :fill="headerTheme.accentSoft" />
-          <polygon :points="'100,84 72,100 58,100 100,56'" :fill="headerTheme.accentSoft" />
-          <rect x="34" y="0" width="1.4" height="100" :fill="headerTheme.accent" opacity="0.4"
-            transform="skewX(-18)" />
-          <rect x="38" y="0" width="0.9" height="100" :fill="headerTheme.accent" opacity="0.2"
-            transform="skewX(-18)" />
+        <!-- 工业钛灰风格：底部 2px 浅蓝装饰线条 -->
+        <template v-else-if="headerStyle === 'titanium-light'">
+          <line x1="0" y1="0.5" x2="100" y2="0.5" stroke="#e2e8f0" stroke-width="0.5" />
+          <rect x="0" y="97.5" width="100" height="2.5" :fill="headerTheme.accent" opacity="0.85" />
+        </template>
+
+        <!-- 经典石板深灰风格：沉稳严谨，底部 1.5px 纯净细线 -->
+        <template v-else-if="headerStyle === 'slate-dark'">
+          <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.25" />
+          <rect x="0" y="98" width="100" height="2" :fill="headerTheme.accent" opacity="0.6" />
+        </template>
+
+        <!-- 悬浮通透胶囊风格：轻量微边框 -->
+        <template v-else-if="headerStyle === 'translucent-frost'">
+          <line x1="10" y1="99" x2="90" y2="99" :stroke="headerTheme.accent" stroke-width="0.6" opacity="0.3" />
         </template>
 
         <!-- 生态绿：菱形光带 + 中心能效光环 -->
         <template v-else-if="headerStyle === 'eco-green'">
+          <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.35" />
+          <rect x="0" y="97" width="100" height="3" :fill="headerTheme.accent" opacity="0.5" />
           <rect x="8" y="32" width="10" height="10" :fill="headerTheme.accent" opacity="0.25"
             transform="rotate(45 13 37)" />
           <rect x="82" y="32" width="10" height="10" :fill="headerTheme.accent" opacity="0.25"
             transform="rotate(45 87 37)" />
           <line x1="0" y1="50" x2="100" y2="50" :stroke="headerTheme.accent" stroke-width="0.6" opacity="0.22"
             stroke-dasharray="2 3" />
-          <circle cx="50" cy="52" r="20" :fill="headerTheme.accentSoft" />
-          <circle cx="50" cy="52" r="8" :fill="headerTheme.accent" opacity="0.5" />
-          <circle cx="50" cy="52" r="3.4" :fill="headerTheme.text" opacity="0.85" />
         </template>
 
-        <!-- 碳纤橙：工业警示斜纹 + 高精铆钉 + 右侧警示区 -->
-        <template v-else>
+        <!-- 机能碳纤橙：斜纹装饰 -->
+        <template v-else-if="headerStyle === 'carbon-orange'">
+          <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.35" />
+          <rect x="0" y="97" width="100" height="3" :fill="headerTheme.accent" opacity="0.5" />
           <g :stroke="headerTheme.accent" stroke-width="1.1" opacity="0.16" stroke-linecap="round">
             <line x1="0" y1="108" x2="108" y2="0" />
             <line x1="12" y1="112" x2="112" y2="12" />
             <line x1="-12" y1="92" x2="92" y2="-12" />
           </g>
-          <g :fill="headerTheme.accent" opacity="0.55">
-            <circle cx="4" cy="4" r="0.9" /><circle cx="28" cy="4" r="0.9" />
-            <circle cx="52" cy="4" r="0.9" /><circle cx="76" cy="4" r="0.9" /><circle cx="96" cy="4" r="0.9" />
-            <circle cx="4" cy="96" r="0.9" /><circle cx="28" cy="96" r="0.9" />
-            <circle cx="52" cy="96" r="0.9" /><circle cx="76" cy="96" r="0.9" /><circle cx="96" cy="96" r="0.9" />
-          </g>
-          <rect x="86" y="0" width="14" height="100" :fill="headerTheme.accent" opacity="0.12" />
+        </template>
+
+        <!-- 深海商务暗蓝（默认 / tech-blue）：顶部微光 + 底部科技线条 -->
+        <template v-else>
+          <line x1="0" y1="0.7" x2="100" y2="0.7" :stroke="headerTheme.accent" stroke-width="0.5" opacity="0.35" />
+          <rect x="0" y="97.5" width="100" height="2.5" :fill="headerTheme.accent" opacity="0.7" />
+          <polygon :points="'0,12 18,0 28,0 0,28'" :fill="headerTheme.accentSoft" />
+          <polygon :points="'100,88 82,100 72,100 100,72'" :fill="headerTheme.accentSoft" />
         </template>
       </svg>
 
@@ -1279,15 +1682,15 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
             <span class="w-1.5 h-1.5 rounded-full" :style="{ background: headerTheme.accent }" />
             <span class="font-mono tracking-wider">{{ headerLogoText }}</span>
           </div>
-          <span class="min-w-0 truncate"
-            :style="{ fontSize: `${fontSize + 3}px`, color: headerTheme.text }">{{ headerTitle }}</span>
+          <span class="min-w-0 truncate" :style="{ fontSize: `${fontSize + 3}px`, color: headerTheme.text }">{{
+            headerTitle
+            }}</span>
           <div class="ml-auto shrink-0 flex items-center gap-3">
             <span v-if="headerShowClock" class="font-mono"
               :style="{ fontSize: `${fontSize}px`, color: headerTheme.accent }">{{ timeString }}</span>
             <span v-if="headerShowStatus" class="flex items-center gap-1.5 rounded-full px-2.5 h-6"
               :style="{ background: headerTheme.accentSoft, color: headerTheme.text, fontSize: `${Math.max(10, fontSize - 3)}px` }">
-              <span class="w-1.5 h-1.5 rounded-full animate-pulse"
-                :style="{ background: headerTheme.accent }" />
+              <span class="w-1.5 h-1.5 rounded-full animate-pulse" :style="{ background: headerTheme.accent }" />
               {{ headerStatusText }}
             </span>
           </div>
@@ -1299,10 +1702,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       </div>
 
       <!-- 移动竖屏布局：Logo｜标题｜右端时钟+状态点（紧凑单行） -->
-      <div v-else
-        class="relative z-10 w-full h-full flex items-center gap-2 px-2"
+      <div v-else class="relative z-10 w-full h-full flex items-center gap-2 px-2"
         :style="{ fontSize: `${fontSize}px`, fontWeight: bold ? '700' : '600' }">
-        <span class="shrink-0 font-mono tracking-wide" :style="{ color: headerTheme.accent }">{{ headerLogoText }}</span>
+        <span class="shrink-0 font-mono tracking-wide" :style="{ color: headerTheme.accent }">{{ headerLogoText
+          }}</span>
         <span class="min-w-0 truncate" :style="{ color: headerTheme.text }">{{ headerTitle }}</span>
         <span v-if="headerShowClock" class="ml-auto shrink-0 font-mono"
           :style="{ fontSize: `${Math.max(10, fontSize - 2)}px`, color: headerTheme.accent }">{{ timeString }}</span>
@@ -1313,28 +1716,40 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
 
     <!-- 22. 导航菜单图元（nav-menu）：桌面顶部横条 / 移动底部 Tab 栏 -->
     <div v-else-if="component.type === 'nav-menu'"
-      class="relative w-full h-full overflow-hidden select-none flex items-stretch"
-      :style="{ background: 'linear-gradient(180deg, #0c2a4d 0%, #082244 60%, #061a34 100%)' }">
-      <!-- 顶部流光刻线（与标题栏呼应） -->
-      <div class="absolute inset-x-0 top-0 h-[2px]" :style="{ background: menuAccentColor, opacity: 0.55 }" />
+      class="relative w-full h-full overflow-hidden select-none flex items-stretch" :style="{
+        background: navMenuTheme.background,
+        border: navMenuTheme.border,
+        backdropFilter: navMenuTheme.backdropFilter,
+        WebkitBackdropFilter: navMenuTheme.backdropFilter,
+      }">
+      <!-- 顶部/底部流光刻线（与主题风格呼应） -->
+      <div v-if="menuDevice === 'desktop'" class="absolute inset-x-0 bottom-0 h-[1.5px]"
+        :style="{ background: navMenuTheme.accent, opacity: navMenuTheme.isLight ? 0.3 : 0.6 }" />
+      <div v-else class="absolute inset-x-0 top-0 h-[1.5px]"
+        :style="{ background: navMenuTheme.accent, opacity: navMenuTheme.isLight ? 0.3 : 0.6 }" />
 
       <!-- 桌面端：横向均分导航项（图标+文字水平排列，当前项底部高亮条） -->
       <div v-if="menuDevice === 'desktop'" class="relative z-10 flex w-full h-full">
         <div v-for="item in menuItems" :key="item.text + item.targetPageId"
           class="relative flex-1 flex items-center justify-center gap-2 h-full transition-colors duration-200"
-          :class="isActiveMode && item.targetPageId ? 'cursor-pointer hover:bg-white/5' : ''"
+          :class="isActiveMode && item.targetPageId ? (navMenuTheme.isLight ? 'cursor-pointer hover:bg-black/5' : 'cursor-pointer hover:bg-white/5') : ''"
           :data-nav-page="item.targetPageId || undefined" :style="{
-            color: isCurrentMenuItem(item) ? menuAccentColor : '#9fb6cc',
+            color: isCurrentMenuItem(item) ? navMenuTheme.activeText : navMenuTheme.itemText,
+            fontWeight: isCurrentMenuItem(item) ? '600' : '500',
           }">
           <component :is="getMenuIcon(item.icon)" class="w-4 h-4 shrink-0"
-            :style="{ color: isCurrentMenuItem(item) ? menuAccentColor : '#7f9cb5' }" />
-          <span class="truncate font-medium tracking-wide"
-            :style="{ fontSize: `${menuFontSize}px`, textShadow: isCurrentMenuItem(item) ? `0 0 8px ${menuAccentColor}` : 'none' }">
+            :style="{ color: isCurrentMenuItem(item) ? navMenuTheme.accent : navMenuTheme.itemText }" />
+          <span class="truncate tracking-wide" :style="{
+            fontSize: `${menuFontSize}px`,
+            textShadow: isCurrentMenuItem(item) && !navMenuTheme.isLight ? `0 0 8px ${navMenuTheme.accent}` : 'none'
+          }">
             {{ item.text }}
           </span>
           <!-- 当前项底部高亮条 -->
-          <div v-if="isCurrentMenuItem(item)" class="absolute bottom-0 left-0 right-0 h-[3px]"
-            :style="{ background: menuAccentColor, boxShadow: `0 0 10px ${menuAccentColor}` }" />
+          <div v-if="isCurrentMenuItem(item)" class="absolute bottom-0 left-0 right-0 h-[3px]" :style="{
+            background: navMenuTheme.accent,
+            boxShadow: !navMenuTheme.isLight ? `0 0 10px ${navMenuTheme.accent}` : 'none'
+          }" />
         </div>
       </div>
 
@@ -1342,21 +1757,170 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
       <div v-else class="relative z-10 flex w-full h-full">
         <div v-for="item in menuItems" :key="item.text + item.targetPageId"
           class="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-0 transition-colors duration-200"
-          :class="isActiveMode && item.targetPageId ? 'cursor-pointer active:bg-white/10' : ''"
+          :class="isActiveMode && item.targetPageId ? (navMenuTheme.isLight ? 'cursor-pointer active:bg-black/5' : 'cursor-pointer active:bg-white/10') : ''"
           :data-nav-page="item.targetPageId || undefined" :style="{
-            color: isCurrentMenuItem(item) ? menuAccentColor : '#8aa3bd',
+            color: isCurrentMenuItem(item) ? navMenuTheme.activeText : navMenuTheme.itemText,
           }">
           <component :is="getMenuIcon(item.icon)" class="w-[18px] h-[18px] shrink-0" :style="{
-            color: isCurrentMenuItem(item) ? menuAccentColor : '#7f9cb5',
-            filter: isCurrentMenuItem(item) ? `drop-shadow(0 0 6px ${menuAccentColor})` : 'none',
+            color: isCurrentMenuItem(item) ? navMenuTheme.accent : navMenuTheme.itemText,
+            filter: isCurrentMenuItem(item) && !navMenuTheme.isLight ? `drop-shadow(0 0 6px ${navMenuTheme.accent})` : 'none',
           }" />
           <span class="truncate max-w-full px-0.5 leading-none"
             :style="{ fontSize: `${menuFontSize}px`, fontWeight: isCurrentMenuItem(item) ? '600' : '400' }">
             {{ item.text }}
           </span>
           <!-- 当前项顶部高亮条 -->
-          <div v-if="isCurrentMenuItem(item)" class="absolute top-0 left-0 right-0 h-[3px]"
-            :style="{ background: menuAccentColor, boxShadow: `0 0 10px ${menuAccentColor}` }" />
+          <div v-if="isCurrentMenuItem(item)" class="absolute top-0 left-0 right-0 h-[3px]" :style="{
+            background: navMenuTheme.accent,
+            boxShadow: !navMenuTheme.isLight ? `0 0 10px ${navMenuTheme.accent}` : 'none'
+          }" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 23. 实时多变量监控看板（multi-var-dashboard） -->
+    <div v-else-if="component.type === 'multi-var-dashboard'"
+      class="w-full h-full flex flex-col relative overflow-hidden select-none transition-all duration-150"
+      :style="dashboardContainerStyle">
+
+      <!-- 标题栏（可选显示） -->
+      <div v-if="showDashboardTitle"
+        class="shrink-0 flex items-center justify-between px-3 py-1.5 border-b transition-colors" :style="{
+          backgroundColor: dashboardTitleBgColor || 'rgba(241, 245, 249, 0.75)',
+          borderColor: dashboardShowItemBorder ? dashboardItemBorderColor : 'rgba(226, 232, 240, 0.8)',
+          color: dashboardTitleColor || '#1e293b'
+        }">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <div class="w-2 h-2 rounded-full bg-[#1890ff] shadow-sm shadow-sky-400/50" />
+          <span class="text-xs font-bold tracking-wide truncate font-sans">
+            {{ dashboardTitle }}
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0 text-[10px] font-mono opacity-75">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>{{ dashboardResolvedItems.length }} 点位</span>
+        </div>
+      </div>
+
+      <!-- 看板主体内容区域 -->
+      <div class="flex-1 p-2.5 overflow-y-auto overflow-x-hidden">
+        <!-- 空状态提示 -->
+        <div v-if="dashboardResolvedItems.length === 0"
+          class="w-full h-full min-h-[80px] flex flex-col items-center justify-center text-slate-400 gap-1.5 text-center p-3">
+          <LayoutDashboard class="w-6 h-6 stroke-1 text-slate-300 dark:text-slate-600" />
+          <span class="text-xs">暂无监控变量点位</span>
+          <span class="text-[10px] text-slate-400 dark:text-slate-500">请在右侧属性面板添加或一键导入变量</span>
+        </div>
+
+        <!-- 模式1：卡片网格 (grid) -->
+        <div v-else-if="dashboardLayout === 'grid'" :style="dashboardGridStyle">
+          <div v-for="item in dashboardResolvedItems" :key="item.id"
+            class="flex flex-col justify-between p-2 rounded transition-all relative overflow-hidden" :style="{
+              borderWidth: dashboardShowItemBorder ? '1px' : '0px',
+              borderStyle: 'solid',
+              borderColor: item.isAlarm ? item.statusColor : dashboardItemBorderColor,
+              backgroundColor: item.isAlarm ? (item.isHigh ? 'rgba(239, 68, 68, 0.06)' : 'rgba(245, 158, 11, 0.06)') : (dashboardItemBgColor || '#f8fafc'),
+              borderRadius: '6px',
+            }">
+
+            <!-- 卡片头部：标签与指示灯 -->
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <div class="flex items-center gap-1 min-w-0 flex-1">
+                <span v-if="item.showStatusDot" class="w-2 h-2 rounded-full shrink-0 transition-colors"
+                  :class="item.isAlarm ? 'animate-pulse' : ''" :style="{ backgroundColor: item.statusColor }" />
+                <span class="font-medium truncate leading-tight text-slate-700 dark:text-slate-200"
+                  :style="{ fontSize: `${dashboardLabelFontSize}px` }" :title="`${item.label} (${item.variableKey})`">
+                  {{ item.label }}
+                </span>
+              </div>
+              <span v-if="item.isAlarm" class="text-[9px] px-1 py-0.2 rounded font-bold shrink-0 font-sans" :style="{
+                backgroundColor: item.isHigh ? '#fee2e2' : '#fef3c7',
+                color: item.isHigh ? '#dc2626' : '#d97706'
+              }">
+                {{ item.statusText }}
+              </span>
+            </div>
+
+            <!-- 卡片数值主体 -->
+            <div class="flex items-baseline justify-between gap-1 font-mono mt-0.5">
+              <span class="font-bold tracking-tight tabular-nums truncate" :style="{
+                fontSize: `${dashboardValueFontSize}px`,
+                color: item.isAlarm ? item.statusColor : (item.isQualityBad ? '#94a3b8' : (activeColor || '#0f172a'))
+              }">
+                {{ item.displayVal }}
+              </span>
+              <span v-if="item.unit" class="text-[10px] text-slate-400 font-sans shrink-0 font-normal">
+                {{ item.unit }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模式2：列表表格 (table) -->
+        <div v-else-if="dashboardLayout === 'table'" class="w-full">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b text-[10px] font-semibold text-slate-400"
+                :style="{ borderColor: dashboardItemBorderColor }">
+                <th class="py-1 px-1.5">变量/点位</th>
+                <th class="py-1 px-1.5 text-right">实时数值</th>
+                <th class="py-1 px-1.5 text-center">单位</th>
+                <th class="py-1 px-1.5 text-center">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, idx) in dashboardResolvedItems" :key="item.id" class="border-b transition-colors"
+                :style="{
+                  borderColor: dashboardItemBorderColor,
+                  backgroundColor: dashboardZebra && idx % 2 === 1 ? 'rgba(0,0,0,0.02)' : 'transparent'
+                }">
+                <td class="py-1 px-1.5 truncate max-w-[120px]">
+                  <div class="flex items-center gap-1">
+                    <span v-if="item.showStatusDot" class="w-1.5 h-1.5 rounded-full shrink-0"
+                      :style="{ backgroundColor: item.statusColor }" />
+                    <span class="font-medium text-slate-700 dark:text-slate-200 truncate"
+                      :style="{ fontSize: `${dashboardLabelFontSize}px` }" :title="item.label">
+                      {{ item.label }}
+                    </span>
+                  </div>
+                </td>
+                <td class="py-1 px-1.5 text-right font-mono font-bold tabular-nums" :style="{
+                  fontSize: `${dashboardValueFontSize}px`,
+                  color: item.isAlarm ? item.statusColor : (item.isQualityBad ? '#94a3b8' : '#0f172a')
+                }">
+                  {{ item.displayVal }}
+                </td>
+                <td class="py-1 px-1.5 text-center text-[10px] text-slate-400 font-sans">
+                  {{ item.unit || '-' }}
+                </td>
+                <td class="py-1 px-1.5 text-center">
+                  <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium" :style="{
+                    backgroundColor: item.isAlarm ? (item.isHigh ? '#fee2e2' : '#fef3c7') : '#dcfce7',
+                    color: item.isAlarm ? (item.isHigh ? '#dc2626' : '#b45309') : '#15803d'
+                  }">
+                    {{ item.statusText }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 模式3：紧凑标签 (compact) -->
+        <div v-else-if="dashboardLayout === 'compact'" class="flex flex-wrap gap-1.5">
+          <div v-for="item in dashboardResolvedItems" :key="item.id"
+            class="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-all border" :style="{
+              borderColor: item.isAlarm ? item.statusColor : dashboardItemBorderColor,
+              backgroundColor: dashboardItemBgColor || '#f8fafc'
+            }">
+            <span v-if="item.showStatusDot" class="w-2 h-2 rounded-full shrink-0"
+              :style="{ backgroundColor: item.statusColor }" />
+            <span class="text-slate-600 dark:text-slate-300 font-medium"
+              :style="{ fontSize: `${dashboardLabelFontSize}px` }">{{ item.label }}:</span>
+            <span class="font-mono font-bold tabular-nums"
+              :style="{ fontSize: `${dashboardValueFontSize}px`, color: item.statusColor }">{{ item.displayVal }}</span>
+            <span v-if="item.unit" class="text-[10px] text-slate-400">{{ item.unit }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -1368,10 +1932,10 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
 
     <!-- 通用变量值浮签：showValue=true 且组件自身无内嵌数值时，在底部覆盖层显示当前值（#6） -->
     <div
-      v-if="component.props.showValue && !['gauge-dial', 'gauge-level', 'digital-val', 'trend-chart', 'tank', 'sys-time', 'rounded-btn', 'button', 'image', 'text'].includes(component.type)"
+      v-if="component.props.showValue && !['gauge-dial', 'gauge-level', 'digital-val', 'trend-chart', 'tank', 'sys-time', 'rounded-btn', 'button', 'image', 'text', 'title-header', 'nav-menu', 'multi-var-dashboard'].includes(component.type)"
       class="absolute inset-x-0 bottom-0 text-center text-[9px] font-mono bg-black/60 text-white rounded-b px-1 truncate pointer-events-none z-20 select-none">
       {{ typeof props.value === 'boolean' ? (boolValue ? onText : offText) : numValue.toFixed(1) + (unit ? ' ' + unit :
-      '')
+        '')
       }}
     </div>
   </div>

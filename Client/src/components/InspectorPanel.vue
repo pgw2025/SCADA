@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType, HMILayer, HmiMenuItem } from '../types';
+import { HMIComponent, ScadaPage, PageBackground, PageBackgroundType, HMILayer, HmiMenuItem, HmiDashboardItem } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
 import { systemScripts } from '../store/configStore';
@@ -8,7 +8,7 @@ import { loadSystemScripts } from '../services/scriptService';
 import { loginUser } from '../store/userStore';
 import { ROLE_ADMIN } from '../constants/roles';
 import { getWidgetDef, MENU_ICON_OPTIONS, getMenuIcon } from '../widgetRegistry';
-import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand, Layers, Eye, EyeOff, Lock, Unlock, Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-vue-next';
+import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Palette, Expand, Layers, Eye, EyeOff, Lock, Unlock, Plus, Trash2, ChevronUp, ChevronDown, LayoutDashboard, Grid, Columns, Table, Sparkles } from 'lucide-vue-next';
 import ImageLibraryDialog from './ImageLibraryDialog.vue';
 
 const props = defineProps<{
@@ -240,6 +240,91 @@ const moveMenuItem = (index: number, dir: -1 | 1) => {
 // 图标选择网格的展开项（-1 = 全部收起；同一时间只展开一项）
 const openIconPickerIndex = ref(-1);
 
+// ===== multi-var-dashboard 多变量监控看板配置辅助函数 =====
+const dashboardItems = computed<HmiDashboardItem[]>(() => {
+  const raw = componentProps.value.dashboardItems;
+  return Array.isArray(raw) ? (raw as HmiDashboardItem[]) : [];
+});
+
+const commitDashboardItems = (items: HmiDashboardItem[]) => updateProp('dashboardItems', items);
+
+const updateDashboardItem = (index: number, patch: Partial<HmiDashboardItem>) => {
+  const next = dashboardItems.value.map((it, i) => (i === index ? { ...it, ...patch } : it));
+  commitDashboardItems(next);
+};
+
+const addDashboardItem = () => {
+  const devId = props.selectedComponent?.bindDeviceId ?? devices.value[0]?.id ?? null;
+  const dev = devices.value.find(d => d.id === devId) || devices.value[0];
+  const keys = dev ? Object.keys(dev.variables || {}) : [];
+  const existingKeys = new Set(dashboardItems.value.map(it => it.variableKey));
+  const unusedKey = keys.find(k => !existingKeys.has(k)) || keys[0] || 'var_1';
+  const meta = dev?.variableMeta?.[unusedKey];
+
+  const newItem: HmiDashboardItem = {
+    id: `item-${Date.now()}-${dashboardItems.value.length + 1}`,
+    deviceId: dev?.id ?? null,
+    variableKey: unusedKey,
+    label: meta?.name || unusedKey,
+    unit: meta?.unit || '',
+    precision: typeof dev?.variables?.[unusedKey] === 'number' ? 1 : null,
+    showStatusDot: true,
+    thresholdMin: null,
+    thresholdMax: null,
+  };
+  commitDashboardItems([...dashboardItems.value, newItem]);
+};
+
+const removeDashboardItem = (index: number) => {
+  commitDashboardItems(dashboardItems.value.filter((_, i) => i !== index));
+};
+
+const moveDashboardItem = (index: number, dir: -1 | 1) => {
+  const to = index + dir;
+  if (to < 0 || to >= dashboardItems.value.length) return;
+  const next = [...dashboardItems.value];
+  [next[index], next[to]] = [next[to], next[index]];
+  commitDashboardItems(next);
+};
+
+// 一键从所选设备导入所有变量
+const importAllVariablesFromDevice = (targetDevId?: number | null) => {
+  const devId = targetDevId ?? props.selectedComponent?.bindDeviceId ?? devices.value[0]?.id;
+  const dev = devices.value.find(d => d.id === devId);
+  if (!dev || !dev.variables) return;
+
+  const newItems: HmiDashboardItem[] = Object.keys(dev.variables).map((k, idx) => {
+    const meta = dev.variableMeta?.[k];
+    const isNum = typeof dev.variables[k] === 'number';
+    return {
+      id: `item-${dev.id}-${k}-${Date.now()}-${idx}`,
+      deviceId: dev.id,
+      variableKey: k,
+      label: meta?.name || k,
+      unit: meta?.unit || '',
+      precision: isNum ? 2 : null,
+      showStatusDot: true,
+      thresholdMin: null,
+      thresholdMax: null,
+    };
+  });
+
+  commitDashboardItems(newItems);
+};
+
+// 获取某个监控项对应设备下的变量选项
+const getItemVariableOptions = (itemDevId?: number | null) => {
+  const devId = itemDevId != null ? itemDevId : (props.selectedComponent?.bindDeviceId ?? devices.value[0]?.id);
+  const dev = devices.value.find(d => d.id === devId) || devices.value[0];
+  if (!dev || !dev.variables) return [];
+  return Object.keys(dev.variables).map(k => ({
+    key: k,
+    name: dev.variableMeta?.[k]?.name || k,
+    unit: dev.variableMeta?.[k]?.unit || '',
+    type: typeof dev.variables[k] === 'number' ? 'analog' : 'digital'
+  }));
+};
+
 // ===== 页面属性（背景 + 自适应屏幕）=====
 // 未配置背景时的默认值（纯色白底）；每次编辑整体提交，父级负责落库
 const pageBackground = computed<PageBackground>(() =>
@@ -283,6 +368,81 @@ const showBgImagePicker = ref(false);
 const onPickBackgroundImage = (img: { url: string }) => {
   showBgImagePicker.value = false;
   updateBackground({ imageUrl: img.url });
+};
+
+// 5 套主题风格适配的画布背景快速配色预设
+const THEME_CANVAS_PRESETS = [
+  {
+    id: 'pure-white',
+    name: '极简亮白',
+    category: '☀️ 浅色大方',
+    isLight: true,
+    color: '#ffffff',
+    borderColor: '#e2e8f0',
+    gradient: { start: '#ffffff', end: '#f1f5f9', angle: 180 },
+    textColor: '#0f172a',
+    accentColor: '#2563eb',
+  },
+  {
+    id: 'titanium-light',
+    name: '工业钛灰',
+    category: '☀️ 浅色大方',
+    isLight: true,
+    color: '#f1f5f9',
+    borderColor: '#cbd5e1',
+    gradient: { start: '#f8fafc', end: '#e2e8f0', angle: 180 },
+    textColor: '#1e293b',
+    accentColor: '#0284c7',
+  },
+  {
+    id: 'slate-dark',
+    name: '经典石板深灰',
+    category: '🌙 深色稳健',
+    isLight: false,
+    color: '#0f172a',
+    borderColor: '#334155',
+    gradient: { start: '#1e293b', end: '#0f172a', angle: 180 },
+    textColor: '#f8fafc',
+    accentColor: '#38bdf8',
+  },
+  {
+    id: 'navy-midnight',
+    name: '深海商务暗蓝',
+    category: '🌙 深色稳健',
+    isLight: false,
+    color: '#061426',
+    borderColor: '#1e293b',
+    gradient: { start: '#0b172a', end: '#061426', angle: 180 },
+    textColor: '#ffffff',
+    accentColor: '#38bdf8',
+  },
+  {
+    id: 'translucent-frost',
+    name: '悬浮通透暗调',
+    category: '🌿 轻量通透',
+    isLight: false,
+    color: '#111c2e',
+    borderColor: 'rgba(255,255,255,0.2)',
+    gradient: { start: '#1e293b', end: '#0a0f1d', angle: 180 },
+    textColor: '#ffffff',
+    accentColor: '#38bdf8',
+  },
+];
+
+// 一键应用 5 套主题对应的画布背景
+const applyThemePreset = (preset: typeof THEME_CANVAS_PRESETS[0]) => {
+  if (pageBackground.value.type === 'gradient') {
+    updateBackground({
+      gradientStart: preset.gradient.start,
+      gradientEnd: preset.gradient.end,
+      gradientAngle: preset.gradient.angle,
+    });
+  } else {
+    updateBackground({
+      type: 'color',
+      color: preset.color,
+    });
+  }
 };
 </script>
 
@@ -361,26 +521,65 @@ const onPickBackgroundImage = (img: { url: string }) => {
 
       <!-- 背景设置 -->
       <section class="space-y-3">
-        <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300">
-          <Palette class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400" />
-          背景设置
+        <div class="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-slate-300">
+          <div class="flex items-center gap-1.5">
+            <Palette class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400" />
+            背景设置
+          </div>
+          <span class="text-[10px] text-gray-400 dark:text-slate-500 font-normal">支持5大主题一键适配</span>
         </div>
+
+        <!-- 5 套主题风格快速套用卡片 -->
+        <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400 flex items-center justify-between">
+            <span>主题风格预设 (5大体系)</span>
+            <span class="text-[9px] text-[#1890ff] dark:text-sky-400">点击即应用</span>
+          </label>
+          <div class="grid grid-cols-1 gap-1.5 mt-1.5">
+            <div v-for="t in THEME_CANVAS_PRESETS" :key="t.id" @click="applyThemePreset(t)"
+              class="flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] shadow-xs select-none"
+              :class="((pageBackground.type === 'color' && pageBackground.color === t.color) || (pageBackground.type === 'gradient' && pageBackground.gradientStart === t.gradient.start && pageBackground.gradientEnd === t.gradient.end)) ? 'ring-2 ring-[#1890ff] dark:ring-sky-400 border-transparent' : 'border-gray-200 dark:border-slate-700 hover:border-[#1890ff] dark:hover:border-sky-500'"
+              :style="{
+                background: t.isLight ? t.color : t.color,
+                color: t.textColor,
+                border: `1px solid ${t.borderColor}`
+              }">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-3 h-3 rounded-full shrink-0 border border-black/20"
+                  :style="{ background: t.accentColor }" />
+                <div class="truncate">
+                  <span class="font-bold text-[11px]">{{ t.name }}</span>
+                  <span class="text-[9px] opacity-60 ml-1.5">{{ t.category }}</span>
+                </div>
+              </div>
+              <!-- 纯色/渐变微缩色块 -->
+              <div class="flex items-center gap-1 shrink-0">
+                <span class="text-[9px] font-mono opacity-70">{{ t.color }}</span>
+                <div class="w-5 h-3.5 rounded border border-black/20" :style="{
+                  backgroundImage: `linear-gradient(135deg, ${t.gradient.start}, ${t.gradient.end})`
+                }" :title="`渐变: ${t.gradient.start} ➔ ${t.gradient.end}`" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-dashed border-gray-200 dark:border-slate-800 my-2" />
 
         <div>
           <label class="text-[10px] text-gray-500 dark:text-slate-400">背景类型</label>
           <select :value="pageBackground.type"
             @change="onBackgroundTypeChange(($event.target as HTMLSelectElement).value)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
-            <option value="color">纯色背景</option>
-            <option value="gradient">渐变背景</option>
-            <option value="image">图片背景 (URL)</option>
+            <option value="color">纯色背景 (Solid Color)</option>
+            <option value="gradient">渐变背景 (Linear Gradient)</option>
+            <option value="image">图片背景 (Image URL)</option>
           </select>
         </div>
 
         <!-- 纯色 -->
         <template v-if="pageBackground.type === 'color'">
           <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">背景颜色</label>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">自定义颜色</label>
             <div class="flex items-center gap-1.5 mt-1">
               <input type="color" :value="pageBackground.color || '#ffffff'"
                 @input="updateBackground({ color: ($event.target as HTMLInputElement).value })"
@@ -390,20 +589,84 @@ const onPickBackgroundImage = (img: { url: string }) => {
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
             </div>
           </div>
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">快速选择</label>
-            <div class="grid grid-cols-8 gap-1.5 mt-1">
-              <button
-                v-for="c in ['#ffffff', '#f5f5f5', '#e0f2fe', '#dcfce7', '#fef9c3', '#111827', '#0f172a', '#1e3a8a']"
-                :key="c" @click="updateBackground({ color: c })" :style="{ backgroundColor: c }"
-                class="h-6 rounded border border-[#d9d9d9] dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-[#1890ff] transition-shadow"
-                :title="c" />
+
+          <!-- 5套主题适配颜色快速选择 -->
+          <div class="space-y-2">
+            <div>
+              <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-slate-400">
+                <span>☀️ 浅色主题底色 (Light Presets)</span>
+              </div>
+              <div class="grid grid-cols-4 gap-1.5 mt-1">
+                <button v-for="item in [
+                  { color: '#ffffff', name: '极简纯白' },
+                  { color: '#f8fafc', name: '冷光亮白' },
+                  { color: '#f1f5f9', name: '工业钛灰' },
+                  { color: '#e2e8f0', name: '金属中灰' }
+                ]" :key="item.color" @click="updateBackground({ color: item.color })"
+                  class="h-7 rounded-md border flex flex-col items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-2xs"
+                  :class="pageBackground.color === item.color ? 'ring-2 ring-[#1890ff] dark:ring-sky-400 border-transparent' : 'border-gray-300 dark:border-slate-700'"
+                  :style="{ backgroundColor: item.color }" :title="`${item.name} (${item.color})`">
+                  <span class="text-[8px] font-mono font-medium text-slate-800 leading-none">{{ item.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-slate-400">
+                <span>🌙 深色/通透主题底色 (Dark & Frost Presets)</span>
+              </div>
+              <div class="grid grid-cols-4 gap-1.5 mt-1">
+                <button v-for="item in [
+                  { color: '#0f172a', name: '石板深灰' },
+                  { color: '#1e293b', name: '石板中黑' },
+                  { color: '#061426', name: '深海暗蓝' },
+                  { color: '#111c2e', name: '通透暗调' }
+                ]" :key="item.color" @click="updateBackground({ color: item.color })"
+                  class="h-7 rounded-md border flex flex-col items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-2xs"
+                  :class="pageBackground.color === item.color ? 'ring-2 ring-[#1890ff] dark:ring-sky-400 border-transparent' : 'border-gray-400 dark:border-slate-700'"
+                  :style="{ backgroundColor: item.color }" :title="`${item.name} (${item.color})`">
+                  <span class="text-[8px] font-mono font-medium text-slate-200 leading-none">{{ item.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-slate-400">
+                <span>🎨 经典工业辅助色</span>
+              </div>
+              <div class="grid grid-cols-8 gap-1.5 mt-1">
+                <button
+                  v-for="c in ['#ffffff', '#f5f5f5', '#e0f2fe', '#dcfce7', '#fef9c3', '#111827', '#1e3a8a', '#073a26']"
+                  :key="c" @click="updateBackground({ color: c })" :style="{ backgroundColor: c }"
+                  class="h-5 rounded border border-[#d9d9d9] dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-[#1890ff] transition-all hover:scale-110"
+                  :class="pageBackground.color === c ? 'ring-2 ring-[#1890ff]' : ''" :title="c" />
+              </div>
             </div>
           </div>
         </template>
 
         <!-- 渐变 -->
         <template v-else-if="pageBackground.type === 'gradient'">
+          <!-- 5 套主题渐变快速选择 -->
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">主题渐变快速选择</label>
+            <div class="grid grid-cols-1 gap-1.5 mt-1">
+              <button v-for="t in THEME_CANVAS_PRESETS" :key="t.id"
+                @click="updateBackground({ gradientStart: t.gradient.start, gradientEnd: t.gradient.end, gradientAngle: t.gradient.angle })"
+                class="flex items-center justify-between px-2 py-1.5 rounded-lg border text-xs cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99]"
+                :class="(pageBackground.gradientStart === t.gradient.start && pageBackground.gradientEnd === t.gradient.end) ? 'ring-2 ring-[#1890ff] dark:ring-sky-400 border-transparent' : 'border-gray-200 dark:border-slate-700 hover:border-[#1890ff] dark:hover:border-sky-500'"
+                :style="{
+                  background: `linear-gradient(90deg, ${t.gradient.start}, ${t.gradient.end})`,
+                  color: t.textColor,
+                }">
+                <span class="font-bold text-[10px] drop-shadow-xs">{{ t.name }}渐变</span>
+                <span class="text-[9px] font-mono opacity-80">{{ t.gradient.start }} ➔ {{ t.gradient.end }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="border-t border-dashed border-gray-200 dark:border-slate-800 my-1" />
+
           <div>
             <label class="text-[10px] text-gray-500 dark:text-slate-400">起始色 (Start)</label>
             <div class="flex items-center gap-1.5 mt-1">
@@ -435,7 +698,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
               class="w-full mt-1 accent-[#1890ff]" />
           </div>
           <!-- 实时预览 -->
-          <div class="h-8 rounded border border-[#d9d9d9] dark:border-slate-700" :style="{
+          <div class="h-8 rounded border border-[#d9d9d9] dark:border-slate-700 shadow-inner" :style="{
             backgroundImage: `linear-gradient(${pageBackground.gradientAngle ?? 180}deg, ${pageBackground.gradientStart || '#e0f2fe'}, ${pageBackground.gradientEnd || '#1e3a8a'})`
           }" />
         </template>
@@ -631,19 +894,21 @@ const onPickBackgroundImage = (img: { url: string }) => {
         </div>
 
         <div>
-          <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定设备</label>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">
+            {{ selectedComponent?.type === 'multi-var-dashboard' ? '默认绑定设备（预设设备）' : '绑定设备' }}
+          </label>
           <select :value="selectedComponent?.bindDeviceId ?? ''"
             @change="onBindDeviceChange(($event.target as HTMLSelectElement).value)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
             <option value="">-- 未绑定设备（禁止裸 key）--</option>
             <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
           </select>
-          <p v-if="selectedComponent?.bindDeviceId == null"
+          <p v-if="selectedComponent?.bindDeviceId == null && selectedComponent?.type !== 'multi-var-dashboard'"
             class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 leading-relaxed">
             未绑定设备：运行态将无法定位变量值，且禁止裸 key 写入。请先选择设备。
           </p>
         </div>
-        <div>
+        <div v-if="selectedComponent?.type !== 'multi-var-dashboard'">
           <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定变量</label>
           <select
             :value="(selectedComponent?.bindDeviceId != null ? selectedComponent?.bindVariableKey : selectedComponent?.bindField) ?? ''"
@@ -652,6 +917,11 @@ const onPickBackgroundImage = (img: { url: string }) => {
             <option value="">-- 无绑定 --</option>
             <option v-for="v in bindingVariableOptions" :key="v.key" :value="v.key">{{ v.key }}</option>
           </select>
+        </div>
+        <div v-else
+          class="text-[10px] text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 rounded p-2 flex items-start gap-1.5">
+          <Sparkles class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>多变量看板支持绑定任意多个变量点位，请在下方「多变量监控列表」中管理和配置具体点位。</span>
         </div>
       </section>
 
@@ -682,35 +952,153 @@ const onPickBackgroundImage = (img: { url: string }) => {
           </label>
         </div>
 
-        <!-- var-display 外观显隐：边框/背景/内部标签独立开关，默认全部隐藏（报警变色边框为功能性指示不受控） -->
+        <!-- var-display 外观显隐：边框/背景/内部标签独立开关，支持边框颜色、粗细、圆角及样式 -->
         <div v-if="selectedComponent.type === 'var-display'"
-          class="space-y-2 text-xs border border-gray-100 dark:border-slate-800 p-2 rounded bg-gray-50/50 dark:bg-slate-950/60">
-          <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] uppercase tracking-wider mb-1">外观显示设置
-          </p>
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="vdispShowBorder" :checked="componentProps.showBorder || false"
-              @change="updateProp('showBorder', ($event.target as HTMLInputElement).checked)"
-              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-            <label htmlFor="vdispShowBorder"
-              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示边框</label>
+          class="space-y-3 text-xs border border-gray-100 dark:border-slate-800 p-2.5 rounded-lg bg-gray-50/50 dark:bg-slate-950/60">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] uppercase tracking-wider">
+              外观与边框设置
+            </p>
+            <span class="text-[9px] text-gray-400 dark:text-slate-500 font-mono">var-display</span>
           </div>
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="vdispShowBg" :checked="componentProps.showBackground || false"
-              @change="updateProp('showBackground', ($event.target as HTMLInputElement).checked)"
-              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-            <label htmlFor="vdispShowBg"
-              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示背景</label>
+
+          <!-- 1. 显示边框开关 -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 select-none cursor-pointer">
+                <input type="checkbox" id="vdispShowBorder" :checked="componentProps.showBorder === true"
+                  @change="updateProp('showBorder', ($event.target as HTMLInputElement).checked)"
+                  class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示边框 (Show Border)</span>
+              </label>
+              <span class="text-[9px] font-mono"
+                :class="componentProps.showBorder ? 'text-[#1890ff] font-semibold' : 'text-gray-400'">
+                {{ componentProps.showBorder ? '已显示' : '已隐藏' }}
+              </span>
+            </div>
+
+            <!-- 当开启显示边框时，展开边框详细样式配置 -->
+            <div v-if="componentProps.showBorder === true"
+              class="space-y-2 pl-5 pt-1 border-l-2 border-[#1890ff]/30 dark:border-sky-500/30">
+              <!-- 边框颜色 -->
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">边框颜色</label>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <input type="color" :value="componentProps.borderColor || componentProps.strokeColor || '#cbd5e1'"
+                    @input="updateProp('borderColor', ($event.target as HTMLInputElement).value); updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
+                    class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+                  <input type="text" :value="componentProps.borderColor || componentProps.strokeColor || '#cbd5e1'"
+                    @input="updateProp('borderColor', ($event.target as HTMLInputElement).value); updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+                </div>
+                <!-- 快捷边框色 -->
+                <div class="flex items-center gap-1 mt-1.5">
+                  <button
+                    v-for="bc in ['#cbd5e1', '#94a3b8', '#475569', '#1890ff', '#38bdf8', '#10b981', '#f59e0b', '#ef4444', '#1e293b']"
+                    :key="bc" type="button" @click="updateProp('borderColor', bc); updateProp('strokeColor', bc)"
+                    class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
+                    :style="{ backgroundColor: bc }" :title="bc" />
+                </div>
+              </div>
+
+              <!-- 边框粗细与样式 -->
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">边框粗细</label>
+                  <select :value="componentProps.borderWidth ?? 1.5"
+                    @change="updateProp('borderWidth', numInput(($event.target as HTMLSelectElement).value, 1.5))"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                    <option :value="1">1 px (细)</option>
+                    <option :value="1.5">1.5 px (标准)</option>
+                    <option :value="2">2 px (中等)</option>
+                    <option :value="3">3 px (粗)</option>
+                    <option :value="4">4 px (加粗)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">边框线条</label>
+                  <select :value="componentProps.borderStyle || 'solid'"
+                    @change="updateProp('borderStyle', ($event.target as HTMLSelectElement).value)"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                    <option value="solid">实线 (Solid)</option>
+                    <option value="dashed">虚线 (Dashed)</option>
+                    <option value="dotted">点线 (Dotted)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 圆角大小 -->
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">圆角弧度</label>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <input type="range" min="0" max="24" step="2" :value="componentProps.borderRadius ?? 8"
+                    @input="updateProp('borderRadius', numInput(($event.target as HTMLInputElement).value, 8))"
+                    class="flex-1 accent-[#1890ff]" />
+                  <span class="text-[10px] font-mono text-gray-600 dark:text-slate-300 w-8 text-right">{{
+                    componentProps.borderRadius ?? 8 }}px</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="vdispShowInnerLabel" :checked="componentProps.showInnerLabel || false"
-              @change="updateProp('showInnerLabel', ($event.target as HTMLInputElement).checked)"
-              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-            <label htmlFor="vdispShowInnerLabel"
-              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示内部标签</label>
+
+          <!-- 2. 显示背景开关 -->
+          <div class="space-y-1.5 pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 select-none cursor-pointer">
+                <input type="checkbox" id="vdispShowBg" :checked="componentProps.showBackground === true"
+                  @change="updateProp('showBackground', ($event.target as HTMLInputElement).checked)"
+                  class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示背景底色</span>
+              </label>
+              <span class="text-[9px] font-mono"
+                :class="componentProps.showBackground ? 'text-[#1890ff] font-semibold' : 'text-gray-400'">
+                {{ componentProps.showBackground ? '已显示' : '透明' }}
+              </span>
+            </div>
+
+            <!-- 背景颜色配置 -->
+            <div v-if="componentProps.showBackground === true"
+              class="pl-5 pt-1 space-y-1.5 border-l-2 border-[#1890ff]/30 dark:border-sky-500/30">
+              <label class="text-[10px] text-gray-500 dark:text-slate-400">底色</label>
+              <div class="flex items-center gap-1.5">
+                <input type="color" :value="componentProps.bgColor || '#ffffff'"
+                  @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
+                  class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+                <input type="text" :value="componentProps.bgColor || '#ffffff'"
+                  @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
+                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+              </div>
+              <div class="flex items-center gap-1 mt-1">
+                <button v-for="bgc in ['#ffffff', '#f8fafc', '#f1f5f9', '#0f172a', '#061426', '#111c2e', '#1e293b']"
+                  :key="bgc" type="button" @click="updateProp('bgColor', bgc)"
+                  class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
+                  :style="{ backgroundColor: bgc }" :title="bgc" />
+              </div>
+            </div>
           </div>
-          <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-relaxed">
-            阈值报警时的红/琥珀色边框为报警指示，始终显示，不受「显示边框」控制。
-          </p>
+
+          <!-- 3. 显示内部标签开关 -->
+          <div class="pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
+            <label class="flex items-center gap-2 select-none cursor-pointer">
+              <input type="checkbox" id="vdispShowInnerLabel" :checked="componentProps.showInnerLabel === true"
+                @change="updateProp('showInnerLabel', ($event.target as HTMLInputElement).checked)"
+                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+              <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示内部变量标签</span>
+            </label>
+          </div>
+
+          <!-- 4. 报警边框变色联动开关 -->
+          <div class="pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
+            <label class="flex items-center gap-2 select-none cursor-pointer">
+              <input type="checkbox" id="vdispEnableAlarmBorder" :checked="componentProps.enableAlarmBorder !== false"
+                @change="updateProp('enableAlarmBorder', ($event.target as HTMLInputElement).checked)"
+                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+              <span class="text-xs text-gray-700 dark:text-slate-300">超限时报警变色 (红/黄报警边框)</span>
+            </label>
+            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5 leading-snug pl-5">
+              仅在配置了有效报警阈值且变量超限时生效；正常状态下严格遵从「显示边框」设置。
+            </p>
+          </div>
         </div>
 
         <!-- States color picks -->
@@ -805,14 +1193,16 @@ const onPickBackgroundImage = (img: { url: string }) => {
           class="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
-            <input type="number" :value="componentProps.thresholdMax ?? typeDefaults.thresholdMax ?? 90"
-              @input="updateProp('thresholdMax', numInput(($event.target as HTMLInputElement).value, typeDefaults.thresholdMax ?? 90))"
+            <input type="number" :value="componentProps.thresholdMax ?? typeDefaults.thresholdMax ?? ''"
+              @input="updateProp('thresholdMax', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 90))"
+              placeholder="默认不设"
               class="w-full bg-white dark:bg-slate-950 border border-red-300 dark:border-red-800 rounded px-2.5 py-1 text-red-600 dark:text-red-400 focus:outline-none focus:border-red-500" />
           </div>
           <div>
             <label class="text-[10px] text-amber-600 dark:text-amber-400">黄色低限预警值</label>
-            <input type="number" :value="componentProps.thresholdMin ?? typeDefaults.thresholdMin ?? 10"
-              @input="updateProp('thresholdMin', numInput(($event.target as HTMLInputElement).value, typeDefaults.thresholdMin ?? 10))"
+            <input type="number" :value="componentProps.thresholdMin ?? typeDefaults.thresholdMin ?? ''"
+              @input="updateProp('thresholdMin', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 10))"
+              placeholder="默认不设"
               class="w-full bg-white dark:bg-slate-950 border border-amber-300 dark:border-amber-800 rounded px-2.5 py-1 text-amber-700 dark:text-amber-300 focus:outline-none focus:border-amber-500" />
           </div>
         </div>
@@ -842,7 +1232,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
               可设定（运行态点击弹出数字键盘写值）
             </label>
           </div>
-          <p v-if="componentProps.settable !== true" class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug -mt-1.5">
+          <p v-if="componentProps.settable !== true"
+            class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug -mt-1.5">
             未开启时组件仅作显示；写值仍需绑定设备/变量且有 Operator/Admin 权限。
           </p>
 
@@ -928,8 +1319,33 @@ const onPickBackgroundImage = (img: { url: string }) => {
           <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider">导航菜单配置</p>
           <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug">
             端型：{{ componentProps.menuDevice === 'mobile' ? '移动端·底部标签栏' : '桌面端·顶部导航条' }}；
-            菜单项 {{ menuItems.length }}/{{ MENU_ITEM_MAX }}，跳转目标仅限「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端' }}」画面（不含当前页）。
+            菜单项 {{ menuItems.length }}/{{ MENU_ITEM_MAX }}，跳转目标仅限「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端'
+            }}」画面（不含当前页）。
           </p>
+
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题 (Style Preset)</label>
+            <select :value="componentProps.menuStyle || 'navy-midnight'"
+              @change="updateProp('menuStyle', ($event.target as HTMLSelectElement).value)"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+              <optgroup label="☀️ 浅色大方系列">
+                <option value="pure-white">极简亮白 (Pure Crisp White · 浅色)</option>
+                <option value="titanium-light">工业钛灰 (Titanium Light · 浅色)</option>
+              </optgroup>
+              <optgroup label="🌙 深色稳健系列">
+                <option value="slate-dark">经典石板深灰 (Classic Slate · 深色)</option>
+                <option value="navy-midnight">深海商务暗蓝 (Navy Midnight · 深色)</option>
+              </optgroup>
+              <optgroup label="🌿 轻量通透系列">
+                <option value="translucent-frost">悬浮通透胶囊 (Adaptive Frost · 通透)</option>
+              </optgroup>
+              <optgroup label="⚙️ 经典特色预设">
+                <option value="eco-green">生态翡翠绿 (Eco Green)</option>
+                <option value="carbon-orange">机能碳纤橙 (Carbon Orange)</option>
+                <option value="tech-blue">科技蓝 (Tech Blue)</option>
+              </optgroup>
+            </select>
+          </div>
 
           <!-- 菜单项列表 -->
           <div v-for="(item, idx) in menuItems" :key="idx"
@@ -976,11 +1392,9 @@ const onPickBackgroundImage = (img: { url: string }) => {
               class="grid grid-cols-9 gap-1 p-1.5 rounded border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-900/60">
               <button v-for="opt in MENU_ICON_OPTIONS" :key="opt.name" type="button"
                 @click="updateMenuItem(idx, { icon: opt.name }); openIconPickerIndex = -1"
-                class="aspect-square rounded flex items-center justify-center transition-all"
-                :class="item.icon === opt.name
+                class="aspect-square rounded flex items-center justify-center transition-all" :class="item.icon === opt.name
                   ? 'bg-[#1890ff]/15 ring-1 ring-[#1890ff] dark:ring-sky-500'
-                  : 'hover:bg-gray-200/70 dark:hover:bg-slate-800'"
-                :title="opt.label">
+                  : 'hover:bg-gray-200/70 dark:hover:bg-slate-800'" :title="opt.label">
                 <component :is="opt.icon" class="w-3.5 h-3.5"
                   :class="item.icon === opt.name ? 'text-[#1890ff] dark:text-sky-400' : 'text-gray-500 dark:text-slate-400'" />
               </button>
@@ -1014,8 +1428,7 @@ const onPickBackgroundImage = (img: { url: string }) => {
             </div>
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">文字字号 (px)</label>
-              <input type="number" min="10" max="22"
-                :value="componentProps.menuFontSize ?? 14"
+              <input type="number" min="10" max="22" :value="componentProps.menuFontSize ?? 14"
                 @input="updateProp('menuFontSize', numInput(($event.target as HTMLInputElement).value, 14))"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500" />
             </div>
@@ -1068,13 +1481,26 @@ const onPickBackgroundImage = (img: { url: string }) => {
           </div>
 
           <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题 (Style)</label>
-            <select :value="componentProps.headerStyle || 'tech-blue'"
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题 (Style Preset)</label>
+            <select :value="componentProps.headerStyle || 'navy-midnight'"
               @change="updateProp('headerStyle', ($event.target as HTMLSelectElement).value)"
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs text-[#262626] dark:text-white">
-              <option value="tech-blue">科技蓝 (Tech Blue)</option>
-              <option value="eco-green">生态绿 (Eco Green)</option>
-              <option value="carbon-orange">碳纤橙 (Carbon Orange)</option>
+              <optgroup label="☀️ 浅色大方系列">
+                <option value="pure-white">极简亮白 (Pure Crisp White · 浅色)</option>
+                <option value="titanium-light">工业钛灰 (Titanium Light · 浅色)</option>
+              </optgroup>
+              <optgroup label="🌙 深色稳健系列">
+                <option value="slate-dark">经典石板深灰 (Classic Slate · 深色)</option>
+                <option value="navy-midnight">深海商务暗蓝 (Navy Midnight · 深色)</option>
+              </optgroup>
+              <optgroup label="🌿 轻量通透系列">
+                <option value="translucent-frost">悬浮通透胶囊 (Adaptive Frost · 通透)</option>
+              </optgroup>
+              <optgroup label="⚙️ 经典特色预设">
+                <option value="eco-green">生态翡翠绿 (Eco Green)</option>
+                <option value="carbon-orange">机能碳纤橙 (Carbon Orange)</option>
+                <option value="tech-blue">科技蓝 (Tech Blue)</option>
+              </optgroup>
             </select>
           </div>
 
@@ -1105,15 +1531,13 @@ const onPickBackgroundImage = (img: { url: string }) => {
 
           <div class="grid grid-cols-2 gap-2 pt-1">
             <label class="flex items-center gap-2 text-gray-700 dark:text-slate-300 select-none cursor-pointer">
-              <input type="checkbox" id="headerClock"
-                :checked="componentProps.headerShowClock !== false"
+              <input type="checkbox" id="headerClock" :checked="componentProps.headerShowClock !== false"
                 @change="updateProp('headerShowClock', ($event.target as HTMLInputElement).checked)"
                 class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] dark:text-sky-500 focus:ring-0" />
               显示动态时钟
             </label>
             <label class="flex items-center gap-2 text-gray-700 dark:text-slate-300 select-none cursor-pointer">
-              <input type="checkbox" id="headerStatus"
-                :checked="componentProps.headerShowStatus !== false"
+              <input type="checkbox" id="headerStatus" :checked="componentProps.headerShowStatus !== false"
                 @change="updateProp('headerShowStatus', ($event.target as HTMLInputElement).checked)"
                 class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] dark:text-sky-500 focus:ring-0" />
               显示运行状态
@@ -1250,7 +1674,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
               @change="updateProp('targetScriptId', ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))"
               class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-emerald-500 mt-0.5 text-xs text-[#262626] dark:text-white">
               <option value="">-- 请选择脚本 --</option>
-              <option v-for="s in systemScripts" :key="s.id" :value="s.id">#{{ s.id }} {{ s.name }}{{ s.active ? '' : '（已停用）' }}</option>
+              <option v-for="s in systemScripts" :key="s.id" :value="s.id">#{{ s.id }} {{ s.name }}{{ s.active ? '' :
+                '（已停用）' }}</option>
             </select>
             <template v-else>
               <input type="number" :value="componentProps.targetScriptId ?? ''"
@@ -1272,7 +1697,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
             </p>
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">操作设备</label>
-              <select :value="componentProps.opDeviceId ?? ''" @change="onOpDeviceChange(($event.target as HTMLSelectElement).value)"
+              <select :value="componentProps.opDeviceId ?? ''"
+                @change="onOpDeviceChange(($event.target as HTMLSelectElement).value)"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 mt-0.5 text-xs text-[#262626] dark:text-white focus:outline-none focus:border-emerald-500">
                 <option value="">-- 跟随数据绑定设备 --</option>
                 <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
@@ -1280,7 +1706,8 @@ const onPickBackgroundImage = (img: { url: string }) => {
             </div>
             <div>
               <label class="text-[10px] text-gray-500 dark:text-slate-400">操作变量</label>
-              <select :value="componentProps.opVariableKey ?? ''" @change="onOpVariableChange(($event.target as HTMLSelectElement).value)"
+              <select :value="componentProps.opVariableKey ?? ''"
+                @change="onOpVariableChange(($event.target as HTMLSelectElement).value)"
                 class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1.5 mt-0.5 text-xs text-[#262626] dark:text-white focus:outline-none focus:border-emerald-500">
                 <option value="">-- 跟随数据绑定变量 --</option>
                 <option v-for="v in opBindingVariableOptions" :key="v.key" :value="v.key">{{ v.key }}</option>
@@ -1429,6 +1856,436 @@ const onPickBackgroundImage = (img: { url: string }) => {
               <option value="YYYY-MM-DD HH:mm:ss">年月日 时分秒</option>
               <option value="YYYY-MM-DD">仅显示日期 (YYYY-MM-DD)</option>
             </select>
+          </div>
+        </div>
+
+        <!-- 23. REAL-TIME MULTI-VARIABLE DASHBOARD CONTROLS (实时多变量监控看板专属配置) -->
+        <div v-if="selectedComponent.type === 'multi-var-dashboard'" class="space-y-4">
+          <!-- 模块一：看板排版与外框设置 -->
+          <div
+            class="space-y-3 text-xs border border-sky-200/80 dark:border-sky-900/60 p-3 rounded-lg bg-sky-50/40 dark:bg-sky-950/20">
+            <div class="flex items-center justify-between">
+              <p
+                class="font-bold text-sky-600 dark:text-sky-400 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                <LayoutDashboard class="w-3.5 h-3.5" />
+                看板布局与边框设置
+              </p>
+              <span
+                class="text-[9px] font-mono bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 px-1.5 py-0.5 rounded">Dashboard</span>
+            </div>
+
+            <!-- 看板标题设置 -->
+            <div class="space-y-2 pb-2 border-b border-sky-100 dark:border-sky-900/40">
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 select-none cursor-pointer">
+                  <input type="checkbox" id="dashShowTitle" :checked="componentProps.showDashboardTitle !== false"
+                    @change="updateProp('showDashboardTitle', ($event.target as HTMLInputElement).checked)"
+                    class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                  <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示看板标题栏</span>
+                </label>
+              </div>
+
+              <div v-if="componentProps.showDashboardTitle !== false" class="space-y-1.5">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">标题名称</label>
+                  <input type="text" :value="componentProps.dashboardTitle ?? '实时参数监控看板'"
+                    @input="updateProp('dashboardTitle', ($event.target as HTMLInputElement).value)"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] text-xs mt-0.5"
+                    placeholder="看板标题" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 排版布局模式 (Layout Mode) -->
+            <div>
+              <label class="text-[10px] font-semibold text-gray-700 dark:text-slate-300">排版模式 (Layout)</label>
+              <div class="grid grid-cols-3 gap-1.5 mt-1">
+                <button type="button" @click="updateProp('dashboardLayout', 'grid')"
+                  class="flex flex-col items-center gap-1 p-2 rounded border text-center transition-all cursor-pointer"
+                  :class="(!componentProps.dashboardLayout || componentProps.dashboardLayout === 'grid')
+                    ? 'bg-[#1890ff]/10 border-[#1890ff] text-[#1890ff] font-bold dark:bg-sky-950/60 dark:border-sky-500'
+                    : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400'">
+                  <Grid class="w-4 h-4" />
+                  <span class="text-[10px]">卡片网格</span>
+                </button>
+                <button type="button" @click="updateProp('dashboardLayout', 'table')"
+                  class="flex flex-col items-center gap-1 p-2 rounded border text-center transition-all cursor-pointer"
+                  :class="componentProps.dashboardLayout === 'table'
+                    ? 'bg-[#1890ff]/10 border-[#1890ff] text-[#1890ff] font-bold dark:bg-sky-950/60 dark:border-sky-500'
+                    : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400'">
+                  <Table class="w-4 h-4" />
+                  <span class="text-[10px]">列表表格</span>
+                </button>
+                <button type="button" @click="updateProp('dashboardLayout', 'compact')"
+                  class="flex flex-col items-center gap-1 p-2 rounded border text-center transition-all cursor-pointer"
+                  :class="componentProps.dashboardLayout === 'compact'
+                    ? 'bg-[#1890ff]/10 border-[#1890ff] text-[#1890ff] font-bold dark:bg-sky-950/60 dark:border-sky-500'
+                    : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400'">
+                  <Columns class="w-4 h-4" />
+                  <span class="text-[10px]">紧凑微标</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 列数与间距设置 (仅卡片网格模式) -->
+            <div v-if="!componentProps.dashboardLayout || componentProps.dashboardLayout === 'grid'"
+              class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">排版列数 (Columns)</label>
+                <select :value="componentProps.dashboardColumns ?? 2"
+                  @change="updateProp('dashboardColumns', numInput(($event.target as HTMLSelectElement).value, 2))"
+                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                  <option :value="1">1 列 (单列垂直)</option>
+                  <option :value="2">2 列 (双列卡片)</option>
+                  <option :value="3">3 列 (三列排版)</option>
+                  <option :value="4">4 列 (四列密集)</option>
+                  <option :value="6">6 列 (六列大屏)</option>
+                  <option :value="0">Auto (自适应流式)</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] text-gray-500 dark:text-slate-400">间距大小 (Gap)</label>
+                <select :value="componentProps.dashboardGap ?? 8"
+                  @change="updateProp('dashboardGap', numInput(($event.target as HTMLSelectElement).value, 8))"
+                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                  <option :value="4">4 px (紧凑)</option>
+                  <option :value="8">8 px (标准)</option>
+                  <option :value="12">12 px (舒适)</option>
+                  <option :value="16">16 px (宽松)</option>
+                  <option :value="20">20 px (超宽)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 表格模式斑马纹 -->
+            <div v-if="componentProps.dashboardLayout === 'table'" class="flex items-center gap-2">
+              <input type="checkbox" id="dashZebra" :checked="componentProps.dashboardZebra === true"
+                @change="updateProp('dashboardZebra', ($event.target as HTMLInputElement).checked)"
+                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+              <label for="dashZebra" class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">
+                启用表格行隔行斑马纹
+              </label>
+            </div>
+
+            <!-- 看板外框边框 (Border) -->
+            <div class="space-y-2 pt-2 border-t border-sky-100 dark:border-sky-900/40">
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 select-none cursor-pointer">
+                  <input type="checkbox" id="dashShowBorder" :checked="componentProps.showBorder !== false"
+                    @change="updateProp('showBorder', ($event.target as HTMLInputElement).checked)"
+                    class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                  <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示看板外框边框</span>
+                </label>
+              </div>
+
+              <div v-if="componentProps.showBorder !== false"
+                class="space-y-2 pl-4 border-l-2 border-sky-200 dark:border-sky-800">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">外框边框颜色</label>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <input type="color" :value="componentProps.borderColor || '#cbd5e1'"
+                      @input="updateProp('borderColor', ($event.target as HTMLInputElement).value)"
+                      class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+                    <input type="text" :value="componentProps.borderColor || '#cbd5e1'"
+                      @input="updateProp('borderColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+                  </div>
+                  <div class="flex items-center gap-1 mt-1.5">
+                    <button
+                      v-for="bc in ['#cbd5e1', '#94a3b8', '#475569', '#1890ff', '#38bdf8', '#10b981', '#f59e0b', '#ef4444', '#1e293b']"
+                      :key="bc" type="button" @click="updateProp('borderColor', bc)"
+                      class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
+                      :style="{ backgroundColor: bc }" :title="bc" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-gray-500 dark:text-slate-400">边框粗细</label>
+                    <select :value="componentProps.borderWidth ?? 1.5"
+                      @change="updateProp('borderWidth', numInput(($event.target as HTMLSelectElement).value, 1.5))"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                      <option :value="1">1 px (细)</option>
+                      <option :value="1.5">1.5 px (标准)</option>
+                      <option :value="2">2 px (中等)</option>
+                      <option :value="3">3 px (粗)</option>
+                      <option :value="4">4 px (加粗)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-500 dark:text-slate-400">边框线条</label>
+                    <select :value="componentProps.borderStyle || 'solid'"
+                      @change="updateProp('borderStyle', ($event.target as HTMLSelectElement).value)"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
+                      <option value="solid">实线 (Solid)</option>
+                      <option value="dashed">虚线 (Dashed)</option>
+                      <option value="dotted">点线 (Dotted)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">外框圆角弧度</label>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <input type="range" min="0" max="24" step="2" :value="componentProps.borderRadius ?? 8"
+                      @input="updateProp('borderRadius', numInput(($event.target as HTMLInputElement).value, 8))"
+                      class="flex-1 accent-[#1890ff]" />
+                    <span class="text-[10px] font-mono text-gray-600 dark:text-slate-300 w-8 text-right">{{
+                      componentProps.borderRadius ?? 8 }}px</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 看板背景底色 -->
+            <div class="space-y-2 pt-2 border-t border-sky-100 dark:border-sky-900/40">
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 select-none cursor-pointer">
+                  <input type="checkbox" id="dashShowBg" :checked="componentProps.showBackground !== false"
+                    @change="updateProp('showBackground', ($event.target as HTMLInputElement).checked)"
+                    class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                  <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示看板背景底色</span>
+                </label>
+              </div>
+
+              <div v-if="componentProps.showBackground !== false"
+                class="space-y-2 pl-4 border-l-2 border-sky-200 dark:border-sky-800">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">背景颜色</label>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <input type="color" :value="componentProps.bgColor || '#ffffff'"
+                      @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
+                    <input type="text" :value="componentProps.bgColor || '#ffffff'"
+                      @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
+                  </div>
+                  <div class="flex items-center gap-1 mt-1.5">
+                    <button v-for="bg in ['#ffffff', '#f8fafc', '#f1f5f9', '#e2e8f0', '#0f172a', '#1e293b', '#030712']"
+                      :key="bg" type="button" @click="updateProp('bgColor', bg)"
+                      class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
+                      :style="{ backgroundColor: bg }" :title="bg" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 子项卡片样式设置 (字号/子项边框/底色) -->
+            <div class="space-y-2 pt-2 border-t border-sky-100 dark:border-sky-900/40">
+              <p class="font-bold text-gray-700 dark:text-slate-300 text-[10px]">子项与文字样式</p>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">数值字号 (px)</label>
+                  <input type="number" min="12" max="32" :value="componentProps.dashboardValueFontSize ?? 16"
+                    @input="updateProp('dashboardValueFontSize', numInput(($event.target as HTMLInputElement).value, 16))"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 text-gray-800 dark:text-white focus:outline-none text-xs mt-0.5" />
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">标签字号 (px)</label>
+                  <input type="number" min="9" max="18" :value="componentProps.dashboardLabelFontSize ?? 11"
+                    @input="updateProp('dashboardLabelFontSize', numInput(($event.target as HTMLInputElement).value, 11))"
+                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 text-gray-800 dark:text-white focus:outline-none text-xs mt-0.5" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">子卡片底色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.dashboardItemBgColor || '#f8fafc'"
+                      @input="updateProp('dashboardItemBgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-6 h-6 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.dashboardItemBgColor || '#f8fafc'"
+                      @input="updateProp('dashboardItemBgColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-500 dark:text-slate-400">子卡片边框色</label>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <input type="color" :value="componentProps.dashboardItemBorderColor || '#e2e8f0'"
+                      @input="updateProp('dashboardItemBorderColor', ($event.target as HTMLInputElement).value)"
+                      class="w-6 h-6 bg-transparent border-0 cursor-pointer rounded" />
+                    <input type="text" :value="componentProps.dashboardItemBorderColor || '#e2e8f0'"
+                      @input="updateProp('dashboardItemBorderColor', ($event.target as HTMLInputElement).value)"
+                      class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[9px] px-1 py-0.5 font-mono" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 模块二：多变量监控列表管理 (dashboardItems) -->
+          <div
+            class="space-y-3 text-xs border border-emerald-200/80 dark:border-emerald-900/60 p-3 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[11px] uppercase tracking-wider">
+                  多变量监控点位列表
+                </p>
+                <span
+                  class="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                  {{ dashboardItems.length }} 项
+                </span>
+              </div>
+
+              <!-- 一键导入按钮 -->
+              <button type="button" @click="importAllVariablesFromDevice()"
+                class="flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-medium transition-all shadow-sm cursor-pointer"
+                title="一键将当前设备的所有变量导入到看板中">
+                <Sparkles class="w-3 h-3" />
+                <span>导入设备全部变量</span>
+              </button>
+            </div>
+
+            <!-- 空列表提示 -->
+            <div v-if="dashboardItems.length === 0"
+              class="p-4 rounded border border-dashed border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 text-center space-y-2">
+              <p class="text-xs text-slate-500 dark:text-slate-400">暂未添加任何变量点位</p>
+              <div class="flex items-center justify-center gap-2">
+                <button type="button" @click="addDashboardItem"
+                  class="px-3 py-1 rounded bg-[#1890ff] text-white text-xs font-medium hover:bg-[#40a9ff] transition-colors cursor-pointer">
+                  + 添加单项变量
+                </button>
+                <button type="button" @click="importAllVariablesFromDevice()"
+                  class="px-3 py-1 rounded bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-500 transition-colors cursor-pointer">
+                  一键导入全部
+                </button>
+              </div>
+            </div>
+
+            <!-- 变量条目列表 -->
+            <div v-else class="space-y-2.5 max-h-[480px] overflow-y-auto pr-0.5">
+              <div v-for="(item, idx) in dashboardItems" :key="item.id || idx"
+                class="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 transition-all hover:border-sky-300 dark:hover:border-sky-800">
+                <!-- 头部：序号 + 移动排序 + 删除 -->
+                <div class="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+                  <div class="flex items-center gap-1.5">
+                    <span
+                      class="w-4 h-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-mono font-bold flex items-center justify-center">
+                      {{ idx + 1 }}
+                    </span>
+                    <span class="font-bold text-slate-800 dark:text-slate-200 text-xs truncate max-w-[120px]">
+                      {{ item.label || item.variableKey }}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-1">
+                    <button type="button" @click="moveDashboardItem(idx, -1)" :disabled="idx === 0"
+                      class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      title="上移">
+                      <ChevronUp class="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" @click="moveDashboardItem(idx, 1)"
+                      :disabled="idx === dashboardItems.length - 1"
+                      class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      title="下移">
+                      <ChevronDown class="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" @click="removeDashboardItem(idx)"
+                      class="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                      title="删除此变量项">
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 变量绑定设置 (设备 + 变量) -->
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label class="text-[9px] text-slate-400">所属设备</label>
+                    <select :value="item.deviceId ?? selectedComponent.bindDeviceId ?? devices[0]?.id ?? ''"
+                      @change="updateDashboardItem(idx, { deviceId: ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null })"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+                      <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[9px] text-slate-400">绑定变量</label>
+                    <select :value="item.variableKey" @change="updateDashboardItem(idx, {
+                      variableKey: ($event.target as HTMLSelectElement).value,
+                      label: item.label || ($event.target as HTMLSelectElement).value
+                    })"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+                      <option v-for="v in getItemVariableOptions(item.deviceId)" :key="v.key" :value="v.key">
+                        {{ v.name }} ({{ v.key }})
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- 自定义名称与单位 -->
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label class="text-[9px] text-slate-400">自定义显示名称</label>
+                    <input type="text" :value="item.label ?? ''"
+                      @input="updateDashboardItem(idx, { label: ($event.target as HTMLInputElement).value })"
+                      placeholder="自动显示变量名"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-white focus:outline-none focus:border-[#1890ff]" />
+                  </div>
+                  <div>
+                    <label class="text-[9px] text-slate-400">单位 (Unit)</label>
+                    <input type="text" :value="item.unit ?? ''"
+                      @input="updateDashboardItem(idx, { unit: ($event.target as HTMLInputElement).value })"
+                      placeholder="例如 ℃, MPa, A"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-white focus:outline-none focus:border-[#1890ff]" />
+                  </div>
+                </div>
+
+                <!-- 小数位与指示灯开关 -->
+                <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                  <div>
+                    <label class="text-[9px] text-slate-400">小数位数</label>
+                    <select :value="item.precision ?? ''"
+                      @change="updateDashboardItem(idx, { precision: ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value) })"
+                      class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none">
+                      <option value="">自动</option>
+                      <option :value="0">0 位 (整数)</option>
+                      <option :value="1">1 位小数</option>
+                      <option :value="2">2 位小数</option>
+                      <option :value="3">3 位小数</option>
+                      <option :value="4">4 位小数</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-1.5 pt-4">
+                    <input type="checkbox" :id="`dot-${idx}`" :checked="item.showStatusDot !== false"
+                      @change="updateDashboardItem(idx, { showStatusDot: ($event.target as HTMLInputElement).checked })"
+                      class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+                    <label :for="`dot-${idx}`"
+                      class="text-[10px] text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                      显示状态指示圆点
+                    </label>
+                  </div>
+                </div>
+
+                <!-- 阈值报警设置 (可选) -->
+                <div
+                  class="grid grid-cols-2 gap-1.5 pt-1 border-t border-dashed border-slate-100 dark:border-slate-800">
+                  <div>
+                    <label class="text-[9px] text-amber-600 dark:text-amber-400">低限预警值 (≤ 变黄)</label>
+                    <input type="number" :value="item.thresholdMin ?? ''"
+                      @input="updateDashboardItem(idx, { thresholdMin: ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value) })"
+                      placeholder="默认不设"
+                      class="w-full bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded px-1.5 py-0.5 text-[10px] text-amber-800 dark:text-amber-300 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label class="text-[9px] text-rose-600 dark:text-rose-400">高限报警值 (≥ 变红)</label>
+                    <input type="number" :value="item.thresholdMax ?? ''"
+                      @input="updateDashboardItem(idx, { thresholdMax: ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value) })"
+                      placeholder="默认不设"
+                      class="w-full bg-rose-50/40 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded px-1.5 py-0.5 text-[10px] text-rose-800 dark:text-rose-300 focus:outline-none" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部新增按钮 -->
+            <button type="button" @click="addDashboardItem"
+              class="w-full py-1.5 rounded border border-dashed border-emerald-400 dark:border-emerald-700 bg-white/70 dark:bg-slate-900/70 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <Plus class="w-3.5 h-3.5" />
+              <span>添加监控变量项</span>
+            </button>
           </div>
         </div>
 
