@@ -94,6 +94,14 @@ const boundDeviceIds = computed(() => {
     if (c.bindDeviceId != null) ids.add(Number(c.bindDeviceId));
     // 圆角按钮「操作变量」独立绑定的设备也纳入订阅：取反模式需读取操作变量当前值
     if (c.type === 'rounded-btn' && c.props?.opDeviceId != null) ids.add(Number(c.props.opDeviceId));
+    // multi-var-dashboard 多变量看板：每个子项可独立绑定设备，需纳入订阅，
+    // 否则服务端不会推送这些设备的 ReceiveVariableUpdate（看板直接读 devices store 会陈旧）
+    if (c.type === 'multi-var-dashboard' && Array.isArray(c.props?.dashboardItems)) {
+      for (const item of c.props.dashboardItems) {
+        const devId = item?.deviceId != null ? item.deviceId : c.bindDeviceId;
+        if (devId != null) ids.add(Number(devId));
+      }
+    }
   });
   return ids;
 });
