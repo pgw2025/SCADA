@@ -38,6 +38,7 @@ import {
   Route,
   ClipboardList,
   Hash,
+  LayoutDashboard,
 } from 'lucide-vue-next';
 
 /**
@@ -83,18 +84,18 @@ const baseProps = (type: ComponentType): Record<string, any> => ({
   // 标题背景默认属性
   ...(type === 'title-header'
     ? {
-        headerStyle: 'tech-blue',
-        headerDevice: 'desktop',
-        headerTitle: '工业互联网智能监控大屏',
-        headerSubtitle: 'INTELLIGENT SCADA MONITORING PLATFORM',
-        headerLogoText: 'SCADA 5G',
-        headerShowClock: true,
-        headerShowStatus: true,
-        headerStatusText: '系统运行正常',
-        headerGlowColor: '#38bdf8',
-        fontSize: 22,
-        bold: true,
-      }
+      headerStyle: 'navy-midnight',
+      headerDevice: 'desktop',
+      headerTitle: '工业互联网智能监控大屏',
+      headerSubtitle: 'INTELLIGENT SCADA MONITORING PLATFORM',
+      headerLogoText: 'SCADA 5G',
+      headerShowClock: true,
+      headerShowStatus: true,
+      headerStatusText: '系统运行正常',
+      headerGlowColor: '#38bdf8',
+      fontSize: 22,
+      bold: true,
+    }
     : {}),
 });
 
@@ -224,10 +225,59 @@ export const widgetRegistry: Record<string, WidgetDef> = {
       writeMin: null,
       writeMax: null,
       confirmRequired: false,
-      // 外观显隐：边框/背景/内部标签默认全部隐藏（报警变色边框为功能性指示，不受 showBorder 控制）
+      // 外观显隐与边框样式：默认边框关闭，支持自由自定义
       showBorder: false,
+      borderColor: '#cbd5e1',
+      borderWidth: 1.5,
+      borderStyle: 'solid',
+      borderRadius: 8,
       showBackground: false,
+      bgColor: '#ffffff',
       showInnerLabel: false,
+      enableAlarmBorder: true,
+      thresholdMin: null,
+      thresholdMax: null,
+    }),
+  },
+  'multi-var-dashboard': {
+    type: 'multi-var-dashboard',
+    name: '实时多变量看板',
+    defaultWidth: 360,
+    defaultHeight: 240,
+    icon: LayoutDashboard,
+    iconKind: 'lucide',
+    iconColor: 'text-sky-500',
+    description: '多变量实时聚合看板：支持多变量绑定、列数调节(1~6列/自适应)、边框与底色、阈值报警指示及卡片/表格/紧凑三种排版。',
+    category: 'sensors',
+    defaultProps: () => ({
+      ...baseProps('multi-var-dashboard'),
+      dashboardTitle: '实时参数监控看板',
+      showDashboardTitle: true,
+      dashboardTitleBgColor: '',
+      dashboardTitleColor: '',
+      dashboardLayout: 'grid', // 'grid' | 'table' | 'compact'
+      dashboardColumns: 2,    // 1, 2, 3, 4, 6, 0 (0 为自适应)
+      dashboardGap: 8,
+      showBorder: true,
+      borderColor: '#cbd5e1',
+      borderWidth: 1.5,
+      borderStyle: 'solid',
+      borderRadius: 8,
+      showBackground: true,
+      bgColor: '#ffffff',
+      dashboardShowItemBorder: true,
+      dashboardItemBorderColor: '#e2e8f0',
+      dashboardItemBgColor: '#f8fafc',
+      dashboardValueFontSize: 16,
+      dashboardLabelFontSize: 11,
+      dashboardZebra: false,
+      dashboardTheme: 'pure-white',
+      dashboardItems: [
+        { id: 'item-1', variableKey: 'boiler_temp', label: '锅炉温度', unit: '℃', precision: 1, showStatusDot: true, thresholdMin: 20, thresholdMax: 90 },
+        { id: 'item-2', variableKey: 'boiler_press', label: '主管道压力', unit: 'MPa', precision: 2, showStatusDot: true, thresholdMin: null, thresholdMax: 8.5 },
+        { id: 'item-3', variableKey: 'tank_level', label: '储罐液位', unit: '%', precision: 1, showStatusDot: true, thresholdMin: 15, thresholdMax: 95 },
+        { id: 'item-4', variableKey: 'pump_state', label: '主循环泵', unit: '', precision: null, showStatusDot: true, thresholdMin: null, thresholdMax: null },
+      ],
     }),
   },
   'trend-chart': {
@@ -432,6 +482,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     description: '桌面端横向导航菜单条：图标+文字+同端画面跳转，3~5 项，运行态自动高亮当前画面。',
     category: 'headers',
     defaultProps: () => ({
+      menuStyle: 'navy-midnight',
       menuDevice: 'desktop' as const,
       menuItems: [
         { icon: 'home', text: '总览', targetPageId: null },
@@ -453,6 +504,7 @@ export const widgetRegistry: Record<string, WidgetDef> = {
     description: '移动端底部 Tab 导航栏：图标+文字+同端画面跳转，3~5 项，运行态自动高亮当前画面。',
     category: 'headers',
     defaultProps: () => ({
+      menuStyle: 'navy-midnight',
       menuDevice: 'mobile' as const,
       menuItems: [
         { icon: 'home', text: '首页', targetPageId: null },

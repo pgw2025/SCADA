@@ -20,7 +20,21 @@ export type ComponentType =
   | 'motor'        // 变频伺服电机 (带重载散热肋片、金属主轴与极速冷却风叶)
   | 'title-header' // 工业大屏与移动端高精度矢量标题背景栏 (3套风格 x 桌面/手机)
   | 'nav-menu'     // 组态导航菜单：桌面顶部横向导航条 / 移动底部 Tab 栏（图标+文字+页面跳转）
+  | 'multi-var-dashboard' // 实时多变量看板：支持多变量绑定、列数调节、边框与主题样式、阈值预警与卡片/表格/紧凑模式
   | 'image';       // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
+
+/** 实时多变量看板子监控项配置（存于 HMIComponent.props.dashboardItems） */
+export interface HmiDashboardItem {
+  id: string;
+  deviceId?: number | null; // 绑定的所属设备ID（若未选则继承或使用全局变量池）
+  variableKey: string;     // 变量键名 (如 "boiler_temp", "pump_state")
+  label?: string;          // 自定义显示名称/点位标签（留空则默认读取变量模板名称或键名）
+  unit?: string;           // 自定义单位（留空则继承变量自带单位）
+  precision?: number | null; // 小数位数 (0~4，留空为默认自动)
+  showStatusDot?: boolean; // 是否显示状态指示圆点 / 报警呼吸灯
+  thresholdMin?: number | null; // 低限预警阈值 (数值低于此值标黄/报警)
+  thresholdMax?: number | null; // 高限预警阈值 (数值高于此值标红/报警)
+}
 
 /** 导航菜单项（存于 HMIComponent.props.menuItems，随 PropsJson 落库） */
 export interface HmiMenuItem {
@@ -141,6 +155,16 @@ export interface HMIComponent {
     fontSize?: number;
     align?: 'left' | 'center' | 'right';
     bold?: boolean;
+    showLabel?: boolean;
+    showBorder?: boolean;
+    borderColor?: string;
+    borderWidth?: number;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderRadius?: number; // 圆角弧度（px，如 4/8/12/20/999）
+    showBackground?: boolean;
+    bgColor?: string;
+    showInnerLabel?: boolean;
+    enableAlarmBorder?: boolean;
 
     // 按钮/开关专属属性
     buttonMode?: 'toggle' | 'momentary' | 'set-value' | 'set-bit' | 'reset-bit' | 'navigate' | 'run-script'; // 按钮操作模式（toggle=取反, momentary=按1送0/点动, set-bit=置位1, reset-bit=复位0, set-value=设值, navigate=跳转, run-script=执行系统脚本）
@@ -154,8 +178,6 @@ export interface HMIComponent {
     presetStyle?: string; // 圆角按钮预设风格标记（start/stop/reset/jog/estop，仅用于回显当前预设）
 
     // 圆角按钮/自定义状态专属属性
-    borderRadius?: number; // 圆角弧度（px，如 4/8/12/20/999）
-    borderWidth?: number; // 边框粗细（px）
     customStates?: string; // 自定义状态配置字典: "0:停止:#64748b:#ffffff;1:运行:#10b981:#ffffff;2:报警:#ef4444:#ffffff" 或 JSON 字符串
     state0Text?: string; // 状态0默认文本
     state0BgColor?: string; // 状态0默认背景色
@@ -179,7 +201,7 @@ export interface HMIComponent {
     confirmRequired?: boolean; // 确认写入前是否二次确认（高危变量防误写）
 
     // 大屏标题背景图元专属属性（type === 'title-header'）
-    headerStyle?: 'tech-blue' | 'eco-green' | 'carbon-orange'; // 3套风格：科技蓝 / 生态绿 / 机能碳纤橙
+    headerStyle?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost' | 'tech-blue' | 'eco-green' | 'carbon-orange'; // 风格主题
     headerDevice?: 'desktop' | 'mobile'; // 适配设备：桌面大屏 / 手机移动端
     headerTitle?: string; // 主标题文本
     headerSubtitle?: string; // 英文副标题
@@ -196,10 +218,28 @@ export interface HMIComponent {
     // 组件事件配置（事件属性面板；运行态优先于 buttonMode 旧逻辑）
     events?: HmiEventConfig[];
     // ===== nav-menu 导航菜单专属 props =====
+    menuStyle?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost' | 'tech-blue' | 'eco-green' | 'carbon-orange'; // 风格主题
     menuDevice?: 'desktop' | 'mobile';
     menuItems?: HmiMenuItem[];
     menuAccentColor?: string;
     menuFontSize?: number;
+
+    // ===== multi-var-dashboard 实时多变量看板专属 props =====
+    dashboardTitle?: string;            // 看板标题，如 "空压站监测总览"
+    showDashboardTitle?: boolean;       // 是否显示标题栏
+    dashboardTitleBgColor?: string;     // 标题栏背景色（留空则跟随主题）
+    dashboardTitleColor?: string;       // 标题栏文字颜色
+    dashboardLayout?: 'grid' | 'table' | 'compact'; // 布局模式：卡片网格 / 列表表格 / 紧凑标签
+    dashboardColumns?: number;          // 列数：1, 2, 3, 4, 6, 或 0 (自适应 Auto-fit)
+    dashboardGap?: number;              // 间距 (px，如 4, 8, 12, 16)
+    dashboardItems?: HmiDashboardItem[];// 绑定的多变量列表
+    dashboardShowItemBorder?: boolean;  // 子卡片/单元格是否显示边框
+    dashboardItemBorderColor?: string;  // 子卡片边框颜色
+    dashboardItemBgColor?: string;      // 子卡片背景底色
+    dashboardValueFontSize?: number;    // 数值文字字号大小 (px)
+    dashboardLabelFontSize?: number;    // 变量标签字号大小 (px)
+    dashboardZebra?: boolean;           // 表格模式隔行交替底色 (斑马纹)
+    dashboardTheme?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost'; // 看板内置快速主题
   };
 }
 
