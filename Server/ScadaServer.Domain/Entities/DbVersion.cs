@@ -15,7 +15,7 @@ namespace ScadaServer.Domain.Entities
         public string Version { get; set; } = "";
 
         /// <summary>
-        /// 应用时间
+        /// 应用时间（UTC 存储）
         /// </summary>
         public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
     }

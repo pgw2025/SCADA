@@ -5,12 +5,20 @@ using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// HMI 组态组件应用服务：负责页面画布组件（位置、图层、绑定、属性）的增删改查。
+    /// 写前校验页面存在、绑定设备存在，避免产生孤儿组件或悬空绑定。
+    /// </summary>
     public class HmiComponentAppService : IHmiComponentAppService
     {
+        /// <summary>组件仓储，提供持久化能力。</summary>
         private readonly IHmiComponentRepository _repository;
+        /// <summary>组态页面仓储，用于校验组件所属页面存在。</summary>
         private readonly IScadaPageRepository _pageRepository;
+        /// <summary>设备仓储，用于校验组件绑定的设备存在。</summary>
         private readonly IDeviceRepository _deviceRepository;
 
+        /// <summary>构造函数：注入组件、页面、设备仓储。</summary>
         public HmiComponentAppService(
             IHmiComponentRepository repository,
             IScadaPageRepository pageRepository,
@@ -21,6 +29,7 @@ namespace ScadaServer.Application.Services
             _deviceRepository = deviceRepository;
         }
 
+        /// <summary>按主键获取组件，不存在时返回 null。</summary>
         public async Task<HmiComponentDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -28,12 +37,14 @@ namespace ScadaServer.Application.Services
             return MapToDto(entity);
         }
 
+        /// <summary>获取全部组件列表。</summary>
         public async Task<List<HmiComponentDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(MapToDto).ToList();
         }
 
+        /// <summary>新增组件：校验后写入，返回生成的主键。</summary>
         public async Task<int> CreateAsync(HmiComponentDto dto)
         {
             await ValidateAsync(dto);
@@ -42,6 +53,7 @@ namespace ScadaServer.Application.Services
             return entity.Id;
         }
 
+        /// <summary>更新组件：校验后全量覆盖字段，成功返回 true，记录不存在时返回 false。</summary>
         public async Task<bool> UpdateAsync(HmiComponentDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -67,6 +79,7 @@ namespace ScadaServer.Application.Services
             return true;
         }
 
+        /// <summary>删除组件；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -94,6 +107,7 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"组件绑定的设备不存在（BindDeviceId={dto.BindDeviceId}）");
         }
 
+        /// <summary>将组件实体映射为 DTO。</summary>
         private static HmiComponentDto MapToDto(HmiComponent entity) => new()
         {
             Id = entity.Id,
@@ -113,6 +127,7 @@ namespace ScadaServer.Application.Services
             PropsJson = entity.PropsJson
         };
 
+        /// <summary>将组件 DTO 映射为实体（图层 ID 经归一化处理）。</summary>
         private static HmiComponent MapToEntity(HmiComponentDto dto) => new()
         {
             PageId = dto.PageId,

@@ -50,12 +50,12 @@ namespace ScadaServer.Domain.Entities
         public bool IsEnabled { get; set; } = true;
 
         /// <summary>
-        /// 创建时间。
+        /// 创建时间（UTC 存储）。
         /// </summary>
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>
-        /// 更新时间。
+        /// 更新时间（UTC 存储）。
         /// </summary>
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }

@@ -2,6 +2,10 @@ using ScadaServer.Application.DTOs;
 
 namespace ScadaServer.Application.Interfaces
 {
+    /// <summary>
+    /// MQTT 服务器管理器：统一连接、断开、发布与状态管理。
+    /// 内部维护多台 MQTT 服务器及其变量映射，供运行时采集层将变量更新推送到外部（区别于单条连接的 <see cref="IMqttService"/>）。
+    /// </summary>
     public interface IMqttManager
     {
         /// <summary>
@@ -17,6 +21,9 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>
         /// 发布变量更新到关联的所有 MQTT 服务器
         /// </summary>
+        /// <param name="deviceId">变量所属设备 ID</param>
+        /// <param name="variableKey">变量业务键</param>
+        /// <param name="value">变量值</param>
         Task PublishVariableUpdateAsync(int deviceId, string variableKey, object value);
 
         /// <summary>
@@ -37,6 +44,8 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>
         /// 使用给定参数测试连接（不落库、不影响现有连接），返回成功/失败与错误信息。
         /// </summary>
+        /// <param name="dto">连接测试参数</param>
+        /// <returns>连接测试结果（成功与否及错误信息）</returns>
         Task<MqttTestConnectionResultDto> TestConnectionAsync(MqttTestConnectionDto dto);
     }
 }

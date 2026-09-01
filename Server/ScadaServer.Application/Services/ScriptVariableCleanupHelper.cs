@@ -10,6 +10,10 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public static class ScriptVariableCleanupHelper
     {
+        /// <summary>
+        /// 删除设备变量时联动清理相关系统脚本：停用监听该「设备键.变量键」的 OnChange 脚本，
+        /// 并从其写授权（ScopeWrite）中剔除对应条目。
+        /// </summary>
         public static async Task CleanupScriptsByVariableAsync(
             DeviceVariable entity,
             IDeviceRepository deviceRepository,

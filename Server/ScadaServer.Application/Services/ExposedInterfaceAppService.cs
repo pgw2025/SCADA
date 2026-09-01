@@ -6,20 +6,33 @@ using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 暴露接口（开放 API）应用服务：
+    /// 管理将指定设备变量的读/写封装为 HTTP 开放接口（统一挂 /open/ 前缀）。
+    /// 负责接口的增删改查、启停切换，每次变更后同步刷新 <see cref="IExposedApiRegistry"/> 内存路由表。
+    /// </summary>
     public class ExposedInterfaceAppService : IExposedInterfaceAppService
     {
+        /// <summary>开放接口统一前缀。</summary>
         private const string OpenPrefix = "/open/";
 
+        /// <summary>支持的请求方法（仅 GET/POST）。</summary>
         private static readonly string[] SupportedMethods = new[] { "GET", "POST" };
+        /// <summary>路由路径格式校验正则（字母、数字、中划线、下划线、点、斜杠）。</summary>
         private static readonly Regex RoutePattern = new(
             @"^/open/[a-zA-Z0-9\-_/.]+$",
             RegexOptions.Compiled);
 
+        /// <summary>暴露接口仓储，提供持久化能力。</summary>
         private readonly IExposedInterfaceRepository _repository;
+        /// <summary>设备仓储，用于校验接口绑定的设备存在性。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>模型变量仓储，用于校验映射变量是否存在于设备所属模型中。</summary>
         private readonly IModelVariableRepository _modelVariableRepository;
+        /// <summary>暴露接口内存注册表，配置变更后需重载以同步网关路由。</summary>
         private readonly IExposedApiRegistry _registry;
 
+        /// <summary>构造函数：注入暴露接口、设备、模型变量仓储及注册表。</summary>
         public ExposedInterfaceAppService(
             IExposedInterfaceRepository repository,
             IDeviceRepository deviceRepository,
@@ -32,6 +45,7 @@ namespace ScadaServer.Application.Services
             _registry = registry;
         }
 
+        /// <summary>按主键获取暴露接口，不存在时返回 null。</summary>
         public async Task<ExposedInterfaceDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -39,12 +53,14 @@ namespace ScadaServer.Application.Services
             return ToDto(entity);
         }
 
+        /// <summary>获取全部暴露接口列表。</summary>
         public async Task<List<ExposedInterfaceDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(ToDto).ToList();
         }
 
+        /// <summary>新增暴露接口：校验后写入，并刷新路由注册表。</summary>
         public async Task CreateAsync(ExposedInterfaceDto dto)
         {
             await ValidateAsync(dto, excludeId: 0);
@@ -61,6 +77,7 @@ namespace ScadaServer.Application.Services
             await _registry.ReloadAsync();
         }
 
+        /// <summary>更新暴露接口：校验后写入并刷新路由注册表；记录不存在时静默忽略。</summary>
         public async Task UpdateAsync(ExposedInterfaceDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -78,6 +95,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>删除暴露接口并刷新路由注册表；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -88,6 +106,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>启用/停用指定暴露接口；状态无变化时不作处理，变更后刷新路由注册表。</summary>
         public async Task SetActiveAsync(int id, bool active)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -99,6 +118,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>将暴露接口实体映射为 DTO。</summary>
         private static ExposedInterfaceDto ToDto(ExposedInterface e) => new()
         {
             Id = e.Id,

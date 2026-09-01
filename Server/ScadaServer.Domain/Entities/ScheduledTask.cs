@@ -15,7 +15,7 @@ namespace ScadaServer.Domain.Entities
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
-        /// 任务类型
+        /// 任务类型（取值见 Enums.ScheduledTaskTypes 常量：set_value / backup / execute_script / clear_history）
         /// </summary>
         public string Type { get; set; } = string.Empty;
 
@@ -41,7 +41,7 @@ namespace ScadaServer.Domain.Entities
         public DateTime? LastRunAt { get; set; }
 
         /// <summary>
-        /// 最近一次执行状态：Running / Success / Failed / Skipped
+        /// 最近一次执行状态：Idle（初始，尚未执行）/ Running / Success / Failed / Skipped
         /// </summary>
         [MaxLength(16)]
         public string LastStatus { get; set; } = "Idle";

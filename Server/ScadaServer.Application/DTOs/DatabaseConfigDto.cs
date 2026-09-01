@@ -9,6 +9,7 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class DatabaseConfigDto
     {
+        /// <summary>配置ID（主键，创建时由服务端生成）</summary>
         public int Id { get; set; }
 
         /// <summary>配置名称</summary>
@@ -20,10 +21,13 @@ namespace ScadaServer.Application.DTOs
         /// <summary>后端类型：MySQL / InfluxDB / PostgreSQL / SQLite</summary>
         public string BackendType { get; set; } = "InfluxDB";
 
+        /// <summary>主机地址（IP 或域名）</summary>
         public string Host { get; set; } = string.Empty;
 
+        /// <summary>端口号</summary>
         public int Port { get; set; }
 
+        /// <summary>数据库用户名</summary>
         public string Username { get; set; } = string.Empty;
 
         /// <summary>密码（回显为掩码；保存时掩码/空 = 不改密）</summary>
@@ -32,6 +36,7 @@ namespace ScadaServer.Application.DTOs
         /// <summary>是否已配置密码（仅回显用）</summary>
         public bool HasPassword { get; set; }
 
+        /// <summary>数据库名称</summary>
         public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>访问令牌（InfluxDB 2.x；回显为掩码）</summary>
@@ -63,9 +68,16 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class MainDatabaseConfigDto
     {
+        /// <summary>主机地址（IP 或域名）</summary>
         public string Host { get; set; } = string.Empty;
+
+        /// <summary>端口号</summary>
         public int Port { get; set; }
+
+        /// <summary>数据库名称</summary>
         public string DatabaseName { get; set; } = string.Empty;
+
+        /// <summary>数据库用户名</summary>
         public string Username { get; set; } = string.Empty;
 
         /// <summary>密码（回显为掩码；保存时掩码/空 = 不改密）</summary>
@@ -83,10 +95,19 @@ namespace ScadaServer.Application.DTOs
         /// <summary>后端类型：MySQL / InfluxDB 等</summary>
         public string BackendType { get; set; } = string.Empty;
 
+        /// <summary>主机地址（IP 或域名）</summary>
         public string Host { get; set; } = string.Empty;
+
+        /// <summary>端口号</summary>
         public int Port { get; set; }
+
+        /// <summary>数据库用户名</summary>
         public string Username { get; set; } = string.Empty;
+
+        /// <summary>数据库密码</summary>
         public string Password { get; set; } = string.Empty;
+
+        /// <summary>数据库名称</summary>
         public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>访问令牌（InfluxDB 2.x）</summary>
@@ -104,8 +125,13 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class TestConnectionResult
     {
+        /// <summary>连接测试是否成功</summary>
         public bool Success { get; set; }
+
+        /// <summary>连接往返延迟（毫秒）</summary>
         public long LatencyMs { get; set; }
+
+        /// <summary>测试结果提示信息（成功或失败原因）</summary>
         public string Message { get; set; } = string.Empty;
     }
 }

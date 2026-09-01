@@ -17,7 +17,7 @@ namespace ScadaServer.Domain.Enums
         Change,
 
         /// <summary>
-        /// 周期存储（按采集周期定时写入）
+        /// 周期存储（按存储周期 <c>StoreIntervalMs</c> 定时写入，与轮询采集间隔解耦）
         /// </summary>
         Cycle,
 

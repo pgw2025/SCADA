@@ -40,6 +40,11 @@ namespace ScadaServer.Infrastructure.Services
         public bool IsRunning() => _isRunning;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// 流程：解析生效 InfluxDB 配置 → 重建 <see cref="IInfluxStore"/> → 按主键升序分批
+        /// （每批 <see cref="ReadBatchSize"/> 行）从 MySQL 拉取，再拆成 <see cref="WriteChunkSize"/> 的
+        /// 小片写入 InfluxDB，直到全部搬完或某片写入失败为止。
+        /// </remarks>
         public async Task<HistoryMigrationResult> MigrateAsync()
         {
             // 已有任务在跑则直接返回，避免并发重复迁移。

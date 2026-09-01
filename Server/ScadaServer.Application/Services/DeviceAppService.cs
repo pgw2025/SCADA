@@ -10,19 +10,35 @@ using MySqlConnector;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 设备应用服务实现：负责设备的查询、创建、更新、删除以及向设备运行时写入变量值。
+    /// 创建/更新成功后按启用状态变化同步注册/注销/重载设备运行时实例，
+    /// 并在事务内维护协议配置与设备变量实例。
+    /// </summary>
     public class DeviceAppService : IDeviceAppService
     {
+        /// <summary>设备仓储，提供设备实体持久化能力。</summary>
         private readonly IDeviceRepository _repository;
+        /// <summary>区域仓储，用于校验区域是否存在。</summary>
         private readonly IAreaRepository _areaRepository;
+        /// <summary>数据模型仓储，用于校验模型是否存在并推导协议。</summary>
         private readonly IDataModelRepository _modelRepository;
+        /// <summary>变量模板仓储，用于生成设备变量实例。</summary>
         private readonly IModelVariableRepository _modelVariableRepository;
+        /// <summary>设备变量实例仓储，用于聚合设备变量。</summary>
         private readonly IDeviceVariableRepository _deviceVariableRepository;
+        /// <summary>设备协议配置仓储。</summary>
         private readonly IRepository<DeviceConfig, int> _configRepository;
+        /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
+        /// <summary>运行时状态供应，用于解析设备在线状态。</summary>
         private readonly IRuntimeStatusProvider _runtimeStatusProvider;
+        /// <summary>删除服务，负责设备删除前的依赖检查与级联清理。</summary>
         private readonly IDeviceDeletionService _deletionService;
+        /// <summary>运行时设备管理器，用于设备注册/注销/重载。</summary>
         private readonly IRuntimeDeviceManager _runtimeDeviceManager;
 
+        /// <summary>构造函数：注入设备及其关联仓储、事务单元、运行时状态与设备管理器。</summary>
         public DeviceAppService(
             IDeviceRepository repository,
             IAreaRepository areaRepository,
@@ -47,6 +63,7 @@ namespace ScadaServer.Application.Services
             _runtimeDeviceManager = runtimeDeviceManager;
         }
 
+        /// <summary>按主键获取设备及其关联变量，不存在时返回 null。</summary>
         public async Task<DeviceDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -56,6 +73,7 @@ namespace ScadaServer.Application.Services
             return ToDto(entity, variables);
         }
 
+        /// <summary>获取设备列表；includeVariables 为 true 时按设备聚合其变量定义（N+1 优化）。</summary>
         public async Task<List<DeviceDto>> GetListAsync(bool includeVariables = true)
         {
             var list = await _repository.GetListAsync();
@@ -84,6 +102,7 @@ namespace ScadaServer.Application.Services
             }).ToList();
         }
 
+        /// <summary>将设备实体映射为 DTO，并解析运行时状态。</summary>
         private DeviceDto ToDto(Device entity, List<DeviceVariableDto>? variables)
         {
             return new DeviceDto
@@ -106,6 +125,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>将设备变量实例与其变量模板映射为 DTO（模板缺失时 Key/Name 为空、DataType 取默认值）。</summary>
         private static DeviceVariableDto MapDeviceVariableDto(DeviceVariable dv, Dictionary<int, ModelVariable> mvMap)
         {
             mvMap.TryGetValue(dv.ModelVariableId, out var mv);
@@ -273,6 +293,11 @@ namespace ScadaServer.Application.Services
             => ex.GetBaseException() is MySqlException mySql
                 && (mySql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry || mySql.Number == 1062);
 
+        /// <summary>
+        /// 创建设备：校验区域/模型/协议驱动与配置 JSON 格式，生成或校验设备标识，
+        /// 在事务内创建设备、协议配置并依据变量模板自动生成设备变量实例；
+        /// 事务提交成功后，将已启用的设备注册进运行时以便立即开始采集。
+        /// </summary>
         public async Task<DeviceDto> CreateAsync(CreateDeviceDto dto)
         {
             // 1. 存在性检查：校验区域和模型是否存在
@@ -376,6 +401,11 @@ namespace ScadaServer.Application.Services
             return created;
         }
 
+        /// <summary>
+        /// 更新设备：禁止变更设备绑定的数据模型，校验设备标识唯一性与区域/模型存在，
+        /// 事务内更新设备属性与协议配置（ConfigJson 为空时保留原配置）；
+        /// 提交成功后按启用状态变化执行运行时注册/注销/重载（热加载）。
+        /// </summary>
         public async Task<DeviceDto> UpdateAsync(DeviceDto dto)
         {
             var entity = await _repository.GetByIdForUpdateAsync(dto.Id);
@@ -466,6 +496,7 @@ namespace ScadaServer.Application.Services
             return updated;
         }
 
+        /// <summary>删除设备：依赖检查与级联清理委托给删除服务，完成后注销设备运行时实例。</summary>
         public async Task DeleteAsync(int id)
         {
             // 依赖检查与级联清理逻辑已抽离至 IDeviceDeletionService（对外接口/传感器/触发器/配置）

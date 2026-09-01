@@ -4,11 +4,19 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 数据转发（源/目标变量映射）应用服务实现：负责数据转换规则的增删改查（CRUD）。
+    /// 规则定义源设备变量到目标设备变量的读取/写入映射，实际转换由运行时引擎执行。
+    /// </summary>
     public class DataConversionAppService : IDataConversionAppService
     {
+        /// <summary>数据转换仓储，提供持久化能力。</summary>
         private readonly IDataConversionRepository _repository;
+
+        /// <summary>构造函数：注入数据转换仓储。</summary>
         public DataConversionAppService(IDataConversionRepository repository) { _repository = repository; }
 
+        /// <summary>按主键获取数据转换规则，不存在时返回 null。</summary>
         public async Task<DataConversionDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -25,6 +33,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>获取全部数据转换规则列表。</summary>
         public async Task<List<DataConversionDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
@@ -40,6 +49,7 @@ namespace ScadaServer.Application.Services
             }).ToList();
         }
 
+        /// <summary>新增数据转换规则，并将生成的主键写回 DTO。</summary>
         public async Task CreateAsync(DataConversionDto dto)
         {
             var entity = new DataConversion
@@ -56,6 +66,7 @@ namespace ScadaServer.Application.Services
             dto.Id = entity.Id;
         }
 
+        /// <summary>更新数据转换规则；记录不存在时静默忽略。</summary>
         public async Task UpdateAsync(DataConversionDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -71,6 +82,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>删除数据转换规则；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);

@@ -16,7 +16,7 @@ namespace ScadaServer.Domain.Entities
     public class SystemLog : EntityBase
     {
         /// <summary>
-        /// 日志时间戳（服务器本地时间）
+        /// 日志时间戳（UTC 存储；前端展示时本地化）
         /// </summary>
         public DateTime Timestamp { get; set; }
 

@@ -1,10 +1,20 @@
 namespace ScadaServer.Application.DTOs
 {
+    /// <summary>
+    /// 组态工程页面 DTO（定义画布尺寸、背景、图层及运行端适配方式）。
+    /// </summary>
     public class ScadaPageDto
     {
+        /// <summary>页面ID（主键，创建时由服务端生成）</summary>
         public int Id { get; set; }
+
+        /// <summary>所属组态工程ID</summary>
         public int ProjectId { get; set; }
+
+        /// <summary>页面名称</summary>
         public string Name { get; set; } = string.Empty;
+
+        /// <summary>是否为主页（组态运行默认打开页）</summary>
         public bool IsHome { get; set; }
 
         /// <summary>

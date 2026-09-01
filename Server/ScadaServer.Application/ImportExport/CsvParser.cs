@@ -19,9 +19,17 @@ public class CsvParser
         "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleSlope", "ScaleOffset", "DeadBand", "IsReadOnly"
     };
 
+    /// <summary>
+    /// 解析标准 CSV 流为导入行列表。
+    /// 处理要点：按表头列名（不区分大小写）动态匹配列位置、支持引号包裹与转义、
+    /// 空行与"无 Key 且无类型"整行跳过，逐行校验 Key/DataType 合法性。
+    /// </summary>
+    /// <param name="fileStream">CSV 文件流（UTF-8，可带/不带 BOM，由调用方负责释放）</param>
+    /// <returns>导入行列表；文件为空或缺少表头 Key 列时返回单条整体错误行。</returns>
     public List<VariableImportRow> Parse(Stream fileStream)
     {
         var rows = new List<VariableImportRow>();
+        // detectEncodingFromByteOrderMarks 可在 UTF-8 带 BOM 时自动识别编码，保证中文不乱码
         using var reader = new StreamReader(fileStream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
         var headerLine = ReadNextDataLine(reader);
@@ -32,9 +40,11 @@ public class CsvParser
         }
 
         var header = SplitCsv(headerLine);
+        // 按表头名建立"列名 → 列序号"映射（不区分大小写）；同名列只取首个
         var colIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < header.Count; i++)
         {
+            // 首列名可能残留 UTF-8 BOM 字符（\uFEFF），必须剥除才能匹配英文 Key 等列名
             var name = header[i].Trim().TrimStart('\uFEFF');
             if (name.Length == 0 || colIndex.ContainsKey(name)) continue;
             colIndex[name] = i;
@@ -53,10 +63,11 @@ public class CsvParser
             lineNo++;
             if (string.IsNullOrWhiteSpace(line)) continue;
 
+            // 逐行拆分并按表头列名取值；Name 缺省时退化为 Key（兼容只含 Key 的导入）
             var cells = SplitCsv(line);
             var key = Cell(cells, colIndex, "Key")?.Trim() ?? string.Empty;
             var typeStr = Cell(cells, colIndex, "DataType")?.Trim() ?? string.Empty;
-            if (key.Length == 0 && typeStr.Length == 0) continue;
+            if (key.Length == 0 && typeStr.Length == 0) continue;   // 整行无实质内容则跳过
 
             var row = new VariableImportRow
             {
@@ -68,6 +79,8 @@ public class CsvParser
                 Description = NullIfEmpty(Cell(cells, colIndex, "Description"))
             };
 
+            // 依次校验 Key 是否为空/含非法字符/超长，以及 DataType 是否可识别为系统枚举；
+            // 任一失败通过 SetError 标记 HasError，但不中断整批解析
             if (row.Key.Length == 0)
                 row.SetError("变量标识(Key)为空");
             else if (!System.Text.RegularExpressions.Regex.IsMatch(row.Key, @"^[a-zA-Z0-9_]+$"))
@@ -79,10 +92,11 @@ public class CsvParser
             else
                 row.DataType = dt;
 
+            // 出错行补默认类型，避免前端渲染空值；HasError 为 true 时不会进入导入
             if (row.HasError)
                 row.DataType = DataTypeEnum.BOOL;
 
-            ApplyDetail(row, cells, colIndex);
+            ApplyDetail(row, cells, colIndex);   // 其余可选增强字段按最佳努力填充
             rows.Add(row);
         }
 
@@ -106,9 +120,16 @@ public class CsvParser
         row.IsReadOnly = TryBool(Cell(cells, colIndex, "IsReadOnly"));
     }
 
+    /// <summary>
+    /// 构造一条"整文件级"错误行（用于文件为空或表头无效等场景），
+    /// 类型取默认值 BOOL 以避免前端空值，但因 HasError 为 true 不会进入导入。
+    /// </summary>
     private static VariableImportRow FailRow(int rowNo, string reason) =>
         new() { RowNumber = rowNo, HasError = true, ErrorReason = reason, DataType = DataTypeEnum.BOOL };
 
+    /// <summary>
+    /// 读取下一条数据行：跳过开头可能出现的空行（如表头前留白），返回首个非空行；无数据时返回 null。
+    /// </summary>
     private static string? ReadNextDataLine(StreamReader reader)
     {
         string? line;
@@ -119,22 +140,28 @@ public class CsvParser
         return null;
     }
 
+    /// <summary>
+    /// 按 CSV 标准（RFC 兼容的子集）拆分一行文本为单元格列表：
+    /// 支持用双引号包裹含逗号的字段，且使用相邻两个双引号 `""` 转义字段内的引号。
+    /// 该解析面向整行（不跨行），因此不做跨行的多行字段处理。
+    /// </summary>
     private static List<string> SplitCsv(string line)
     {
         var result = new List<string>();
         var current = new System.Text.StringBuilder();
-        var inQuotes = false;
+        var inQuotes = false;          // 当前是否处于引号包裹状态（此时逗号不作为分隔符）
         for (var i = 0; i < line.Length; i++)
         {
             var c = line[i];
             if (c == '"')
             {
+                // 引号内的成对引号（""）表示一个转义的字面引号，追加后再跳过下一个字符
                 if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                 {
                     current.Append('"');
                     i++;
                 }
-                else inQuotes = !inQuotes;
+                else inQuotes = !inQuotes;   // 单个引号切换包裹状态
             }
             else if (c == ',' && !inQuotes)
             {
@@ -147,11 +174,18 @@ public class CsvParser
         return result;
     }
 
+    /// <summary>
+    /// 按列名从当前行单元格中取值；该列缺失或越界（列数少于表头）时返回 null。
+    /// </summary>
     private static string? Cell(List<string> cells, Dictionary<string, int> colIndex, string name) =>
         colIndex.TryGetValue(name, out var i) && i < cells.Count ? cells[i] : null;
 
+    /// <summary>空白文本归一化为 null。</summary>
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    /// <summary>按不随区域变化(fixed)的格式解析小数；解析失败返回 null（保持默认值）。</summary>
     private static double? TryDouble(string? s) => double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
+    /// <summary>解析整数；失败返回 null。</summary>
     private static int? TryInt(string? s) => int.TryParse(s, out var v) ? v : null;
+    /// <summary>解析布尔；失败返回 null。</summary>
     private static bool? TryBool(string? s) => bool.TryParse(s, out var v) ? v : null;
 }

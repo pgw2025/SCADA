@@ -20,18 +20,25 @@ public class VariableExportService
         "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleSlope", "ScaleOffset", "DeadBand", "IsReadOnly"
     };
 
+    /// <summary>
+    /// 将变量列表导出为 Excel(xlsx) 字节数组。首行固定为表头，数据自第 2 行起；
+    /// 各列按 <see cref="Headers"/> 顺序写出，列号与表头数组下标一一对应（列号 = 下标 + 1）。
+    /// </summary>
+    /// <param name="variables">待导出的模型变量列表</param>
+    /// <returns>xlsx 文件的字节数组</returns>
     public byte[] ExportXlsx(List<ModelVariableDto> variables)
     {
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Variables");
 
-        // 表头
+        // 表头：从下标 0 起，写到第 1 行的第 c+1 列
         for (var c = 0; c < Headers.Length; c++)
         {
             ws.Cell(1, c + 1).Value = Headers[c];
         }
-        ws.Row(1).Style.Font.Bold = true;
+        ws.Row(1).Style.Font.Bold = true;   // 加粗表头增强可读性
 
+        // 数据行：第 r 条变量写到第 r+1 行（第 1 行已被表头占用），列按固定顺序映射
         for (var r = 0; r < variables.Count; r++)
         {
             var v = variables[r];
@@ -60,11 +67,19 @@ public class VariableExportService
         return ms.ToArray();
     }
 
+    /// <summary>
+    /// 将变量列表导出为 CSV 字节数组（UTF-8 带 BOM）。
+    /// 字段统一以双引号包裹并做引号转义，数值列按固定小数点格式写出；
+    /// 表头与每行列序与 <see cref="Headers"/> 一致，保证可直接被 <see cref="CsvParser"/> 回读。
+    /// </summary>
+    /// <param name="variables">待导出的模型变量列表</param>
+    /// <returns>CSV 文件的字节数组</returns>
     public byte[] ExportCsv(List<ModelVariableDto> variables)
     {
         var sb = new StringBuilder();
         sb.Append(string.Join(",", Headers)).Append('\n');
 
+        // 交替写入"引号包裹的文本列/数值列/布尔列"+ 逗号，构造每行 CSV 记录
         foreach (var v in variables)
         {
             sb.Append(Csv.Quote(v.Key)).Append(',')
@@ -105,6 +120,10 @@ public class VariableExportService
 
     private static class Csv
     {
+        /// <summary>
+        /// 将字符串字段安全包裹为 CSV 引号字段：用 `""` 转义字段内的引号，避免破坏列结构。
+        /// 空值输出为空的双引号对 `""`（表示空列），保证列数量稳定。
+        /// </summary>
         public static string Quote(string? s)
         {
             if (string.IsNullOrEmpty(s)) return "\"\"";
@@ -112,6 +131,11 @@ public class VariableExportService
             return $"\"{escaped}\"";
         }
 
+        /// <summary>
+        /// 将可空小数格式化为 CSV 数值文本：
+        /// 使用固定小数点格式（0.########，最多 8 位小数）并以 InvariantCulture 输出，
+        /// 确保不随系统区域/小数点符号变化，导出的数字可被稳定回读。null 输出空串。
+        /// </summary>
         public static string Number(double? v) =>
             v == null ? "" : v.Value.ToString("0.########", CultureInfo.InvariantCulture);
     }

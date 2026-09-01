@@ -5,7 +5,10 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class SystemLogDto
     {
+        /// <summary>日志ID（主键）</summary>
         public int Id { get; set; }
+
+        /// <summary>日志产生时间</summary>
         public DateTime Timestamp { get; set; }
 
         /// <summary>

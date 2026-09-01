@@ -13,12 +13,18 @@ namespace ScadaServer.Application.Services;
 /// </summary>
 public class DeviceVariableAppService : IDeviceVariableAppService
 {
+    /// <summary>设备变量仓储，提供持久化能力。</summary>
     private readonly IDeviceVariableRepository _repository;
+    /// <summary>模型变量仓储，用于解析变量模板定义。</summary>
     private readonly IModelVariableRepository _modelVariableRepository;
+    /// <summary>设备仓储，用于校验设备存在性及解析其绑定模型。</summary>
     private readonly IDeviceRepository _deviceRepository;
+    /// <summary>系统脚本仓储，用于联动清理引用被删除变量的脚本。</summary>
     private readonly ISystemScriptRepository _systemScriptRepository;
+    /// <summary>运行时设备管理器，用于增删改后热加载设备采集。</summary>
     private readonly IRuntimeDeviceManager _runtimeDeviceManager;
 
+    /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储及运行时设备管理器。</summary>
     public DeviceVariableAppService(
         IDeviceVariableRepository repository,
         IModelVariableRepository modelVariableRepository,
@@ -33,6 +39,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         _runtimeDeviceManager = runtimeDeviceManager;
     }
 
+    /// <summary>获取指定设备下的全部设备变量（聚合其变量模板定义）。</summary>
     public async Task<List<DeviceVariableDto>> GetByDeviceAsync(int deviceId)
     {
         var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -134,6 +141,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         return MapToDto(entity, mv);
     }
 
+    /// <summary>将设备变量实体与其模板映射为 DTO；模板缺失时以空串/默认值兜底。</summary>
     private static DeviceVariableDto MapToDto(DeviceVariable dv, ModelVariable? mv) => new()
     {
         Id = dv.Id,

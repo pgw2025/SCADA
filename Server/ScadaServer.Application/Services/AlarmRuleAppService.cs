@@ -5,15 +5,22 @@ using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 报警规则应用服务实现：负责报警规则的增删改查（CRUD）。
+    /// 规则仅做持久化，实际报警判定由运行时引擎根据规则实时评估。
+    /// </summary>
     public class AlarmRuleAppService : IAlarmRuleAppService
     {
+        /// <summary>报警规则仓储，提供持久化能力。</summary>
         private readonly IAlarmRuleRepository _repository;
 
+        /// <summary>构造函数：注入报警规则仓储。</summary>
         public AlarmRuleAppService(IAlarmRuleRepository repository)
         {
             _repository = repository;
         }
 
+        /// <summary>按主键获取报警规则，不存在时返回 null。</summary>
         public async Task<AlarmRuleDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -21,12 +28,14 @@ namespace ScadaServer.Application.Services
             return MapToDto(entity);
         }
 
+        /// <summary>获取全部报警规则列表。</summary>
         public async Task<List<AlarmRuleDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(MapToDto).ToList();
         }
 
+        /// <summary>新增报警规则，并将生成的主键写回 DTO。</summary>
         public async Task CreateAsync(AlarmRuleDto dto)
         {
             var entity = MapToEntity(dto);
@@ -34,6 +43,7 @@ namespace ScadaServer.Application.Services
             dto.Id = entity.Id;
         }
 
+        /// <summary>按 DTO 携带的主键更新既有规则；记录不存在时直接返回。</summary>
         public async Task UpdateAsync(AlarmRuleDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -50,6 +60,7 @@ namespace ScadaServer.Application.Services
             await _repository.UpdateAsync(entity);
         }
 
+        /// <summary>删除指定报警规则；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -59,6 +70,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>将报警规则实体映射为 DTO。</summary>
         private static AlarmRuleDto MapToDto(AlarmRule entity) => new()
         {
             Id = entity.Id,
@@ -73,6 +85,7 @@ namespace ScadaServer.Application.Services
             DebounceSeconds = entity.DebounceSeconds
         };
 
+        /// <summary>将 DTO 映射为报警规则实体。</summary>
         private static AlarmRule MapToEntity(AlarmRuleDto dto) => new()
         {
             Name = dto.Name,

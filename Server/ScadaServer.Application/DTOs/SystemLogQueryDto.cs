@@ -51,7 +51,10 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class SystemLogPagedResultDto
     {
+        /// <summary>符合条件的日志总数（用于分页）</summary>
         public int Total { get; set; }
+
+        /// <summary>当前页的日志列表</summary>
         public List<SystemLogDto> Items { get; set; } = new();
     }
 

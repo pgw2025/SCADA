@@ -17,11 +17,16 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public class ExposedApiRegistry : IExposedApiRegistry
     {
+        /// <summary>用于在 ReloadAsync 内创建 scope 以安全解析 Scoped 仓储，避免提升为单例。</summary>
         private readonly IServiceScopeFactory _scopeFactory;
+        /// <summary>串行化重载入口的信号量（并发只允许一次重载）。</summary>
         private readonly SemaphoreSlim _gate = new(1, 1);
+        /// <summary>接口配置缓存，键为规范化 "(METHOD) 完整路由"，值大小写不敏感。</summary>
         private ConcurrentDictionary<string, ExposedInterfaceDto> _cache = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>是否已完成首次加载，用于按需懒加载。</summary>
         private bool _loaded;
 
+        /// <summary>构造函数：注入服务作用域工厂。</summary>
         public ExposedApiRegistry(IServiceScopeFactory scopeFactory)
         {
             _scopeFactory = scopeFactory;

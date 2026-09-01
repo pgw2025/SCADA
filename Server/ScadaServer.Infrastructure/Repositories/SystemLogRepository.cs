@@ -5,13 +5,28 @@ using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.Infrastructure.Repositories
 {
+    /// <summary>
+    /// 系统日志仓储实现，对应表 SystemLogs，用于系统运行日志的多条件分页查询与批量清理。
+    /// 继承自 <see cref="RepositoryBase{TEntity,TKey}"/>，并通过 <see cref="ISystemLogRepository"/> 暴露给上层。
+    /// </summary>
     public class SystemLogRepository : RepositoryBase<SystemLog, int>, ISystemLogRepository
     {
         public SystemLogRepository(ScadaDbContext db) : base(db)
         {
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// 按多条件分页查询系统日志，支持分类、日志级别（多选）、来源、时间范围与关键字模糊匹配。
+        /// </summary>
+        /// <param name="category">日志分类，精确匹配（命中 (Category, Timestamp) 复合索引左前缀）。</param>
+        /// <param name="levels">日志级别列表（多选），可为空。</param>
+        /// <param name="keyword">关键字，对 Content / Source / Operator 三字段进行模糊匹配，可为空。</param>
+        /// <param name="source">日志来源，精确匹配，可为空。</param>
+        /// <param name="startTime">起始时间（闭区间下限），可为空。</param>
+        /// <param name="endTime">结束时间（闭区间上限），可为空。</param>
+        /// <param name="pageIndex">页码，从 1 开始。</param>
+        /// <param name="pageSize">每页条数。</param>
+        /// <returns>元组：Total 为符合条件的总条数，Items 为本页日志列表（按时间倒序）。</returns>
         public async Task<(int Total, List<SystemLog> Items)> QueryAsync(
             string? category,
             List<string>? levels,
@@ -82,7 +97,13 @@ namespace ScadaServer.Infrastructure.Repositories
             return (total, items);
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// 按条件批量清空系统日志。
+        /// </summary>
+        /// <param name="category">日志分类，精确匹配，可为空代表不过滤分类。</param>
+        /// <param name="startTime">起始时间下限（闭区间），可为空。</param>
+        /// <param name="endTime">结束时间上限（闭区间），可为空。</param>
+        /// <returns>被删除的日志行数。</returns>
         public async Task<int> ClearAsync(string? category, DateTime? startTime, DateTime? endTime)
         {
             var query = Db.SystemLogs.AsQueryable();

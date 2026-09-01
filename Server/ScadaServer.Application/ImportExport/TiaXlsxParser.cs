@@ -32,10 +32,17 @@ public class TiaXlsxParser
         ["path"] = "path", ["路径"] = "path"
     };
 
+    /// <summary>
+    /// 解析 TIA Portal 导出的变量表 xlsx 流，将其转换为可变导入行列表。
+    /// 处理策略：动态定位表头 → 建立规范列名到列号的映射 → 逐行读取并校验。
+    /// </summary>
+    /// <param name="fileStream">TIA xlsx 文件流（由调用方负责读取与释放）</param>
+    /// <returns>导入行列表；无法识别表头时返回一条整体错误行，不会抛出异常。</returns>
     public List<VariableImportRow> Parse(Stream fileStream)
     {
         var rows = new List<VariableImportRow>();
         using var workbook = new ClosedXML.Excel.XLWorkbook(fileStream);
+        // TIA 导出的变量表通常位于首个工作表，故直接取第一张表
         var worksheet = workbook.Worksheets.FirstOrDefault();
         if (worksheet == null) return rows;
 
@@ -52,12 +59,14 @@ public class TiaXlsxParser
             return rows;
         }
 
+        // 将规范列名解析为实际 Excel 列号；缺列时返回 -1，后续读取逻辑据此跳过该列
         var colName = Axis(colMap, "name_zh");
         var colType = Axis(colMap, "datatype_zh");
         var colAddr = Axis(colMap, "addr");
         var colComment = Axis(colMap, "comment");
         var colPath = Axis(colMap, "path");
 
+        // 表头行以下即数据区，扫到最后一个已使用的行作为数据下界
         var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? headerRowIndex;
         for (var r = headerRowIndex + 1; r <= lastRow; r++)
         {
@@ -148,12 +157,22 @@ public class TiaXlsxParser
         return (0, new Dictionary<string, int>());
     }
 
+    /// <summary>
+    /// 从列映射中按规范列名取列号；映射中不存在（该列缺失）时返回 -1。
+    /// 返回 -1 是为了让上游读取逻辑统一判断"列为空"，避免逐处判空。
+    /// </summary>
     private static int Axis(Dictionary<string, int> colMap, string canonical) =>
         colMap.TryGetValue(canonical, out var c) ? c : -1;
 
+    /// <summary>
+    /// 读取指定单元格文本并去除首尾空白；列号小于等于 0（缺列）时返回空串。
+    /// </summary>
     private static string GetCellText(ClosedXML.Excel.IXLWorksheet ws, int row, int col) =>
         col <= 0 ? string.Empty : ws.Cell(row, col).GetString().Trim();
 
+    /// <summary>
+    /// 将空白字符串归一化为 null（便于前端区分"有值"与"未填"）。
+    /// </summary>
     private static string? SafeString(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 }
 
@@ -162,6 +181,11 @@ public class TiaXlsxParser
 /// </summary>
 public static class TiaTypeMapping
 {
+    /// <summary>
+    /// TIA 基本类型 → 系统类型精确映射表。
+    /// 键为规范化小写（不区分大小写）；值为目标类型以及"是否为近似映射"标志
+    /// （近似映射如 Time→DINT，精度/语义并非一一对应）。不在表内的类型视为无法识别。
+    /// </summary>
     private static readonly Dictionary<string, (DataTypeEnum Type, bool IsApprox)> Exact = new(StringComparer.OrdinalIgnoreCase)
     {
         ["bool"] = (DataTypeEnum.BOOL, false),
@@ -177,17 +201,24 @@ public static class TiaTypeMapping
         ["time"] = (DataTypeEnum.DINT, true)     // 近似：Time(ms) → 32位整数
     };
 
+    /// <summary>
+    /// 尝试将 TIA 数据类型字符串映射为系统 DataTypeEnum。
+    /// 按"先处理前缀类特例（String、Array）→ 再查精确表"的顺序判断；
+    /// 空值、未知类型或明确不支持的复杂类型返回失败，由调用方记为该行错误。
+    /// </summary>
+    /// <param name="typeRaw">TIA 类型原文，允许为 null/空白（视为失败）</param>
+    /// <returns>映射结果；<see cref="MapResult.Success"/> 表示映射成功。</returns>
     public static MapResult TryMap(string typeRaw)
     {
         var t = (typeRaw ?? string.Empty).Trim();
         if (t.Length == 0) return MapResult.Fail;
 
-        // String[n] / String --> STRING；system String 亦可
+        // String / String[n]（如 String[20]）均映射为 STRING；用前缀匹配以兼容带长度写法
         if (t.StartsWith("String", StringComparison.OrdinalIgnoreCase))
             return MapResult.Ok(DataTypeEnum.STRING, false);
 
-        // Array[...] of X、结构体（如 DataBlock 派生类型）、LInt/ULInt/LWord/LReal 等
-        // 明确不支持的复杂类型 → 失败
+        // Array[...] of X 由前缀显式判定为不支持的复杂类型 → 失败；
+        // 结构体、LInt/ULInt/LWord/LReal 等因不在精确表中，亦会自然落到下方失败分支
         if (t.StartsWith("Array", StringComparison.OrdinalIgnoreCase))
             return MapResult.Fail;
 

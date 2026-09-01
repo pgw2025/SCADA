@@ -4,12 +4,20 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 组态页面（ScadaPage）应用服务：负责画布页面的增删改查。
+    /// 维护同端（ProjectId + Platform）首页唯一性；删除页面时级联删除其下组件。
+    /// </summary>
     public class ScadaPageAppService : IScadaPageAppService
     {
+        /// <summary>组态页面仓储，提供持久化能力。</summary>
         private readonly IScadaPageRepository _repository;
+        /// <summary>组件仓储，用于删除页面时级联清理组件。</summary>
         private readonly IHmiComponentRepository _componentRepository;
+        /// <summary>工作单元，用于删除页面及其组件伴随的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
+        /// <summary>构造函数：注入页面、组件仓储及工作单元。</summary>
         public ScadaPageAppService(
             IScadaPageRepository repository,
             IHmiComponentRepository componentRepository,
@@ -20,6 +28,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
+        /// <summary>按主键获取组态页面，不存在时返回 null。</summary>
         public async Task<ScadaPageDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -27,12 +36,14 @@ namespace ScadaServer.Application.Services
             return MapToDto(entity);
         }
 
+        /// <summary>获取全部组态页面列表。</summary>
         public async Task<List<ScadaPageDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(MapToDto).ToList();
         }
 
+        /// <summary>按项目（可选）与归属端（可选）过滤组态页面列表。</summary>
         public async Task<List<ScadaPageDto>> GetByProjectAsync(int? projectId, string? platform = null)
         {
             IEnumerable<ScadaPage> list = projectId == null
@@ -45,6 +56,7 @@ namespace ScadaServer.Application.Services
             return list.Select(MapToDto).ToList();
         }
 
+        /// <summary>新增组态页面：同名端设为首页时清除其下其它首页，返回生成的主键。</summary>
         public async Task<int> CreateAsync(ScadaPageDto dto)
         {
             var platform = NormalizePlatform(dto.Platform);
@@ -69,6 +81,7 @@ namespace ScadaServer.Application.Services
             return entity.Id;
         }
 
+        /// <summary>更新组态页面：处理首页唯一性与字段归一化，成功返回 true，记录不存在时返回 false。</summary>
         public async Task<bool> UpdateAsync(ScadaPageDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -92,6 +105,7 @@ namespace ScadaServer.Application.Services
             return true;
         }
 
+        /// <summary>删除组态页面：同一事务内级联删除其下组件后再删除页面。</summary>
         public async Task DeleteAsync(int id)
         {
             await _uow.ExecuteInTransactionAsync(async transaction =>
@@ -109,6 +123,7 @@ namespace ScadaServer.Application.Services
 
         #region 映射
 
+        /// <summary>将组态页面实体映射为 DTO。</summary>
         private static ScadaPageDto MapToDto(ScadaPage entity) => new()
         {
             Id = entity.Id,

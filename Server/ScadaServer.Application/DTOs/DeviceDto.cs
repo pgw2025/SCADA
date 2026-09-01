@@ -4,24 +4,36 @@ using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.DTOs
 {
+    /// <summary>
+    /// 设备 DTO（返回给前端，含所属区域/模型、协议信息与运行时状态）。
+    /// </summary>
     public class DeviceDto
     {
+        /// <summary>设备ID（主键，创建时由服务端生成）</summary>
         public int Id { get; set; }
 
+        /// <summary>设备名称；必填，最长 100 字符（校验特性）</summary>
         [Required(ErrorMessage = "设备名称不能为空")]
         [StringLength(100, ErrorMessage = "设备名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
+        /// <summary>设备标识（全局唯一）；必填，最长 100 字符（校验特性）</summary>
         [Required(ErrorMessage = "设备标识不能为空")]
         [StringLength(100, ErrorMessage = "设备标识不能超过100个字符")]
         public string Key { get; set; } = string.Empty;
 
+        /// <summary>所属区域ID；必填，范围需大于 0（校验特性）</summary>
         [Range(1, int.MaxValue, ErrorMessage = "请选择所属区域")]
         public int AreaId { get; set; }
+
+        /// <summary>所属区域名称（只读，来自区域表）</summary>
         public string? AreaName { get; set; }
 
+        /// <summary>绑定的数据模型ID；必填，范围需大于 0（校验特性）</summary>
         [Range(1, int.MaxValue, ErrorMessage = "请选择变量模型")]
         public int ModelId { get; set; }
+
+        /// <summary>绑定的数据模型名称（只读）</summary>
         public string? ModelName { get; set; }
 
         /// <summary>
@@ -45,8 +57,13 @@ namespace ScadaServer.Application.DTOs
         [Range(10, 3600000, ErrorMessage = "采集周期必须在10ms到1小时之间")]
         public int PollingInterval { get; set; } = 1000;
 
+        /// <summary>创建时间</summary>
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>最近更新时间</summary>
         public DateTime UpdatedAt { get; set; }
+
+        /// <summary>最近一次通信时间（可空，尚未通信为空）</summary>
         public DateTime? LastCommunicationTime { get; set; }
 
         /// <summary>

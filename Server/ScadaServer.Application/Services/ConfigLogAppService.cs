@@ -4,11 +4,19 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 配置变更日志应用服务实现：记录设备配置变更的操作日志（操作人、变更描述、时间）。
+    /// 提供日志的增删改查（CRUD）。
+    /// </summary>
     public class ConfigLogAppService : IConfigLogAppService
     {
+        /// <summary>配置日志仓储，提供持久化能力。</summary>
         private readonly IConfigLogRepository _repository;
+
+        /// <summary>构造函数：注入配置日志仓储。</summary>
         public ConfigLogAppService(IConfigLogRepository repository) { _repository = repository; }
 
+        /// <summary>按主键获取配置日志，不存在时返回 null。</summary>
         public async Task<ConfigLogDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -23,6 +31,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>获取全部配置日志列表。</summary>
         public async Task<List<ConfigLogDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
@@ -36,6 +45,7 @@ namespace ScadaServer.Application.Services
             }).ToList();
         }
 
+        /// <summary>新增配置日志。</summary>
         public async Task CreateAsync(ConfigLogDto dto)
         {
             var entity = new ConfigLog
@@ -48,6 +58,7 @@ namespace ScadaServer.Application.Services
             await _repository.InsertAsync(entity);
         }
 
+        /// <summary>更新配置日志；记录不存在时静默忽略。</summary>
         public async Task UpdateAsync(ConfigLogDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -61,6 +72,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>删除配置日志；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);

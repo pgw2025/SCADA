@@ -6,14 +6,25 @@ using ScadaServer.Domain.Exceptions;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 数据模型应用服务实现：负责变量模型（DataModel）的增删改查。
+    /// 模型必须绑定一个已启用的协议（作为驱动派发真相源），并可在模型下定义变量模板；
+    /// 删除模型前会校验是否被设备引用，已引用则禁止删除。
+    /// </summary>
     public class DataModelAppService : IDataModelAppService
     {
+        /// <summary>数据模型仓储，提供持久化能力。</summary>
         private readonly IDataModelRepository _repository;
+        /// <summary>模型变量仓储，用于加载/删除模型下的变量模板。</summary>
         private readonly IModelVariableRepository _variableRepository;
+        /// <summary>设备仓储，用于删除模型前校验引用。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>协议仓储，用于校验模型绑定的协议是否存在且启用。</summary>
         private readonly IProtocolRepository _protocolRepository;
+        /// <summary>工作单元，用于删除模型及其变量伴随的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
+        /// <summary>构造函数：注入模型、变量、设备、协议仓储及工作单元。</summary>
         public DataModelAppService(
             IDataModelRepository repository,
             IModelVariableRepository variableRepository,
@@ -28,6 +39,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
+        /// <summary>按主键获取数据模型（含变量模板），不存在时返回 null。</summary>
         public async Task<DataModelDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -35,6 +47,7 @@ namespace ScadaServer.Application.Services
             return await MapToDtoAsync(entity, includeVariables: true);
         }
 
+        /// <summary>获取全部数据模型列表；默认同时加载各模型的变量模板。</summary>
         public async Task<List<DataModelDto>> GetListAsync(bool includeVariables = true)
         {
             var list = await _repository.GetListAsync();
@@ -70,6 +83,7 @@ namespace ScadaServer.Application.Services
             return ToDto(entity, mvByModel);
         }
 
+        /// <summary>实体 → DTO（同步组装）。优先复用 <paramref name="mvByModel"/> 一次加载的变量，未命中时输出空列表。</summary>
         private static DataModelDto ToDto(DataModel entity, Dictionary<int, List<ModelVariableDto>>? mvByModel)
         {
             // 协议字段来自 Include 加载的 Protocol 导航属性
@@ -112,6 +126,7 @@ namespace ScadaServer.Application.Services
             return protocolId;
         }
 
+        /// <summary>新增数据模型：校验名称唯一性并绑定协议，返回含变量模板的最新 DTO。</summary>
         public async Task<DataModelDto> CreateAsync(CreateDataModelDto dto)
         {
             // 0. 规范化：修剪空格
@@ -143,6 +158,7 @@ namespace ScadaServer.Application.Services
             return await MapToDtoAsync(entity, includeVariables: true);
         }
 
+        /// <summary>更新数据模型（全量替换语义）：校验存在性、名称唯一性并重新绑定协议，返回最新 DTO。</summary>
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
         {
             // 0. 规范化：修剪空格
@@ -174,6 +190,7 @@ namespace ScadaServer.Application.Services
             return await MapToDtoAsync(entity, includeVariables: true);
         }
 
+        /// <summary>删除数据模型：先校验是否被设备引用，未引用时在同一事务内删除其变量模板与模型本身。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);

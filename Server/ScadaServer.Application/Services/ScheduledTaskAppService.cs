@@ -14,10 +14,14 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public class ScheduledTaskAppService : IScheduledTaskAppService
     {
+        /// <summary>定时任务仓储，提供持久化能力。</summary>
         private readonly IScheduledTaskRepository _repository;
+        /// <summary>设备仓储，用于「变量写入」任务校验目标设备存在。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>系统脚本仓储，用于「脚本执行」任务校验目标脚本存在。</summary>
         private readonly ISystemScriptRepository _scriptRepository;
 
+        /// <summary>构造函数：注入任务、设备、脚本仓储。</summary>
         public ScheduledTaskAppService(
             IScheduledTaskRepository repository,
             IDeviceRepository deviceRepository,
@@ -28,18 +32,21 @@ namespace ScadaServer.Application.Services
             _scriptRepository = scriptRepository;
         }
 
+        /// <summary>按主键获取定时任务，不存在时返回 null。</summary>
         public async Task<ScheduledTaskDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             return entity == null ? null : ToDto(entity);
         }
 
+        /// <summary>获取全部定时任务列表。</summary>
         public async Task<List<ScheduledTaskDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(ToDto).ToList();
         }
 
+        /// <summary>新增定时任务：校验通过后写入（初始状态为 Idle）。</summary>
         public async Task CreateAsync(ScheduledTaskDto dto)
         {
             ValidateAndNormalize(dto);
@@ -55,6 +62,7 @@ namespace ScadaServer.Application.Services
             await _repository.InsertAsync(entity);
         }
 
+        /// <summary>更新定时任务：校验通过后覆盖写入，任务不存在时抛异常。</summary>
         public async Task UpdateAsync(ScheduledTaskDto dto)
         {
             ValidateAndNormalize(dto);
@@ -69,6 +77,7 @@ namespace ScadaServer.Application.Services
             await _repository.UpdateAsync(entity);
         }
 
+        /// <summary>删除定时任务；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -135,6 +144,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>校验「变量写入」任务参数完整性及设备存在性。</summary>
         private void ValidateSetValue(JsonElement root)
         {
             if (!root.TryGetProperty("deviceId", out var deviceIdEl) || deviceIdEl.ValueKind != JsonValueKind.Number)
@@ -159,6 +169,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>校验「脚本执行」任务参数完整性及脚本存在性。</summary>
         private void ValidateExecuteScript(JsonElement root)
         {
             if (!root.TryGetProperty("scriptId", out var scriptEl) || scriptEl.ValueKind != JsonValueKind.Number)
@@ -173,6 +184,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>校验「历史清理」任务参数（保留天数 ≥ 1）。</summary>
         private static void ValidateClearHistory(JsonElement root)
         {
             if (!root.TryGetProperty("retentionDays", out var daysEl) || daysEl.ValueKind != JsonValueKind.Number)
@@ -214,6 +226,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
+        /// <summary>将定时任务实体映射为 DTO（含最近运行与下次运行信息）。</summary>
         private static ScheduledTaskDto ToDto(ScheduledTask entity) => new()
         {
             Id = entity.Id,

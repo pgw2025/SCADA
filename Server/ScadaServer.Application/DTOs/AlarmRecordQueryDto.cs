@@ -53,7 +53,10 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class AlarmRecordPagedResultDto
     {
+        /// <summary>符合过滤条件的记录总数（用于分页）</summary>
         public int Total { get; set; }
+
+        /// <summary>当前页的报警记录列表</summary>
         public List<AlarmRecordDto> Items { get; set; } = new();
     }
 }

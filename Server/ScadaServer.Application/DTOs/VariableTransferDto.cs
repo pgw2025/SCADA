@@ -74,15 +74,34 @@ public class VariableImportRow
     public string? Path { get; set; }
 
     // --- 增强字段（CSV 模板提供；TIA 导入通常不提供，采用默认值）---
+    /// <summary>单位（可空）</summary>
     public string? Unit { get; set; }
+
+    /// <summary>量程下限（可空）</summary>
     public double? Min { get; set; }
+
+    /// <summary>量程上限（可空）</summary>
     public double? Max { get; set; }
+
+    /// <summary>历史存储模式（可空，默认采用系统默认值）</summary>
     public StoreModeEnum? StoreMode { get; set; }
+
+    /// <summary>历史存储周期（毫秒，可空）</summary>
     public int? StoreIntervalMs { get; set; }
+
+    /// <summary>更新模式（可空）</summary>
     public UpdateMode? UpdateMode { get; set; }
+
+    /// <summary>缩放斜率（可空）</summary>
     public double? ScaleSlope { get; set; }
+
+    /// <summary>缩放偏移（可空）</summary>
     public double? ScaleOffset { get; set; }
+
+    /// <summary>死区（可空）</summary>
     public double? DeadBand { get; set; }
+
+    /// <summary>是否只读（可空）</summary>
     public bool? IsReadOnly { get; set; }
 
     /// <summary>
@@ -111,6 +130,7 @@ public class VariableImportRow
 /// </summary>
 public class VariableImportPreviewDto
 {
+    /// <summary>目标数据模型ID（导入到哪个模型）</summary>
     public int ModelId { get; set; }
 
     /// <summary>
@@ -133,6 +153,7 @@ public class VariableImportPreviewDto
     /// </summary>
     public int ConflictRows { get; set; }
 
+    /// <summary>预览的行明细列表</summary>
     public List<VariableImportRow> Rows { get; set; } = new();
 }
 
@@ -141,6 +162,7 @@ public class VariableImportPreviewDto
 /// </summary>
 public class VariableImportResultDto
 {
+    /// <summary>本次新增插入的行数</summary>
     public int Inserted { get; set; }
 
     /// <summary>

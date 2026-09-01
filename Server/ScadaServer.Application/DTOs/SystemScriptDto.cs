@@ -8,6 +8,7 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class SystemScriptDto
     {
+        /// <summary>脚本ID（主键，创建时由服务端生成）</summary>
         public int Id { get; set; }
 
         [Required(ErrorMessage = "脚本名称不能为空")]

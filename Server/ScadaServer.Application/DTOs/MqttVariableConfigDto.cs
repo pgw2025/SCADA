@@ -7,6 +7,7 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class MqttServerStatusDto
     {
+        /// <summary>服务器配置ID</summary>
         public int Id { get; set; }
 
         /// <summary>
@@ -45,7 +46,10 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class MqttTestConnectionResultDto
     {
+        /// <summary>连接测试是否成功</summary>
         public bool Success { get; set; }
+
+        /// <summary>失败时的错误信息（成功时为空字符串）</summary>
         public string ErrorMessage { get; set; } = string.Empty;
     }
 
@@ -54,8 +58,13 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class MqttVariableConfigDto
     {
+        /// <summary>映射ID（主键）</summary>
         public int Id { get; set; }
+
+        /// <summary>所属 MQTT 服务器ID</summary>
         public int MqttServerId { get; set; }
+
+        /// <summary>关联设备ID</summary>
         public int DeviceId { get; set; }
 
         /// <summary>

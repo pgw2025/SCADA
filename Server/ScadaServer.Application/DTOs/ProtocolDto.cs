@@ -9,6 +9,7 @@ namespace ScadaServer.Application.DTOs
     /// </summary>
     public class ProtocolDto
     {
+        /// <summary>协议ID（主键，创建时由服务端生成）</summary>
         public int Id { get; set; }
 
         /// <summary>协议业务键（稳定标识符，如 "s7"、"opcua"、"virtual"），全局唯一。</summary>
@@ -35,7 +36,10 @@ namespace ScadaServer.Application.DTOs
         /// <summary>是否启用。禁用后运行期不应基于此协议创建驱动实例。</summary>
         public bool IsEnabled { get; set; } = true;
 
+        /// <summary>创建时间</summary>
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>最近更新时间</summary>
         public DateTime UpdatedAt { get; set; }
     }
 }

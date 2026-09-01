@@ -3,8 +3,12 @@ using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.DTOs
 {
+    /// <summary>
+    /// 创建设备 DTO（绑定区域与数据模型，用于创建时提交）。
+    /// </summary>
     public class CreateDeviceDto
     {
+        /// <summary>设备名称；必填，最长 100 字符（校验特性）</summary>
         [Required(ErrorMessage = "设备名称不能为空")]
         [StringLength(100, ErrorMessage = "设备名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;

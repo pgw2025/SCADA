@@ -13,15 +13,24 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public class DeviceDeletionService : IDeviceDeletionService
     {
+        /// <summary>设备仓储。</summary>
         private readonly IDeviceRepository _repository;
+        /// <summary>传感器仓储。</summary>
         private readonly ISensorRepository _sensorRepository;
+        /// <summary>对外接口仓储，用于删除前的依赖检查。</summary>
         private readonly IExposedInterfaceRepository _interfaceRepository;
+        /// <summary>设备协议配置仓储。</summary>
         private readonly IRepository<DeviceConfig, int> _configRepository;
+        /// <summary>报警规则仓储。</summary>
         private readonly IAlarmRuleRepository _alarmRuleRepository;
+        /// <summary>报警记录仓储。</summary>
         private readonly IAlarmRecordRepository _alarmRecordRepository;
+        /// <summary>系统脚本仓储，用于联动清理引用被删设备的脚本。</summary>
         private readonly ISystemScriptRepository _systemScriptRepository;
+        /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
 
+        /// <summary>构造函数：注入设备删除所需的相关仓储与事务单元。</summary>
         public DeviceDeletionService(
             IDeviceRepository repository,
             ISensorRepository sensorRepository,
@@ -42,6 +51,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
+        /// <summary>按主键删除设备：先检查对外接口引用，再在事务内级联清理数据后删除设备本身。</summary>
         public async Task DeleteAsync(int deviceId)
         {
             var entity = await _repository.GetByIdAsync(deviceId);

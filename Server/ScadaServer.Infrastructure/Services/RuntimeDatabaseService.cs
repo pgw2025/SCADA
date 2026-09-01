@@ -43,6 +43,7 @@ namespace ScadaServer.Infrastructure.Services
         }
 
         /// <inheritdoc/>
+        /// <remarks>返回时始终隐藏密码明文——有密码时以掩码 <see cref="SecretMask"/> 占位，仅通过 <c>HasPassword</c> 暴露是否存在。</remarks>
         public Task<MainDatabaseConfigDto> GetMainConfigAsync()
         {
             var o = _dbOptions.Value;
@@ -58,6 +59,10 @@ namespace ScadaServer.Infrastructure.Services
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// 校验必填项后，将主库配置序列化写入 override 文件 <see cref="OverrideFileName"/>（叠加在 appsettings.json 之上）。
+        /// 密码特殊处理：掩码(<see cref="SecretMask"/>)或空值表示"不修改"，沿用旧密码；需重启服务后生效。
+        /// </remarks>
         public async Task SaveMainConfigAsync(MainDatabaseConfigDto dto)
         {
             if (dto == null)

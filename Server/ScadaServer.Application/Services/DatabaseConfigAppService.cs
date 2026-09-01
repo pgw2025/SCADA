@@ -13,27 +13,33 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public class DatabaseConfigAppService : IDatabaseConfigAppService
     {
+        /// <summary>敏感字段回显占位符，用于「掩码回显、掩码不改密」。</summary>
         private const string SecretMask = "******";
 
+        /// <summary>数据库配置仓储，提供持久化能力。</summary>
         private readonly IDatabaseConfigRepository _repository;
 
+        /// <summary>构造函数：注入数据库配置仓储。</summary>
         public DatabaseConfigAppService(IDatabaseConfigRepository repository)
         {
             _repository = repository;
         }
 
+        /// <summary>按主键获取数据库配置，不存在时返回 null。</summary>
         public async Task<DatabaseConfigDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             return entity == null ? null : ToDto(entity);
         }
 
+        /// <summary>获取全部数据库配置列表。</summary>
         public async Task<List<DatabaseConfigDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(ToDto).ToList();
         }
 
+        /// <summary>新增数据库配置：校验后写入，创建即生效时同 Type 其它生效配置降级为备用。</summary>
         public async Task CreateAsync(DatabaseConfigDto dto)
         {
             Validate(dto);
@@ -49,6 +55,7 @@ namespace ScadaServer.Application.Services
             await _repository.InsertAsync(entity);
         }
 
+        /// <summary>更新数据库配置：校验后应用修改；密码/令牌传掩码或空则保留原值；由备用切换生效时降级同 Type 其它配置。</summary>
         public async Task UpdateAsync(DatabaseConfigDto dto)
         {
             Validate(dto);
@@ -81,6 +88,7 @@ namespace ScadaServer.Application.Services
             await _repository.UpdateAsync(entity);
         }
 
+        /// <summary>删除数据库配置；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);

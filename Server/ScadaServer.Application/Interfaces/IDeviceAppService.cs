@@ -2,8 +2,12 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Application.DTOs;
 namespace ScadaServer.Application.Interfaces
 {
+    /// <summary>
+    /// 设备应用服务：管理设备的增删改查及向设备运行时变量下发写入指令。设备删除的级联清理见 <see cref="IDeviceDeletionService"/>。
+    /// </summary>
     public interface IDeviceAppService
     {
+        /// <summary>按ID查询单个设备；不存在返回 null。</summary>
         Task<DeviceDto?> GetByIdAsync(int id);
 
         /// <summary>
@@ -13,9 +17,16 @@ namespace ScadaServer.Application.Interfaces
         /// 注意：前端共享 devices store 的多个视图依赖变量的 key 集合（拓扑/变量下拉/映射），
         /// 全局设备轮询应保持 true。
         /// </summary>
+        /// <param name="includeVariables">是否聚合各设备变量明细</param>
         Task<List<DeviceDto>> GetListAsync(bool includeVariables = true);
+
+        /// <summary>新增一个设备，返回创建后的 DTO。</summary>
         Task<DeviceDto> CreateAsync(CreateDeviceDto dto);
+
+        /// <summary>更新一个设备，返回更新后的 DTO。</summary>
         Task<DeviceDto> UpdateAsync(DeviceDto dto);
+
+        /// <summary>删除一个设备。</summary>
         Task DeleteAsync(int id);
 
         /// <summary>

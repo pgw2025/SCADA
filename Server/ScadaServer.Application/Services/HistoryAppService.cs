@@ -17,8 +17,10 @@ namespace ScadaServer.Application.Services
         private const int MaxLimit = 10000;
 
         private readonly IVariableHistoryRepository _repository;
+        /// <summary>时序存储（InfluxDB），已配置时优先读取历史数据。</summary>
         private readonly IInfluxStore _influxStore;
 
+        /// <summary>构造函数：注入历史仓储与时序存储（InfluxDB）。</summary>
         public HistoryAppService(
             IVariableHistoryRepository repository,
             IInfluxStore influxStore)

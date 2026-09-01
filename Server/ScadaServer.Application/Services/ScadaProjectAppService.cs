@@ -4,14 +4,25 @@ using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 组态工程（ScadaProject）应用服务：负责工程 CRUD、工程/页面整树查询，
+    /// 以及工程级/页面级导入导出（含绑定设备键的智能重映射）。
+    /// 删除工程时级联清理其下所有页面与组件。
+    /// </summary>
     public class ScadaProjectAppService : IScadaProjectAppService
     {
+        /// <summary>组态工程仓储，提供持久化能力。</summary>
         private readonly IScadaProjectRepository _repository;
+        /// <summary>组态页面仓储，用于工程下页面的读写。</summary>
         private readonly IScadaPageRepository _pageRepository;
+        /// <summary>组件仓储，用于整树查询及级联清理。</summary>
         private readonly IHmiComponentRepository _componentRepository;
+        /// <summary>设备仓储，用于导入导出时业务键与 Id 的映射。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>工作单元，用于删除工程及导入的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
+        /// <summary>构造函数：注入工程、页面、组件、设备仓储及工作单元。</summary>
         public ScadaProjectAppService(
             IScadaProjectRepository repository,
             IScadaPageRepository pageRepository,
@@ -26,6 +37,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
         }
 
+        /// <summary>按主键获取工程，不存在时返回 null。</summary>
         public async Task<ScadaProjectDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
@@ -33,12 +45,14 @@ namespace ScadaServer.Application.Services
             return new ScadaProjectDto { Id = entity.Id, Name = entity.Name, Description = entity.Description, CreatedAt = entity.CreatedAt };
         }
 
+        /// <summary>获取全部工程列表。</summary>
         public async Task<List<ScadaProjectDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
             return list.Select(entity => new ScadaProjectDto { Id = entity.Id, Name = entity.Name, Description = entity.Description, CreatedAt = entity.CreatedAt }).ToList();
         }
 
+        /// <summary>新增工程，返回生成的主键。</summary>
         public async Task<int> CreateAsync(ScadaProjectDto dto)
         {
             var entity = new ScadaProject { Name = dto.Name, Description = dto.Description ?? string.Empty, CreatedAt = DateTime.UtcNow };
@@ -46,6 +60,7 @@ namespace ScadaServer.Application.Services
             return entity.Id;
         }
 
+        /// <summary>更新工程名称与描述，成功返回 true，记录不存在时返回 false。</summary>
         public async Task<bool> UpdateAsync(ScadaProjectDto dto)
         {
             var entity = await _repository.GetByIdAsync(dto.Id);
@@ -57,6 +72,7 @@ namespace ScadaServer.Application.Services
             return true;
         }
 
+        /// <summary>删除工程：同一事务内级联删除其下所有页面及页面组件后再删除工程。</summary>
         public async Task DeleteAsync(int id)
         {
             await _uow.ExecuteInTransactionAsync(async transaction =>
@@ -82,6 +98,7 @@ namespace ScadaServer.Application.Services
             });
         }
 
+        /// <summary>获取工程整树（工程 + 页面 + 各页面组件），工程不存在时返回 null。</summary>
         public async Task<ScadaProjectFullDto?> GetTreeAsync(int id)
         {
             var project = await _repository.GetByIdAsync(id);
@@ -152,6 +169,7 @@ namespace ScadaServer.Application.Services
 
         #region 导入导出
 
+        /// <summary>导出工程为迁移包（含设备绑定键重映射），工程不存在时返回 null。</summary>
         public async Task<ScadaTransferPackageDto?> ExportAsync(int id)
         {
             var tree = await GetTreeAsync(id);
@@ -183,6 +201,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>导入工程迁移包：重名自动加后缀、同端首页去重，在同一事务内写入工程/页面/组件。</summary>
         public async Task<ScadaImportResultDto> ImportAsync(ScadaTransferPackageDto package)
         {
             if (!string.Equals(package.Format, ScadaTransferFormats.Project, StringComparison.OrdinalIgnoreCase))
@@ -237,6 +256,7 @@ namespace ScadaServer.Application.Services
             });
         }
 
+        /// <summary>导出单个页面为迁移包，页面不存在时返回 null。</summary>
         public async Task<ScadaTransferPackageDto?> ExportPageAsync(int pageId)
         {
             var page = await _pageRepository.GetByIdAsync(pageId);
@@ -284,6 +304,7 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>导入单页迁移包到指定工程：处理首页降级与重名，同一事务内写入页面与组件。</summary>
         public async Task<ScadaImportResultDto> ImportPageAsync(int projectId, ScadaTransferPackageDto package)
         {
             if (!string.Equals(package.Format, ScadaTransferFormats.Page, StringComparison.OrdinalIgnoreCase))
@@ -350,6 +371,7 @@ namespace ScadaServer.Application.Services
 
         // ===== 导入导出私有辅助 =====
 
+        /// <summary>将页面及其组件转换为传输 DTO，把设备 Id 映射为业务键。</summary>
         private static ScadaPageTransferDto ToTransferPage(ScadaPageWithComponentsDto page, Dictionary<int, string> deviceKeys)
             => new()
             {

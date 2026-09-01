@@ -13,17 +13,25 @@ using Microsoft.AspNetCore.Identity;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 系统用户应用服务实现：负责用户登录签发 JWT、用户 CRUD、改密与密码重置。
+    /// 内置 admin 受保护（不可修改/删除）；系统必须至少保留一名启用管理员。
+    /// </summary>
     public class SystemUserAppService : ISystemUserAppService
     {
+        /// <summary>用户仓储，提供持久化能力。</summary>
         private readonly ISystemUserRepository _repository;
+        /// <summary>配置，用于读取 JWT 签名密钥、有效期、签发方等信息。</summary>
         private readonly IConfiguration _configuration;
 
+        /// <summary>构造函数：注入用户仓储与配置。</summary>
         public SystemUserAppService(ISystemUserRepository repository, IConfiguration configuration)
         {
             _repository = repository;
             _configuration = configuration;
         }
 
+        /// <summary>用户登录：校验密码后签发 JWT；账号不存在/密码错误/已停用时返回失败。</summary>
         public async Task<LoginResponseDto> LoginAsync(LoginDto loginDto)
         {
             var users = await _repository.GetListAsync(u => u.Username == loginDto.Username);

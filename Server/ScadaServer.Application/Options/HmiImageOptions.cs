@@ -5,6 +5,7 @@ namespace ScadaServer.Application.Options
     /// </summary>
     public class HmiImageOptions
     {
+        /// <summary>配置节名称（appsettings.json 顶层键）</summary>
         public const string SectionName = "HmiImage";
 
         /// <summary>存储目录（相对 ContentRoot 或绝对路径），首次上传自动创建</summary>

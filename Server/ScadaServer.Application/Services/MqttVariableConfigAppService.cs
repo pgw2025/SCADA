@@ -6,16 +6,28 @@ using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// MQTT 变量映射应用服务：管理某个 MQTT 服务器下要订阅/发布的设备变量映射。
+    /// 提供映射增删改查、主题预览与实时值展示；映射变更后刷新 MQTT 管理器运行时。
+    /// </summary>
     public class MqttVariableConfigAppService : IMqttVariableConfigAppService
     {
+        /// <summary>变量映射仓储，提供持久化能力。</summary>
         private readonly IRepository<MqttVariableConfig, int> _repository;
+        /// <summary>MQTT 服务器仓储，用于解析主题前缀。</summary>
         private readonly IMqttServerRepository _serverRepository;
+        /// <summary>设备仓储，用于解析映射变量的设备名。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>设备变量仓储，用于解析变量名称。</summary>
         private readonly IDeviceVariableRepository _deviceVariableRepository;
+        /// <summary>模型变量仓储，用于映射设备变量到变量模板名称。</summary>
         private readonly IModelVariableRepository _modelVariableRepository;
+        /// <summary>实时值仓储，用于查询映射变量的当前值。</summary>
         private readonly IVariableRealtimeRepository _realtimeRepository;
+        /// <summary>MQTT 管理器，映射变更后热重载运行时。</summary>
         private readonly IMqttManager _mqttManager;
 
+        /// <summary>构造函数：注入映射、服务器、设备、变量、实时值仓储及 MQTT 管理器。</summary>
         public MqttVariableConfigAppService(
             IRepository<MqttVariableConfig, int> repository,
             IMqttServerRepository serverRepository,
@@ -34,6 +46,7 @@ namespace ScadaServer.Application.Services
             _mqttManager = mqttManager;
         }
 
+        /// <summary>获取指定 MQTT 服务器下的全部变量映射（含设备名、变量名、实时值与主题预览）。</summary>
         public async Task<List<MqttVariableConfigDto>> GetByServerAsync(int serverId)
         {
             var mappings = await _repository.GetListAsync(m => m.MqttServerId == serverId);
@@ -86,6 +99,7 @@ namespace ScadaServer.Application.Services
             return result;
         }
 
+        /// <summary>新增变量映射：先校验同服务器下变量不重复关联，写入后刷新运行时并返回最新映射。</summary>
         public async Task<MqttVariableConfigDto> AddAsync(int serverId, MqttVariableConfigCreateDto dto)
         {
             var exists = await _repository.AnyAsync(m =>
@@ -110,6 +124,7 @@ namespace ScadaServer.Application.Services
             return (await GetByServerAsync(serverId)).First(m => m.Id == entity.Id);
         }
 
+        /// <summary>更新映射（别名/自定义主题/启用状态），刷新运行时并返回更新后映射；不存在时返回 null。</summary>
         public async Task<MqttVariableConfigDto?> UpdateAsync(int configId, MqttVariableConfigUpdateDto dto)
         {
             var entity = await _repository.GetByIdAsync(configId);
@@ -124,6 +139,7 @@ namespace ScadaServer.Application.Services
             return (await GetByServerAsync(entity.MqttServerId)).FirstOrDefault(m => m.Id == configId);
         }
 
+        /// <summary>删除指定变量映射并刷新运行时；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int configId)
         {
             var entity = await _repository.GetByIdAsync(configId);

@@ -10,8 +10,10 @@ namespace ScadaServer.Application.Services
     /// </summary>
     public class AlarmRecordAppService : IAlarmRecordAppService
     {
+        /// <summary>报警记录仓储，提供查询、确认等持久化能力。</summary>
         private readonly IAlarmRecordRepository _repository;
 
+        /// <summary>构造函数：注入报警记录仓储。</summary>
         public AlarmRecordAppService(IAlarmRecordRepository repository)
         {
             _repository = repository;
@@ -72,6 +74,7 @@ namespace ScadaServer.Application.Services
             return true;
         }
 
+        /// <summary>将报警记录实体映射为 DTO。MySQL datetime 读回为 <c>Kind=Unspecified</c>，需显式标记为 UTC 保证 JSON 序列化带 Z 后缀。</summary>
         private static AlarmRecordDto ToDto(AlarmRecord e) => new()
         {
             Id = e.Id,

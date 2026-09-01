@@ -11,6 +11,11 @@ using System.Text.RegularExpressions;
 
 namespace ScadaServer.Application.Services
 {
+    /// <summary>
+    /// 变量模型（ModelVariable，模型内变量模板）应用服务：负责模板的增删改查、批量导入/导出。
+    /// 模板变更会影响引用它的设备实例，故增删改后需热加载相关设备运行时；
+    /// 删除模板时会一并级联清理各设备上的实例化及关联脚本。
+    /// </summary>
     public class ModelVariableAppService : IModelVariableAppService
     {
         // 与实体/DbContext 唯一索引 ix_modelvariable_model_key 对应的键格式约束。
@@ -18,16 +23,26 @@ namespace ScadaServer.Application.Services
         private const string ModelKeyUniqueIndexName = "ix_modelvariable_model_key";
         private static readonly Regex KeyFormatRegex = new("^[a-zA-Z0-9_]+$", RegexOptions.Compiled);
 
+        /// <summary>模型变量仓储，提供持久化能力。</summary>
         private readonly IModelVariableRepository _repository;
+        /// <summary>数据模型仓储，用于校验变量所属模型存在。</summary>
         private readonly IDataModelRepository _modelRepository;
+        /// <summary>设备变量仓储，用于级联清理及定位受影响设备。</summary>
         private readonly IDeviceVariableRepository _deviceVariableRepository;
+        /// <summary>设备仓储，用于脚本联动清理时解析设备键。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>系统脚本仓储，用于联动清理引用被删变量的脚本。</summary>
         private readonly ISystemScriptRepository _systemScriptRepository;
+        /// <summary>运行时设备管理器，用于模板变更后热加载设备采集。</summary>
         private readonly IRuntimeDeviceManager _runtimeDeviceManager;
+        /// <summary>工作单元，用于删除模板与实例化变量伴随的原子操作。</summary>
         private readonly IUnitOfWork _uow;
+        /// <summary>导入解析器，用于解析变量导入文件。</summary>
         private readonly IVariableImportParser _importParser;
+        /// <summary>导出服务，用于将变量模板导出为 CSV/XLSX。</summary>
         private readonly VariableExportService _exportService;
 
+        /// <summary>构造函数：注入变量、模型、设备、脚本仓储及运行时、导入导出等服务。</summary>
         public ModelVariableAppService(
             IModelVariableRepository repository,
             IDataModelRepository modelRepository,

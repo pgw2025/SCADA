@@ -11,6 +11,7 @@ namespace ScadaServer.Application.DTOs
         /// <summary>用户上传时的原始文件名（图库显示用）</summary>
         public string OriginalName { get; set; } = string.Empty;
 
+        /// <summary>文件大小（字节）</summary>
         public long SizeBytes { get; set; }
 
         /// <summary>上传时间（UTC，取文件创建时间）</summary>

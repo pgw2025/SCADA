@@ -5,6 +5,7 @@ namespace ScadaServer.Application.Options
     /// </summary>
     public class SystemLogOptions
     {
+        /// <summary>配置节名称（appsettings.json 顶层键）</summary>
         public const string SectionName = "SystemLog";
 
         /// <summary>
@@ -38,8 +39,13 @@ namespace ScadaServer.Application.Options
     /// </summary>
     public class RetentionOptions
     {
+        /// <summary>运行类日志保留天数（默认 30）</summary>
         public int Runtime { get; set; } = 30;
+
+        /// <summary>操作类日志保留天数（默认 180）</summary>
         public int Operation { get; set; } = 180;
+
+        /// <summary>安全类日志保留天数（默认 365）</summary>
         public int Security { get; set; } = 365;
     }
 }

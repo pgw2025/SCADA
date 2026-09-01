@@ -57,22 +57,54 @@ namespace ScadaServer.Domain.Interfaces.Repositories
 
         #region 新增
 
+        /// <summary>
+        /// 新增单条实体到数据库
+        /// </summary>
+        /// <param name="domain">待新增的实体</param>
         Task InsertAsync(TDomain domain);
+
+        /// <summary>
+        /// 批量新增多条实体（单次提交，用于大批量初始化场景）
+        /// </summary>
+        /// <param name="domains">待新增的实体集合</param>
         Task InsertRangeAsync(IEnumerable<TDomain> domains);
 
         #endregion
 
         #region 更新
 
+        /// <summary>
+        /// 更新单条实体（按主键定位）
+        /// </summary>
+        /// <param name="domain">待更新的实体（需包含主键）</param>
         Task UpdateAsync(TDomain domain);
+
+        /// <summary>
+        /// 批量更新多条实体
+        /// </summary>
+        /// <param name="domains">待更新的实体集合</param>
         Task UpdateRangeAsync(IEnumerable<TDomain> domains);
 
         #endregion
 
         #region 删除
 
+        /// <summary>
+        /// 按主键删除实体
+        /// </summary>
+        /// <param name="id">主键值</param>
         Task DeleteAsync(TKey id);
+
+        /// <summary>
+        /// 删除指定实体（按主键定位）
+        /// </summary>
+        /// <param name="domain">待删除的实体</param>
         Task DeleteAsync(TDomain domain);
+
+        /// <summary>
+        /// 按条件批量删除实体
+        /// </summary>
+        /// <param name="predicate">删除条件表达式</param>
         Task DeleteRangeAsync(Expression<Func<TDomain, bool>> predicate);
 
         #endregion

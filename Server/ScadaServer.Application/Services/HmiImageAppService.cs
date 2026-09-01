@@ -15,6 +15,7 @@ namespace ScadaServer.Application.Services
         private static readonly Regex StoredNamePattern = new(
             @"^[0-9a-f]{32}_", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        /// <summary>支持的图片扩展名 → Content-Type 映射（不区分大小写）。</summary>
         private static readonly Dictionary<string, string> ContentTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             [".png"] = "image/png",
@@ -25,15 +26,19 @@ namespace ScadaServer.Application.Services
             [".svg"] = "image/svg+xml",
         };
 
+        /// <summary>图片存储配置（大小上限、允许扩展名、存储相对路径）。</summary>
         private readonly HmiImageOptions _options;
+        /// <summary>存储根目录的绝对路径（由内容根目录 + 相对路径解析得到）。</summary>
         private readonly string _rootDir;
 
+        /// <summary>构造函数：基于内容根目录与存储相对路径解析出图片存储根目录。</summary>
         public HmiImageAppService(HmiImageOptions options, string contentRootPath)
         {
             _options = options;
             _rootDir = Path.GetFullPath(Path.Combine(contentRootPath, options.StoragePath));
         }
 
+        /// <summary>上传图片：校验大小与格式后写入存储目录，返回元数据信息。</summary>
         public async Task<HmiImageDto> UploadAsync(Stream stream, string originalFileName, long length)
         {
             if (stream == null || length <= 0)
@@ -61,6 +66,7 @@ namespace ScadaServer.Application.Services
             return ToDto(new FileInfo(fullPath));
         }
 
+        /// <summary>列出图库中全部图片（按上传时间倒序）。</summary>
         public Task<List<HmiImageDto>> GetListAsync()
         {
             var result = new List<HmiImageDto>();
@@ -76,6 +82,7 @@ namespace ScadaServer.Application.Services
             return Task.FromResult(result);
         }
 
+        /// <summary>打开指定图片，返回文件流与 Content-Type；找不到时返回 null。</summary>
         public Task<(Stream, string)?> OpenAsync(string fileName)
         {
             var resolved = ResolveStoredFile(fileName);
@@ -87,6 +94,7 @@ namespace ScadaServer.Application.Services
             return Task.FromResult<(Stream, string)?>((File.OpenRead(resolved), contentType));
         }
 
+        /// <summary>删除指定图片；成功返回 true，文件不存在或名称非法时返回 false。</summary>
         public Task<bool> DeleteAsync(string fileName)
         {
             var resolved = ResolveStoredFile(fileName);
@@ -112,6 +120,7 @@ namespace ScadaServer.Application.Services
             return File.Exists(fullPath) ? fullPath : null;
         }
 
+        /// <summary>由文件信息派生 DTO：拼接原始文件名与可访问 URL。</summary>
         private static HmiImageDto ToDto(FileInfo fi)
         {
             var stored = fi.Name;
