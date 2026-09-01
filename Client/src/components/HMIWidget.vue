@@ -76,6 +76,10 @@ const fontSize = computed(() => Number(propOr('fontSize', 12)));
 const align = computed<'left' | 'center' | 'right'>(() =>
   (propOr('align', 'center') as 'left' | 'center' | 'right') || 'center');
 const bold = computed(() => propOr('bold', false));
+// var-display 外观显隐：普通边框/背景/内部标签（默认隐藏，注册表为真相源）
+const showBorder = computed(() => propOr('showBorder', false));
+const showBackground = computed(() => propOr('showBackground', false));
+const showInnerLabel = computed(() => propOr('showInnerLabel', false));
 
 // 图片图元：填充方式 → 尺寸样式（tile 无 object-fit 对应，按原尺寸平铺由容器裁切）
 const imageFitStyle = computed(() => {
@@ -722,16 +726,22 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
     </div>
 
     <!-- 9.5 VAR DISPLAY（数据变量显示） -->
+    <!-- 外观显隐：边框/背景/内部标签默认隐藏；阈值报警变色边框为功能性报警指示，始终保留 -->
     <div v-else-if="component.type === 'var-display'"
-      class="w-full h-full bg-white dark:bg-slate-950 border-2 rounded-lg flex flex-col justify-center items-center px-3 py-1 relative overflow-hidden select-none"
+      class="w-full h-full rounded-lg flex flex-col justify-center items-center px-3 py-1 relative overflow-hidden select-none"
       :class="[
         isActiveMode && isSettable && !isLockedControl ? 'cursor-pointer hover:shadow-md' : '',
-        isHighAlert ? 'border-red-500 dark:border-red-500' : (isLowAlert ? 'border-amber-400 dark:border-amber-500' : 'border-slate-300 dark:border-slate-700')
+        showBackground ? 'bg-white dark:bg-slate-950' : 'bg-transparent',
+        isHighAlert ? 'border-2 border-red-500 dark:border-red-500'
+          : (isLowAlert ? 'border-2 border-amber-400 dark:border-amber-500'
+            : (showBorder ? 'border-2 border-slate-300 dark:border-slate-700' : 'border-none'))
       ]">
-      <div class="absolute top-1 left-2.5 text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80%] font-mono pointer-events-none">
+      <div v-if="showInnerLabel"
+        class="absolute top-1 left-2.5 text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80%] font-mono pointer-events-none">
         {{ component.label || '变量' }}
       </div>
-      <div class="font-mono font-bold tracking-wide leading-none mt-1.5 tabular-nums"
+      <div class="font-mono font-bold tracking-wide leading-none tabular-nums"
+        :class="showInnerLabel ? 'mt-1.5' : ''"
         :style="{
           fontSize: `${fontSize * 1.6}px`,
           color: isHighAlert ? '#ef4444' : isLowAlert ? '#f59e0b' : (qualityBad ? '#94a3b8' : activeColor)

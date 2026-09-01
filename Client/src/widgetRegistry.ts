@@ -224,6 +224,10 @@ export const widgetRegistry: Record<string, WidgetDef> = {
       writeMin: null,
       writeMax: null,
       confirmRequired: false,
+      // 外观显隐：边框/背景/内部标签默认全部隐藏（报警变色边框为功能性指示，不受 showBorder 控制）
+      showBorder: false,
+      showBackground: false,
+      showInnerLabel: false,
     }),
   },
   'trend-chart': {

@@ -682,6 +682,37 @@ const onPickBackgroundImage = (img: { url: string }) => {
           </label>
         </div>
 
+        <!-- var-display 外观显隐：边框/背景/内部标签独立开关，默认全部隐藏（报警变色边框为功能性指示不受控） -->
+        <div v-if="selectedComponent.type === 'var-display'"
+          class="space-y-2 text-xs border border-gray-100 dark:border-slate-800 p-2 rounded bg-gray-50/50 dark:bg-slate-950/60">
+          <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] uppercase tracking-wider mb-1">外观显示设置
+          </p>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="vdispShowBorder" :checked="componentProps.showBorder || false"
+              @change="updateProp('showBorder', ($event.target as HTMLInputElement).checked)"
+              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+            <label htmlFor="vdispShowBorder"
+              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示边框</label>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="vdispShowBg" :checked="componentProps.showBackground || false"
+              @change="updateProp('showBackground', ($event.target as HTMLInputElement).checked)"
+              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+            <label htmlFor="vdispShowBg"
+              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示背景</label>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="vdispShowInnerLabel" :checked="componentProps.showInnerLabel || false"
+              @change="updateProp('showInnerLabel', ($event.target as HTMLInputElement).checked)"
+              class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
+            <label htmlFor="vdispShowInnerLabel"
+              class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">显示内部标签</label>
+          </div>
+          <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-relaxed">
+            阈值报警时的红/琥珀色边框为报警指示，始终显示，不受「显示边框」控制。
+          </p>
+        </div>
+
         <!-- States color picks -->
         <div class="grid grid-cols-2 gap-2 text-xs">
           <div>
