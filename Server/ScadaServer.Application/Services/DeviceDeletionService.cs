@@ -19,8 +19,6 @@ namespace ScadaServer.Application.Services
         private readonly ISensorRepository _sensorRepository;
         /// <summary>对外接口仓储，用于删除前的依赖检查。</summary>
         private readonly IExposedInterfaceRepository _interfaceRepository;
-        /// <summary>设备协议配置仓储。</summary>
-        private readonly IRepository<DeviceConfig, int> _configRepository;
         /// <summary>报警规则仓储。</summary>
         private readonly IAlarmRuleRepository _alarmRuleRepository;
         /// <summary>报警记录仓储。</summary>
@@ -35,7 +33,6 @@ namespace ScadaServer.Application.Services
             IDeviceRepository repository,
             ISensorRepository sensorRepository,
             IExposedInterfaceRepository interfaceRepository,
-            IRepository<DeviceConfig, int> configRepository,
             IAlarmRuleRepository alarmRuleRepository,
             IAlarmRecordRepository alarmRecordRepository,
             ISystemScriptRepository systemScriptRepository,
@@ -44,7 +41,6 @@ namespace ScadaServer.Application.Services
             _repository = repository;
             _sensorRepository = sensorRepository;
             _interfaceRepository = interfaceRepository;
-            _configRepository = configRepository;
             _alarmRuleRepository = alarmRuleRepository;
             _alarmRecordRepository = alarmRecordRepository;
             _systemScriptRepository = systemScriptRepository;
@@ -66,11 +62,9 @@ namespace ScadaServer.Application.Services
 
             await _uow.ExecuteInTransactionAsync(async transaction =>
             {
-                // 删除级联数据
+                // 删除级联数据（协议配置已内联于 Device 行，随设备删除一并清除）
                 await _sensorRepository.DeleteRangeAsync(s => s.DeviceId == deviceId);
                 await _alarmRuleRepository.DeleteRangeAsync(ar => ar.DeviceId == deviceId);
-
-                await _configRepository.DeleteRangeAsync(c => c.DeviceId == deviceId);
 
                 // 报警 recover 兜底：设备将被删除，其未恢复报警不可能再收到真实恢复事件，
                 // 一次性批量标记为已恢复，避免遗留幽灵未恢复告警。

@@ -1,39 +1,7 @@
-using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace ScadaServer.Application.DTOs
 {
-    /// <summary>
-    /// 设备协议配置 DTO
-    /// </summary>
-    public class DeviceConfigDto
-    {
-        /// <summary>设备ID</summary>
-        public int DeviceId { get; set; }
-
-        /// <summary>协议配置 JSON 串</summary>
-        public string JsonConfig { get; set; } = string.Empty;
-
-        /// <summary>配置版本号（并发控制/乐观锁用）</summary>
-        public int Version { get; set; }
-
-        /// <summary>最近更新时间</summary>
-        public DateTime UpdatedAt { get; set; }
-    }
-
-    /// <summary>
-    /// 创建/更新设备协议配置 DTO
-    /// </summary>
-    public class CreateDeviceConfigDto
-    {
-        /// <summary>设备ID；必填（校验特性）</summary>
-        [Required(ErrorMessage = "设备ID不能为空")]
-        public int DeviceId { get; set; }
-
-        /// <summary>协议配置 JSON 串；必填（校验特性）</summary>
-        [Required(ErrorMessage = "配置内容不能为空")]
-        public string JsonConfig { get; set; } = string.Empty;
-    }
-
     #region 协议配置类（用于 JSON 序列化/反序列化）
 
     /// <summary>

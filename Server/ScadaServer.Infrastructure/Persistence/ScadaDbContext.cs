@@ -47,7 +47,6 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<DataModel> DataModels => Set<DataModel>();
         public DbSet<DbVersion> DbVersions => Set<DbVersion>();
         public DbSet<Device> Devices => Set<Device>();
-        public DbSet<DeviceConfig> DeviceConfigs => Set<DeviceConfig>();
         public DbSet<DeviceVariable> DeviceVariables => Set<DeviceVariable>();
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
@@ -100,7 +99,6 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<DataModel>().ToTable("DataModels");
             modelBuilder.Entity<DbVersion>().ToTable("DbVersion");
             modelBuilder.Entity<Device>().ToTable("Devices");
-            modelBuilder.Entity<DeviceConfig>().ToTable("DeviceConfigs");
             modelBuilder.Entity<ExposedInterface>().ToTable("ExposedInterfaces");
             // 开放接口：路由与请求方法需建库级唯一索引兜底（并发/直写库时的数据库级约束）。
             // 列需显式限制长度映射为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引），
@@ -239,10 +237,6 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasIndex(r => new { r.DeviceKey, r.VariableKey })
                 .HasDatabaseName("ix_variablerealtime_devicekey_variablekey");
 
-            // 主键（DeviceConfig 使用 DeviceId 作为主键，非自增）
-            modelBuilder.Entity<DeviceConfig>()
-                .HasKey(d => d.DeviceId);
-
             // Devices.Key 唯一索引
             modelBuilder.Entity<Device>()
                 .HasIndex(d => d.Key)
@@ -261,11 +255,6 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasForeignKey(d => d.ModelId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Devices_DataModels_ModelId");
-
-            modelBuilder.Entity<Device>()
-                .HasOne(d => d.Config)
-                .WithOne()
-                .HasForeignKey<DeviceConfig>(c => c.DeviceId);
 
             modelBuilder.Entity<ExposedInterface>()
                 .HasOne(x => x.Device)
@@ -342,10 +331,6 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasConstraintName("FK_DeviceVariables_ModelVariables_ModelVariableId");
 
             // 长文本列类型（MySQL 不支持 nvarchar(max)/text 默认映射，显式指定）
-            modelBuilder.Entity<DeviceConfig>()
-                .Property(c => c.JsonConfig)
-                .HasColumnType("longtext");
-
             modelBuilder.Entity<HmiComponent>()
                 .Property(c => c.PropsJson)
                 .HasColumnType("longtext");

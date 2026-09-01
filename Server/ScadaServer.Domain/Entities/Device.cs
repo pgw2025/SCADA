@@ -54,6 +54,19 @@ namespace ScadaServer.Domain.Entities
         public int PollingInterval { get; set; } = 1000;
 
         /// <summary>
+        /// 协议配置 JSON（原独立表 DeviceConfigs.JsonConfig）。
+        /// 可空：未配置时运行时以 "{}" 兜底。
+        /// </summary>
+        [Column(TypeName = "longtext")]
+        public string? JsonConfig { get; set; }
+
+        /// <summary>
+        /// 配置版本号（原 DeviceConfigs.Version）。
+        /// 乐观锁/配置追踪语义：每次协议配置更新时自增。
+        /// </summary>
+        public int Version { get; set; } = 1;
+
+        /// <summary>
         /// 创建时间（UTC 存储）
         /// </summary>
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -76,11 +89,6 @@ namespace ScadaServer.Domain.Entities
         /// 实时状态仍以运行时内存态（RuntimeStatus）为准。
         /// </summary>
         public DeviceStatus? LastKnownStatus { get; set; }
-
-        /// <summary>
-        /// 协议配置（一对一）
-        /// </summary>
-        public DeviceConfig? Config { get; set; }
 
         /// <summary>
         /// 该设备下的设备变量实例（变量在设备上的具体实现）。

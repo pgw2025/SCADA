@@ -7,7 +7,7 @@ namespace ScadaServer.Runtime.Devices;
 /// <summary>
 /// 设备运行时对象（即"RuntimeDevice"）。
 /// 启动时由 RuntimeManager 依据以下链路构建：
-/// Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)。
+/// Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)。
 /// 持有设备实体、数据模型、协议、配置、驱动实例，以及解析后的变量运行时集合。
 /// </summary>
 public class DeviceRuntime : IRuntimeDevice
@@ -24,8 +24,8 @@ public class DeviceRuntime : IRuntimeDevice
     /// <summary>设备业务键（IRuntimeDevice）。</summary>
     public string Key => Device.Key;
 
-    /// <summary>设备连接配置 JSON（IRuntimeDevice，来自 DeviceConfig.JsonConfig）。</summary>
-    public string ConfigJson => Config?.JsonConfig ?? "{}";
+    /// <summary>设备连接配置 JSON（IRuntimeDevice，来自 Device.JsonConfig，空时以 "{}" 兜底）。</summary>
+    public string ConfigJson => Device.JsonConfig ?? "{}";
 
     /// <summary>变量运行时只读视图（IRuntimeDevice 显式实现，驱动仅可遍历不可改集合）。</summary>
     IEnumerable<IRuntimeVariable> IRuntimeDevice.Variables => Variables.Values;
@@ -35,9 +35,6 @@ public class DeviceRuntime : IRuntimeDevice
 
     // 协议实体（来自 DataModel.Protocol，模型必绑协议后作为驱动派发真相源）
     public Protocol? Protocol { get; init; }
-
-    // 设备配置（设备级协议配置，来自 DeviceConfig）
-    public DeviceConfig? Config { get; init; }
 
     // 区域（可能未加载，可为 null）
     public Area? Area { get; init; }

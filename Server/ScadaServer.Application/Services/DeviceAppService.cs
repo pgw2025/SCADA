@@ -27,8 +27,6 @@ namespace ScadaServer.Application.Services
         private readonly IModelVariableRepository _modelVariableRepository;
         /// <summary>设备变量实例仓储，用于聚合设备变量。</summary>
         private readonly IDeviceVariableRepository _deviceVariableRepository;
-        /// <summary>设备协议配置仓储。</summary>
-        private readonly IRepository<DeviceConfig, int> _configRepository;
         /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
         /// <summary>运行时状态供应，用于解析设备在线状态。</summary>
@@ -45,7 +43,6 @@ namespace ScadaServer.Application.Services
             IDataModelRepository modelRepository,
             IModelVariableRepository modelVariableRepository,
             IDeviceVariableRepository deviceVariableRepository,
-            IRepository<DeviceConfig, int> configRepository,
             IUnitOfWork uow,
             IRuntimeStatusProvider runtimeStatusProvider,
             IDeviceDeletionService deletionService,
@@ -56,7 +53,6 @@ namespace ScadaServer.Application.Services
             _modelRepository = modelRepository;
             _modelVariableRepository = modelVariableRepository;
             _deviceVariableRepository = deviceVariableRepository;
-            _configRepository = configRepository;
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
             _deletionService = deletionService;
@@ -119,7 +115,7 @@ namespace ScadaServer.Application.Services
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
-                ConfigJson = entity.Config?.JsonConfig,
+                ConfigJson = entity.JsonConfig,
                 RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
                 Variables = variables
             };
@@ -349,6 +345,8 @@ namespace ScadaServer.Application.Services
                     ModelId = dto.ModelId,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
+                    JsonConfig = string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson,
+                    Version = 1,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -362,16 +360,6 @@ namespace ScadaServer.Application.Services
                     // 并发竞态兜底：预检通过但落库时撞设备标识唯一索引
                     throw new BusinessException($"设备标识 '{dto.Key}' 已存在");
                 }
-
-                // 创建协议配置
-                var config = new DeviceConfig
-                {
-                    DeviceId = entity.Id,
-                    JsonConfig = string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson,
-                    Version = 1,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                await _configRepository.InsertAsync(config);
 
                 // 根据数据模型的变量模板，自动生成设备变量实例（DeviceVariable）。
                 // 地址/位偏移/轮询间隔等采集细节已迁移到设备实例层，此处仅创建实例（IsEnabled=true），
@@ -462,13 +450,12 @@ namespace ScadaServer.Application.Services
 
                 await _repository.UpdateAsync(entity);
 
-                // 更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）
-                if (!string.IsNullOrEmpty(dto.ConfigJson) && entity.Config != null)
+                // 更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）。
+                // 配置字段已内联到 Device（原 DeviceConfig），版本号随配置更新自增。
+                if (!string.IsNullOrEmpty(dto.ConfigJson))
                 {
-                    entity.Config.JsonConfig = dto.ConfigJson;
-                    entity.Config.Version++;
-                    entity.Config.UpdatedAt = DateTime.UtcNow;
-                    await _configRepository.UpdateAsync(entity.Config);
+                    entity.JsonConfig = dto.ConfigJson;
+                    entity.Version++;
                 }
 
                 return await GetByIdAsync(dto.Id)

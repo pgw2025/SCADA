@@ -170,11 +170,10 @@ namespace ScadaServer.Runtime
             var db = sp.GetRequiredService<ScadaDbContext>();
 
             // 加载所有启用设备及其完整运行期依赖：
-            // Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)
+            // Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)
             // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
             var devices = await db.Devices
                 .Include(d => d.Model).ThenInclude(m => m!.Protocol)
-                .Include(d => d.Config)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .Where(d => d.IsEnabled)
                 .ToListAsync();
@@ -340,7 +339,7 @@ namespace ScadaServer.Runtime
         }
 
         /// <summary>
-        /// 按设备 ID 加载其完整运行期依赖对象图（Device → DataModel(→Protocol) → DeviceConfig → DeviceVariable(→ModelVariable)）。
+        /// 按设备 ID 加载其完整运行期依赖对象图（Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)）。
         /// 每次调用处于独立 Scope 内解析 DbContext，避免 Singleton 持有 Scoped DbContext。
         /// </summary>
         private async Task<Device?> LoadDeviceGraphByIdAsync(int deviceId)
@@ -349,7 +348,6 @@ namespace ScadaServer.Runtime
             var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
             return await db.Devices
                 .Include(d => d.Model).ThenInclude(m => m!.Protocol)
-                .Include(d => d.Config)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);
         }
@@ -385,7 +383,6 @@ namespace ScadaServer.Runtime
                     Device = device,
                     Model = model,
                     Protocol = model.Protocol,
-                    Config = device.Config,
                     Area = device.Area
                 };
 
