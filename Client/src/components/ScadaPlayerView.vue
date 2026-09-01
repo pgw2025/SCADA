@@ -95,12 +95,20 @@ const boundDeviceIds = computed(() => {
     // 圆角按钮「操作变量」独立绑定的设备也纳入订阅：取反模式需读取操作变量当前值
     if (c.type === 'rounded-btn' && c.props?.opDeviceId != null) ids.add(Number(c.props.opDeviceId));
     // multi-var-dashboard 多变量看板：每个子项可独立绑定设备，需纳入订阅，
-    // 否则服务端不会推送这些设备的 ReceiveVariableUpdate（看板直接读 devices store 会陈旧）
+    // 否则服务端不会推送这些设备的 ReceiveVariableUpdate（看板直接读 devices store 会陈旧）。
+    // 注意：HMIWidget.dashboardResolvedItems 在「子项无 deviceId 且组件无 bindDeviceId」时
+    // 会回退读 devices.value[0]（首台设备）。此分支同样需把首台设备纳入订阅，
+    // 否则看板仍收不到推送而陈旧（首台设备通常未被其它控件订阅）。
     if (c.type === 'multi-var-dashboard' && Array.isArray(c.props?.dashboardItems)) {
+      let hasUnboundItem = false;
       for (const item of c.props.dashboardItems) {
         const devId = item?.deviceId != null ? item.deviceId : c.bindDeviceId;
         if (devId != null) ids.add(Number(devId));
+        else hasUnboundItem = true;
       }
+      // 回退路径：订阅首台设备，使其 ReceiveVariableUpdate 能到达客户端。
+      // 此处读取 devices.value 会建立依赖，设备加载/重排后 watch 自动重新对账订阅。
+      if (hasUnboundItem && devices.value.length > 0) ids.add(Number(devices.value[0].id));
     }
   });
   return ids;
