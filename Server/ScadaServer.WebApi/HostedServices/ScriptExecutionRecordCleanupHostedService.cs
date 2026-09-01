@@ -62,7 +62,7 @@ namespace ScadaServer.WebApi.HostedServices
                         _lastCleanupDate = now.Date;
                         try
                         {
-                            await CleanupAsync(now, stoppingToken);
+                            await CleanupAsync(stoppingToken);
                         }
                         catch (OperationCanceledException)
                         {
@@ -83,10 +83,11 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        private async Task CleanupAsync(DateTime now, CancellationToken token)
+        private async Task CleanupAsync(CancellationToken token)
         {
             var retentionDays = await GetRetentionDaysAsync(token);
-            var cutoff = now.AddDays(-retentionDays);
+            // cutoff 用 UTC 计算，与 ScriptExecutionRecords.StartedAt（UTC 写入）基准一致
+            var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();

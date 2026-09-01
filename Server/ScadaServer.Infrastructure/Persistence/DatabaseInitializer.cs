@@ -124,8 +124,8 @@ public class DatabaseInitializer
                 DriverKey = p.DriverKey,
                 IsEnabled = p.IsEnabled,
                 Description = p.Description,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             });
         }
 
@@ -179,7 +179,7 @@ public class DatabaseInitializer
             await _db.Set<DbVersion>().AddAsync(new DbVersion
             {
                 Version = CurrentVersion,
-                AppliedAt = DateTime.Now
+                AppliedAt = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
 

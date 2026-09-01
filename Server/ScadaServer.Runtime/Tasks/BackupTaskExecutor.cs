@@ -54,7 +54,7 @@ namespace ScadaServer.Runtime.Tasks
 
         public async Task<string> ExecuteAsync(ScheduledTask task, CancellationToken token)
         {
-            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             var stagingDir = Path.Combine(Path.GetTempPath(), $"scada_backup_{timestamp}_{Guid.NewGuid():N}");
 
             try
@@ -71,7 +71,7 @@ namespace ScadaServer.Runtime.Tasks
                 // 3. 备份清单
                 var manifest = new
                 {
-                    BackupTime = DateTime.Now,
+                    BackupTime = DateTime.UtcNow,
                     Server = _environment.EnvironmentName,
                     MySqlTables = tableCounts,
                     MySqlExcluded = ExcludedTables,

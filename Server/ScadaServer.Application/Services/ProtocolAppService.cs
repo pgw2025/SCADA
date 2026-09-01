@@ -59,8 +59,8 @@ namespace ScadaServer.Application.Services
                 DriverKey = driverKey,
                 Description = dto.Description?.Trim(),
                 IsEnabled = dto.IsEnabled,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
             await _repository.InsertAsync(entity);
             return MapToDto(entity);
@@ -90,7 +90,7 @@ namespace ScadaServer.Application.Services
             entity.DriverKey = driverKey;
             entity.Description = dto.Description?.Trim();
             entity.IsEnabled = dto.IsEnabled;
-            entity.UpdatedAt = DateTime.Now;
+            entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
 
             return MapToDto(entity);

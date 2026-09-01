@@ -50,7 +50,7 @@ namespace ScadaServer.Application.Services
         {
             var entity = new SystemLog
             {
-                Timestamp = dto.Timestamp == default ? DateTime.Now : dto.Timestamp,
+                Timestamp = dto.Timestamp == default ? DateTime.UtcNow : dto.Timestamp,
                 Category = string.IsNullOrWhiteSpace(dto.Category) ? "Runtime" : dto.Category,
                 Level = dto.Level,
                 Source = dto.Source,

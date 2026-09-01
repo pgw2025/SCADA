@@ -112,7 +112,7 @@ public class SystemMonitorService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var uptime = DateTime.Now - process.StartTime;
+            var uptime = DateTime.UtcNow - process.StartTime.ToUniversalTime();
 
             double cpu = 0.0;
             double memPercent = 0.0;

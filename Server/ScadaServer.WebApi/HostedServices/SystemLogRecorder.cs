@@ -78,7 +78,7 @@ namespace ScadaServer.WebApi.HostedServices
         {
             var log = new SystemLog
             {
-                Timestamp = DateTime.Now,
+                Timestamp = DateTime.UtcNow,
                 Category = "Runtime",
                 Level = level,
                 Source = source,
@@ -106,7 +106,7 @@ namespace ScadaServer.WebApi.HostedServices
         {
             var log = new SystemLog
             {
-                Timestamp = DateTime.Now,
+                Timestamp = DateTime.UtcNow,
                 Category = category,
                 Level = level,
                 Source = source,

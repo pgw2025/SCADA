@@ -72,7 +72,7 @@ namespace ScadaServer.WebApi.HostedServices
                         _lastCleanupDate = now.Date;
                         try
                         {
-                            await CleanupAsync(now, stoppingToken);
+                            await CleanupAsync(stoppingToken);
                         }
                         catch (OperationCanceledException)
                         {
@@ -94,7 +94,7 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        private async Task CleanupAsync(DateTime now, CancellationToken token)
+        private async Task CleanupAsync(CancellationToken token)
         {
             var retentions = new Dictionary<string, int>
             {
@@ -108,7 +108,8 @@ namespace ScadaServer.WebApi.HostedServices
 
             foreach (var category in Categories)
             {
-                var cutoff = now.AddDays(-retentions[category]);
+                // cutoff 用 UTC 计算，与 SystemLogs.Timestamp（UTC 写入）基准一致
+                var cutoff = DateTime.UtcNow.AddDays(-retentions[category]);
                 var total = 0;
 
                 // 分批删除：MySQL DELETE ... ORDER BY Id LIMIT n，避免一次性大事务。

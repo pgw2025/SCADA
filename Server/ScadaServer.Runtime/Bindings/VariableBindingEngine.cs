@@ -250,7 +250,7 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
                     if (tv != null)
                     {
                         tv.LastBindingWriteValue = value;
-                        tv.LastBindingWriteTime = DateTime.Now;
+                        tv.LastBindingWriteTime = DateTime.UtcNow;
                     }
                 }
             }

@@ -131,13 +131,13 @@ namespace ScadaServer.Runtime.Devices
                         if (runtime.NeedsReconnect)
                         {
                             if (_retryAfter.TryGetValue(runtime.Device.Id, out var reconnectUntil)
-                                && DateTime.Now < reconnectUntil)
+                                && DateTime.UtcNow < reconnectUntil)
                             {
                                 continue;
                             }
 
                             // 先登记退避窗口再触发重连，防止重连在途时每个 tick 重复触发。
-                            _retryAfter[runtime.Device.Id] = DateTime.Now + RetryBackoff;
+                            _retryAfter[runtime.Device.Id] = DateTime.UtcNow + RetryBackoff;
                             _ = ReconnectDeviceSafelyAsync(runtime.Device.Id);
                             continue;
                         }
@@ -149,7 +149,7 @@ namespace ScadaServer.Runtime.Devices
                         }
 
                         // 退避窗口内不重派，防止快速失败设备刷屏。
-                        if (_retryAfter.TryGetValue(runtime.Device.Id, out var until) && DateTime.Now < until)
+                        if (_retryAfter.TryGetValue(runtime.Device.Id, out var until) && DateTime.UtcNow < until)
                         {
                             continue;
                         }
@@ -268,7 +268,7 @@ namespace ScadaServer.Runtime.Devices
 
                 if (!cancelled)
                 {
-                    _retryAfter[runtime.Device.Id] = DateTime.Now + RetryBackoff;
+                    _retryAfter[runtime.Device.Id] = DateTime.UtcNow + RetryBackoff;
                 }
             }
         }
