@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
@@ -47,6 +48,17 @@ namespace ScadaServer.Runtime
         private DeviceScheduler? _scheduler;
 
         /// <summary>
+        /// 设备驱动写入的兜底超时（毫秒，配置 Devices:WriteTimeoutMs，默认 5000，收敛 500~60000）。
+        /// <para>
+        /// S7 等驱动的写路径已在驱动层经 CancellationToken 封顶（见 S7Driver），此处为
+        /// 跨驱动（含 OPC UA / 虚拟设备及未来驱动）的统一兜底：防止无超时驱动的网络 IO
+        /// 无界挂起沿调用链放大（绑定引擎异步等待、脚本写桥同步等待、HTTP 请求同步等待）。
+        /// 超时后底层写入可能迟到落地（孤儿任务），结果以写入审计日志为准。
+        /// </para>
+        /// </summary>
+        private readonly int _deviceWriteTimeoutMs;
+
+        /// <summary>
         /// 各设备上一次对外推送/持久化的状态，用于去重，避免重复触发 StatusChanged。
         /// </summary>
         private readonly ConcurrentDictionary<int, DeviceStatus> _lastPushedStatus = new();
@@ -72,7 +84,8 @@ namespace ScadaServer.Runtime
             IAlarmRuleEngine alarmRuleEngine,
             IAlarmRecorder alarmRecorder,
             IRealtimeSnapshotService realtimeSnapshot,
-            IVariableWriteAuditRecorder variableWriteAudit)
+            IVariableWriteAuditRecorder variableWriteAudit,
+            IConfiguration? configuration)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -87,6 +100,14 @@ namespace ScadaServer.Runtime
             _alarmRecorder = alarmRecorder;
             _realtimeSnapshot = realtimeSnapshot;
             _variableWriteAudit = variableWriteAudit;
+
+            _deviceWriteTimeoutMs = ParseConfigTimeout(configuration?["Devices:WriteTimeoutMs"], 5000);
+        }
+
+        /// <summary>配置超时值解析：null/非法取缺省，越界收敛到 [500, 60000] 毫秒。</summary>
+        private static int ParseConfigTimeout(string? value, int fallbackMs)
+        {
+            return int.TryParse(value, out var ms) ? Math.Clamp(ms, 500, 60000) : fallbackMs;
         }
 
         /// <inheritdoc/>
@@ -411,7 +432,7 @@ namespace ScadaServer.Runtime
                 // 并为空转（无启用变量）设备直接定格在线状态，避免停留在 Initializing/Offline。
                 runtime.ConnectionState = DeviceConnectionState.Connected;
 
-                var now = DateTime.Now;
+                var now = DateTime.UtcNow;
                 foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
                 {
                     if (dv.ModelVariable == null)
@@ -560,9 +581,19 @@ namespace ScadaServer.Runtime
 
             // 驱动写入在设备锁外执行：网络 IO 可能耗时秒级，持锁会阻塞同设备采集循环
             // 的全部内存态更新。写驱动期间设备不持有 Lock，采集可正常进行。
+            // WaitAsync 兜底超时：驱动层（如 S7Driver）已各自封顶，此处统一防御无超时驱动的
+            // 无界挂起（脚本写桥同步等待 / HTTP 请求等待 / 绑定引擎等待都会被其拖死）。
             try
             {
-                await runtime.Driver.WriteAsync(vr, value);
+                await runtime.Driver.WriteAsync(vr, value)
+                    .WaitAsync(TimeSpan.FromMilliseconds(_deviceWriteTimeoutMs));
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning(
+                    "设备 {DeviceId} 变量 [{VarKey}] 写入超时（>{TimeoutMs}ms），已放弃等待：底层写入可能仍在进行（孤儿任务），最终结果以写入审计日志为准。",
+                    deviceId, variableKey, _deviceWriteTimeoutMs);
+                return await FailAsync($"写入超时（>{_deviceWriteTimeoutMs}ms），底层写入仍在进行，结果以审计日志为准");
             }
             catch (Exception ex)
             {

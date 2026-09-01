@@ -114,6 +114,23 @@ namespace ScadaServer.Infrastructure.Communication
         private const int MaxClusterGapBytes = 200;
 
         /// <summary>
+        /// IO 操作（读/写 PDU 往返）默认超时（毫秒）。可由 S7Config.IoTimeoutMs 按设备覆盖（500~60000）。
+        /// <para>
+        /// 背景：S7netplus 的 Plc.ReadTimeout/WriteTimeout 仅映射到 TcpClient 的同步 socket 超时，
+        /// 对异步 ReadAsync/WriteAsync 不生效；异步路径唯一可靠的超时手段是传入 CancellationToken。
+        /// 超时会中止当前连接（异步 socket 取消属破坏性操作），由既有重连机制恢复——
+        /// 这与"PLC 无响应即通信故障"的语义一致。
+        /// </para>
+        /// </summary>
+        private const int DefaultIoTimeoutMs = 5000;
+
+        /// <summary>建链（TCP connect + COTP/S7 握手）默认超时（毫秒）。可由 S7Config.ConnectTimeoutMs 按设备覆盖（500~60000）。</summary>
+        private const int DefaultConnectTimeoutMs = 5000;
+
+        /// <summary>当前连接的 IO 超时（毫秒）。ConnectAsync 成功后从设备配置捕获；连接失败/未连接时保持默认值。</summary>
+        private int _ioTimeoutMs = DefaultIoTimeoutMs;
+
+        /// <summary>
         /// 支持地址格式（不区分大小写）：
         ///   DB1.DBX0.0 / DB1.DBW10 / DB1.DBD20 / DB1.DBR30
         ///   I0.0 / IB0 / IW0 / ID0
@@ -182,12 +199,27 @@ namespace ScadaServer.Infrastructure.Communication
                 Plc? newPlc = null;
                 try
                 {
+                    var ioTimeoutMs = ClampConfigTimeout(config.IoTimeoutMs, DefaultIoTimeoutMs);
+                    var connectTimeoutMs = ClampConfigTimeout(config.ConnectTimeoutMs, DefaultConnectTimeoutMs);
+
                     newPlc = new Plc(cpuType, config.IpAddress, config.Port, (short)config.Rack, (short)config.Slot);
-                    await newPlc.OpenAsync();
+                    // 双保险：同步 socket 超时（属性映射 TcpClient.Receive/SendTimeout）+ 异步路径 CancellationToken。
+                    newPlc.ReadTimeout = ioTimeoutMs;
+                    newPlc.WriteTimeout = ioTimeoutMs;
+
+                    // 建链超时封顶：OpenAsync 的 token 只能取消建链后的 COTP/S7 握手（库明确注明 socket
+                    // connect 本身不受取消影响，依赖 OS 级超时约 21s），外层 WaitAsync 兜底强制返回，
+                    // 防止对不可达 IP 的建链长期占用 _plcLock（会阻塞该设备的读/写/断开/释放）。
+                    // 超时后由 catch 路径 ClosePlcInstance 清理（孤儿 socket 由 TCP 协议栈最终回收）。
+                    using (var cts = new CancellationTokenSource(connectTimeoutMs))
+                    {
+                        await newPlc.OpenAsync(cts.Token).WaitAsync(TimeSpan.FromMilliseconds(connectTimeoutMs));
+                    }
 
                     if (newPlc.IsConnected)
                     {
                         _plc = newPlc;
+                        _ioTimeoutMs = ioTimeoutMs;
                         _commFailureLogged = false; // 新连接：复位通信失败闸门
                         _logger.LogInformation("S7 PLC 连接成功 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
                             device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
@@ -215,6 +247,10 @@ namespace ScadaServer.Infrastructure.Communication
                 _plcLock.Release();
             }
         }
+
+        /// <summary>配置超时值收敛：null 取缺省，越界收敛到 [500, 60000] 毫秒。</summary>
+        private static int ClampConfigTimeout(int? value, int fallbackMs)
+            => value is int ms ? Math.Clamp(ms, 500, 60000) : fallbackMs;
 
         /// <summary>校验 S7 连接参数：IP 合法性、Rack/Slot 范围。</summary>
         private static void ValidateConfig(S7Config config)
@@ -280,7 +316,11 @@ namespace ScadaServer.Infrastructure.Communication
                     return null;
                 }
 
-                var buffer = await _plc.ReadBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, info.ByteLength);
+                // 读操作超时封顶：防止 PLC 无响应（半开连接/网络分区）时 ReadBytesAsync 无限挂起，
+                // 长期占用 _plcLock 使该设备采集停摆。取消 NetworkStream 异步读会中止连接，
+                // 由 catch 通路反馈失败 + 重连机制恢复。
+                using var readCts = new CancellationTokenSource(_ioTimeoutMs);
+                var buffer = await _plc.ReadBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, info.ByteLength, readCts.Token);
                 if (buffer == null || buffer.Length < info.ByteLength)
                 {
                     LogCommFailure("Read", variable.Address, null);
@@ -409,7 +449,11 @@ namespace ScadaServer.Infrastructure.Communication
                         byte[]? buffer;
                         try
                         {
-                            buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length);
+                            // 读操作超时封顶（同单点读取）：防 PLC 无响应时挂起占锁、采集停摆。
+                            using (var cts = new CancellationTokenSource(_ioTimeoutMs))
+                            {
+                                buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length, cts.Token);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -602,7 +646,18 @@ namespace ScadaServer.Infrastructure.Communication
 
                     try
                     {
-                        await _plc.WriteAsync(variable.Address, bitValue.Value);
+                        // 写操作超时封顶：脚本写桥/绑定写入/HTTP 写入都会同步或异步等待本调用，
+                        // 无界挂起会沿调用链放大（见 ScriptRuntimeAccess / RuntimeManager 的超时设计）。
+                        using (var cts = new CancellationTokenSource(_ioTimeoutMs))
+                        {
+                            await _plc.WriteAsync(variable.Address, bitValue.Value, cts.Token);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("S7 位写入超时（>{TimeoutMs}ms）Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                            _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
+                        throw new InvalidOperationException($"S7 写入超时（>{_ioTimeoutMs}ms），连接已中止，待重连恢复");
                     }
                     catch (Exception ex)
                     {
@@ -626,7 +681,17 @@ namespace ScadaServer.Infrastructure.Communication
 
                 try
                 {
-                    await _plc.WriteBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, bytes);
+                    // 写操作超时封顶（同位写入）。
+                    using (var cts = new CancellationTokenSource(_ioTimeoutMs))
+                    {
+                        await _plc.WriteBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, bytes, cts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("S7 写入超时（>{TimeoutMs}ms）Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
+                    throw new InvalidOperationException($"S7 写入超时（>{_ioTimeoutMs}ms），连接已中止，待重连恢复");
                 }
                 catch (Exception ex)
                 {
