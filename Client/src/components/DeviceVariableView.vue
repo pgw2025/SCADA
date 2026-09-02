@@ -211,6 +211,15 @@ const saveEdit = async () => {
     // 地址以 JSON 为权威：写回 addressConfigJson，展示串提交供参考（后端会权威重算）
     editingForm.value.addressConfigJson = stringifyAddressConfig(editingCfg.value);
     editingForm.value.address = buildAddressDisplay(editingCfg.value) || editingForm.value.address;
+
+  } else if (needsAddress.value) {
+    // 非结构化协议（MQTT/BACnet/DNP3）：地址为纯文本（Address）。
+    // 清掉历史/残留的 AddressConfigJson，避免旧 JSON 提交后被后端白名单校验拒绝。
+    editingForm.value.addressConfigJson = null;
+    if (!editingForm.value.address?.trim()) {
+      addLog('设备变量', `${fieldConfig.value.addressLabel || '地址'}不能为空`, 'warning');
+      return;
+    }
   }
   try {
     await updateDeviceVariable(editingForm.value);

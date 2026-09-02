@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Addresses;
@@ -24,20 +25,24 @@ public class DeviceVariableAppService : IDeviceVariableAppService
     private readonly ISystemScriptRepository _systemScriptRepository;
     /// <summary>运行时设备管理器，用于增删改后热加载设备采集。</summary>
     private readonly IRuntimeDeviceManager _runtimeDeviceManager;
+    /// <summary>工作单元，用于将"脚本联动清理 + 删除变量"包进同一事务，保证原子性。</summary>
+    private readonly IUnitOfWork _uow;
 
-    /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储及运行时设备管理器。</summary>
+    /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储、运行时设备管理器及工作单元。</summary>
     public DeviceVariableAppService(
         IDeviceVariableRepository repository,
         IModelVariableRepository modelVariableRepository,
         IDeviceRepository deviceRepository,
         ISystemScriptRepository systemScriptRepository,
-        IRuntimeDeviceManager runtimeDeviceManager)
+        IRuntimeDeviceManager runtimeDeviceManager,
+        IUnitOfWork uow)
     {
         _repository = repository;
         _modelVariableRepository = modelVariableRepository;
         _deviceRepository = deviceRepository;
         _systemScriptRepository = systemScriptRepository;
         _runtimeDeviceManager = runtimeDeviceManager;
+        _uow = uow;
     }
 
     /// <summary>获取指定设备下的全部设备变量（聚合其变量模板定义）。</summary>
@@ -95,7 +100,15 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             ExtensionData = null
         };
 
-        await _repository.InsertAsync(entity);
+        try
+        {
+            await _repository.InsertAsync(entity);
+        }
+        catch (DbUpdateException ex) when (DbExceptionClassifier.IsUniqueIndexConflict(ex))
+        {
+            // 并发竞态兜底：预检通过但落库时撞 (DeviceId, ModelVariableId) 唯一索引
+            throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
+        }
         // 设备变量集合变化需热加载设备运行时（重建 Worker 与变量集合）。
         await _runtimeDeviceManager.ReloadDeviceAsync(dto.DeviceId);
         return MapToDto(entity, mv);
@@ -106,12 +119,17 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         var entity = await _repository.GetByIdAsync(id);
         if (entity == null) return;
 
-        // 联动：停用引用该设备变量的 OnChange 脚本，并从写授权中剔除该变量条目。
-        await ScriptVariableCleanupHelper.CleanupScriptsByVariableAsync(entity, _deviceRepository, _modelVariableRepository, _systemScriptRepository);
+        // 在单一事务内完成"联动清理脚本 + 删除变量"，保证原子性：
+        // 中途任何一步失败则整体回滚，不留"脚本已停用但变量未删"等半状态。
+        await _uow.ExecuteInTransactionAsync(async _ =>
+        {
+            // 联动：停用引用该设备变量的 OnChange 脚本，并从写授权中剔除该变量条目。
+            await ScriptVariableCleanupHelper.CleanupScriptsByVariableAsync(entity, _deviceRepository, _modelVariableRepository, _systemScriptRepository);
+            await _repository.DeleteAsync(entity);
+            return true;
+        });
 
-        await _repository.DeleteAsync(entity);
-
-        // 设备变量集合变化需热加载设备运行时。
+        // 事务提交成功后，设备变量集合变化需热加载设备运行时。
         await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
     }
 
@@ -200,7 +218,29 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         var config = AddressConfigSerializer.Deserialize(addressConfigJson)
             ?? throw new BusinessException("设备变量结构化地址（JSON）格式无效");
 
-        display = AddressConfigSerializer.ToDisplay(config);
-        return AddressConfigSerializer.Serialize(config);
+        // 按协议分类校验：只允许后端驱动支持结构化地址的协议。
+        // 白名单外的协议（如 MQTT/BACnet/DNP3）不走 JSON 归属，维持纯文本 Address，
+        // 若被传入 JSON 一律拒收，避免"JSON 落库但展示串为空"的脏状态。
+        switch ((config.Protocol ?? "").Trim().ToUpperInvariant())
+        {
+            case "S7":
+            case "OPCUA":
+            case "MODBUS":
+                // 必须能生成有效展示串；字段缺失/取值非法（ToDisplay 返回空）直接拒绝
+                display = AddressConfigSerializer.ToDisplay(config);
+                if (string.IsNullOrWhiteSpace(display))
+                {
+                    throw new BusinessException($"协议 '{config.Protocol}' 的结构化地址配置无效（缺少必要字段或取值非法）");
+                }
+                return AddressConfigSerializer.Serialize(config);
+
+            case "VIRTUAL":
+                // 虚拟设备无地址，合法放行：JSON 落库、展示串为空
+                display = null;
+                return AddressConfigSerializer.Serialize(config);
+
+            default:
+                throw new BusinessException($"协议 '{config.Protocol}' 不支持结构化地址配置（仅支持 S7 / OPC UA / Modbus）");
+        }
     }
 }

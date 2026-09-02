@@ -6,7 +6,6 @@ using ScadaServer.Domain.Enums;
 using System.Text.Json;
 using ScadaServer.Domain.Interfaces.Repositories;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 
 namespace ScadaServer.Application.Services
 {
@@ -286,8 +285,7 @@ namespace ScadaServer.Application.Services
         /// 判断 EF 保存异常是否为 MySQL 唯一键冲突（错误码 1062，如设备标识唯一索引）。
         /// </summary>
         private static bool IsUniqueIndexConflict(DbUpdateException ex)
-            => ex.GetBaseException() is MySqlException mySql
-                && (mySql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry || mySql.Number == 1062);
+                => DbExceptionClassifier.IsUniqueIndexConflict(ex);
 
         /// <summary>
         /// 创建设备：校验区域/模型/协议驱动与配置 JSON 格式，生成或校验设备标识，

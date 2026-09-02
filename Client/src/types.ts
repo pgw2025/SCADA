@@ -560,15 +560,15 @@ export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
   },
   MQTT: {
     addressLabel: 'Topic/路径', addressPlaceholder: '如 plant1/pump/level', addressRequired: true, needsBitOffset: false,
-    addressFields: [{ key: 'nodeId', label: 'Topic', type: 'text', placeholder: '如 plant1/pump/level', required: true }]
+    addressFields: []
   },
   BACnet: {
     addressLabel: '对象地址', addressPlaceholder: '如 AV:1', addressRequired: true, needsBitOffset: false,
-    addressFields: [{ key: 'nodeId', label: '对象地址', type: 'text', placeholder: '如 AV:1', required: true }]
+    addressFields: []
   },
   DNP3: {
     addressLabel: '点表索引', addressPlaceholder: '如 2-3', addressRequired: true, needsBitOffset: false,
-    addressFields: [{ key: 'nodeId', label: '点表索引', type: 'text', placeholder: '如 2-3', required: true }]
+    addressFields: []
   },
   Virtual: { addressFields: [] }
 };
