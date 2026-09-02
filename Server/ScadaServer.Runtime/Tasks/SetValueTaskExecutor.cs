@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
@@ -12,10 +13,12 @@ namespace ScadaServer.Runtime.Tasks
     public class SetValueTaskExecutor : IScheduledTaskExecutor
     {
         private readonly IRuntimeDeviceManager _runtimeDeviceManager;
+        private readonly ILogger<SetValueTaskExecutor> _logger;
 
-        public SetValueTaskExecutor(IRuntimeDeviceManager runtimeDeviceManager)
+        public SetValueTaskExecutor(IRuntimeDeviceManager runtimeDeviceManager, ILogger<SetValueTaskExecutor> logger)
         {
             _runtimeDeviceManager = runtimeDeviceManager;
+            _logger = logger;
         }
 
         public string Type => ScheduledTaskTypes.SetValue;
@@ -34,7 +37,7 @@ namespace ScadaServer.Runtime.Tasks
             return $"已写入设备 {deviceId} 变量 [{variableKey}] = {value}";
         }
 
-        private static (int DeviceId, string VariableKey, object Value) ParseParams(string? paramsJson)
+        private (int DeviceId, string VariableKey, object Value) ParseParams(string? paramsJson)
         {
             JsonElement root;
             try
@@ -43,6 +46,7 @@ namespace ScadaServer.Runtime.Tasks
             }
             catch (JsonException ex)
             {
+                _logger.LogWarning(ex, "计划任务参数不是合法 JSON: {ParamsJson}", paramsJson);
                 throw new InvalidOperationException($"任务参数不是合法 JSON: {ex.Message}");
             }
 

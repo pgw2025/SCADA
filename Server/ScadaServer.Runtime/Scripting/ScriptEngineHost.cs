@@ -248,7 +248,7 @@ namespace ScadaServer.Runtime.Scripting
                     next[s.Id] = new ScriptJob
                     {
                         Script = s,
-                        NextUtc = ComputeNextRuntime(s, now)
+                        NextUtc = ComputeNextRuntime(s, now, _logger)
                     };
                 }
 
@@ -270,7 +270,7 @@ namespace ScadaServer.Runtime.Scripting
         /// <summary>
         /// 计算脚本下一次应触发的时间（UTC）。Manual 不参与调度；Periodic 用当前+间隔；Schedule 用 Cron 下一匹配。
         /// </summary>
-        private static DateTime? ComputeNextRuntime(SystemScript s, DateTime nowUtc)
+        private static DateTime? ComputeNextRuntime(SystemScript s, DateTime nowUtc, ILogger<ScriptEngineHost> logger)
         {
             if (s.TriggerType == ScriptTriggerType.Manual.ToString())
             {
@@ -289,8 +289,9 @@ namespace ScadaServer.Runtime.Scripting
                     // 传入 UTC 的 DateTime，Cronos 返回同 UtcKind 的下一次触发时间。
                     return cron.GetNextOccurrence(nowUtc, ScheduleZone);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    logger.LogWarning(ex, "脚本 Cron [{Cron}] 计算下次运行时间失败，脚本本次不进入调度。", s.CronExpression);
                     return null;
                 }
             }
@@ -363,7 +364,7 @@ namespace ScadaServer.Runtime.Scripting
                         if (now >= job.NextUtc.Value)
                         {
                             var dueType = job.Script.TriggerType;
-                            job.NextUtc = ComputeNextRuntime(job.Script, now);
+                            job.NextUtc = ComputeNextRuntime(job.Script, now, _logger);
                             // 仅入队（微秒级），脚本执行永远不占用调度循环线程。
                             TryEnqueue(new ScriptDispatchRequest
                             {

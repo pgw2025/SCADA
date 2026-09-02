@@ -117,7 +117,7 @@ namespace ScadaServer.Runtime.Tasks
 
                 foreach (var t in tasks)
                 {
-                    var nextUtc = t.Active ? ComputeNextUtc(t.CronExpression, now) : null;
+                    var nextUtc = t.Active ? ComputeNextUtc(t.CronExpression, now, _logger) : null;
 
                     // NextRunAt 展示值与调度快照保持一致；仅变化时回写，避免每次重载都打库。
                     if (t.NextRunAt != nextUtc)
@@ -150,16 +150,17 @@ namespace ScadaServer.Runtime.Tasks
         /// <summary>
         /// 计算任务下一次触发时间（UTC）。Cron 兼容 6 段秒级与 5 段分钟级；不可解析时返回 null（不进入调度）。
         /// </summary>
-        private static DateTime? ComputeNextUtc(string? cronExpression, DateTime nowUtc)
+        private static DateTime? ComputeNextUtc(string? cronExpression, DateTime nowUtc, ILogger<ScheduledTaskScheduler> logger)
         {
-            if (TryParseCron(cronExpression, out var cron))
+            if (TryParseCron(cronExpression, out var cron, logger))
             {
                 try
                 {
                     return cron.GetNextOccurrence(nowUtc, ScheduleZone);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    logger.LogWarning(ex, "定时任务 Cron [{Cron}] 计算下次触发时间失败，任务本次不进入调度。", cronExpression);
                     return null;
                 }
             }
@@ -167,7 +168,7 @@ namespace ScadaServer.Runtime.Tasks
         }
 
         /// <summary>解析 Cron：先按 6 段秒级，失败再按 5 段分钟级（与 AppService 校验一致）。</summary>
-        internal static bool TryParseCron(string? expression, out CronExpression cron)
+        internal static bool TryParseCron(string? expression, out CronExpression cron, ILogger<ScheduledTaskScheduler> logger)
         {
             cron = null!;
             if (string.IsNullOrWhiteSpace(expression))
@@ -186,8 +187,9 @@ namespace ScadaServer.Runtime.Tasks
                     cron = CronExpression.Parse(expression, CronFormat.Standard);
                     return true;
                 }
-                catch (CronFormatException)
+                catch (CronFormatException ex)
                 {
+                    logger.LogDebug(ex, "定时任务 Cron 表达式非法（秒级与分钟级均解析失败）：{Expression}", expression);
                     return false;
                 }
             }
@@ -222,7 +224,7 @@ namespace ScadaServer.Runtime.Tasks
                         }
 
                         // 到期：先推进下一次触发时间（避免执行期间再次到期重复派发），再异步派发。
-                        job.NextUtc = ComputeNextUtc(job.Task.CronExpression, now);
+                        job.NextUtc = ComputeNextUtc(job.Task.CronExpression, now, _logger);
                         job.Task.NextRunAt = job.NextUtc;
                         DispatchFireAndTrack(job.Task, "Cron");
                     }

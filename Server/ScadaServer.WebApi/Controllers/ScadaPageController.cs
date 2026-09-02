@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.WebApi.Services;
@@ -14,15 +15,18 @@ namespace ScadaServer.WebApi.Controllers
         private readonly IScadaPageAppService _appService;
         private readonly IScadaProjectAppService _projectAppService;
         private readonly IOperationAuditService _auditService;
+        private readonly ILogger<ScadaPageController> _logger;
 
         public ScadaPageController(
             IScadaPageAppService appService,
             IScadaProjectAppService projectAppService,
-            IOperationAuditService auditService)
+            IOperationAuditService auditService,
+            ILogger<ScadaPageController> logger)
         {
             _appService = appService;
             _projectAppService = projectAppService;
             _auditService = auditService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -104,6 +108,7 @@ namespace ScadaServer.WebApi.Controllers
             }
             catch (ArgumentException ex)
             {
+                _logger.LogWarning(ex, "导入组态画面参数错误，ProjectId={ProjectId}", projectId);
                 return BadRequest(new { message = ex.Message });
             }
         }

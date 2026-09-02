@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 
 namespace ScadaServer.WebApi.Controllers
@@ -13,10 +14,12 @@ namespace ScadaServer.WebApi.Controllers
     public class HmiImageController : ControllerBase
     {
         private readonly IHmiImageAppService _appService;
+        private readonly ILogger<HmiImageController> _logger;
 
-        public HmiImageController(IHmiImageAppService appService)
+        public HmiImageController(IHmiImageAppService appService, ILogger<HmiImageController> logger)
         {
             _appService = appService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -39,6 +42,7 @@ namespace ScadaServer.WebApi.Controllers
             catch (ArgumentException ex)
             {
                 // 大小超限 / 扩展名白名单拒绝：参数级业务错误，返回 400 带具体文案
+                _logger.LogWarning(ex, "图片上传参数错误：{FileName}", file.FileName);
                 return BadRequest(new { message = ex.Message });
             }
         }

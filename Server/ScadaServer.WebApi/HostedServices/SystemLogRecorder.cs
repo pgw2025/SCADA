@@ -171,6 +171,7 @@ namespace ScadaServer.WebApi.HostedServices
             }
             catch (OperationCanceledException)
             {
+                _logger.LogDebug("系统日志记录服务在等待数据库初始化时被取消，退出。");
                 return;
             }
 
@@ -212,6 +213,7 @@ namespace ScadaServer.WebApi.HostedServices
             catch (OperationCanceledException)
             {
                 // 应用关闭：正常退出路径
+                _logger.LogDebug("系统日志记录服务后台循环收到取消信号（应用关闭），正常退出。");
             }
             catch (Exception ex)
             {

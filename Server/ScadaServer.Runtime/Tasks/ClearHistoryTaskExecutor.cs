@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
@@ -12,10 +13,12 @@ namespace ScadaServer.Runtime.Tasks
     public class ClearHistoryTaskExecutor : IScheduledTaskExecutor
     {
         private readonly IInfluxStore _influxStore;
+        private readonly ILogger<ClearHistoryTaskExecutor> _logger;
 
-        public ClearHistoryTaskExecutor(IInfluxStore influxStore)
+        public ClearHistoryTaskExecutor(IInfluxStore influxStore, ILogger<ClearHistoryTaskExecutor> logger)
         {
             _influxStore = influxStore;
+            _logger = logger;
         }
 
         public string Type => ScheduledTaskTypes.ClearHistory;
@@ -34,7 +37,7 @@ namespace ScadaServer.Runtime.Tasks
             return $"保留 {retentionDays} 天：{message}";
         }
 
-        private static int ParseRetentionDays(string? paramsJson)
+        private int ParseRetentionDays(string? paramsJson)
         {
             JsonElement root;
             try
@@ -43,6 +46,7 @@ namespace ScadaServer.Runtime.Tasks
             }
             catch (JsonException ex)
             {
+                _logger.LogWarning(ex, "计划任务参数不是合法 JSON: {ParamsJson}", paramsJson);
                 throw new InvalidOperationException($"任务参数不是合法 JSON: {ex.Message}");
             }
 

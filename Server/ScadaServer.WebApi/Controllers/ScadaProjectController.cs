@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.WebApi.Services;
@@ -13,11 +14,14 @@ namespace ScadaServer.WebApi.Controllers
     {
         private readonly IScadaProjectAppService _appService;
         private readonly IOperationAuditService _auditService;
+        private readonly ILogger<ScadaProjectController> _logger;
 
-        public ScadaProjectController(IScadaProjectAppService appService, IOperationAuditService auditService)
+        public ScadaProjectController(IScadaProjectAppService appService, IOperationAuditService auditService,
+            ILogger<ScadaProjectController> logger)
         {
             _appService = appService;
             _auditService = auditService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -116,6 +120,7 @@ namespace ScadaServer.WebApi.Controllers
             }
             catch (ArgumentException ex)
             {
+                _logger.LogWarning(ex, "导入组态工程参数错误。");
                 return BadRequest(new { message = ex.Message });
             }
         }

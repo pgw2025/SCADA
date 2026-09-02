@@ -146,9 +146,11 @@ namespace ScadaServer.Runtime.Scripting
                 errorMessage = error ?? string.Empty;
                 return success;
             }
-            catch (TimeoutException)
+            catch (TimeoutException ex)
             {
                 Interlocked.Increment(ref _bridgeTimeoutCount);
+                _logger?.LogWarning(ex, "脚本写桥写入超时：{DeviceKey}:{VariableKey}（等待 {TimeoutMs}ms），底层写入仍在继续",
+                    deviceKey, variableKey, _writeBridgeTimeoutMs);
                 errorMessage = $"写入超时（>{_writeBridgeTimeoutMs}ms）：底层写入仍在进行，最终结果以写入审计日志为准";
 
                 // 观察孤儿任务最终结果：同时避免其异常成为"未观察任务异常"。
@@ -177,9 +179,10 @@ namespace ScadaServer.Runtime.Scripting
                         success ? string.Empty : $"（{error}）");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 观测路径本身不得抛出（ContinueFrom 上下文无调用方兜底）。
+                // 观测路径本身不得抛出（ContinueFrom 上下文无调用方兜底），仅记录日志。
+                _logger?.LogWarning(ex, "脚本写桥孤儿写入观测路径异常：{DeviceKey}.{VariableKey}", deviceKey, variableKey);
             }
         }
     }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Runtime.Scripting;
@@ -12,10 +13,12 @@ namespace ScadaServer.Runtime.Tasks
     public class ExecuteScriptTaskExecutor : IScheduledTaskExecutor
     {
         private readonly IScriptEngineHost _scriptEngine;
+        private readonly ILogger<ExecuteScriptTaskExecutor> _logger;
 
-        public ExecuteScriptTaskExecutor(IScriptEngineHost scriptEngine)
+        public ExecuteScriptTaskExecutor(IScriptEngineHost scriptEngine, ILogger<ExecuteScriptTaskExecutor> logger)
         {
             _scriptEngine = scriptEngine;
+            _logger = logger;
         }
 
         public string Type => ScheduledTaskTypes.ExecuteScript;
@@ -34,7 +37,7 @@ namespace ScadaServer.Runtime.Tasks
             throw new InvalidOperationException($"脚本 {scriptId} 执行{result.Result}：{result.Error ?? "未知错误"}");
         }
 
-        private static int ParseScriptId(string? paramsJson)
+        private int ParseScriptId(string? paramsJson)
         {
             JsonElement root;
             try
@@ -43,6 +46,7 @@ namespace ScadaServer.Runtime.Tasks
             }
             catch (JsonException ex)
             {
+                _logger.LogWarning(ex, "计划任务参数不是合法 JSON: {ParamsJson}", paramsJson);
                 throw new InvalidOperationException($"任务参数不是合法 JSON: {ex.Message}");
             }
 

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.Services;
@@ -17,12 +18,15 @@ namespace ScadaServer.WebApi.Middlewares
         private readonly RequestDelegate _next;
         private readonly IExposedApiRegistry _registry;
         private readonly RuntimeManager _runtimeManager;
+        private readonly ILogger<ExposedApiMiddleware> _logger;
 
-        public ExposedApiMiddleware(RequestDelegate next, IExposedApiRegistry registry, RuntimeManager runtimeManager)
+        public ExposedApiMiddleware(RequestDelegate next, IExposedApiRegistry registry, RuntimeManager runtimeManager,
+            ILogger<ExposedApiMiddleware> logger)
         {
             _next = next;
             _registry = registry;
             _runtimeManager = runtimeManager;
+            _logger = logger;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -99,14 +103,15 @@ namespace ScadaServer.WebApi.Middlewares
         }
 
         /// <summary>以统一 JSON 结构写响应，若序列化异常则回退为纯文本 500，避免终端中间件挂起。</summary>
-        private static async Task WriteJsonAsync(HttpContext context, object payload)
+        private async Task WriteJsonAsync(HttpContext context, object payload)
         {
             try
             {
                 await context.Response.WriteAsJsonAsync(payload);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "开放 API 响应序列化失败：{Path}", context.Request.Path);
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 await context.Response.WriteAsync("{\"success\":false,\"message\":\"响应序列化失败\"}");
             }
