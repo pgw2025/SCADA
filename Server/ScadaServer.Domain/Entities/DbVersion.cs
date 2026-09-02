@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 数据库版本实体（用于数据库迁移跟踪）
     /// </summary>
     [Table("DbVersion")]
-    public class DbVersion : EntityBase
+    public class DbVersion
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 版本号
         /// </summary>

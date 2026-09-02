@@ -11,8 +11,14 @@ namespace ScadaServer.Domain.Entities
     /// </para>
     /// </summary>
     [Table("DataModels")]
-    public class DataModel : EntityBase
+    public class DataModel
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 模型名称（业务可读的名称，如 "1500 主控"）。
         /// </summary>

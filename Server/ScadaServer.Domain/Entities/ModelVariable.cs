@@ -8,8 +8,14 @@ namespace ScadaServer.Domain.Entities
     /// 模型变量实体
     /// </summary>
     [Table("ModelVariables")]
-    public class ModelVariable : EntityBase
+    public class ModelVariable
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的数据模型ID
         /// </summary>

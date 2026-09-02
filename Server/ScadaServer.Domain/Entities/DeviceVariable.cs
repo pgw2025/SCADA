@@ -22,8 +22,14 @@ namespace ScadaServer.Domain.Entities
     /// </para>
     /// </summary>
     [Table("DeviceVariables")]
-    public class DeviceVariable : EntityBase
+    public class DeviceVariable
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联设备ID（外键，指向 <see cref="Device"/>）
         /// </summary>

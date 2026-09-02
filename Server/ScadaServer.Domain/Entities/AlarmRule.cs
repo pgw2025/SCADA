@@ -8,8 +8,14 @@ namespace ScadaServer.Domain.Entities
     /// 报警规则实体（从原 VariableTrigger 拆分而来，仅承载报警语义）
     /// </summary>
     [Table("AlarmRules")]
-    public class AlarmRule : EntityBase
+    public class AlarmRule
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 规则名称
         /// </summary>

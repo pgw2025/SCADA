@@ -8,8 +8,14 @@ namespace ScadaServer.Domain.Entities
     /// 设备表 - 物理设备的实例
     /// </summary>
     [Table("Devices")]
-    public class Device : EntityBase
+    public class Device
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 设备名称
         /// </summary>

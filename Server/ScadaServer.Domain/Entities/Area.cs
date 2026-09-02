@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 区域实体（用于设备分组管理）
     /// </summary>
     [Table("Areas")]
-    public class Area : EntityBase
+    public class Area
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 区域名称
         /// </summary>

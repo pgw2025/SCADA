@@ -8,8 +8,14 @@ namespace ScadaServer.Domain.Entities
     /// 联动规则实体（从原 VariableTrigger 拆分而来，仅承载联动语义）
     /// </summary>
     [Table("LinkageRules")]
-    public class LinkageRule : EntityBase
+    public class LinkageRule
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 规则名称
         /// </summary>

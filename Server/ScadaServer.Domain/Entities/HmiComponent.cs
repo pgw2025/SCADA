@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// HMI组件实体
     /// </summary>
     [Table("HmiComponents")]
-    public class HmiComponent : EntityBase
+    public class HmiComponent
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的页面ID
         /// </summary>

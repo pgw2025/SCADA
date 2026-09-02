@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 数据转换实体（用于变量间的数据转发）
     /// </summary>
     [Table("DataConversions")]
-    public class DataConversion : EntityBase
+    public class DataConversion
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 转换名称
         /// </summary>

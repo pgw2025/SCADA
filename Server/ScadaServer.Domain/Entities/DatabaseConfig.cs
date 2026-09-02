@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 数据库配置实体
     /// </summary>
     [Table("DatabaseConfigs")]
-    public class DatabaseConfig : EntityBase
+    public class DatabaseConfig
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 配置名称
         /// </summary>

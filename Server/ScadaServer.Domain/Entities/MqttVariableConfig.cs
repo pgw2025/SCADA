@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// MQTT变量配置实体
     /// </summary>
     [Table("MqttVariableConfigs")]
-    public class MqttVariableConfig : EntityBase
+    public class MqttVariableConfig
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的MQTT服务器ID
         /// </summary>

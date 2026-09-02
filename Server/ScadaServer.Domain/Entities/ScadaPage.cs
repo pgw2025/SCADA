@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// SCADA页面实体
     /// </summary>
     [Table("ScadaPages")]
-    public class ScadaPage : EntityBase
+    public class ScadaPage
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的项目ID
         /// </summary>

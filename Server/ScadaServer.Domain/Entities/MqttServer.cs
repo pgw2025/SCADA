@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// MQTT服务器实体
     /// </summary>
     [Table("MqttServers")]
-    public class MqttServer : EntityBase
+    public class MqttServer
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 服务器名称
         /// </summary>

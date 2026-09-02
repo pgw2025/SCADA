@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// SCADA项目实体
     /// </summary>
     [Table("ScadaProjects")]
-    public class ScadaProject : EntityBase
+    public class ScadaProject
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 项目名称
         /// </summary>

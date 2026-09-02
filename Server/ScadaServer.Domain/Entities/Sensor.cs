@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 传感器实体
     /// </summary>
     [Table("Sensors")]
-    public class Sensor : EntityBase
+    public class Sensor
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的设备ID
         /// </summary>

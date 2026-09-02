@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 系统用户实体
     /// </summary>
     [Table("SystemUsers")]
-    public class SystemUser : EntityBase
+    public class SystemUser
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 用户名
         /// </summary>

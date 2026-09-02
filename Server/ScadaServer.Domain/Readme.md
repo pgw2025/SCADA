@@ -73,7 +73,6 @@ ScadaServer.Domain/
 
 | 实体                      | 表名                     | 用途归类                       |
 | ----------------------- | ---------------------- | -------------------------- |
-| `EntityBase`            | -（抽象）                  | 实体基类，提供 `int Id` 主键        |
 | `Device`                | Devices                | 物理设备实例，主业务对象之一             |
 | `DeviceVariable`        | DeviceVariables        | 变量在具体设备上的“实例化”（地址/轮询/缩放覆盖） |
 | `DeviceConfig`          | DeviceConfigs          | 设备的协议配置（JSON 文本，1:1）       |
@@ -278,10 +277,10 @@ MqttServer + MqttVariableConfig（待发布变量 + 主题/别名）
 ### 【可选优化】
 
 1. **主键约定不统一**
-   大多数实体用 `int Id`（继承 `EntityBase`），但报警/历史/脚本执行记录等数据量大的表独立用 `long Id`。这是有意为之（注释说明 long 支撑更长时间维度），但 DAO/查询需同时适配两种 Key 类型（`IRepository<T,int>` 与 `IRepository<T,long>`）。建议在文档中显式沉淀这一约定，避免新人困惑。
+   各实体均显式声明主键；大多数用 `int Id`，报警/历史/脚本执行记录等数据量大的表独立用 `long Id`。这是有意为之（注释说明 long 支撑更长时间维度），但 DAO/查询需同时适配两种 Key 类型（`IRepository<T,int>` 与 `IRepository<T,long>`）。建议在文档中显式沉淀这一约定，避免新人困惑。
 
 2. **实体继承建议统一**
-   `AlarmRecord/VariableHistory/ScriptExecutionRecord/SystemScript/DbVersion` 未继承 `EntityBase`。现有结构可用，但推荐要么都继承、要么都显式声明主键，保持一致性。
+   `AlarmRecord/VariableHistory/ScriptExecutionRecord/SystemScript` 等大数据量表用 `long Id`，其余实体显式声明 `int Id`，无不带主键的实体。
 
 3. **时间语义注释不一致**
    `SystemLog.Timestamp` 注释写“服务器本地时间”，而全系统项目记忆约定“时间统一用 UTC”。若不统一，日志时间会成为 8 小时偏移重灾区。至少应让注释与约定一致，并在生产明确时间口径。
@@ -301,7 +300,7 @@ MqttServer + MqttVariableConfig（待发布变量 + 主题/别名）
 
 按照“先看骨架 → 再看设备主线 → 再看报警/脚本 → 再看契约”的顺序，最快建立整体认知：
 
-1. **先看** `Entities/EntityBase.cs` + `ScadaServer.Domain.csproj`：理解“这是纯模型层、零依赖、int 自增主键”的地基。
+1. **先看** `Entities/`（各实体显式声明 `int Id` 自增主键）+ `ScadaServer.Domain.csproj`：理解“这是纯模型层、零依赖、int 自增主键”的地基。
 2. **再看** `Entities/Protocol.cs`、`DataModel.cs`、`ModelVariable.cs`、`Device.cs`、`DeviceVariable.cs`：这是系统的绝对主链路——协议→型号→模板→设备实例→变量实例，先懂这套关系等于懂了半个系统。
 3. **然后看** `Enums/` 全部：把值域过一遍（尤其 `StoreModeEnum`、`TriggerConditionEnum`、`AlarmLevelEnum`、`ScriptTriggerType`），因为很多注释和远端逻辑都以这些枚举为锚点。
 4. **接着看** `Entities/AlarmRecord.cs` + `AlarmRule.cs` + `LinkageRule.cs`：理解报警/联动的三态语义。

@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 配置日志实体（记录设备配置变更）
     /// </summary>
     [Table("ConfigLog")]
-    public class ConfigLog : EntityBase
+    public class ConfigLog
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 关联的设备ID
         /// </summary>

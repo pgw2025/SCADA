@@ -13,8 +13,14 @@ namespace ScadaServer.Domain.Entities
     /// <para>本协议只定义"是什么 / 怎么派发"，不承载任何采集运行逻辑（运行期与驱动实现保持不变）。</para>
     /// </summary>
     [Table("Protocols")]
-    public class Protocol : EntityBase
+    public class Protocol
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 协议业务键（稳定标识符，如 "s7"、"opcua"、"virtual"）。
         /// 用于驱动工厂等派发逻辑按 Key 定位协议，建议与代码中的协议常量保持一致，且全局唯一。

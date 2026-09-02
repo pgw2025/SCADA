@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 暴露接口实体
     /// </summary>
     [Table("ExposedInterfaces")]
-    public class ExposedInterface : EntityBase
+    public class ExposedInterface
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 接口名称
         /// </summary>

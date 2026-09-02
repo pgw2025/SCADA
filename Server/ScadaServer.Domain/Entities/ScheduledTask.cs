@@ -7,8 +7,14 @@ namespace ScadaServer.Domain.Entities
     /// 定时任务实体
     /// </summary>
     [Table("ScheduledTasks")]
-    public class ScheduledTask : EntityBase
+    public class ScheduledTask
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 任务名称
         /// </summary>

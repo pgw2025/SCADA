@@ -13,8 +13,14 @@ namespace ScadaServer.Domain.Entities
     /// 均显式限制长度映射为 varchar，避免 Pomelo 默认 longtext 导致无法建索引。
     /// </remarks>
     [Table("SystemLogs")]
-    public class SystemLog : EntityBase
+    public class SystemLog
     {
+        /// <summary>
+        /// 主键ID，自增字段
+        /// </summary>
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
         /// <summary>
         /// 日志时间戳（UTC 存储；前端展示时本地化）
         /// </summary>
