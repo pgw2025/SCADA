@@ -7,7 +7,7 @@ namespace ScadaServer.WebApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class TelemetryDataController : ControllerBase
+    public class TelemetryDataController : ApiControllerBase
     {
         private readonly IMqttService _mqttService;
         private readonly RuntimeManager _runtimeManager;
@@ -50,6 +50,10 @@ namespace ScadaServer.WebApi.Controllers
         [HttpPost("publish-manual")]
         public async Task<IActionResult> ManualPublish([FromBody] string message)
         {
+            // 守卫裸字符串参数为空（JSON null / 空串 / 纯空白）：避免发布空载荷。
+            var err = EnsureNotBlank(message, "message", "发布消息内容不能为空");
+            if (err != null) return err;
+
             await _mqttService.PublishAsync("telemetry/manual", message);
             return Ok("Published to MQTT");
         }

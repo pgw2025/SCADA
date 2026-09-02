@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ScadaServer.Application.DTOs
 {
     /// <summary>
@@ -9,9 +11,12 @@ namespace ScadaServer.Application.DTOs
         public int Id { get; set; }
 
         /// <summary>工程名称</summary>
+        [Required(ErrorMessage = "工程名称不能为空")]
+        [StringLength(100, ErrorMessage = "工程名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>工程描述（可空）</summary>
+        [StringLength(500, ErrorMessage = "工程描述不能超过500个字符")]
         public string? Description { get; set; }
 
         /// <summary>创建时间</summary>

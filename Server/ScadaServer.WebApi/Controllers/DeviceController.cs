@@ -13,7 +13,7 @@ namespace ScadaServer.WebApi.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class DeviceController : ControllerBase
+    public class DeviceController : ApiControllerBase
     {
         private readonly IDeviceAppService _deviceAppService;
 
@@ -61,7 +61,17 @@ namespace ScadaServer.WebApi.Controllers
         [AuditLog("变量写入", "WRITE")]
         public async Task<IActionResult> WriteVariable(int id, string variableKey, [FromBody] WriteVariableRequestDto dto)
         {
-            await _deviceAppService.WriteVariableAsync(id, variableKey, dto.Value!);
+            // 守卫空请求体（JSON null），并校验写入值为空时不进入驱动层（替换原 dto.Value! 强断言）。
+            var bodyErr = EnsureBody(dto, "写入请求不能为空");
+            if (bodyErr != null) return bodyErr;
+
+            var value = dto.Value;
+            if (value is null)
+            {
+                return BadRequest(ApiResponse.Fail("写入值不能为空"));
+            }
+
+            await _deviceAppService.WriteVariableAsync(id, variableKey, value);
             return Ok(new { success = true, message = "写入成功" });
         }
 

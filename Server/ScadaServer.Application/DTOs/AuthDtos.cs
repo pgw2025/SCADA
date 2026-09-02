@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ScadaServer.Application.DTOs
 {
     /// <summary>
@@ -6,9 +8,13 @@ namespace ScadaServer.Application.DTOs
     public class LoginDto
     {
         /// <summary>登录用户名；必填</summary>
+        [Required(ErrorMessage = "用户名不能为空")]
+        [StringLength(64, ErrorMessage = "用户名不能超过64个字符")]
         public string Username { get; set; } = string.Empty;
 
         /// <summary>登录密码；必填</summary>
+        [Required(ErrorMessage = "密码不能为空")]
+        [StringLength(128, ErrorMessage = "密码不能超过128个字符")]
         public string Password { get; set; } = string.Empty;
     }
 
@@ -16,6 +22,8 @@ namespace ScadaServer.Application.DTOs
     public class ResetPasswordDto
     {
         /// <summary>重置后的新密码；必填</summary>
+        [Required(ErrorMessage = "新密码不能为空")]
+        [StringLength(128, ErrorMessage = "新密码不能超过128个字符")]
         public string NewPassword { get; set; } = string.Empty;
     }
 
@@ -23,9 +31,13 @@ namespace ScadaServer.Application.DTOs
     public class ChangePasswordDto
     {
         /// <summary>原密码，用于校验身份</summary>
+        [Required(ErrorMessage = "原密码不能为空")]
+        [StringLength(128, ErrorMessage = "原密码不能超过128个字符")]
         public string OldPassword { get; set; } = string.Empty;
 
         /// <summary>修改后的新密码</summary>
+        [Required(ErrorMessage = "新密码不能为空")]
+        [StringLength(128, ErrorMessage = "新密码不能超过128个字符")]
         public string NewPassword { get; set; } = string.Empty;
     }
 

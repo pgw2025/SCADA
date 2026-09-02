@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using ScadaServer.Application.Converters;
 using ScadaServer.Domain.Enums;
@@ -22,9 +23,11 @@ public class DeviceVariableDto
     // ===== 变量定义（来自 ModelVariable 模板）=====
 
     /// <summary>变量标识（来自模板，全局唯一键）</summary>
+    [StringLength(100, ErrorMessage = "变量键不能超过100个字符")]
     public string Key { get; set; } = string.Empty;
 
     /// <summary>变量名称（来自模板）</summary>
+    [StringLength(100, ErrorMessage = "变量名称不能超过100个字符")]
     public string Name { get; set; } = string.Empty;
 
     /// <summary>数据类型（来自模板）</summary>
@@ -32,20 +35,25 @@ public class DeviceVariableDto
     public DataTypeEnum DataType { get; set; }
 
     /// <summary>单位（来自模板）</summary>
+    [StringLength(50, ErrorMessage = "单位不能超过50个字符")]
     public string? Unit { get; set; }
 
     // ===== 设备实例配置（来自 DeviceVariable）=====
 
     /// <summary>设备实例上的实际寄存器地址。空 → 回退模板（过渡期兼容）。</summary>
+    [StringLength(500, ErrorMessage = "地址不能超过500个字符")]
     public string? Address { get; set; }
 
     /// <summary>设备实例结构化地址（JSON，<c>AddressConfig</c>）。地址权威机读形态，前端仅编辑本字段。</summary>
+    [StringLength(3000, ErrorMessage = "地址配置不能超过3000个字符")]
     public string? AddressConfigJson { get; set; }
 
     /// <summary>位偏移（用于位操作）。空 → 回退模板。</summary>
+    [Range(0, 31, ErrorMessage = "位偏移必须在0到31之间")]
     public int? BitOffset { get; set; }
 
     /// <summary>设备实例上的轮询间隔（毫秒）。空 → 回退模板（或设备级 PollingInterval）。</summary>
+    [Range(10, 3600000, ErrorMessage = "轮询间隔必须在10ms到1小时之间")]
     public int? PollingIntervalMs { get; set; }
 
     /// <summary>是否在该设备上启用此变量的采集。默认 true。</summary>

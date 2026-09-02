@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ScadaServer.Application.DTOs
 {
     /// <summary>
@@ -9,15 +11,22 @@ namespace ScadaServer.Application.DTOs
         public int Id { get; set; }
 
         /// <summary>任务名称</summary>
+        [Required(ErrorMessage = "任务名称不能为空")]
+        [StringLength(100, ErrorMessage = "任务名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>任务类型（标识具体执行的业务动作）</summary>
+        [Required(ErrorMessage = "任务类型不能为空")]
+        [StringLength(50, ErrorMessage = "任务类型不能超过50个字符")]
         public string Type { get; set; } = string.Empty;
 
         /// <summary>触发计划 cron 表达式</summary>
+        [Required(ErrorMessage = "Cron 表达式不能为空")]
+        [StringLength(30, ErrorMessage = "Cron 表达式不能超过30个字符")]
         public string CronExpression { get; set; } = string.Empty;
 
         /// <summary>任务参数（JSON 串）</summary>
+        [StringLength(3000, ErrorMessage = "任务参数不能超过3000个字符")]
         public string ParamsJson { get; set; } = string.Empty;
 
         /// <summary>是否启用该任务</summary>

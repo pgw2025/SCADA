@@ -12,7 +12,7 @@ namespace ScadaServer.WebApi.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    public class AuthController : ApiControllerBase
     {
         private readonly ISystemUserAppService _userService;
         private readonly IOperationAuditService _auditService;
@@ -37,6 +37,10 @@ namespace ScadaServer.WebApi.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
+            // 守卫空请求体（JSON null）：避免下方访问 loginDto.Username 触发 NRE。
+            var bodyErr = EnsureBody(loginDto, "登录信息不能为空");
+            if (bodyErr != null) return bodyErr;
+
             // 登录接口为 [AllowAnonymous]（无 JWT），操作人显式取请求体用户名，IP 由服务取连接信息。
             var username = loginDto.Username ?? "unknown";
             var result = await _userService.LoginAsync(loginDto);
@@ -93,6 +97,10 @@ namespace ScadaServer.WebApi.Controllers
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
+            // 守卫空请求体（JSON null）：避免下方访问 dto.OldPassword/NewPassword 触发 NRE。
+            var bodyErr = EnsureBody(dto, "修改密码信息不能为空");
+            if (bodyErr != null) return bodyErr;
+
             var idClaim = User.FindFirst("id")?.Value;
             if (!int.TryParse(idClaim, out var userId))
             {

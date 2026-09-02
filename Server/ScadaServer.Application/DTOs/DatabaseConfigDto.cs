@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ScadaServer.Application.DTOs
 {
     /// <summary>
@@ -13,21 +15,29 @@ namespace ScadaServer.Application.DTOs
         public int Id { get; set; }
 
         /// <summary>配置名称</summary>
+        [Required(ErrorMessage = "配置名称不能为空")]
+        [StringLength(100, ErrorMessage = "配置名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
         /// <summary>用途类型：Realtime=实时/业务库，Historical=历史库</summary>
+        [StringLength(20, ErrorMessage = "用途类型不能超过20个字符")]
         public string Type { get; set; } = "Historical";
 
         /// <summary>后端类型：MySQL / InfluxDB / PostgreSQL / SQLite</summary>
+        [Required(ErrorMessage = "后端类型不能为空")]
+        [StringLength(20, ErrorMessage = "后端类型不能超过20个字符")]
         public string BackendType { get; set; } = "InfluxDB";
 
         /// <summary>主机地址（IP 或域名）</summary>
+        [StringLength(200, ErrorMessage = "主机地址不能超过200个字符")]
         public string Host { get; set; } = string.Empty;
 
         /// <summary>端口号</summary>
+        [Range(1, 65535, ErrorMessage = "端口号必须在1到65535之间")]
         public int Port { get; set; }
 
         /// <summary>数据库用户名</summary>
+        [StringLength(100, ErrorMessage = "用户名不能超过100个字符")]
         public string Username { get; set; } = string.Empty;
 
         /// <summary>密码（回显为掩码；保存时掩码/空 = 不改密）</summary>
@@ -37,18 +47,22 @@ namespace ScadaServer.Application.DTOs
         public bool HasPassword { get; set; }
 
         /// <summary>数据库名称</summary>
+        [StringLength(200, ErrorMessage = "数据库名称不能超过200个字符")]
         public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>访问令牌（InfluxDB 2.x；回显为掩码）</summary>
+        [StringLength(200, ErrorMessage = "令牌不能超过200个字符")]
         public string? Token { get; set; }
 
         /// <summary>是否已配置令牌（仅回显用）</summary>
         public bool HasToken { get; set; }
 
         /// <summary>组织名（InfluxDB 2.x）</summary>
+        [StringLength(100, ErrorMessage = "组织名不能超过100个字符")]
         public string? Org { get; set; }
 
         /// <summary>Bucket 名称（InfluxDB 2.x）</summary>
+        [StringLength(100, ErrorMessage = "Bucket 名称不能超过100个字符")]
         public string? Bucket { get; set; }
 
         /// <summary>是否当前生效（同 Type 唯一）</summary>
@@ -69,15 +83,21 @@ namespace ScadaServer.Application.DTOs
     public class MainDatabaseConfigDto
     {
         /// <summary>主机地址（IP 或域名）</summary>
+        [Required(ErrorMessage = "主机地址不能为空")]
+        [StringLength(200, ErrorMessage = "主机地址不能超过200个字符")]
         public string Host { get; set; } = string.Empty;
 
         /// <summary>端口号</summary>
+        [Range(1, 65535, ErrorMessage = "端口号必须在1到65535之间")]
         public int Port { get; set; }
 
         /// <summary>数据库名称</summary>
+        [Required(ErrorMessage = "数据库名称不能为空")]
+        [StringLength(200, ErrorMessage = "数据库名称不能超过200个字符")]
         public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>数据库用户名</summary>
+        [StringLength(100, ErrorMessage = "用户名不能超过100个字符")]
         public string Username { get; set; } = string.Empty;
 
         /// <summary>密码（回显为掩码；保存时掩码/空 = 不改密）</summary>
@@ -93,30 +113,40 @@ namespace ScadaServer.Application.DTOs
     public class TestConnectionRequest
     {
         /// <summary>后端类型：MySQL / InfluxDB 等</summary>
+        [Required(ErrorMessage = "后端类型不能为空")]
+        [StringLength(20, ErrorMessage = "后端类型不能超过20个字符")]
         public string BackendType { get; set; } = string.Empty;
 
         /// <summary>主机地址（IP 或域名）</summary>
+        [StringLength(200, ErrorMessage = "主机地址不能超过200个字符")]
         public string Host { get; set; } = string.Empty;
 
         /// <summary>端口号</summary>
+        [Range(1, 65535, ErrorMessage = "端口号必须在1到65535之间")]
         public int Port { get; set; }
 
         /// <summary>数据库用户名</summary>
+        [StringLength(100, ErrorMessage = "用户名不能超过100个字符")]
         public string Username { get; set; } = string.Empty;
 
         /// <summary>数据库密码</summary>
+        [StringLength(128, ErrorMessage = "密码不能超过128个字符")]
         public string Password { get; set; } = string.Empty;
 
         /// <summary>数据库名称</summary>
+        [StringLength(200, ErrorMessage = "数据库名称不能超过200个字符")]
         public string DatabaseName { get; set; } = string.Empty;
 
         /// <summary>访问令牌（InfluxDB 2.x）</summary>
+        [StringLength(200, ErrorMessage = "令牌不能超过200个字符")]
         public string? Token { get; set; }
 
         /// <summary>组织名（InfluxDB 2.x）</summary>
+        [StringLength(100, ErrorMessage = "组织名不能超过100个字符")]
         public string? Org { get; set; }
 
         /// <summary>Bucket 名称（InfluxDB 2.x）</summary>
+        [StringLength(100, ErrorMessage = "Bucket 名称不能超过100个字符")]
         public string? Bucket { get; set; }
     }
 
