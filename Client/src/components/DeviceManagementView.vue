@@ -166,7 +166,8 @@ const openNewDeviceModal = () => {
   isEditingDevice.value = false;
   editingDeviceId.value = null;
   devName.value = '';
-  devKey.value = `PLC-DEV-${Date.now().toString().slice(-4)}`;
+  // 设备编号改由后端按区域自动生成，前端不再手输（新增时留空触发后端生成）
+  devKey.value = '';
   devArea.value = areas.value[0]?.id || 0;
   // 优先使用当前在下拉框中选中的数据模型,而不是列表中的第一个,
   // 否则当第一个模型为 OPCUA 类型时,即使选中虚拟设备也会错误显示 OPC UA 地址。
@@ -726,10 +727,12 @@ const toggleDeviceStateInGrid = (device: Device) => {
               <input 
                 v-model="devKey"
                 type="text"
-                placeholder="例如: S7-BLR-202"
-                :class="deviceFormErrors.Key ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#1890ff]'"
-                class="w-full bg-slate-50 dark:bg-slate-950 border rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-xs font-mono font-bold uppercase"
+                readonly
+                :placeholder="isEditingDevice ? '' : '保存后由系统自动生成'"
+                :class="deviceFormErrors.Key ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'"
+                class="w-full bg-slate-100 dark:bg-slate-800 border rounded-lg p-2 text-slate-400 dark:text-slate-500 focus:outline-none text-xs font-mono font-bold uppercase cursor-not-allowed"
               />
+              <span v-if="!isEditingDevice" class="text-slate-400 dark:text-slate-500 text-[10px] mt-1 block">无需手动填写，保存后由系统按区域自动生成</span>
               <span v-if="deviceFormErrors.Key" class="text-rose-500 text-[10px] mt-1 block">{{ deviceFormErrors.Key }}</span>
             </div>
           </div>
