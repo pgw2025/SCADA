@@ -28,6 +28,12 @@ export const updateDeviceOnBackend = async (deviceData: any) => {
   return response;
 };
 
+// PUT /api/Device/{id}/enabled?enabled= - 启用/停用设备采集（停用即注销运行时、断开驱动）
+export const setDeviceEnabled = async (id: number, enabled: boolean) => {
+  const response = await http.put<Device>(`${getBaseUrl()}/api/Device/${id}/enabled`, null, { params: { enabled } });
+  return response;
+};
+
 // DELETE /api/Device/{id} - 删除设备
 export const deleteDeviceOnBackend = async (id: number) => {
   const response = await http.delete(`${getBaseUrl()}/api/Device/${id}`);

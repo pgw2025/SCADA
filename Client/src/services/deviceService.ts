@@ -80,6 +80,7 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
       ipAddress: deviceData.ipAddress,
       port: deviceData.port,
       topic: deviceData.topic,
+      isEnabled: deviceData.isEnabled ?? true,
       status: 0,
       variables: {},
       lastUpdated: new Date().toISOString(),
@@ -102,7 +103,7 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
       areaId: deviceData.areaId,
       modelId: deviceData.modelId,
       // 协议由后端从 modelId 推导,前端不提交 type
-      isEnabled: true,
+      isEnabled: deviceData.isEnabled ?? true,
       pollingInterval: 1000,
       configJson: deviceData.configJson ?? '{}',
       ipAddress: deviceData.ipAddress?.trim() || null,
@@ -143,7 +144,7 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
       areaId: deviceData.areaId,
       modelId: deviceData.modelId,
       // 协议由后端从 modelId 推导,前端不提交 type
-      isEnabled: true,
+      isEnabled: deviceData.isEnabled ?? true,
       pollingInterval: 1000,
       configJson: deviceData.configJson ?? '{}',
       ipAddress: deviceData.ipAddress?.trim() || null,
@@ -180,6 +181,28 @@ export const deleteDeviceAndSync = async (id: number, name: string): Promise<Dev
   } catch (err: any) {
     const errorResult = parseApiError(err);
     addLog('设备管理', `删除设备失败 [${id}]: ${errorResult.message}`, 'warning');
+    return { success: false, error: errorResult };
+  }
+};
+
+export const setDeviceEnabledAndSync = async (deviceId: number, enabled: boolean): Promise<DeviceOperationResult> => {
+  if (systemConfig.value.isSimulationActive) {
+    const idx = store.devices.value.findIndex(d => d.id === deviceId);
+    if (idx !== -1) {
+      store.devices.value[idx] = { ...store.devices.value[idx], isEnabled: enabled };
+    }
+    return { success: true };
+  }
+
+  try {
+    const response = await api.setDeviceEnabled(deviceId, enabled);
+    await syncDevices();
+    const name = store.devices.value.find(d => d.id === deviceId)?.name || deviceId;
+    addLog('设备管理', `设备 [${name}] 已${enabled ? '启用' : '停用'}采集`, enabled ? 'normal' : 'warning');
+    return { success: true, data: response.data };
+  } catch (err: any) {
+    const errorResult = parseApiError(err);
+    addLog('设备管理', `切换启用状态失败 [${deviceId}]: ${errorResult.message}`, 'warning');
     return { success: false, error: errorResult };
   }
 };

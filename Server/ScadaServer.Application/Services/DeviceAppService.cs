@@ -599,6 +599,43 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
+        /// 启用/停用设备的采集并同步运行时（启用→注册、停用→注销）。设备不存在时抛 BusinessException；
+        /// 启用状态无变化时幂等返回，不触发运行时注册/注销。
+        /// </summary>
+        public async Task<DeviceDto> SetEnabledAsync(int id, bool enabled)
+        {
+            var entity = await _repository.GetByIdForUpdateAsync(id);
+            if (entity == null)
+            {
+                throw new BusinessException($"ID 为 {id} 的设备不存在");
+            }
+
+            // 启用状态无变化：直接返回当前设备，不触发运行时注册/注销（天然幂等）。
+            if (entity.IsEnabled == enabled)
+            {
+                return await GetByIdAsync(id)
+                    ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+            }
+
+            entity.IsEnabled = enabled;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(entity);
+
+            // 状态变化提交成功后，与运行时交互：启用 → 注册；停用 → 注销（断开驱动、推送 Offline）。
+            if (enabled)
+            {
+                await _runtimeDeviceManager.RegisterDeviceAsync(id);
+            }
+            else
+            {
+                await _runtimeDeviceManager.RemoveDeviceAsync(id);
+            }
+
+            return await GetByIdAsync(id)
+                ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+        }
+
+        /// <summary>
         /// 向设备运行时变量写入值。运行时校验及物理写入失败原因经 IRuntimeDeviceManager 返回，
         /// 失败时抛 BusinessException 由全局异常处理转成 { success=false, message } 供前端展示。
         /// </summary>

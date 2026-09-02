@@ -600,6 +600,7 @@ export interface Device {
   type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
   ipAddress?: string; // S7/OPCUA specific
   port?: number | string;      // Port, e.g. 502, 4840
+  isEnabled: boolean;          // 后端 DeviceDto.IsEnabled：是否启用采集（用于卡片启停开关状态）
   status: number | string;     // 0: offline, 1: online or 'online' | 'offline'
   runtimeStatus?: string;       // 后端运行时状态枚举名: Online | Offline | Fault | Connecting
   lastUpdated: string; // ISO 8601 datetime string

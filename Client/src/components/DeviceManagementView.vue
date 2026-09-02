@@ -4,7 +4,7 @@ import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
 import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
 import { dataModels, addLog, fetchDataModelsFromBackend } from '../store/index';
-import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync } from '../services/deviceService';
+import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync, setDeviceEnabledAndSync } from '../services/deviceService';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 
 onMounted(() => {
@@ -372,13 +372,11 @@ const handleDeleteDevice = async (id: number, name: string) => {
   // 失败提示由 http 拦截器统一 Toast 弹出
 };
 
-const toggleDeviceStateInGrid = (device: Device) => {
-  device.status = device.status === 'online' ? 'offline' : 'online';
-  addLog(
-    '设备管理', 
-    `双位开关改写: [${device.name}] 已被迫切换为 ${device.status === 'online' ? '联机(Online)' : '脱机(Offline)'}`,
-    device.status === 'online' ? 'normal' : 'warning'
-  );
+const toggleDeviceEnabled = async (device: Device) => {
+  const next = !device.isEnabled;
+  if (!next && !confirm(`确认停用设备 [${device.name}] 的采集吗？停用后将断开连接并停止采集。`)) return;
+  const result = await setDeviceEnabledAndSync(device.id, next);
+  if (!result.success) addLog('设备管理', `切换启用状态失败 [${device.name}]`, 'warning');
 };
 </script>
 
@@ -502,14 +500,21 @@ const toggleDeviceStateInGrid = (device: Device) => {
               </h4>
             </div>
 
-            <!-- Online toggler slider button -->
-            <button 
-              @click="toggleDeviceStateInGrid(d)"
-              class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border transition-all cursor-pointer"
-              :class="d.status === 1 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
-              <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
-              {{ d.status === 1 ? '在线' : '离线' }}
-            </button>
+            <!-- Online/offline status (read-only, driven by backend runtimeStatus) + 启用/停用采集开关 -->
+            <div class="flex items-center gap-1.5">
+              <span
+                class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border"
+                :class="d.status === 1 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+                <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
+                {{ d.status === 1 ? '在线' : '离线' }}
+              </span>
+              <button
+                @click="toggleDeviceEnabled(d)"
+                class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border transition-all cursor-pointer"
+                :class="d.isEnabled ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700'">
+                {{ d.isEnabled ? '启用采集' : '停用采集' }}
+              </button>
+            </div>
           </div>
 
           <!-- Mid: Address properties -->

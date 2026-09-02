@@ -104,6 +104,20 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         /// <summary>
+        /// 启用/停用设备的采集。停用即注销运行时（断开驱动、推送 Offline），启用即重新注册以恢复采集。
+        /// </summary>
+        /// <param name="id">设备ID</param>
+        /// <param name="enabled">是否启用采集</param>
+        [HttpPut("{id}/enabled")]
+        [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "SET_ENABLED")]
+        public async Task<IActionResult> SetEnabled(int id, [FromQuery] bool enabled)
+        {
+            var result = await _deviceAppService.SetEnabledAsync(id, enabled);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// 删除设备
         /// </summary>
         /// <param name="id">设备ID</param>

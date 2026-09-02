@@ -26,6 +26,14 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>更新一个设备，返回更新后的 DTO。</summary>
         Task<DeviceDto> UpdateAsync(DeviceDto dto);
 
+        /// <summary>
+        /// 启用/停用设备的采集并同步运行时（启用→注册、停用→注销）。
+        /// 设备不存在时抛 <see cref="ScadaServer.Domain.Exceptions.BusinessException"/>。
+        /// </summary>
+        /// <param name="id">设备ID</param>
+        /// <param name="enabled">是否启用采集</param>
+        Task<DeviceDto> SetEnabledAsync(int id, bool enabled);
+
         /// <summary>删除一个设备。</summary>
         Task DeleteAsync(int id);
 
