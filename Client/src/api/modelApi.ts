@@ -65,8 +65,7 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           // 后端 UpdateMode 枚举以 JsonStringEnumConverter 输出 PascalCase（Subscription/Polling），
           // 统一 toLowerCase 后比较，避免大小写漂移导致订阅模式变量回传后恒变 polling。
           updateMode: (String(v.updateMode ?? '').toLowerCase() === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
-          scaleSlope: v.scaleSlope || 1.0,
-          scaleOffset: v.scaleOffset || 0.0,
+          scaleExpression: v.scaleExpression ?? '',
           deadBand: v.deadBand,
           // 仅当后端缺省（null/undefined）时回退到安全默认 true；
           // 后端明确返回 false（可写）时须保留 false，否则会被 || true 误判为只读导致写入按钮恒隐藏。

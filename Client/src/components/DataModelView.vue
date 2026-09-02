@@ -147,7 +147,6 @@ const varSearchQuery = ref<string>('');
 
 // S7 variables custom state properties
 const varAccessLevel = ref<'RO' | 'RW'>('RW');
-const varScaleExpr = ref<string>('x * 1.0');
 const varIsStored = ref<boolean>(true);
 const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated'>('Change');
 const varStoreIntervalMs = ref<number | ''>(300000);
@@ -156,8 +155,7 @@ const varStoreIntervalMs = ref<number | ''>(300000);
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 
 // 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DeviceVariable，模板层不再维护）
-const varScaleSlope = ref<number | ''>(1.0);
-const varScaleOffset = ref<number | ''>(0.0);
+const varScaleExpression = ref<string>('');
 const varDeadBand = ref<number | null | ''>(null);
 const varIsReadOnly = ref<boolean>(true);
 
@@ -233,16 +231,14 @@ const openEditVariable = (v: ModelVariable) => {
   varDesc.value = v.description || '';
   // S7 专属（extensionData）
   varAccessLevel.value = (v.extensionData?.accessLevel as 'RO' | 'RW') || 'RW';
-  varScaleExpr.value = v.extensionData?.scaleExpr || 'x * 1.0';
   // 历史存储
   varIsStored.value = v.isStored !== false && v.storeMode !== 'None';
   varStoreMode.value = v.storeMode && v.storeMode !== 'None' ? v.storeMode : 'Change';
   varStoreIntervalMs.value = v.storeIntervalMs ?? 300000;
   // OPCUA / MQTT
   varUpdateMode.value = v.updateMode || 'subscription';
-  // 工业级参数
-  varScaleSlope.value = v.scaleSlope ?? 1.0;
-  varScaleOffset.value = v.scaleOffset ?? 0.0;
+  // 工业级参数：换算表达式优先取正式字段；旧数据兼容回填 extensionData.scaleExpr（保存后即迁入正式字段）
+  varScaleExpression.value = v.scaleExpression ?? v.extensionData?.scaleExpr ?? '';
   varDeadBand.value = v.deadBand ?? null;
   varIsReadOnly.value = v.isReadOnly ?? true;
   showVarModal.value = true;
@@ -257,13 +253,11 @@ const resetVarForm = () => {
   varMin.value = 0;
   varMax.value = 100;
   varAccessLevel.value = 'RW';
-  varScaleExpr.value = 'x * 1.0';
   varIsStored.value = true;
   varStoreMode.value = 'Change';
   varStoreIntervalMs.value = 300000;
   varUpdateMode.value = 'subscription';
-  varScaleSlope.value = 1.0;
-  varScaleOffset.value = 0.0;
+  varScaleExpression.value = '';
   varDeadBand.value = null;
   varIsReadOnly.value = true;
 };
@@ -325,13 +319,12 @@ const handleSaveVariable = async () => {
     storeMode: varIsStored.value ? varStoreMode.value : 'None',
     storeIntervalMs: varIsStored.value ? (varStoreIntervalMs.value === '' ? 300000 : varStoreIntervalMs.value) : 300000,
     updateMode: varUpdateMode.value,
-    scaleSlope: varScaleSlope.value === '' ? 1.0 : varScaleSlope.value,
-    scaleOffset: varScaleOffset.value === '' ? 0.0 : varScaleOffset.value,
+    // 换算表达式：空串发 null（后端语义 = 恒等变换）
+    scaleExpression: varScaleExpression.value.trim() === '' ? null : varScaleExpression.value.trim(),
     deadBand: varDeadBand.value === '' ? null : varDeadBand.value,
     isReadOnly: varIsReadOnly.value,
     extensionData: {
-      accessLevel: varAccessLevel.value,
-      scaleExpr: varScaleExpr.value
+      accessLevel: varAccessLevel.value
     }
   };
 
@@ -1009,13 +1002,19 @@ const handleImportDone = async () => {
             </div>
 
             <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">放缩公式</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">
+                工程换算表达式
+              </label>
               <input
-                v-model="varScaleExpr"
+                v-model="varScaleExpression"
                 type="text"
-                placeholder="例如: x * 0.1 | x * 1.5 - 20"
+                placeholder="留空=原始值；例：x*0.1 或 (x-4000)/160"
                 class="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-indigo-700 dark:text-indigo-400"
               />
+              <p class="mt-0.5 text-[10px] text-slate-400">
+                用 <code class="font-mono text-indigo-600 dark:text-indigo-400">x</code> 表示原始值，支持
+                <code class="font-mono">+ - * / % ( )</code> 与 <code class="font-mono">Math.round/sqrt/pow</code> 等函数
+              </p>
             </div>
 
             <div class="flex items-center justify-between py-1 border-t border-indigo-100 dark:border-indigo-800 mt-2">
@@ -1103,7 +1102,7 @@ const handleImportDone = async () => {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">只读模式</label>
-                <select 
+                <select
                   v-model="varIsReadOnly"
                   class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800 dark:text-white"
                 >
@@ -1111,38 +1110,16 @@ const handleImportDone = async () => {
                   <option :value="false">可写</option>
                 </select>
               </div>
-            </div>
-            <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">缩放斜率</label>
-                <input 
-                  v-model="varScaleSlope"
+                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">死区阈值</label>
+                <input
+                  v-model="varDeadBand"
                   type="number"
-                  step="0.01"
-                  placeholder="1.0"
+                  step="0.001"
+                  placeholder="变化超过此值才触发更新"
                   class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
                 />
               </div>
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">缩放偏移</label>
-                <input 
-                  v-model="varScaleOffset"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.0"
-                  class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-                />
-              </div>
-            </div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">死区阈值</label>
-              <input 
-                v-model="varDeadBand"
-                type="number"
-                step="0.001"
-                placeholder="变化超过此值才触发更新"
-                class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-              />
             </div>
           </div>
 

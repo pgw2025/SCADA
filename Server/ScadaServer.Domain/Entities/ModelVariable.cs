@@ -101,14 +101,19 @@ namespace ScadaServer.Domain.Entities
         public UpdateMode UpdateMode { get; set; }
 
         /// <summary>
-        /// 缩放斜率（系数），默认1.0
+        /// 工程换算表达式（原始值 → 工程值）：以 x 代表驱动读到的原始值。
+        /// <para>
+        /// 替代原 ScaleSlope / ScaleOffset 的线性模型，支持任意一元公式：
+        /// "x*0.1"、"(x-4000)/160"、"x*1.8+32"、"Math.round(x*10)/10"。
+        /// </para>
+        /// <para>
+        /// 为空 / 全空白 = 恒等变换（工程值即原始值），等价于旧默认 Slope=1、Offset=0。
+        /// 语法与长度（≤200）由应用层 ScaleExpressionValidator 校验；
+        /// 运行时由 Runtime 层 ScaleExpression 编译求值（Jint，一次编译并缓存委托）。
+        /// </para>
         /// </summary>
-        public double ScaleSlope { get; set; } = 1.0;
-
-        /// <summary>
-        /// 缩放偏移量，默认0.0
-        /// </summary>
-        public double ScaleOffset { get; set; } = 0.0;
+        [MaxLength(200)]
+        public string? ScaleExpression { get; set; }
 
         /// <summary>
         /// 死区值（用于变化检测）

@@ -1,4 +1,4 @@
-import { Device, DeviceType } from '../types';
+import { Device, DeviceType, protocolKeyToDeviceType } from '../types';
 
 /**
  * 将后端运行时状态枚举名映射为前端统一的 status 数值。
@@ -77,9 +77,9 @@ export const normalizeDevices = (raw: Device[], prevDevices?: Device[]): Device[
       variables: variableMap,
       variableMeta,
       // 后端 DeviceDto 已不再返回 Type / ModelType，协议真相源在 Protocol 实体。
-      // type 为派生只读，由调用方在同步数据中携带或在此兜底为 Virtual，
-      // 其余派生逻辑经由 protocolKey / protocolKeyToDeviceType 完成。
-      type: (d.type ?? 'Virtual') as DeviceType,
+      // type 为派生只读：优先取后端 JSON 自带 protocolKey 推导（MODBUSTCP→ModbusTcp 等），
+      // protocolKey 缺失时兜底 Virtual；其余派生逻辑经由 protocolKey / protocolKeyToDeviceType 完成。
+      type: (d.type ?? protocolKeyToDeviceType(d.protocolKey)) as DeviceType,
       runtimeStatus: d.runtimeStatus,
       status: mapRuntimeStatusToStatus(d.runtimeStatus)
     };

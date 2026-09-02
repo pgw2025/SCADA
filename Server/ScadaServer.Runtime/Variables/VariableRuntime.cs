@@ -55,11 +55,15 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>轮询间隔(ms)。来源：DeviceVariable.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。</summary>
     public int PollingIntervalMs => Instance?.PollingIntervalMs ?? 1000;
 
-    /// <summary>缩放斜率(Scale)。来源：DeviceVariable.ScaleSlopeOverride 优先，否则模板 ScaleSlope。</summary>
-    public double ScaleSlope => Instance?.ScaleSlopeOverride ?? Definition.ScaleSlope;
-
-    /// <summary>缩放偏移(Scale)。来源：DeviceVariable.ScaleOffsetOverride 优先，否则模板 ScaleOffset。</summary>
-    public double ScaleOffset => Instance?.ScaleOffsetOverride ?? Definition.ScaleOffset;
+    /// <summary>
+    /// 工程换算表达式（原始值 → 工程值，以 x 代表原始值）。
+    /// 来源：DeviceVariable.ScaleExpressionOverride 优先，否则模板 ScaleExpression；空 = 恒等变换。
+    /// 求值由 <c>ScadaServer.Runtime.DataConversion.VariableScaling</c> 在采集/写入链路调用。
+    /// </summary>
+    public string? ScaleExpression =>
+        !string.IsNullOrWhiteSpace(Instance?.ScaleExpressionOverride)
+            ? Instance!.ScaleExpressionOverride
+            : Definition.ScaleExpression;
 
     /// <summary>死区。来源：DeviceVariable.DeadBandOverride 优先，否则模板 DeadBand。</summary>
     public double? DeadBand => Instance?.DeadBandOverride ?? Definition.DeadBand;

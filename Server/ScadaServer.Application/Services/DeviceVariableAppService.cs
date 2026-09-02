@@ -138,8 +138,16 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         entity.BitOffset = dto.BitOffset;
         entity.PollingIntervalMs = dto.PollingIntervalMs;
         entity.IsEnabled = dto.IsEnabled;
-        entity.ScaleSlopeOverride = dto.ScaleSlopeOverride;
-        entity.ScaleOffsetOverride = dto.ScaleOffsetOverride;
+        // 覆盖表达式校验（与模板同规则）：非法配置直接拒绝，避免脏表达式进入运行时采集循环。
+        var scaleError = ScaleExpressionValidator.Validate(dto.ScaleExpressionOverride);
+        if (scaleError != null)
+        {
+            throw new BusinessException($"设备变量换算表达式覆盖值非法：{scaleError}");
+        }
+        // 归一化：空白串存为 null。null 才是"继承模板"的语义——运行时用 `??` 回退模板，
+        // 空串会被视为有效覆盖（恒等变变换），导致模板换算公式静默失效。
+        entity.ScaleExpressionOverride =
+            string.IsNullOrWhiteSpace(dto.ScaleExpressionOverride) ? null : dto.ScaleExpressionOverride.Trim();
         entity.DeadBandOverride = dto.DeadBandOverride;
         entity.IsReadOnlyOverride = dto.IsReadOnlyOverride;
 
@@ -167,8 +175,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         BitOffset = dv.BitOffset,
         PollingIntervalMs = dv.PollingIntervalMs,
         IsEnabled = dv.IsEnabled,
-        ScaleSlopeOverride = dv.ScaleSlopeOverride,
-        ScaleOffsetOverride = dv.ScaleOffsetOverride,
+        ScaleExpressionOverride = dv.ScaleExpressionOverride,
         DeadBandOverride = dv.DeadBandOverride,
         IsReadOnlyOverride = dv.IsReadOnlyOverride,
         TemplateIsReadOnly = mv?.IsReadOnly ?? true,

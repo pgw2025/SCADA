@@ -174,9 +174,35 @@ const validateEditForm = (): string => {
   return '';
 };
 
+/** 提交前归一化：前端清空产生空串（''），而后端 null 才是"未配置/继承模板"语义。
+  * 统一把空串转为 null 或语义默认值，避免 "" 提交后与后端 `??` 回退逻辑错位（400 / 模板失效）。
+  * 参数 <paramref name="nullableDefault"/>：可空数字字段的空串归一化为 null。 */
+const normNullableNum = (v: unknown): number | null =>
+  v === '' || v == null ? null : (v as number);
+
 const saveEdit = async () => {
   if (!editingForm.value || !selectedDevice.value) return;
-  if ((fieldConfig.value.addressFields?.length ?? 0) > 0) {
+
+  // ---- 顶层实例配置字段：空 → null（回退设备/模板默认）----
+  editingForm.value.pollingIntervalMs = normNullableNum(editingForm.value.pollingIntervalMs);
+  editingForm.value.deadBandOverride = normNullableNum(editingForm.value.deadBandOverride);
+  editingForm.value.bitOffset = normNullableNum(editingForm.value.bitOffset);
+  // ---- 换算表达式覆盖：空白 → null（继承模板），否则去首尾空格 ----
+  const expr = editingForm.value.scaleExpressionOverride;
+  editingForm.value.scaleExpressionOverride =
+    expr == null || String(expr).trim() === '' ? null : String(expr).trim();
+
+  if ((fieldConfig.value.addressFields?.length ?? 0) > 0 && editingCfg.value) {
+    // ---- 结构化地址非必填数字字段：空串回填语义默认值（位地址 sentinel -1 / 寄存器数 1 / DB 号 0）----
+    const cfg = editingCfg.value as any;
+    for (const f of fieldConfig.value.addressFields || []) {
+      if (f.type === 'number' && !f.required && cfg[f.key] === '') {
+        cfg[f.key] = f.key === 'bitOffset' || f.key === 'bitIndex' ? -1
+          : f.key === 'registerCount' ? 1
+          : f.key === 'dbNumber' ? 0
+          : null;
+      }
+    }
     const err = validateEditForm();
     if (err) {
       addLog('设备变量', err, 'warning');
@@ -684,15 +710,10 @@ onMounted(async () => {
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">缩放斜率</label>
-              <input v-model.number="editingForm.scaleSlopeOverride" type="number" step="0.1"
-                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
-            </div>
-            <div>
-              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">缩放偏移</label>
-              <input v-model.number="editingForm.scaleOffsetOverride" type="number" step="0.1"
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">换算表达式（覆盖）</label>
+              <input v-model="editingForm.scaleExpressionOverride" type="text" placeholder="留空=继承模板；例：x*0.1"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
             <div>

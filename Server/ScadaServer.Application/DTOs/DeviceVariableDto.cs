@@ -59,11 +59,9 @@ public class DeviceVariableDto
     /// <summary>是否在该设备上启用此变量的采集。默认 true。</summary>
     public bool IsEnabled { get; set; } = true;
 
-    /// <summary>缩放斜率覆盖值。空 → 使用模板 ScaleSlope（1.0）。</summary>
-    public double? ScaleSlopeOverride { get; set; }
-
-    /// <summary>缩放偏移覆盖值。空 → 使用模板 ScaleOffset（0.0）。</summary>
-    public double? ScaleOffsetOverride { get; set; }
+    /// <summary>工程换算表达式覆盖值（以 x 代表原始值）。空 → 使用模板 ScaleExpression。</summary>
+    [StringLength(200, ErrorMessage = "换算表达式不能超过200个字符")]
+    public string? ScaleExpressionOverride { get; set; }
 
     /// <summary>死区覆盖值。空 → 使用模板 DeadBand。</summary>
     public double? DeadBandOverride { get; set; }

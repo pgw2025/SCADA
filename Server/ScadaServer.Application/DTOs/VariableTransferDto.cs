@@ -92,11 +92,8 @@ public class VariableImportRow
     /// <summary>更新模式（可空）</summary>
     public UpdateMode? UpdateMode { get; set; }
 
-    /// <summary>缩放斜率（可空）</summary>
-    public double? ScaleSlope { get; set; }
-
-    /// <summary>缩放偏移（可空）</summary>
-    public double? ScaleOffset { get; set; }
+    /// <summary>工程换算表达式（可空，以 x 代表原始值）</summary>
+    public string? ScaleExpression { get; set; }
 
     /// <summary>死区（可空）</summary>
     public double? DeadBand { get; set; }

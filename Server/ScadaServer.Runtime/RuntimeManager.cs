@@ -18,6 +18,7 @@ using ScadaServer.Runtime.Devices;
 using ScadaServer.Runtime.Bindings;
 using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Alarms;
+using ScadaServer.Runtime.DataConversion;
 using ScadaServer.Runtime.Interface;
 
 namespace ScadaServer.Runtime
@@ -576,13 +577,17 @@ namespace ScadaServer.Runtime
                     return await FailAsync($"写入值 {numericValue} 超过变量 [{variableKey}] 上限 {vr.Max}");
             }
 
+            // 写入方向：工程值 → 驱动原始值。当前版本恒等透传（未启用反算公式，行为与改造前一致）；
+            // 扩展点已收敛在 VariableScaling.ToRaw，将来支持反算表达式无需改动本方法。
+            var rawValue = VariableScaling.ToRaw(vr, value);
+
             // 驱动写入在设备锁外执行：网络 IO 可能耗时秒级，持锁会阻塞同设备采集循环
             // 的全部内存态更新。写驱动期间设备不持有 Lock，采集可正常进行。
             // WaitAsync 兜底超时：驱动层（如 S7Driver）已各自封顶，此处统一防御无超时驱动的
             // 无界挂起（脚本写桥同步等待 / HTTP 请求等待 / 绑定引擎等待都会被其拖死）。
             try
             {
-                await runtime.Driver.WriteAsync(vr, value)
+                await runtime.Driver.WriteAsync(vr, rawValue)
                     .WaitAsync(TimeSpan.FromMilliseconds(_deviceWriteTimeoutMs));
             }
             catch (TimeoutException)

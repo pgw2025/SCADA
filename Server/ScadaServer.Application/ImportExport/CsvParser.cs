@@ -16,7 +16,7 @@ public class CsvParser
     public static readonly string[] Columns =
     {
         "Key", "Name", "DataType", "Unit", "Min", "Max", "Description", "Address",
-        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleSlope", "ScaleOffset", "DeadBand", "IsReadOnly"
+        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand", "IsReadOnly"
     };
 
     /// <summary>
@@ -114,8 +114,7 @@ public class CsvParser
         row.StoreMode = Enum.TryParse<StoreModeEnum>(Cell(cells, colIndex, "StoreMode"), true, out var sm) ? sm : null;
         row.StoreIntervalMs = TryInt(Cell(cells, colIndex, "StoreIntervalMs"));
         row.UpdateMode = Enum.TryParse<UpdateMode>(Cell(cells, colIndex, "UpdateMode"), true, out var um) ? um : null;
-        row.ScaleSlope = TryDouble(Cell(cells, colIndex, "ScaleSlope"));
-        row.ScaleOffset = TryDouble(Cell(cells, colIndex, "ScaleOffset"));
+        row.ScaleExpression = NullIfEmpty(Cell(cells, colIndex, "ScaleExpression"));
         row.DeadBand = TryDouble(Cell(cells, colIndex, "DeadBand"));
         row.IsReadOnly = TryBool(Cell(cells, colIndex, "IsReadOnly"));
     }

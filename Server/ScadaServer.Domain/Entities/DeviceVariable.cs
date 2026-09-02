@@ -99,16 +99,11 @@ namespace ScadaServer.Domain.Entities
         public int? PollingIntervalMs { get; set; }
 
         /// <summary>
-        /// 缩放斜率覆盖值（系数）。
-        /// <para>允许为空：为空时使用 <see cref="ModelVariable.ScaleSlope"/> 模板值（默认 1.0）。</para>
+        /// 工程换算表达式覆盖值（设备实例级）。
+        /// <para>允许为空：为空时使用 <see cref="ModelVariable.ScaleExpression"/> 模板值（模板为空即恒等变换）。</para>
         /// </summary>
-        public double? ScaleSlopeOverride { get; set; }
-
-        /// <summary>
-        /// 缩放偏移量覆盖值。
-        /// <para>允许为空：为空时使用 <see cref="ModelVariable.ScaleOffset"/> 模板值（默认 0.0）。</para>
-        /// </summary>
-        public double? ScaleOffsetOverride { get; set; }
+        [MaxLength(200)]
+        public string? ScaleExpressionOverride { get; set; }
 
         /// <summary>
         /// 死区值覆盖值（用于变化检测）。

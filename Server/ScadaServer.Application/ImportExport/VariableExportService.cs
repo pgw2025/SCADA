@@ -17,7 +17,7 @@ public class VariableExportService
     private static readonly string[] Headers =
     {
         "Key", "Name", "DataType", "Unit", "Min", "Max", "Description", "Address",
-        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleSlope", "ScaleOffset", "DeadBand", "IsReadOnly"
+        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand", "IsReadOnly"
     };
 
     /// <summary>
@@ -54,10 +54,9 @@ public class VariableExportService
             ws.Cell(row, 9).Value = v.StoreMode.ToString();
             ws.Cell(row, 10).Value = v.StoreIntervalMs;
             ws.Cell(row, 11).Value = v.UpdateMode.ToString();
-            ws.Cell(row, 12).Value = v.ScaleSlope;
-            ws.Cell(row, 13).Value = v.ScaleOffset;
-            ws.Cell(row, 14).Value = v.DeadBand;
-            ws.Cell(row, 15).Value = v.IsReadOnly;
+            ws.Cell(row, 12).Value = v.ScaleExpression ?? string.Empty;
+            ws.Cell(row, 13).Value = v.DeadBand;
+            ws.Cell(row, 14).Value = v.IsReadOnly;
         }
 
         ws.Columns().AdjustToContents();
@@ -93,8 +92,7 @@ public class VariableExportService
               .Append(Csv.Quote(v.StoreMode.ToString())).Append(',')
               .Append(v.StoreIntervalMs).Append(',')
               .Append(Csv.Quote(v.UpdateMode.ToString())).Append(',')
-              .Append(Csv.Number(v.ScaleSlope)).Append(',')
-              .Append(Csv.Number(v.ScaleOffset)).Append(',')
+              .Append(Csv.Quote(v.ScaleExpression)).Append(',')
               .Append(Csv.Number(v.DeadBand)).Append(',')
               .Append(v.IsReadOnly ? "true" : "false")
               .Append('\n');

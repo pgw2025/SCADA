@@ -24,8 +24,7 @@ public static class ModelVariableMapper
         StoreMode = v.StoreMode,
         StoreIntervalMs = v.StoreIntervalMs,
         UpdateMode = v.UpdateMode,
-        ScaleSlope = v.ScaleSlope,
-        ScaleOffset = v.ScaleOffset,
+        ScaleExpression = v.ScaleExpression,
         DeadBand = v.DeadBand,
         IsReadOnly = v.IsReadOnly,
         ExtensionData = v.ExtensionData

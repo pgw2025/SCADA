@@ -80,11 +80,17 @@ public class ModelVariableDto
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public UpdateMode UpdateMode { get; set; }
 
-    /// <summary>缩放斜率（工程缩放 y=slope*x+offset），默认 1.0</summary>
-    public double ScaleSlope { get; set; } = 1.0;
-
-    /// <summary>缩放偏移，默认 0.0</summary>
-    public double ScaleOffset { get; set; } = 0.0;
+    /// <summary>
+    /// 工程换算表达式（原始值 → 工程值），以 x 代表原始值。
+    /// 为空 = 恒等变换（等价旧 Slope=1、Offset=0）。示例："x*0.1"、"(x-4000)/160"。
+    /// </summary>
+    [StringLength(200, ErrorMessage = "换算表达式不能超过200个字符")]
+    public string? ScaleExpression
+    {
+        get => _scaleExpression;
+        set => _scaleExpression = value?.Trim() ?? string.Empty;
+    }
+    private string _scaleExpression = string.Empty;
 
     /// <summary>死区（变化阈值过滤，可空）</summary>
     public double? DeadBand { get; set; }

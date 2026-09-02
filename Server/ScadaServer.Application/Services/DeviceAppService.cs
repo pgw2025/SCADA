@@ -139,8 +139,7 @@ namespace ScadaServer.Application.Services
                 BitOffset = dv.BitOffset,
                 PollingIntervalMs = dv.PollingIntervalMs,
                 IsEnabled = dv.IsEnabled,
-                ScaleSlopeOverride = dv.ScaleSlopeOverride,
-                ScaleOffsetOverride = dv.ScaleOffsetOverride,
+                ScaleExpressionOverride = dv.ScaleExpressionOverride,
                 DeadBandOverride = dv.DeadBandOverride
             };
         }

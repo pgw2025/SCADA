@@ -407,8 +407,7 @@ namespace ScadaServer.Application.Services
                 StoreMode = row.StoreMode ?? StoreModeEnum.Change,
                 StoreIntervalMs = row.StoreIntervalMs is > 0 ? row.StoreIntervalMs.Value : 300000,
                 UpdateMode = row.UpdateMode ?? UpdateMode.Polling,
-                ScaleSlope = row.ScaleSlope ?? 1.0,
-                ScaleOffset = row.ScaleOffset ?? 0.0,
+                ScaleExpression = row.ScaleExpression,
                 DeadBand = row.DeadBand,
                 IsReadOnly = row.IsReadOnly ?? true,
                 ExtensionData = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -442,8 +441,7 @@ namespace ScadaServer.Application.Services
             entity.StoreMode = row.StoreMode ?? entity.StoreMode;
             if (row.StoreIntervalMs is > 0) entity.StoreIntervalMs = row.StoreIntervalMs.Value;
             if (row.UpdateMode is not null) entity.UpdateMode = row.UpdateMode.Value;
-            if (row.ScaleSlope is not null) entity.ScaleSlope = row.ScaleSlope.Value;
-            if (row.ScaleOffset is not null) entity.ScaleOffset = row.ScaleOffset.Value;
+            if (row.ScaleExpression is not null) entity.ScaleExpression = row.ScaleExpression;
             if (row.DeadBand is not null) entity.DeadBand = row.DeadBand;
             if (row.IsReadOnly is not null) entity.IsReadOnly = row.IsReadOnly.Value;
 
@@ -475,6 +473,13 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"变量 '{dto.Name}' 的最小值（{dto.Min}）不能大于最大值（{dto.Max}）");
             }
 
+            // D. 工程换算表达式校验：长度、字符/函数白名单、语法可解析（校验阶段不执行表达式）。
+            var scaleError = ScaleExpressionValidator.Validate(dto.ScaleExpression);
+            if (scaleError != null)
+            {
+                throw new BusinessException($"变量 '{dto.Name}' 的换算表达式非法：{scaleError}");
+            }
+
             // 数据类型合法性由枚举 + DTO JsonConverter 保证；信号类型由 DataType 派生，无需额外运行时校验。
         }
 
@@ -492,8 +497,7 @@ namespace ScadaServer.Application.Services
             entity.StoreMode = dto.StoreMode;
             entity.StoreIntervalMs = dto.StoreIntervalMs;
             entity.UpdateMode = dto.UpdateMode;
-            entity.ScaleSlope = dto.ScaleSlope;
-            entity.ScaleOffset = dto.ScaleOffset;
+            entity.ScaleExpression = dto.ScaleExpression;
             entity.DeadBand = dto.DeadBand;
             entity.IsReadOnly = dto.IsReadOnly;
             entity.ExtensionData = dto.ExtensionData ?? new Dictionary<string, string>();

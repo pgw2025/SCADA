@@ -47,11 +47,8 @@ namespace ScadaServer.Domain.Interfaces
         /// <summary>轮询间隔（毫秒）（DeviceVariable.PollingIntervalMs 优先，空则回退模板）。</summary>
         int PollingIntervalMs { get; }
 
-        /// <summary>缩放斜率（DeviceVariable.ScaleSlopeOverride 优先，空则回退模板）。</summary>
-        double ScaleSlope { get; }
-
-        /// <summary>缩放偏移（DeviceVariable.ScaleOffsetOverride 优先，空则回退模板）。</summary>
-        double ScaleOffset { get; }
+        // 缩放已由"线性 Slope/Offset"改为"公式表达式"，且不再暴露给协议驱动：
+        // 工程换算是 Runtime 层值转换职责（见 VariableScaling），驱动只认原始值/地址/数据类型。
 
         /// <summary>死区（DeviceVariable.DeadBandOverride 优先，空则回退模板）。</summary>
         double? DeadBand { get; }

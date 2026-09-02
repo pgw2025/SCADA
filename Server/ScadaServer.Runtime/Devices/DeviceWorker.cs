@@ -10,6 +10,7 @@ using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Runtime.Alarms;
+using ScadaServer.Runtime.DataConversion;
 using ScadaServer.Runtime.Events;
 
 namespace ScadaServer.Runtime.Devices
@@ -163,6 +164,11 @@ namespace ScadaServer.Runtime.Devices
                         try
                         {
                             var newValue = await _runtime.Driver.ReadAsync(vr);
+
+                            // 工程换算（raw → engineering）：表达式为空即恒等，求值失败保持原始值，
+                            // 保证一条坏配置最多让该变量按原始值上报，不拖垮采集循环。
+                            // 换算后的值统一进入历史存储、死区判定、报警判定与 SignalR 推送（均为工程单位语义）。
+                            newValue = VariableScaling.ToEngineering(vr, newValue);
 
                             // 驱动可能返回 null（例如虚拟设备未连接、订阅型驱动暂无数据）。
                             // 视为本次读取无效：跳过值更新,避免 null 被当作变化值推送到前端。

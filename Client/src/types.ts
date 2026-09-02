@@ -338,8 +338,8 @@ export interface ModelVariable {
   updateMode: UpdateMode;
 
   // 工业级增强字段
-  scaleSlope: number;
-  scaleOffset: number;
+  /** 工程换算表达式（raw→eng），以 x 代表原始值；空/undefined = 恒等变换。例：'x*0.1'、'(x-4000)/160' */
+  scaleExpression?: string | null;
   deadBand?: number;
   isReadOnly: boolean;
   extensionData?: Record<string, string>;
@@ -364,8 +364,7 @@ export interface DeviceVariable {
   bitOffset?: number | null;         // 实例级：位偏移（BOOL/BIT 用）
   pollingIntervalMs?: number | null; // 实例级：轮询间隔，空=运行时默认 1000ms
   isEnabled: boolean;                // 实例级：是否启用采集
-  scaleSlopeOverride?: number | null;   // 实例级覆盖：缩放斜率，空=用模板值
-  scaleOffsetOverride?: number | null;  // 实例级覆盖：缩放偏移，空=用模板值
+  scaleExpressionOverride?: string | null; // 实例级覆盖：换算表达式，空=用模板值
   deadBandOverride?: number | null;     // 实例级覆盖：死区，空=用模板值
   isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板
   templateIsReadOnly?: boolean;         // 回显：模板定义的只读权限
@@ -597,6 +596,7 @@ export interface Device {
   areaName?: string;
   modelId: number;
   modelName?: string;
+  protocolKey?: string; // 后端 DeviceDto 直接携带的协议标识（S7/OPCUA/ModbusTcp...），归一化据此推导 type
   type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
   ipAddress?: string; // S7/OPCUA specific
   port?: number | string;      // Port, e.g. 502, 4840
@@ -1197,8 +1197,7 @@ export interface VariableImportRow {
   storeMode?: 'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated' | null;
   storeIntervalMs?: number | null;
   updateMode?: UpdateMode | null;
-  scaleSlope?: number | null;
-  scaleOffset?: number | null;
+  scaleExpression?: string | null;
   deadBand?: number | null;
   isReadOnly?: boolean | null;
 }

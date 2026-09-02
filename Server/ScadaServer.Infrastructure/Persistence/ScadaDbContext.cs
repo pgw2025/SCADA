@@ -127,6 +127,9 @@ namespace ScadaServer.Infrastructure.Persistence
                 .Property(m => m.Unit).HasMaxLength(32);
             modelBuilder.Entity<ModelVariable>()
                 .Property(m => m.Description).HasMaxLength(500);
+            // 工程换算表达式：显式限长，与实体 [MaxLength(200)] 及应用层校验保持一致
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.ScaleExpression).HasMaxLength(200);
             modelBuilder.Entity<ModelVariable>()
                 .HasIndex(m => new { m.ModelId, m.Key })
                 .IsUnique()
@@ -167,6 +170,9 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<ScheduledTask>().ToTable("ScheduledTasks");
             modelBuilder.Entity<Sensor>().ToTable("Sensors");
             modelBuilder.Entity<DeviceVariable>().ToTable("DeviceVariables");
+            // 工程换算表达式覆盖值：显式限长，与实体 [MaxLength(200)] 保持一致
+            modelBuilder.Entity<DeviceVariable>()
+                .Property(dv => dv.ScaleExpressionOverride).HasMaxLength(200);
             modelBuilder.Entity<DeviceVariable>()
                 .HasIndex(dv => new { dv.DeviceId, dv.ModelVariableId })
                 .IsUnique()

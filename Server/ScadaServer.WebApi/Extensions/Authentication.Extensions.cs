@@ -31,6 +31,8 @@ namespace ScadaServer.WebApi.Extensions
                     options.JsonSerializerOptions.Converters.Add(new DataTypeEnumJsonConverter());
                     // object 属性反序列化为 CLR 原始类型而非 JsonElement，避免驱动层类型转换失败
                     options.JsonSerializerOptions.Converters.Add(new ObjectClrTypeJsonConverter());
+                    // 可空数值类型容错：前端清空数字输入提交的 "" 归一化为 null（回退默认/模板值），而非 400
+                    options.JsonSerializerOptions.Converters.Add(new NullableNumericJsonConverterFactory());
                 })
                 .ConfigureApiBehaviorOptions(options =>
                 {
