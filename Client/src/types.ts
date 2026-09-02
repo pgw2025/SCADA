@@ -598,8 +598,14 @@ export interface Device {
   modelName?: string;
   protocolKey?: string; // 后端 DeviceDto 直接携带的协议标识（S7/OPCUA/ModbusTcp...），归一化据此推导 type
   type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
-  ipAddress?: string; // S7/OPCUA specific
-  port?: number | string;      // Port, e.g. 502, 4840
+  /**
+   * 以下连接参数均为后端派生只读字段：由 DeviceDto 从唯一的真相源 `configJson`
+   * 按 protocolKey 投影而来（后端 Device 表不存这些列）。
+   * 提交创建/更新时不要发送这些字段，后端会忽略它们——写入一律走 configJson。
+   * 配置缺失或 JSON 非法时后端返回 null，前端应显示「未配置」而不是编造默认值。
+   */
+  ipAddress?: string | null; // S7/ModbusTcp 主机；OPCUA 由 endpointUrl 解析出的 host
+  port?: number | string | null;      // Port, e.g. 502, 102, 1883
   isEnabled: boolean;          // 后端 DeviceDto.IsEnabled：是否启用采集（用于卡片启停开关状态）
   status: number | string;     // 0: offline, 1: online or 'online' | 'offline'
   runtimeStatus?: string;       // 后端运行时状态枚举名: Online | Offline | Fault | Connecting
@@ -612,10 +618,15 @@ export interface Device {
   // 实时监控页据此判断写入按钮显隐（设备级覆盖优先于模板 isReadOnly）。
   variableMeta?: Record<string, DeviceVariable>;
 
-  // Advanced connection parameters
-  cpuType?: string;         // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)
-  rack?: number;            // S7 机架号
-  slot?: number;            // S7 插槽号
+  // Advanced connection parameters（同为后端派生只读，见上方说明）
+  cpuType?: string | null;  // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)
+  rack?: number | null;     // S7 机架号
+  slot?: number | null;     // S7 插槽号
+  endpointUrl?: string | null; // OPCUA 端点完整 URL（可能带路径），编辑必须原样回填，勿用 ip+port 拼接
+  unitId?: number | null;   // ModbusTcp 从站单元地址（预留）
+  broker?: string | null;   // MQTT Broker 地址（预留）
+  intervalMs?: number | null;   // Virtual 值更新间隔 ms（预留）
+  randomValues?: boolean | null;// Virtual 是否随机产生数值（预留）
   topic?: string;
   mqttServer?: string;
   publishTopic?: string;

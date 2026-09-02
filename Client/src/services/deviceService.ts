@@ -105,12 +105,7 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
       // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: deviceData.isEnabled ?? true,
       pollingInterval: 1000,
-      configJson: deviceData.configJson ?? '{}',
-      ipAddress: deviceData.ipAddress?.trim() || null,
-      port: typeof deviceData.port === 'string' ? parseInt(deviceData.port, 10) : deviceData.port || null,
-      cpuType: deviceData.cpuType?.trim() || null,
-      rack: deviceData.rack !== undefined && deviceData.rack !== null ? deviceData.rack : null,
-      slot: deviceData.slot !== undefined && deviceData.slot !== null ? deviceData.slot : null
+      configJson: deviceData.configJson ?? '{}'
     };
 
     const response = await api.createDeviceOnBackend(requestData);
@@ -146,12 +141,7 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
       // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: deviceData.isEnabled ?? true,
       pollingInterval: 1000,
-      configJson: deviceData.configJson ?? '{}',
-      ipAddress: deviceData.ipAddress?.trim() || null,
-      port: typeof deviceData.port === 'string' ? parseInt(deviceData.port, 10) : deviceData.port || null,
-      cpuType: deviceData.cpuType?.trim() || null,
-      rack: deviceData.rack !== undefined && deviceData.rack !== null ? deviceData.rack : null,
-      slot: deviceData.slot !== undefined && deviceData.slot !== null ? deviceData.slot : null
+      configJson: deviceData.configJson ?? '{}'
     };
 
     await api.updateDeviceOnBackend(requestData);

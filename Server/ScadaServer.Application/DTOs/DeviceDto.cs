@@ -68,8 +68,54 @@ namespace ScadaServer.Application.DTOs
 
         /// <summary>
         /// 协议配置（JSON）
+        /// <para>
+        /// 设备连接参数的<strong>唯一真相源</strong>。下面一组连接字段均为由本字段按
+        /// <c>Protocol.DriverKey</c> 派生的只读投影，不单独持久化。
+        /// </para>
         /// </summary>
         public string? ConfigJson { get; set; }
+
+        #region 连接参数（派生只读，由 ConfigJson 投影，PUT 时被后端忽略）
+
+        /// <summary>
+        /// IP 地址 / 主机名。S7、ModbusTcp 直接取自配置；OPC UA 由 <see cref="EndpointUrl"/> 解析出主机部分。
+        /// </summary>
+        public string? IpAddress { get; set; }
+
+        /// <summary>端口号（S7 默认 102 / ModbusTcp 默认 502 / MQTT 默认 1883）。</summary>
+        public int? Port { get; set; }
+
+        /// <summary>S7 CPU 型号（如 S7-1200 / S7-1500）。仅 S7 有值。</summary>
+        public string? CpuType { get; set; }
+
+        /// <summary>S7 机架号。仅 S7 有值。</summary>
+        public int? Rack { get; set; }
+
+        /// <summary>S7 槽位号。仅 S7 有值。</summary>
+        public int? Slot { get; set; }
+
+        /// <summary>
+        /// OPC UA 端点地址（完整 URL，可能带路径如 <c>opc.tcp://host:4840/server</c>）。
+        /// 前端编辑应原样回填本字段，不要用 ip+port 拼接，否则会丢失路径。
+        /// </summary>
+        public string? EndpointUrl { get; set; }
+
+        /// <summary>ModbusTcp 从站单元地址（Unit ID）。仅 ModbusTcp 有值，预留。</summary>
+        public int? UnitId { get; set; }
+
+        /// <summary>MQTT Broker 地址。仅 MQTT 有值，预留。</summary>
+        public string? Broker { get; set; }
+
+        /// <summary>MQTT 订阅/发布主题。仅 MQTT 有值，预留。</summary>
+        public string? Topic { get; set; }
+
+        /// <summary>虚拟设备值更新间隔（毫秒）。仅 Virtual 有值。</summary>
+        public int? IntervalMs { get; set; }
+
+        /// <summary>虚拟设备是否随机产生数值。仅 Virtual 有值。</summary>
+        public bool? RandomValues { get; set; }
+
+        #endregion
 
         /// <summary>
         /// 运行时状态（仅查询时返回）。

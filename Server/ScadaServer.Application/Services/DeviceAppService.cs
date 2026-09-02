@@ -97,10 +97,19 @@ namespace ScadaServer.Application.Services
             }).ToList();
         }
 
-        /// <summary>将设备实体映射为 DTO，并解析运行时状态。</summary>
+        /// <summary>
+        /// 协议配置反序列化选项：属性名大小写不敏感，兼容 camelCase / PascalCase 两种存储格式。
+        /// 与驱动侧（如 <c>S7Driver.ConfigJsonOptions</c>）保持一致，避免存储格式差异导致派生字段读不到值。
+        /// </summary>
+        private static readonly JsonSerializerOptions ConfigReadOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        /// <summary>将设备实体映射为 DTO，并解析运行时状态与连接参数派生字段。</summary>
         private DeviceDto ToDto(Device entity, List<DeviceVariableDto>? variables)
         {
-            return new DeviceDto
+            var dto = new DeviceDto
             {
                 Id = entity.Id,
                 Name = entity.Name,
@@ -118,6 +127,102 @@ namespace ScadaServer.Application.Services
                 RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
                 Variables = variables
             };
+
+            // 真相源是 JsonConfig，以下仅为按协议投影出的只读连接字段
+            ApplyConnectionFields(dto, entity.Model?.Protocol?.DriverKey, entity.JsonConfig);
+            return dto;
+        }
+
+        /// <summary>
+        /// 由协议配置 JSON 派生连接参数并写入 DTO 的只读字段。
+        /// <para>
+        /// 真相源为 <c>Device.JsonConfig</c>：按 <c>Protocol.DriverKey</c> 路由到对应配置类，
+        /// 反序列化后投影。不做任何回写，<c>JsonConfig</c> 仍是唯一可写入口。
+        /// </para>
+        /// <para>
+        /// 解析失败（配置缺失、JSON 非法、协议未识别）一律静默返回、字段保持 null，
+        /// 由前端显示"未配置"。单个设备的坏配置不应拖垮整个设备列表查询。
+        /// </para>
+        /// </summary>
+        private static void ApplyConnectionFields(DeviceDto dto, string? driverKey, string? configJson)
+        {
+            if (string.IsNullOrWhiteSpace(configJson)) return;
+
+            try
+            {
+                switch (ResolveDriverKind(driverKey))
+                {
+                    case DriverKind.S7:
+                    {
+                        var c = JsonSerializer.Deserialize<S7Config>(configJson!, ConfigReadOptions);
+                        if (c == null) return;
+                        dto.IpAddress = c.IpAddress;
+                        dto.Port = c.Port;
+                        dto.CpuType = c.CpuType;
+                        dto.Rack = c.Rack;
+                        dto.Slot = c.Slot;
+                        return;
+                    }
+                    case DriverKind.ModbusTcp:
+                    {
+                        var c = JsonSerializer.Deserialize<ModbusTcpConfig>(configJson!, ConfigReadOptions);
+                        if (c == null) return;
+                        dto.IpAddress = c.IpAddress;
+                        dto.Port = c.Port;
+                        dto.UnitId = c.UnitId;
+                        return;
+                    }
+                    case DriverKind.OpcUa:
+                    {
+                        var c = JsonSerializer.Deserialize<OpcUaConfig>(configJson!, ConfigReadOptions);
+                        if (c == null) return;
+                        // 端点地址原样返回，前端回填/展示必须用整串，用 ip+port 拼接会丢路径
+                        dto.EndpointUrl = c.EndpointUrl;
+                        dto.IpAddress = TryExtractUriHost(c.EndpointUrl);
+                        dto.Port = TryExtractUriPort(c.EndpointUrl);
+                        return;
+                    }
+                    case DriverKind.Mqtt:
+                    {
+                        var c = JsonSerializer.Deserialize<MqttConfig>(configJson!, ConfigReadOptions);
+                        if (c == null) return;
+                        dto.Broker = c.Broker;
+                        dto.Port = c.Port;
+                        dto.Topic = c.Topic;
+                        return;
+                    }
+                    case DriverKind.Virtual:
+                    {
+                        var c = JsonSerializer.Deserialize<VirtualConfig>(configJson!, ConfigReadOptions);
+                        if (c == null) return;
+                        dto.IntervalMs = c.IntervalMs;
+                        dto.RandomValues = c.RandomValues;
+                        return;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // 配置非法：字段保持 null，前端显示"未配置"
+            }
+        }
+
+        /// <summary>从 OPC UA 端点地址解析主机名；非法或不含主机信息返回 null。</summary>
+        private static string? TryExtractUriHost(string? endpointUrl)
+        {
+            if (string.IsNullOrWhiteSpace(endpointUrl)) return null;
+            return Uri.TryCreate(endpointUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
+        }
+
+        /// <summary>
+        /// 从 OPC UA 端点地址解析端口号；未显式指定端口或地址非法返回 null。
+        /// （非标准 scheme 未指定端口时 <c>Uri.Port</c> 为 -1，此处归一为 null。）
+        /// </summary>
+        private static int? TryExtractUriPort(string? endpointUrl)
+        {
+            if (string.IsNullOrWhiteSpace(endpointUrl)) return null;
+            if (!Uri.TryCreate(endpointUrl, UriKind.Absolute, out var uri)) return null;
+            return uri.Port > 0 ? uri.Port : null;
         }
 
         /// <summary>将设备变量实例与其变量模板映射为 DTO（模板缺失时 Key/Name 为空、DataType 取默认值）。</summary>
@@ -308,22 +413,57 @@ namespace ScadaServer.Application.Services
             bool isOpc = IsOpcUaDriver(dk);
             if (!isS7 && !isOpc) return null;
 
-            using var doc = JsonDocument.Parse(configJson);
-            var root = doc.RootElement;
-
-            if (isS7)
+            try
             {
-                if (!root.TryGetProperty("IpAddress", out var ip) || string.IsNullOrWhiteSpace(ip.GetString()))
-                    return null;
-                var port = root.TryGetProperty("Port", out var po) && po.ValueKind == JsonValueKind.Number
-                    ? po.GetInt32()
-                    : 102;
-                return $"{ip.GetString()!.Trim().ToLowerInvariant()}|{port}";
-            }
+                using var doc = JsonDocument.Parse(configJson);
+                var root = doc.RootElement;
 
-            if (!root.TryGetProperty("EndpointUrl", out var url) || string.IsNullOrWhiteSpace(url.GetString()))
+                if (isS7)
+                {
+                    var ip = TryGetStringProperty(root, "IpAddress");
+                    if (string.IsNullOrWhiteSpace(ip)) return null;
+                    var portEl = TryGetJsonProperty(root, "Port");
+                    var port = portEl.HasValue
+                        && portEl.Value.ValueKind == JsonValueKind.Number
+                        && portEl.Value.TryGetInt32(out var p)
+                        ? p
+                        : 102;
+                    return $"{ip!.Trim().ToLowerInvariant()}|{port}";
+                }
+
+                var url = TryGetStringProperty(root, "EndpointUrl");
+                if (string.IsNullOrWhiteSpace(url)) return null;
+                return url!.Trim().TrimEnd('/').ToLowerInvariant();
+            }
+            catch (JsonException)
+            {
+                // 单台设备的配置 JSON 非法时跳过该设备的去重比对，
+                // 不让一台坏设备导致任意 S7/OPC UA 设备的创建/更新直接 500。
                 return null;
-            return url.GetString()!.Trim().TrimEnd('/').ToLowerInvariant();
+            }
+        }
+
+        /// <summary>
+        /// 在 JSON 对象中按名称查找属性（大小写不敏感，与派生字段读取口径一致）；未找到返回 null。
+        /// </summary>
+        private static JsonElement? TryGetJsonProperty(JsonElement root, string name)
+        {
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            foreach (var property in root.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return property.Value;
+            }
+            return null;
+        }
+
+        /// <summary>读取 JSON 对象中的字符串属性；属性缺失或非字符串类型时返回 null。</summary>
+        private static string? TryGetStringProperty(JsonElement root, string name)
+        {
+            var element = TryGetJsonProperty(root, name);
+            return element.HasValue && element.Value.ValueKind == JsonValueKind.String
+                ? element.Value.GetString()
+                : null;
         }
 
         /// <summary>判断驱动键是否为 S7（兼容 S7 / S7Driver 写法）。</summary>

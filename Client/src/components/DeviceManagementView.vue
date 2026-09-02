@@ -59,6 +59,9 @@ const devModel = ref<string>('');
 const devType = ref<DeviceType>('OPCUA');
 const devIP = ref<string>('');
 const devPort = ref<string>('');
+// OPC UA 端点完整地址（含 scheme 与可选路径，如 opc.tcp://192.168.1.10:4840/server）。
+// 真相源是后端 ConfigJson.EndpointUrl，不要再用 ip+port 拼接，否则会丢掉路径部分。
+const devEndpointUrl = ref<string>('');
 
 const devStatus = ref<'online' | 'offline'>('online');
 
@@ -176,6 +179,7 @@ const openNewDeviceModal = () => {
   devType.value = initialModel ? protocolKeyToDeviceType(initialModel.protocolKey) : 'OPCUA';
   devIP.value = '192.168.1.100';
   devPort.value = '4840';
+  devEndpointUrl.value = 'opc.tcp://192.168.1.10:4840';
   devStatus.value = 'online';
 
   // S7 init
@@ -203,6 +207,7 @@ const onModelChange = () => {
     if (devType.value === 'OPCUA') {
       devPort.value = '4840';
       devIP.value = '192.168.1.10';
+      devEndpointUrl.value = 'opc.tcp://192.168.1.10:4840';
     } else if (devType.value === 'S7') {
       devPort.value = '102';
       devIP.value = '192.168.1.12';
@@ -230,6 +235,7 @@ const openEditDeviceModal = (device: Device) => {
   devType.value = device.type;
   devIP.value = device.ipAddress || '';
   devPort.value = String(device.port ?? '');
+  devEndpointUrl.value = device.endpointUrl || '';
   devStatus.value = device.status === 1 ? 'online' : 'offline';
 
   // S7 connections
@@ -259,8 +265,9 @@ const openEditDeviceModal = (device: Device) => {
 const buildConfigJson = (type: DeviceType): string => {
   switch (type) {
     case 'OPCUA':
+      // 优先使用完整端点地址(含可选路径),避免 ip+port 拼接时丢失路径部分。
       return JSON.stringify({
-        EndpointUrl: `opc.tcp://${devIP.value || '127.0.0.1'}:${devPort.value || '4840'}`,
+        EndpointUrl: devEndpointUrl.value || `opc.tcp://${devIP.value || '127.0.0.1'}:${devPort.value || '4840'}`,
         SecurityPolicy: 'None'
       });
     case 'S7':
@@ -312,13 +319,8 @@ const handleSaveDevice = async () => {
     areaId: devArea.value,
     // Device.modelId 为 number；devModel 下拉值为 string，统一转 number 提交
     modelId: Number(devModel.value) || 0,
-    // 协议由后端从 modelId 推导,前端不再提交 type
-    ipAddress: devIP.value,
-    port: devPort.value,
+    // 协议由后端从 modelId 推导,前端不再提交 type/ip/port 等(后端从 ConfigJson 派生)
     status: devStatus.value === 'online' ? 1 : 0,
-    cpuType: devCpuType.value,
-    rack: Number(devRack.value),
-    slot: Number(devSlot.value),
     // 协议由后端从 modelId 推导，前端按模型 protocolKey 派生类型构造 ConfigJson
     configJson: buildConfigJson(chosenModel ? protocolKeyToDeviceType(chosenModel.protocolKey) : devType.value)
   };
@@ -535,12 +537,12 @@ const toggleDeviceEnabled = async (device: Device) => {
               <span class="text-slate-400 dark:text-slate-500">连接地址:</span>
               <div class="text-slate-700 dark:text-slate-300 font-bold block truncate leading-relaxed">
                 <template v-if="d.type === 'OPCUA'">
-                  <span class="text-sky-600 dark:text-sky-400 font-bold">OPCUA:</span> opc.tcp://{{ d.ipAddress || '127.0.0.1' }}:{{ d.port || '4840' }}
+                  <span class="text-sky-600 dark:text-sky-400 font-bold">OPCUA:</span> {{ d.endpointUrl || '未配置' }}
                 </template>
                 <template v-else-if="d.type === 'S7'">
-                  <span class="text-indigo-600 dark:text-indigo-400 font-bold">S7 Link:</span> {{ d.ipAddress || '192.168.1.12' }}:{{ d.port || '102' }} 
+                  <span class="text-indigo-600 dark:text-indigo-400 font-bold">S7 Link:</span> {{ d.ipAddress || '未配置' }}:{{ d.port || '未配置' }} 
                   <span class="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-800 px-1 rounded text-[10px] font-normal font-sans ml-1.5">
-                    {{ d.cpuType || 'S7-1200' }} (R{{ d.rack || 0 }}/S{{ d.slot || 1 }})
+                    {{ d.cpuType || '未配置' }} (R{{ d.rack ?? '—' }}/S{{ d.slot ?? '—' }})
                   </span>
                 </template>
                 <template v-else-if="d.type === 'MQTT'">
@@ -774,25 +776,19 @@ const toggleDeviceEnabled = async (device: Device) => {
             <!-- OPCUA Connection Setup -->
             <div v-if="devType === 'OPCUA'" class="space-y-2">
               <div class="text-[10px] text-[#1890ff] dark:text-sky-400 font-bold uppercase tracking-wider mb-1">OPC UA 连接配置</div>
-              <div class="grid grid-cols-3 gap-2">
-                <div class="col-span-2">
-                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">IP 地址</label>
-                  <input 
-                    v-model="devIP"
-                    type="text"
-                    placeholder="e.g. 192.168.1.100"
-                    class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
-                  />
-                </div>
+              <div class="grid grid-cols-1 gap-2">
                 <div>
-                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">端口</label>
+                  <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">端点地址 (EndpointUrl)</label>
                   <input 
-                    v-model="devPort"
+                    v-model="devEndpointUrl"
                     type="text"
-                    placeholder="e.g. 4840"
+                    placeholder="e.g. opc.tcp://192.168.1.100:4840/server"
                     class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-mono font-bold text-slate-800 dark:text-white"
                   />
                 </div>
+              </div>
+              <div class="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                支持完整路径,如 <span class="font-mono">opc.tcp://host:4840/MyServer/Instance</span>。仅修改主机/端口时路径部分会原样保留。
               </div>
             </div>
 
