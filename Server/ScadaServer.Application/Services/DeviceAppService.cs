@@ -242,6 +242,101 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
+        /// 校验设备名称唯一：Trim + 大小写不敏感 + 忽略尾随空格（与 MySQL ci 排序规则语义一致）。
+        /// 返回规范化后的名称供入库，保证存储与去重口径一致。
+        /// </summary>
+        private async Task<(bool ok, string normName)> ResolveUniqueNameAsync(string rawName, int? excludeId)
+        {
+            var name = rawName?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(name))
+            {
+                throw new BusinessException("设备名称不能为空");
+            }
+
+            // 直接按名称比较：MySQL 默认 ci 排序规则大小写不敏感、忽略尾随空格，
+            // 无需 ToLowerInvariant（EF 无法翻译该方法到 SQL）。
+            var peers = await _repository.GetListAsync(d =>
+                d.Id != (excludeId ?? 0) && d.Name == name);
+            if (peers.Any())
+            {
+                throw new BusinessException($"设备名称 '{name}' 已存在");
+            }
+
+            return (true, name);
+        }
+
+        /// <summary>
+        /// 校验协议端点唯一（同一驱动内）。S7 校验 IpAddress+Port，OPC UA 校验 EndpointUrl。
+        /// 仅当配置解析成功且地址非空时才参与去重；Modbus/MQTT/Virtual 不参与。
+        /// 兼容纯驱动键（S7/OPCUA）与驱动类名（S7Driver/OPCUADriver）。
+        /// </summary>
+        private async Task EnsureEndpointUniqueAsync(string? driverKey, string configJson, int? excludeId)
+        {
+            if (string.IsNullOrWhiteSpace(configJson)) return;   // 更新语义：空=保留原配置
+
+            var probeKey = ParseEndpointKey(driverKey, configJson);
+            if (probeKey == null) return;                         // 非 S7/OPC UA 或地址为空，跳过
+
+            var all = await _repository.GetListAsync();           // 带导航（Area/Model.Protocol），AsNoTracking
+            foreach (var d in all)
+            {
+                if (d.Id == excludeId) continue;
+                var dk = d.Model?.Protocol?.DriverKey;
+                if (dk == null) continue;
+
+                var peerKey = ParseEndpointKey(dk, d.JsonConfig ?? string.Empty);
+                if (peerKey != null
+                    && string.Equals(peerKey, probeKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new BusinessException(
+                        IsS7Driver(driverKey ?? string.Empty)
+                            ? $"S7 设备的 IP+端口 '{probeKey}' 已被设备 '{d.Name}' 使用"
+                            : $"OPC UA 服务器地址 '{probeKey}' 已被设备 '{d.Name}' 使用");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 从协议配置 JSON 提取端点唯一键；非 S7/OPC UA 或地址为空返回 null。
+        /// </summary>
+        private static string? ParseEndpointKey(string? driverKey, string configJson)
+        {
+            if (string.IsNullOrEmpty(configJson)) return null;
+            var dk = driverKey?.Trim() ?? string.Empty;
+
+            bool isS7 = IsS7Driver(dk);
+            bool isOpc = IsOpcUaDriver(dk);
+            if (!isS7 && !isOpc) return null;
+
+            using var doc = JsonDocument.Parse(configJson);
+            var root = doc.RootElement;
+
+            if (isS7)
+            {
+                if (!root.TryGetProperty("IpAddress", out var ip) || string.IsNullOrWhiteSpace(ip.GetString()))
+                    return null;
+                var port = root.TryGetProperty("Port", out var po) && po.ValueKind == JsonValueKind.Number
+                    ? po.GetInt32()
+                    : 102;
+                return $"{ip.GetString()!.Trim().ToLowerInvariant()}|{port}";
+            }
+
+            if (!root.TryGetProperty("EndpointUrl", out var url) || string.IsNullOrWhiteSpace(url.GetString()))
+                return null;
+            return url.GetString()!.Trim().TrimEnd('/').ToLowerInvariant();
+        }
+
+        /// <summary>判断驱动键是否为 S7（兼容 S7 / S7Driver 写法）。</summary>
+        private static bool IsS7Driver(string dk)
+            => string.Equals(dk, "S7", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dk, "S7Driver", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>判断驱动键是否为 OPC UA（兼容 OPCUA / OPCUADriver 写法）。</summary>
+        private static bool IsOpcUaDriver(string dk)
+            => string.Equals(dk, "OPCUA", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dk, "OPCUADriver", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// 按区域编码自动生成设备标识：{AreaCode}-{序号:000}。
         /// 区域未配置 Code 时回退为 A{AreaId}。
         /// </summary>
@@ -318,6 +413,10 @@ namespace ScadaServer.Application.Services
 
             // 2. 验证协议配置 JSON 格式（按协议驱动键对应的配置类校验）
             ValidateConfigJson(driverKey, dto.ConfigJson);
+
+            // 3.5 名称唯一 + S7/OPC UA 端点唯一（新建设备无 Id，排除项传 null）
+            dto.Name = (await ResolveUniqueNameAsync(dto.Name, null)).normName;
+            await EnsureEndpointUniqueAsync(driverKey, dto.ConfigJson, null);
 
             // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
             if (string.IsNullOrWhiteSpace(dto.Key))
@@ -434,6 +533,14 @@ namespace ScadaServer.Application.Services
             if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
                 ValidateConfigJson(model.Protocol?.DriverKey, dto.ConfigJson);
+            }
+
+            // 3.5 名称唯一（排除自身）+ S7/OPC UA 端点唯一（排除自身）
+            //     更新语义：ConfigJson 为空表示保留原配置，跳过端点去重。
+            dto.Name = (await ResolveUniqueNameAsync(dto.Name, dto.Id)).normName;
+            if (!string.IsNullOrEmpty(dto.ConfigJson))
+            {
+                await EnsureEndpointUniqueAsync(model.Protocol?.DriverKey!, dto.ConfigJson, dto.Id);
             }
 
             var updated = await _uow.ExecuteInTransactionAsync(async transaction =>
