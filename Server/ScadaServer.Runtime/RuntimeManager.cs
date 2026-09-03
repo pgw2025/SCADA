@@ -171,13 +171,13 @@ namespace ScadaServer.Runtime
             var db = sp.GetRequiredService<ScadaDbContext>();
 
             // 加载所有启用设备及其完整运行期依赖：
-            // Device → Controller / Connection(→Protocol) / DataModel(→Protocol) → DeviceVariable(→ModelVariable)
-            // 阶段 3：Connection 为连接参数优先真相源（双读兼容：缺失时回退 Model.Protocol + Device.JsonConfig）。
+            // Device → Controller / Connection(→Protocol) / DataModel → DeviceVariable(→ModelVariable)
+            // 阶段 6：连接参数与驱动协议均只取 Device.Connection（DataModel 仍加载用于主模型/绑定日志与空值守卫）。
             // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
             var devices = await db.Devices
                 .Include(d => d.Controller)
                 .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
-                .Include(d => d.Model).ThenInclude(m => m!.Protocol)
+                .Include(d => d.Model)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 // 阶段 5：绑定行仅用于启动日志统计（N 台绑定 / 主模型），运行时变量解析仍以 Device.Model（主模型）为唯一生效集合。
                 .Include(d => d.DeviceDataModels)
@@ -369,7 +369,7 @@ namespace ScadaServer.Runtime
             return await db.Devices
                 .Include(d => d.Controller)
                 .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
-                .Include(d => d.Model).ThenInclude(m => m!.Protocol)
+                .Include(d => d.Model)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);
         }
@@ -389,9 +389,9 @@ namespace ScadaServer.Runtime
                     return false;
                 }
 
-                // 协议真相源（阶段 3 起为回退链）：优先设备默认连接所绑协议，连接缺失时回退数据模型协议。
-                // 双读兼容期两者语义一致（回填后 Connection.Protocol 即原 DataModel.Protocol）；缺少则跳过该设备。
-                var effectiveProtocol = device.Connection?.Protocol ?? device.Model?.Protocol;
+                // 协议真相源（阶段 6 起）：设备默认连接所绑协议。Connection 缺失（不应出现的异常场景）
+                // 视为无有效协议并跳过该设备——已删除对 DataModel.Protocol 的运行时回退（6.2）。
+                var effectiveProtocol = device.Connection?.Protocol;
                 var driverKey = effectiveProtocol?.DriverKey;
                 if (string.IsNullOrWhiteSpace(driverKey))
                 {

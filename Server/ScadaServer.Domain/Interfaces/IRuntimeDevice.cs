@@ -22,10 +22,10 @@ namespace ScadaServer.Domain.Interfaces
         /// <summary>
         /// 设备连接配置（JSON 字符串，可为空串）。
         /// <para>
-        /// 阶段 3 起为双读兼容层：优先取设备默认连接（<c>DeviceConnection.ConfigJson</c>），
-        /// 连接缺失（未回填/新建未迁移数据）时回退 <c>Device.JsonConfig</c>，再兜底 "{}"。
-        /// 驱动在 ConnectAsync 中反序列化为自己的协议配置（如 S7 的 IP/Rack/Slot、OPC UA 的 EndpointUrl），
-        /// 对数据来源无感知。
+        /// 阶段 6 起单真相源：取设备默认连接（<c>DeviceConnection.ConfigJson</c>）；
+        /// 已删除对 <c>Device.JsonConfig</c> 的双读回退（历史列自阶段 6 起不再写入）。
+        /// 连接缺失时兜底 "{}"。驱动在 ConnectAsync 中反序列化为自己的协议配置
+        /// （如 S7 的 IP/Rack/Slot、OPC UA 的 EndpointUrl），对数据来源无感知。
         /// </para>
         /// </summary>
         string ConfigJson { get; }
