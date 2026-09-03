@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Compile Remove="DBEntities\**" />
+    <EmbeddedResource Remove="DBEntities\**" />
+    <None Remove="DBEntities\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ScadaServer.Application\ScadaServer.Application.csproj" />
     <ProjectReference Include="..\ScadaServer.Domain\ScadaServer.Domain.csproj" />
   </ItemGroup>
@@ -24,10 +30,6 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="DBEntities\" />
   </ItemGroup>
 
   <ItemGroup>
