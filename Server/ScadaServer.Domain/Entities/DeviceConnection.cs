@@ -4,7 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ScadaServer.Domain.Entities
 {
     /// <summary>
-    /// 设备连接实体（阶段 3 引入）：把"设备怎么连接"从 <see cref="Device.JsonConfig"/> 中抽取为独立实体。
+    /// 设备连接实体（阶段 3 引入）：把"设备怎么连接"从设备历史列 JsonConfig 中抽取为独立实体
+    /// （原 <c>Device.JsonConfig</c> 列已于阶段 6.4 删除，连接配置唯一真相源即本实体 <see cref="ConfigJson"/>）。
     /// <para>
     /// 一台 <see cref="Device"/> 经 <see cref="Device.ConnectionId"/> 指向本实体；过渡期采用
     /// "1 设备 = 1 独占 Controller + 1 DeviceConnection"（P3-A），与重构前 JsonConfig 行为 100% 等价；
@@ -13,7 +14,7 @@ namespace ScadaServer.Domain.Entities
     /// <para>
     /// <see cref="ConfigJson"/> 保存驱动完整配置原文（即原 JsonConfig，P3-B），
     /// <see cref="Host"/> / <see cref="Port"/> 为额外提取的冗余列（管理/检索用），不做运行真相源。
-    /// 运行时优先读取本实体的 <see cref="ConfigJson"/>，回退 <see cref="Device.JsonConfig"/>（双读兼容层）。
+    /// 运行时只读取本实体的 <see cref="ConfigJson"/>（阶段 6 已删除对 Device.JsonConfig 的双读回退）。
     /// </para>
     /// </summary>
     [Table("DeviceConnections")]

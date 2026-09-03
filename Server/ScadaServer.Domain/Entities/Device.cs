@@ -62,8 +62,8 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 默认设备连接 ID（可空：历史过渡列，未回填/手工场景可为 NULL；FK → DeviceConnections，Restrict）。
         /// <para>
-        /// 阶段 6 起设备连接参数的唯一来源：非空时以 <see cref="DeviceConnection.ConfigJson"/> 为连接配置；
-        /// 运行时不再回退 <see cref="JsonConfig"/>（历史列自阶段 6 起停止写入，待阶段 6.4 评估删除）。
+        /// 阶段 6 起设备连接参数的唯一来源：非空时以 <see cref="DeviceConnection.ConfigJson"/> 为连接配置
+        /// （原 Device.JsonConfig 历史列已于阶段 6.4 删除）。
         /// </para>
         /// </summary>
         public int? ConnectionId { get; set; }
@@ -84,20 +84,6 @@ namespace ScadaServer.Domain.Entities
         /// 高速PLC: 100ms, 普通PLC: 500ms, 仪表: 5000ms
         /// </summary>
         public int PollingInterval { get; set; } = 1000;
-
-        /// <summary>
-        /// 协议配置 JSON（历史列：原 DeviceConfigs.JsonConfig）。
-        /// 阶段 6 起连接配置唯一真相源为 <see cref="DeviceConnection.ConfigJson"/>，本列不再写入
-        /// （存量历史值仅作只读兜底），待阶段 6.4 评估删除。
-        /// </summary>
-        [Column(TypeName = "longtext")]
-        public string? JsonConfig { get; set; }
-
-        /// <summary>
-        /// 配置版本号（原 DeviceConfigs.Version）。
-        /// 乐观锁/配置追踪语义：每次协议配置更新时自增。
-        /// </summary>
-        public int Version { get; set; } = 1;
 
         /// <summary>
         /// 创建时间（UTC 存储）

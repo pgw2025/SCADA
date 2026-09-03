@@ -221,9 +221,10 @@ public class DatabaseInitializer
     }
 
     /// <summary>
-    /// 一次性回填（阶段 3）：把散落在 <c>Device.JsonConfig</c> 的连接参数抽取为
-    /// <see cref="Controller"/>（每设备独占一个，Code = "PLC{Device.Id}"）+ <see cref="DeviceConnection"/>
-    /// （ConfigJson 保存原 JsonConfig 原文），并回填 <c>Device.ControllerId</c> / <c>Device.ConnectionId</c>。
+    /// 一次性回填（阶段 3，自阶段 6 起仅作兜底）：对尚未建立默认连接（ConnectionId IS NULL）的设备，
+    /// 创建独占 <see cref="Controller"/>（Code = "PLC{Device.Id}"）+ <see cref="DeviceConnection"/>
+    /// （ConfigJson 置空 "{}"——原 Device.JsonConfig 历史列已于阶段 6.4 删除，存量值在阶段 3 已抽取完毕），
+    /// 并回填 <c>Device.ControllerId</c> / <c>Device.ConnectionId</c>。
     /// <para>
     /// 幂等：仅处理 <c>Device.ConnectionId IS NULL</c> 的设备，重复执行不产生重复行；
     /// 若上次执行中断残留了同名 Controller（Code = PLC{Id}），自动复用而非重建。
@@ -237,7 +238,8 @@ public class DatabaseInitializer
     {
         try
         {
-            // 待回填设备：尚未建立默认连接（ConnectionId IS NULL），含空配置（JsonConfig NULL）设备。
+            // 待回填设备：尚未建立默认连接（ConnectionId IS NULL）。阶段 6 起正常创建路径均已回填独占连接，
+            // 仅极端遗留场景（手工改库等）可能命中；此处补建空配置连接以保持"每设备必有连接"不变量。
             var devices = await _db.Set<Device>()
                 .Include(d => d.Model)!.ThenInclude(m => m!.Protocol)
                 .Where(d => d.ConnectionId == null)
@@ -285,7 +287,8 @@ public class DatabaseInitializer
                     }
 
                     // 2) 解析连接冗余列（Host/Port/超时）。仅用于管理/检索展示，ConfigJson 原文才是运行真相源。
-                    var json = device.JsonConfig ?? "{}";
+                    // 原 Device.JsonConfig 列已删（6.4），遗留无连接设备补建空配置连接。
+                    const string json = "{}";
                     var parsed = DeviceConnectionProfile.ParseConnectionSummary(protocol.DriverKey, json);
 
                     var connection = new DeviceConnection
@@ -326,7 +329,7 @@ public class DatabaseInitializer
         }
         catch (Exception ex)
         {
-            // 回填属一次性迁移增强，失败不应阻断启动（运行时双读兼容层仍可经 JsonConfig 回退运行）。
+            // 回填属一次性迁移增强，失败不应阻断启动（遗留设备缺连接时由运行时/后续回填兜底）。
             _logger.LogError(ex, "回填控制器/连接（BackfillControllerAndConnection）失败，已跳过；可重跑修复。");
         }
     }
