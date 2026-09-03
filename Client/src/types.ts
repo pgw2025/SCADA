@@ -418,6 +418,7 @@ export interface Controller {
   model?: string;
   description?: string;
   isEnabled: boolean;
+  connectionCount?: number;  // 阶段 3：该控制器下的连接数（后端填充）
   createdAt: string;
   updatedAt: string;
 }
@@ -454,6 +455,58 @@ export interface ControllerOption {
   name: string;
   protocolId: number;
   protocolName: string;
+}
+
+/**
+ * 设备连接（阶段 3：连接参数抽取实体，DeviceConnectionDto）。
+ * ConfigJson 为驱动完整配置原文（P3-B 真相源），Host/Port 为服务端按协议提取的冗余展示列。
+ */
+export interface DeviceConnection {
+  id: number;
+  controllerId: number;
+  controllerCode?: string;     // 派生展示字段
+  controllerName?: string;     // 派生展示字段
+  name: string;
+  protocolId: number;
+  protocolName?: string;       // 派生展示字段
+  configJson?: string | null;  // 驱动完整配置原文
+  host?: string | null;        // 冗余展示列
+  port?: number | null;        // 冗余展示列
+  timeoutMs: number;
+  reconnectIntervalMs: number;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 设备连接创建/更新请求体（与后端 CreateDeviceConnectionDto 对齐，PascalCase）。 */
+export interface DeviceConnectionRequest {
+  ControllerId: number;
+  Name: string;
+  ProtocolId: number;
+  ConfigJson?: string | null;
+  Host?: string | null;
+  Port?: number | null;
+  TimeoutMs?: number;
+  ReconnectIntervalMs?: number;
+  IsEnabled?: boolean;
+}
+
+/** 设备详情中的连接摘要（DeviceDto.Connection，阶段 3，只读展示）。 */
+export interface DeviceConnectionSummary {
+  id: number;
+  controllerId: number;
+  controllerCode?: string | null;
+  controllerName?: string | null;
+  protocolId: number;
+  protocolKey?: string | null;
+  protocolName?: string | null;
+  host?: string | null;
+  port?: number | null;
+  timeoutMs: number;
+  reconnectIntervalMs: number;
+  isEnabled: boolean;
+  updatedAt: string;
 }
 
 /**
@@ -664,6 +717,11 @@ export interface Device {
   areaName?: string;
   modelId: number;
   modelName?: string;
+  // 阶段 3：连接/控制器关联（只读，后端 DeviceDto 填充；快速模式由后端自动维护，高级模式显式附加）。
+  controllerId?: number | null;
+  connectionId?: number | null;
+  // 连接摘要（DeviceDto.Connection）：host/port/协议/控制器/启用等；null = 设备尚未关联连接（回退 JsonConfig 运行）。
+  connection?: DeviceConnectionSummary | null;
   protocolKey?: string; // 后端 DeviceDto 直接携带的协议标识（S7/OPCUA/ModbusTcp...），归一化据此推导 type
   type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
   /**

@@ -97,16 +97,25 @@ export const createDeviceAndSync = async (deviceData: Partial<Device>): Promise<
   }
 
   try {
-    const requestData = {
+    const requestData: Record<string, any> = {
       name: deviceData.name?.trim(),
       key: deviceData.key?.trim(),
       areaId: deviceData.areaId,
       modelId: deviceData.modelId,
       // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: deviceData.isEnabled ?? true,
-      pollingInterval: 1000,
-      configJson: deviceData.configJson ?? '{}'
+      pollingInterval: 1000
     };
+    // 阶段 3.6：高级模式（成对 ControllerId/ConnectionId = 显式附加到已有/新建连接，可跨设备共享）。
+    // 此时连接配置（Connection.ConfigJson）为真相源，后端会镜像写入 Device.JsonConfig，前端无需再提交 configJson。
+    const attachControllerId = (deviceData as any)?.controllerId;
+    const attachConnectionId = (deviceData as any)?.connectionId;
+    if (attachControllerId != null && attachConnectionId != null) {
+      requestData.controllerId = attachControllerId;
+      requestData.connectionId = attachConnectionId;
+    } else {
+      requestData.configJson = (deviceData as any)?.configJson ?? '{}';
+    }
 
     const response = await api.createDeviceOnBackend(requestData);
     const createdDevice = response.data;
@@ -132,7 +141,7 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
   }
 
   try {
-    const requestData = {
+    const requestData: Record<string, any> = {
       id: deviceId,
       name: deviceData.name?.trim(),
       key: deviceData.key?.trim(),
@@ -140,9 +149,17 @@ export const updateDeviceAndSync = async (deviceId: number, deviceData: Partial<
       modelId: deviceData.modelId,
       // 协议由后端从 modelId 推导,前端不提交 type
       isEnabled: deviceData.isEnabled ?? true,
-      pollingInterval: 1000,
-      configJson: deviceData.configJson ?? '{}'
+      pollingInterval: 1000
     };
+    // 阶段 3.6：高级模式成对附加语义与创建一致（见 createDeviceAndSync 注释）。
+    const attachControllerId = (deviceData as any)?.controllerId;
+    const attachConnectionId = (deviceData as any)?.connectionId;
+    if (attachControllerId != null && attachConnectionId != null) {
+      requestData.controllerId = attachControllerId;
+      requestData.connectionId = attachConnectionId;
+    } else {
+      requestData.configJson = (deviceData as any)?.configJson ?? '{}';
+    }
 
     await api.updateDeviceOnBackend(requestData);
     await syncDevices();

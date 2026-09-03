@@ -6,6 +6,9 @@ import { syncAreas, createAreaAndSync, updateAreaAndSync, deleteAreaAndSync, get
 import AreaTree from './AreaTree.vue';
 import { dataModels, addLog, fetchDataModelsFromBackend } from '../store/index';
 import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync, setDeviceEnabledAndSync } from '../services/deviceService';
+import { fetchControllerOptions } from '../api/controllerApi';
+import { fetchDeviceConnections, fetchDeviceConnectionById, createDeviceConnection } from '../api/connectionApi';
+import { systemConfig } from '../store/configStore';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 
 onMounted(() => {
@@ -38,7 +41,7 @@ import {
   ChevronRight,
   ChevronDown
 } from 'lucide-vue-next';
-import { Device, Area, AreaTreeNode, DeviceType, protocolKeyToDeviceType } from '../types';
+import { Device, Area, AreaTreeNode, DeviceType, ControllerOption, DeviceConnection, DeviceConnectionSummary, DeviceConnectionRequest, protocolKeyToDeviceType } from '../types';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -85,6 +88,141 @@ const devSlot = ref<number>(1);
 // Virtual-specific config (matches backend VirtualConfig)
 const devVirtualIntervalMs = ref<number>(1000);
 const devVirtualRandomValues = ref<boolean>(true);
+
+// ---- 阶段 3.6：连接方式（快速模式=内联配置/后端自动维护专属连接；高级模式=显式附加控制器+连接，可跨设备共享） ----
+type DeviceConnMode = 'quick' | 'advanced';
+const connMode = ref<DeviceConnMode>('quick');
+const NEW_CONNECTION_SENTINEL = 0; // 高级模式连接下拉「＋ 新建独立连接」的占位 value
+
+// 控制器/连接级联数据源（高级模式）
+const controllerOptions = ref<ControllerOption[]>([]);
+const controllerConnections = ref<DeviceConnection[]>([]);
+const advancedControllerId = ref<number | null>(null);
+const advancedConnectionId = ref<number | null>(null);
+const advancedConnectionsLoading = ref<boolean>(false);
+const newConnectionName = ref<string>('');
+
+// 编辑态：设备当前已关联连接的摘要（用于展示连接信息与共享警示）
+const editingConnectionLabel = ref<string>('');
+const editingConnectionSharedBy = ref<number>(0);
+
+/** 当前表单选中的数据模型（dataModels[].id 为 string，devModel 下拉值为 string，直接命中）。 */
+const chosenDeviceModel = computed(() => dataModels.value.find(m => m.id === devModel.value) ?? null);
+
+/** 当前表单选中数据模型的协议 ID（高级模式连接兼容性过滤依据）。 */
+const chosenModelProtocolId = computed(() => chosenDeviceModel.value?.protocolId ?? null);
+
+/** 依据模型推导的展示协议；模型缺失时回退 devType（与 onModelChange 一致）。 */
+const deviceTypeFromModel = computed(() =>
+  chosenDeviceModel.value ? protocolKeyToDeviceType(chosenDeviceModel.value.protocolKey) : devType.value
+);
+
+/** 当前选中控制器下「可用（启用且协议匹配所选模型）」的连接；其余连接在下列表中禁用标注。 */
+const compatibleConnections = computed(() => {
+  const protoId = chosenModelProtocolId.value;
+  return controllerConnections.value.filter(c => c.isEnabled && (protoId == null || c.protocolId === protoId));
+});
+
+const connectionEndpointLabel = (c: { host?: string | null; port?: number | null; protocolId: number }): string => {
+  if (c.host) return c.port != null ? `${c.host}:${c.port}` : c.host;
+  return '—';
+};
+
+/** 拉取控制器下拉数据（首次进入高级模式时惰性加载，缓存复用）。 */
+const loadControllerOptions = async () => {
+  if (systemConfig.value.isSimulationActive) {
+    controllerOptions.value = [];
+    return;
+  }
+  if (controllerOptions.value.length > 0) return;
+  controllerOptions.value = await fetchControllerOptions();
+};
+
+/** 拉取所选控制器下的连接列表。 */
+const loadConnectionsForController = async (controllerId: number | null) => {
+  if (controllerId == null) {
+    controllerConnections.value = [];
+    return;
+  }
+  advancedConnectionsLoading.value = true;
+  try {
+    controllerConnections.value = await fetchDeviceConnections(controllerId);
+  } finally {
+    advancedConnectionsLoading.value = false;
+  }
+};
+
+/** 高级模式切换入口：首次进入拉控制器，已选控制器则拉其连接。 */
+const onSwitchConnMode = (mode: DeviceConnMode) => {
+  connMode.value = mode;
+  if (mode === 'advanced') {
+    loadControllerOptions();
+    if (advancedControllerId.value != null && controllerConnections.value.length === 0) {
+      loadConnectionsForController(advancedControllerId.value);
+    }
+  }
+};
+
+/** 控制器下拉变更：清空已选连接并重新拉取连接。 */
+const onAdvancedControllerChange = async () => {
+  advancedConnectionId.value = null;
+  newConnectionName.value = devName.value.trim() ? `${devName.value.trim()} 连接` : '独立连接';
+  await loadConnectionsForController(advancedControllerId.value);
+};
+
+/** 数据模型变更后重置高级模式选择（协议兼容集可能变化）。 */
+const resetAdvancedOnModelChange = () => {
+  if (connMode.value !== 'advanced' || advancedControllerId.value == null) return;
+  advancedConnectionId.value = null;
+  loadConnectionsForController(advancedControllerId.value);
+};
+
+/** 将权威连接配置原文回填到快速模式表单字段（键名兼容 PascalCase / camelCase）。 */
+const applyConfigJsonToQuickFields = (configJson: string | null | undefined) => {
+  if (!configJson || !configJson.trim()) return;
+  let parsed: Record<string, any>;
+  try {
+    parsed = JSON.parse(configJson);
+  } catch {
+    return;
+  }
+  const pick = (names: string[]) => {
+    for (const n of names) {
+      if (parsed[n] !== undefined) return parsed[n];
+    }
+    return undefined;
+  };
+  const type = deviceTypeFromModel.value;
+  if (type === 'OPCUA') {
+    const endpoint = pick(['EndpointUrl', 'endpointUrl']);
+    if (typeof endpoint === 'string' && endpoint) devEndpointUrl.value = endpoint;
+  } else if (type === 'S7') {
+    const ip = pick(['IpAddress', 'ipAddress']);
+    if (typeof ip === 'string' && ip) devIP.value = ip;
+    const port = pick(['Port', 'port']);
+    if (typeof port === 'number') devPort.value = String(port);
+    const cpu = pick(['CpuType', 'cpuType']);
+    if (typeof cpu === 'string' && cpu) devCpuType.value = cpu;
+    const rack = pick(['Rack', 'rack']);
+    if (typeof rack === 'number') devRack.value = rack;
+    const slot = pick(['Slot', 'slot']);
+    if (typeof slot === 'number') devSlot.value = slot;
+  } else if (type === 'Virtual') {
+    const interval = pick(['IntervalMs', 'intervalMs']);
+    if (typeof interval === 'number') devVirtualIntervalMs.value = interval;
+    const random = pick(['RandomValues', 'randomValues']);
+    if (typeof random === 'boolean') devVirtualRandomValues.value = random;
+  }
+  // MQTT 无可见参数面板，无需回填
+};
+
+/** 编辑态：设备已关联连接时拉取权威连接配置（Connection.ConfigJson 为真相源），
+ *  覆盖表单字段，避免设备自身 JsonConfig 镜像在「共享连接由其它设备修改」后过期导致误回退。 */
+const refreshEditConnectionFields = async (device: Device) => {
+  if (device.connectionId == null) return;
+  const conn = await fetchDeviceConnectionById(device.connectionId);
+  if (conn?.configJson) applyConfigJsonToQuickFields(conn.configJson);
+};
 
 // Active view
 const activeSection = ref<'list' | 'areas'>('list');
@@ -395,6 +533,16 @@ const openNewDeviceModal = () => {
   devVirtualIntervalMs.value = 1000;
   devVirtualRandomValues.value = true;
 
+  // 阶段 3.6：新增默认走快速模式（后端自动维护专属连接）；高级模式数据源留待切换时惰性加载。
+  connMode.value = 'quick';
+  controllerConnections.value = [];
+  advancedControllerId.value = null;
+  advancedConnectionId.value = null;
+  advancedConnectionsLoading.value = false;
+  newConnectionName.value = '';
+  editingConnectionLabel.value = '';
+  editingConnectionSharedBy.value = 0;
+
   // 依据当前选中模型类型,统一刷新协议相关默认值(IP/端口/虚拟参数等),
   // 避免上一个设备的残留值(如 OPC UA 的 4840 端口)污染本次初始化。
   onModelChange();
@@ -424,6 +572,8 @@ const onModelChange = () => {
       devVirtualRandomValues.value = true;
     }
   }
+  // 阶段 3.6：模型协议变化会改变高级模式的可用连接集，重置连接选择（含"新建连接"默认名）。
+  resetAdvancedOnModelChange();
 };
 
 const openEditDeviceModal = (device: Device) => {
@@ -459,6 +609,32 @@ const openEditDeviceModal = (device: Device) => {
     } catch {
       // 旧配置格式不兼容,保留默认值
     }
+  }
+
+  // 阶段 3.6：编辑态连接信息初始化。默认仍走快速模式（与"推荐渐进"一致，连接参数可直接编辑；
+  // 后端快速模式会同步更新该设备关联的连接行）。连接被多台设备共享时给出警示，避免误改共享参数。
+  const attachedConn = device.connection;
+  connMode.value = 'quick';
+  controllerConnections.value = [];
+  advancedConnectionsLoading.value = false;
+  advancedControllerId.value = device.controllerId ?? null;
+  advancedConnectionId.value = device.connectionId ?? null;
+  newConnectionName.value = device.name ? `${device.name} 连接` : '独立连接';
+
+  editingConnectionLabel.value = attachedConn
+    ? [attachedConn.controllerCode, attachedConn.controllerName, attachedConn.protocolName]
+        .filter(Boolean)
+        .join(' / ') + (attachedConn.host ? ` · ${connectionEndpointLabel(attachedConn)}` : '')
+    : '';
+  editingConnectionSharedBy.value =
+    device.connectionId != null && device.connection != null
+      ? devices.value.filter(d => d.connectionId != null && d.connectionId === device.connectionId).length
+      : 0;
+
+  // 已关联连接：异步拉取连接权威配置（Connection.ConfigJson）覆盖表单字段，
+  // 防止共享连接被其它设备修改后、本设备 JsonConfig 镜像过期导致"未改动即回退"。
+  if (device.connectionId != null) {
+    refreshEditConnectionFields(device);
   }
 
   showDeviceModal.value = true;
@@ -503,43 +679,108 @@ const handleSaveDevice = async () => {
   addLog('调试', `开始保存设备: ${devName.value}`, 'normal');
   if (!devName.value.trim()) {
     addLog('调试', '校验失败: 名称为空', 'warning');
+    deviceFormErrors.value = { Name: '设备名称不能为空' };
     return;
   }
 
-  const chosenModel = dataModels.value.find(m => m.id === devModel.value);
-  addLog('调试', `Chosen Model ID: ${devModel.value}, Found: ${!!chosenModel}`, 'normal');
-  
-  // Set default initial variables if adding new
-  const initialVars: Record<string, any> = {};
-  if (chosenModel) {
-    chosenModel.variables.forEach((v) => {
-      initialVars[v.key] = v.type === 'digital' ? false : v.min;
-    });
+  const chosenModel = chosenDeviceModel.value;
+  if (!chosenModel) {
+    addLog('调试', '校验失败: 未选择数据模型', 'warning');
+    deviceFormErrorMessage.value = '请先选择数据模型';
+    return;
   }
+  const deviceType = deviceTypeFromModel.value;
 
-  const deviceData = {
+  deviceFormErrors.value = {};
+  deviceFormErrorMessage.value = '';
+
+  // 阶段 3.6 载荷组装：
+  // - 快速模式：以表单字段构造 ConfigJson 提交（后端自动维护该设备的专属连接，行为与重构前一致）；
+  // - 高级模式：提交 ControllerId + ConnectionId（连接配置为真相源，后端镜像），不提交 ConfigJson。
+  const baseData = {
     name: devName.value,
     key: devKey.value.trim(),
     areaId: devArea.value,
     // Device.modelId 为 number；devModel 下拉值为 string，统一转 number 提交
     modelId: Number(devModel.value) || 0,
-    // 协议由后端从 modelId 推导,前端不再提交 type/ip/port 等(后端从 ConfigJson 派生)
-    status: devStatus.value === 'online' ? 1 : 0,
-    // 协议由后端从 modelId 推导，前端按模型 protocolKey 派生类型构造 ConfigJson
-    configJson: buildConfigJson(chosenModel ? protocolKeyToDeviceType(chosenModel.protocolKey) : devType.value)
+    status: devStatus.value === 'online' ? 1 : 0
   };
 
-  deviceFormErrors.value = {};
-  deviceFormErrorMessage.value = '';
+  let attachPayload: { controllerId: number; connectionId: number } | { configJson: string } | null = null;
 
-  if (!devName.value.trim()) {
-    deviceFormErrors.value = { Name: '设备名称不能为空' };
-    return;
+  if (connMode.value === 'advanced') {
+    if (advancedControllerId.value == null) {
+      deviceFormErrorMessage.value = '高级模式请先选择控制器';
+      return;
+    }
+    if (advancedConnectionId.value == null) {
+      deviceFormErrorMessage.value = '高级模式请选择已有连接，或选择「＋ 新建独立连接」';
+      return;
+    }
+
+    let targetConnectionId = advancedConnectionId.value;
+    if (targetConnectionId === NEW_CONNECTION_SENTINEL) {
+      // 「＋ 新建独立连接」：先用表单协议参数在该控制器下创建连接，再把设备附加过去。
+      // 该连接随后可被其它设备在高级模式中选择，实现跨设备共享（阶段 3.6 验收语义）。
+      if (!newConnectionName.value.trim()) {
+        deviceFormErrorMessage.value = '请填写新连接名称';
+        return;
+      }
+      advancedConnectionsLoading.value = true;
+      try {
+        const payload: DeviceConnectionRequest = {
+          ControllerId: advancedControllerId.value,
+          Name: newConnectionName.value.trim(),
+          ProtocolId: Number(chosenModel.protocolId),
+          ConfigJson: buildConfigJson(deviceType),
+          TimeoutMs: 5000,
+          ReconnectIntervalMs: 5000,
+          IsEnabled: true
+        };
+        const resp = await createDeviceConnection(payload);
+        const createdId = resp?.data?.id;
+        if (!createdId) {
+          deviceFormErrorMessage.value = '创建独立连接失败：服务端未返回连接 ID';
+          return;
+        }
+        targetConnectionId = createdId;
+      } catch (error: any) {
+        // 连接创建失败：展示后端业务文案，中断设备保存（HTTP 层已统一 Toast）
+        deviceFormErrorMessage.value = error?.response?.data?.message || error?.message || '创建独立连接失败';
+        return;
+      } finally {
+        advancedConnectionsLoading.value = false;
+      }
+    } else {
+      // 已选已有连接：与后端 ResolveAttachConnectionAsync 同口径的前置校验，给出友好提示
+      const target = controllerConnections.value.find(c => c.id === targetConnectionId);
+      if (target && !target.isEnabled) {
+        deviceFormErrorMessage.value = `连接「${target.name}」已停用，不可被设备引用，请先启用或另选连接`;
+        return;
+      }
+      if (target && chosenModel.protocolId != null && target.protocolId !== chosenModel.protocolId) {
+        deviceFormErrorMessage.value = `连接「${target.name}」的协议与所选数据模型不一致，无法附加`;
+        return;
+      }
+    }
+
+    attachPayload = {
+      controllerId: advancedControllerId.value,
+      connectionId: targetConnectionId
+    };
+  } else {
+    // 快速模式：协议由后端从 modelId 推导，前端按模型 protocolKey 派生类型构造 ConfigJson
+    attachPayload = { configJson: buildConfigJson(deviceType) };
   }
 
-  if (isEditingDevice.value && editingDeviceId.value) {
+  const deviceData = {
+    ...baseData,
+    ...(attachPayload as Record<string, any>)
+  };
+
+  if (isEditingDevice.value && editingDeviceId.value != null) {
     // Edit existing
-    const result = await updateDeviceAndSync(editingDeviceId.value, deviceData);
+    const result = await updateDeviceAndSync(editingDeviceId.value, deviceData as any);
     if (result.success) {
       addLog('设备管理', `保存了工业设备配置 [${devName.value}]`, 'normal');
       showDeviceModal.value = false;
@@ -552,9 +793,9 @@ const handleSaveDevice = async () => {
     }
   } else {
     // Add new
-    const result = await createDeviceAndSync(deviceData);
+    const result = await createDeviceAndSync(deviceData as any);
     if (result.success) {
-      addLog('设备管理', `添加新网关通道: [${devName.value}] (${devType.value})`, 'normal');
+      addLog('设备管理', `添加新网关通道: [${devName.value}] (${deviceType})`, 'normal');
       showDeviceModal.value = false;
     } else if (result.error) {
       if (result.error.type === 'validation' && result.error.fieldErrors) {
@@ -818,6 +1059,17 @@ const toggleDeviceEnabled = async (device: Device) => {
                 </template>
               </div>
             </div>
+
+            <!-- 阶段 3.6：设备已关联连接时的连接摘要（控制器/协议/端点 + 共享态提示） -->
+            <div v-if="d.connection" class="col-span-2 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 border border-violet-200/60 dark:border-violet-800 rounded px-1.5 py-0.5 font-sans font-bold whitespace-nowrap">
+                连接 #{{ d.connection.id }}
+              </span>
+              <span class="truncate font-sans">
+                {{ [d.connection.controllerName, d.connection.controllerCode, d.connection.protocolName].filter(Boolean).join(' / ') }}
+                <template v-if="d.connection.host"> · {{ connectionEndpointLabel(d.connection) }}</template>
+              </span>
+            </div>
           </div>
 
           <!-- Bottom: action edits -->
@@ -1073,7 +1325,7 @@ const toggleDeviceEnabled = async (device: Device) => {
 
     <!-- MODAL: ADD / EDIT DEVICE COMM LINK -->
     <div v-if="showDeviceModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
-      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-lg w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         
         <!-- Header banner -->
         <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
@@ -1139,8 +1391,126 @@ const toggleDeviceEnabled = async (device: Device) => {
             </div>
           </div>
 
-          <!-- Dynamic settings based on Protocol -->
-          <div class="p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl space-y-3 border border-slate-100 dark:border-slate-800">
+          <!-- 阶段 3.6：连接方式（快速模式=下方内联配置/后端自动维护专属连接；高级模式=显式附加控制器+连接） -->
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-slate-500 dark:text-slate-400 font-bold block whitespace-nowrap">连接方式</label>
+            <div class="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5 text-[11px] font-bold">
+              <button
+                type="button"
+                @click="onSwitchConnMode('quick')"
+                class="px-3 py-1 rounded-md cursor-pointer transition-all"
+                :class="connMode === 'quick' ? 'bg-[#1890ff] text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+              >
+                快速模式
+              </button>
+              <button
+                type="button"
+                @click="onSwitchConnMode('advanced')"
+                class="px-3 py-1 rounded-md cursor-pointer transition-all"
+                :class="connMode === 'advanced' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+              >
+                高级模式
+              </button>
+            </div>
+          </div>
+          <p class="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500 -mt-2">
+            <template v-if="connMode === 'quick'">快速模式：直接在下方编辑连接参数，系统自动为每台设备维护独立连接。</template>
+            <template v-else>高级模式：将设备附加到指定控制器下的已有连接，可多台设备共享同一连接参数运行。</template>
+          </p>
+
+          <!-- 编辑态：当前设备已关联连接的摘要（含共享警示，避免误改共享连接参数） -->
+          <div
+            v-if="isEditingDevice && editingConnectionLabel"
+            class="rounded-lg border px-3 py-2 text-[11px] leading-relaxed"
+            :class="editingConnectionSharedBy > 1
+              ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 text-slate-500 dark:text-slate-400'"
+          >
+            <div class="font-bold">当前连接：{{ editingConnectionLabel }}</div>
+            <div v-if="editingConnectionSharedBy > 1" class="mt-0.5 font-bold">
+              ⚠ 该连接已被 {{ editingConnectionSharedBy }} 台设备共享——在此修改连接参数将同步影响共享该连接的所有设备。
+            </div>
+            <div v-else class="mt-0.5">该连接为当前设备独占，修改连接参数仅影响本设备。</div>
+          </div>
+
+          <!-- 高级模式：控制器 → 连接 级联选择（可新建独立连接） -->
+          <div v-if="connMode === 'advanced'" class="p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl space-y-2.5 border border-violet-100 dark:border-slate-800">
+            <div class="flex items-center justify-between text-[10px] text-violet-500 dark:text-violet-400 font-bold uppercase tracking-wider">
+              <span>高级模式 · 共享连接</span>
+              <span class="normal-case font-mono font-bold text-slate-400">{{ controllerConnections.length }} 个连接</span>
+            </div>
+
+            <div>
+              <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">控制器</label>
+              <select
+                v-model="advancedControllerId"
+                @change="onAdvancedControllerChange"
+                :disabled="controllerOptions.length === 0"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-bold text-slate-800 dark:text-white"
+              >
+                <option :value="null">（请选择控制器）</option>
+                <option v-for="c in controllerOptions" :key="c.id" :value="c.id">{{ c.code }} · {{ c.name }}（{{ c.protocolName }}）</option>
+              </select>
+              <div v-if="controllerOptions.length === 0" class="text-[10px] text-amber-500 dark:text-amber-400 mt-1">
+                暂无控制器可选项——请先在「控制器管理」页面登记控制器后重试。
+              </div>
+            </div>
+
+            <div>
+              <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">连接</label>
+              <select
+                v-model="advancedConnectionId"
+                :disabled="advancedControllerId == null || advancedConnectionsLoading"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-bold text-slate-800 dark:text-white"
+              >
+                <option :value="null">
+                  {{ advancedConnectionsLoading ? '加载连接中…' : (advancedControllerId == null ? '（请先选择控制器）' : '（请选择要附加的连接）') }}
+                </option>
+                <option
+                  v-if="advancedControllerId != null && !advancedConnectionsLoading"
+                  :value="NEW_CONNECTION_SENTINEL"
+                >
+                  ＋ 新建独立连接（该控制器下、暂不共享）…
+                </option>
+                <option
+                  v-for="c in controllerConnections"
+                  :key="c.id"
+                  :value="c.id"
+                  :disabled="!c.isEnabled || (chosenModelProtocolId != null && c.protocolId !== chosenModelProtocolId)"
+                >
+                  {{ c.name }}（{{ c.protocolName || ('协议 #' + c.protocolId) }} · {{ connectionEndpointLabel(c) }}）
+                  {{ !c.isEnabled ? '[停用]' : (chosenModelProtocolId != null && c.protocolId !== chosenModelProtocolId ? '[协议不符]' : '') }}
+                </option>
+              </select>
+              <p v-if="advancedControllerId != null" class="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500 mt-1">
+                <template v-if="controllerConnections.length === 0">
+                  该控制器下暂无连接：可下拉选择「＋ 新建独立连接」按下方协议参数创建；或改用快速模式由系统自动创建专属连接。
+                </template>
+                <template v-else>
+                  仅「启用且协议与所选模型一致」的连接可选；停用/协议不符项已禁用。选择「＋ 新建独立连接」将额外创建一条该控制器下的连接。
+                </template>
+              </p>
+            </div>
+
+            <!-- 「新建独立连接」子表单（连接名；协议参数复用下方动态区） -->
+            <div
+              v-if="advancedControllerId != null && advancedConnectionId === NEW_CONNECTION_SENTINEL"
+              class="pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2"
+            >
+              <div>
+                <label class="text-slate-400 dark:text-slate-400 font-bold block mb-0.5">新连接名称 <span class="text-rose-500">*</span></label>
+                <input
+                  v-model="newConnectionName"
+                  type="text"
+                  placeholder="如: 1号车间 S7 主连接"
+                  class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none text-xs font-sans font-bold text-slate-800 dark:text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic settings based on Protocol（快速模式始终显示；高级模式选择「新建独立连接」时复用下方参数区） -->
+          <div v-if="connMode === 'quick' || advancedConnectionId === NEW_CONNECTION_SENTINEL" class="p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl space-y-3 border border-slate-100 dark:border-slate-800">
             <div class="flex items-center gap-1.5 text-slate-400 dark:text-slate-400 font-mono scale-95 origin-left">
               <Info class="w-3.5 h-3.5" />
               <span>协议类型: {{ devType }}</span>
