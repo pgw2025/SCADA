@@ -55,6 +55,8 @@ const protocolOf = (model: { id: string; protocolKey?: string }) => {
 // Create model form state
 const showModelModal = ref<boolean>(false);
 const modelName = ref<string>('');
+// 阶段 4：模型编码（业务唯一键，后端 DataModel.Code 必填且唯一；存量回填自 Name）
+const modelCode = ref<string>('');
 const modelDesc = ref<string>('');
 const modelProtocolId = ref<number>(0);
 
@@ -171,6 +173,13 @@ const filteredVariables = computed(() => {
   );
 });
 
+// AccessMode 展示辅助（阶段 4）：三值 → 中文徽章文案
+const accessLabel = (m?: string): string =>
+  m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
+// 模板变量有效访问模式：新字段 accessMode 优先；旧数据（未回填）按 isReadOnly 推导兼容
+const accessOfVar = (v: ModelVariable): string =>
+  v.accessMode ?? (v.isReadOnly === false ? 'ReadWrite' : 'Read');
+
 // Create standard new model schema
 const handleCreateModel = async () => {
   if (!modelName.value.trim()) return;
@@ -181,8 +190,18 @@ const handleCreateModel = async () => {
     return;
   }
 
+  // 阶段 4：后端 CreateDataModelDto.Code [Required]，缺省会 400
+  const code = modelCode.value.trim();
+  if (!code) {
+    alert('请填写模型编码（Code）');
+    return;
+  }
+
   const newModel = await createDataModelOnBackend({
     name: modelName.value,
+    code,
+    version: '1.0',
+    isPublished: true,
     description: modelDesc.value,
     protocolId: modelProtocolId.value,
     variables: []
@@ -194,6 +213,7 @@ const handleCreateModel = async () => {
 
     // Clear
     modelName.value = '';
+    modelCode.value = '';
     modelDesc.value = '';
     modelProtocolId.value = 0;
   }
@@ -520,6 +540,16 @@ const handleImportDone = async () => {
             <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-800 text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded leading-none">
               {{ currentModelProtocol }} 架构
             </span>
+            <!-- 阶段 4：Code / Version / IsPublished 元数据展示（创建后由后端回填） -->
+            <span v-if="currentModel.code" class="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded leading-none">
+              {{ currentModel.code }}
+            </span>
+            <span class="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded leading-none">
+              v{{ currentModel.version || '1.0' }}
+            </span>
+            <span v-if="currentModel.isPublished === false" class="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded leading-none">
+              草稿
+            </span>
           </div>
           <p class="text-xs text-slate-500 dark:text-slate-400 font-sans line-clamp-2 sm:line-clamp-none">
             {{ currentModel.description || '暂无模型描述' }}
@@ -599,6 +629,7 @@ const handleImportDone = async () => {
                   <th class="px-4 py-3.5">标识</th>
                   <th class="px-4 py-3.5">名称</th>
                   <th class="px-4 py-3.5">类型</th>
+                  <th class="px-4 py-3.5">访问</th>
                   <th class="px-4 py-3.5">单位</th>
                   <th class="px-4 py-3.5 text-right">操作</th>
                 </tr>
@@ -658,6 +689,17 @@ const handleImportDone = async () => {
                       {{ v.type === 'digital' ? 'Boolean' : 'Analog' }}
                     </span>
                   </td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold font-mono border"
+                      :class="accessOfVar(v) === 'Read'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                        : (accessOfVar(v) === 'Write'
+                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
+                      :title="'访问模式: ' + (accessOfVar(v) === 'ReadWrite' ? '可读可写' : accessOfVar(v) === 'Write' ? '仅可写' : '仅可读')">
+                      {{ accessLabel(accessOfVar(v)) }}
+                    </span>
+                  </td>
                   <td class="px-4 py-3.5 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
                   <td class="px-4 py-3.5 text-right">
                     <div class="inline-flex items-center gap-1">
@@ -680,7 +722,7 @@ const handleImportDone = async () => {
                 </tr>
 
                 <tr v-if="currentModel.variables.length === 0">
-                  <td colspan="5" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
+                  <td colspan="6" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
                     暂无变量，点击"添加变量"创建
                   </td>
                 </tr>
@@ -705,6 +747,17 @@ const handleImportDone = async () => {
                       :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
                     >
                       {{ v.dataType }}
+                    </span>
+                    <!-- 阶段 4：访问模式徽章 -->
+                    <span
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
+                      :class="accessOfVar(v) === 'Read'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                        : (accessOfVar(v) === 'Write'
+                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
+                    >
+                      {{ accessLabel(accessOfVar(v)) }}
                     </span>
                   </div>
                   <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
@@ -853,6 +906,17 @@ const handleImportDone = async () => {
               placeholder="例如: S7-1200 离心水冷泵模板"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-violet-500"
             />
+          </div>
+          <div>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">模型编码 <span class="text-rose-400">*</span></label>
+            <input 
+              v-model="modelCode"
+              type="text"
+              maxlength="100"
+              placeholder="例如: S7-PUMP-TPL"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-violet-500"
+            />
+            <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">全局唯一（业务编码）。新建模型后不可重复，存量模型已按名称自动回填。</p>
           </div>
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">通信协议</label>

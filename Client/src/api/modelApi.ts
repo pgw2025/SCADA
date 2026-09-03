@@ -1,7 +1,11 @@
 import { http, extractApiError } from './http';
-import { DataModel } from '../types';
+import { DataModel, AccessMode } from '../types';
 import { dataModels } from '../store/modelStore';
 import { addLog, systemConfig } from '../store/index';
+
+/** 后端 AccessMode 三值白名单（防御旧后端/脏数据返回未知串）。 */
+const isAccessMode = (m: unknown): m is AccessMode =>
+  m === 'Read' || m === 'Write' || m === 'ReadWrite';
 
 // POST /api/DataModel - 创建新数据模型
 export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>): Promise<DataModel | null> => {
@@ -14,6 +18,9 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
     dataModels.value.push({
       id: String(createdModel.id),
       name: createdModel.name,
+      code: createdModel.code ?? modelData.code ?? '',
+      version: createdModel.version ?? modelData.version ?? '1.0',
+      isPublished: createdModel.isPublished ?? modelData.isPublished ?? true,
       description: createdModel.description || '',
       // 协议真相源在 Protocol 实体：创建成功后回填 protocolId / protocolKey / protocolName
       protocolId: createdModel.protocolId ?? modelData.protocolId,
@@ -42,6 +49,9 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
       dataModels.value = data.map((m: any) => ({
         id: String(m.id),
         name: m.name,
+        code: m.code ?? '',
+        version: m.version ?? '1.0',
+        isPublished: m.isPublished ?? true,
         description: m.description || '',
         // 协议真相源在 Protocol 实体（对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName），
         // 更新模型时须原样回传 protocolId
@@ -69,7 +79,15 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           deadBand: v.deadBand,
           // 仅当后端缺省（null/undefined）时回退到安全默认 true；
           // 后端明确返回 false（可写）时须保留 false，否则会被 || true 误判为只读导致写入按钮恒隐藏。
+          // @deprecated isReadOnly：阶段 4 起读写以 accessMode 为权威（== accessMode==='Read'）。
           isReadOnly: v.isReadOnly ?? true,
+          // 阶段 4 定义字段：accessMode 权威；旧后端（无 accessMode）按 isReadOnly 推导兼容
+          accessMode: isAccessMode(v.accessMode)
+            ? v.accessMode
+            : (v.isReadOnly === false ? 'ReadWrite' : 'Read'),
+          isRequired: v.isRequired ?? false,
+          sort: v.sort ?? 0,
+          isEnabled: v.isEnabled ?? true,
           extensionData: v.extensionData
         })) || []
       }));

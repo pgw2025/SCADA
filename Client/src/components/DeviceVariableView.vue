@@ -257,6 +257,25 @@ const confirmDelete = async (v: DeviceVariable) => {
 // 覆盖值可见性：仅布尔/位类型需要位偏移
 const isBitType = (t?: string) => ['BOOL', 'BIT'].includes(String(t || '').toUpperCase());
 
+// ---- 阶段 4：读写权限改由 AccessMode（Read/Write/ReadWrite）回显，旧 bool 字段 deprecated 兼容 ----
+const accessLabel = (m?: string): string =>
+  m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
+/** 实例有效访问模式 = 覆盖 ?? 模板；旧后端无 effectiveAccessMode 时按 effectiveIsReadOnly 推导 */
+const effectiveAccessOf = (v: DeviceVariable): string =>
+  v.effectiveAccessMode ?? (v.effectiveIsReadOnly ? 'Read' : 'ReadWrite');
+/** 模板定义的访问模式；旧后端无 templateAccessMode 时按 templateIsReadOnly 推导 */
+const templateAccessOf = (v: DeviceVariable): string =>
+  v.templateAccessMode ?? (v.templateIsReadOnly ? 'Read' : 'ReadWrite');
+/** 列表徽章样式：Read 灰 / Write 琥珀 / ReadWrite 绿 */
+const accessBadgeClass = (v: DeviceVariable): string => {
+  const mode = effectiveAccessOf(v);
+  return mode === 'Read'
+    ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+    : mode === 'Write'
+      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
+};
+
 // ---------- 初始化 ----------
 onMounted(async () => {
   if (systemConfig.value.isSimulationActive) return;
@@ -437,12 +456,10 @@ onMounted(async () => {
                   </td>
                   <td class="px-4 py-3.5">
                     <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
-                      :class="v.effectiveIsReadOnly
-                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                        : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'" :title="v.isReadOnlyOverride != null
-                          ? (v.isReadOnlyOverride ? '该设备强制只读（覆盖模板）' : '该设备强制可写（覆盖模板）')
-                          : (v.templateIsReadOnly ? '继承模板：只读' : '继承模板：可写')">
-                      {{ v.effectiveIsReadOnly ? '只读' : '可写' }}<span v-if="v.isReadOnlyOverride != null"
+                      :class="accessBadgeClass(v)" :title="v.isReadOnlyOverride != null
+                        ? '该设备实例覆盖模板 → ' + accessLabel(effectiveAccessOf(v))
+                        : '继承模板：' + accessLabel(templateAccessOf(v))">
+                      {{ accessLabel(effectiveAccessOf(v)) }}<span v-if="v.isReadOnlyOverride != null"
                         class="ml-0.5 opacity-70">·覆盖</span>
                     </span>
                   </td>
@@ -515,10 +532,8 @@ onMounted(async () => {
                 <span class="flex items-center gap-1.5">
                   <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
                   <span class="inline-block px-1 py-px rounded border font-bold"
-                    :class="v.effectiveIsReadOnly
-                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'">{{ v.effectiveIsReadOnly ? '只读' :
-                    '可写' }}{{ v.isReadOnlyOverride != null ? '·覆盖' : '' }}</span>
+                    :class="accessBadgeClass(v)">{{ accessLabel(effectiveAccessOf(v))
+                    }}{{ v.isReadOnlyOverride != null ? '·覆盖' : '' }}</span>
                 </span>
                 <button @click="toggleEnabled(v)" class="text-[10px] font-bold"
                   :class="v.isEnabled ? 'text-emerald-500' : 'text-slate-400'">{{ v.isEnabled ? '启用' : '停用' }}</button>

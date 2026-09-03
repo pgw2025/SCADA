@@ -335,6 +335,9 @@ export type DataTypeEnum =
 // 更新模式枚举
 export type UpdateMode = 'polling' | 'subscription';
 
+// 读写访问模式（阶段 4 权威；与旧 bool IsReadOnly 并存，一个版本周期后移除后者）
+export type AccessMode = 'Read' | 'Write' | 'ReadWrite';
+
 export interface ModelVariable {
   id: number;
   modelId: number;
@@ -356,6 +359,20 @@ export interface ModelVariable {
   /** 工程换算表达式（raw→eng），以 x 代表原始值；空/undefined = 恒等变换。例：'x*0.1'、'(x-4000)/160' */
   scaleExpression?: string | null;
   deadBand?: number;
+
+  // ===== 阶段 4 数据定义层增强（AccessMode 权威，IsReadOnly 保留兼容）=====
+  /** 读写访问模式（阶段 4 权威，与后端 ModelVariableDto.AccessMode 对齐）。 */
+  accessMode?: AccessMode;
+  /** 是否必采/必填（模板级定义），默认 false */
+  isRequired?: boolean;
+  /** 排序权重（值越小越靠前），默认 0；存量回填 = 行号 */
+  sort?: number;
+  /** 模板级是否启用，默认 true */
+  isEnabled?: boolean;
+  /**
+   * @deprecated 阶段 4 起由 accessMode 取代（语义：只读 == accessMode==='Read'）。
+   * 保留以兼容旧后端/旧 store 缓存；读写权限的展示与编辑请使用 accessMode。
+   */
   isReadOnly: boolean;
   extensionData?: Record<string, string>;
 }
@@ -381,9 +398,24 @@ export interface DeviceVariable {
   isEnabled: boolean;                // 实例级：是否启用采集
   scaleExpressionOverride?: string | null; // 实例级覆盖：换算表达式，空=用模板值
   deadBandOverride?: number | null;     // 实例级覆盖：死区，空=用模板值
-  isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板
+  isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板（阶段 4 语义保持：Override ?? 模板）
+  // ===== 阶段 4 数据定义层增强（ConnectionId/RawDataType 本阶段仅透传，运行时阶段 6 启用）=====
+  /** 实例级连接覆盖（FK→DeviceConnections.Id），空=使用设备默认连接 */
+  connectionId?: number | null;
+  /** 记录性字段：创建实例时快照的模板 DataType 字符串（如 "REAL"），本阶段不启用校验 */
+  rawDataType?: string | null;
+  /**
+   * @deprecated 阶段 4 由 templateAccessMode 取代（== templateAccessMode === 'Read'）。
+   */
   templateIsReadOnly?: boolean;         // 回显：模板定义的只读权限
+  /**
+   * @deprecated 阶段 4 由 effectiveAccessMode 取代（== effectiveAccessMode === 'Read'，运行时实际生效值）。
+   */
   effectiveIsReadOnly?: boolean;        // 回显：有效权限（Override ?? 模板）
+  /** 回显：模板定义的访问模式（只出不进） */
+  templateAccessMode?: AccessMode;
+  /** 回显：有效访问模式 = 实例覆盖 ?? 模板（只出不进） */
+  effectiveAccessMode?: AccessMode;
   quality?: string;                     // 运行期实时值质量（Good/Bad/Uncertain/CommunicationError/…），组态运行端分级显示
 }
 
@@ -697,6 +729,13 @@ export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
 export interface DataModel {
   id: string;
   name: string;
+  // ===== 阶段 4 数据定义层增强 =====
+  /** 模型编码（业务唯一键，后端 DataModel.Code 全局唯一；存量回填自 Name 重名加 -2/-3 后缀） */
+  code?: string;
+  /** 模型版本号，默认 "1.0" */
+  version?: string;
+  /** 是否已发布（标识模型是否可被新建设备引用），默认 true */
+  isPublished?: boolean;
   description: string;
   // 协议绑定（协议真相源）：对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName。
   // 协议真相源在独立的 Protocol 实体，不再有过渡字段 Type；
@@ -1337,7 +1376,16 @@ export interface VariableImportRow {
   updateMode?: UpdateMode | null;
   scaleExpression?: string | null;
   deadBand?: number | null;
+  /** @deprecated 阶段 4 由 accessMode 取代（== accessMode === 'Read'）。 */
   isReadOnly?: boolean | null;
+  /** 读写访问模式（Read/Write/ReadWrite）；非法/缺省时后端忽略（旧客户端仅传 IsReadOnly 亦可） */
+  accessMode?: AccessMode | null;
+  /** 是否必采 */
+  isRequired?: boolean | null;
+  /** 排序权重 */
+  sort?: number | null;
+  /** 是否启用 */
+  isEnabled?: boolean | null;
 }
 
 /** 导入预览结果（POST /api/ModelVariable/import/preview 返回） */
