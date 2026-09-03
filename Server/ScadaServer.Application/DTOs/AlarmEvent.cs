@@ -36,6 +36,9 @@ namespace ScadaServer.Application.DTOs
         /// <summary>变量业务键</summary>
         public string VariableKey { get; set; } = string.Empty;
 
+        /// <summary>关联的数据点模板ID（DataPoint.Id；规则/兜底告警产生时由运行时填充）</summary>
+        public int? DataPointId { get; set; }
+
         /// <summary>变量名称</summary>
         public string VariableName { get; set; } = string.Empty;
 

@@ -20,6 +20,9 @@ namespace ScadaServer.Application.DTOs
         /// <summary>告警变量业务键</summary>
         public string VariableKey { get; set; } = string.Empty;
 
+        /// <summary>关联的数据点模板ID（DataPoint.Id；存量未回填或匹配不上的记录为 NULL）</summary>
+        public int? DataPointId { get; set; }
+
         /// <summary>告警变量名称</summary>
         public string VariableName { get; set; } = string.Empty;
 

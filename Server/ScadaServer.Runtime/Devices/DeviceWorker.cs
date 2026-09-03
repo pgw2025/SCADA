@@ -745,6 +745,8 @@ namespace ScadaServer.Runtime.Devices
                     DeviceId = _runtime.Device.Id,
                     DeviceKey = _runtime.Device.Key,
                     VariableKey = vr.Key,
+                    // 关联数据点模板（DataPoint.Id）；设备实例未映射到模板时回退模板主键兜底。
+                    DataPointId = vr.Instance?.DataPointId ?? vr.Definition.Id,
                     VariableName = vr.Name,
                     RuleId = rule?.Id,
                     RuleName = rule?.Name,

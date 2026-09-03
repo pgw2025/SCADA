@@ -39,6 +39,12 @@ namespace ScadaServer.Domain.Entities
         public string VariableKey { get; set; } = string.Empty;
 
         /// <summary>
+        /// 关联的数据点模板ID（DataPoint.Id，阶段 6.5 新增；规则/兜底告警产生时由运行时写入，
+        /// 存量记录经迁移按 DeviceId+VariableKey 匹配回填，匹配不上的保持 NULL）。
+        /// </summary>
+        public int? DataPointId { get; set; }
+
+        /// <summary>
         /// 变量名称（冗余存储，避免查询时再关联变量表）
         /// </summary>
         [MaxLength(100)]

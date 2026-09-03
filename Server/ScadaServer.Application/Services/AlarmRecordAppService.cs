@@ -81,6 +81,7 @@ namespace ScadaServer.Application.Services
             DeviceId = e.DeviceId,
             DeviceKey = e.DeviceKey,
             VariableKey = e.VariableKey,
+            DataPointId = e.DataPointId,
             VariableName = e.VariableName,
             RuleId = e.RuleId,
             RuleName = e.RuleName,

@@ -257,6 +257,7 @@ namespace ScadaServer.WebApi.HostedServices
             DeviceId = evt.DeviceId,
             DeviceKey = evt.DeviceKey,
             VariableKey = evt.VariableKey,
+            DataPointId = evt.DataPointId,
             VariableName = evt.VariableName,
             RuleId = evt.RuleId,
             RuleName = evt.RuleName,
