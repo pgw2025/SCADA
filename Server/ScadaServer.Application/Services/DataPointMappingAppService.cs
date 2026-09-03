@@ -21,6 +21,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
     private readonly IDataPointRepository _dataPointRepository;
     /// <summary>设备仓储，用于校验设备存在性及解析其绑定模型。</summary>
     private readonly IDeviceRepository _deviceRepository;
+    /// <summary>设备-数据模型绑定仓储（阶段 5），用于取设备绑定模型集合（含主/附加）。</summary>
+    private readonly IDeviceDataModelRepository _deviceDataModelRepository;
     /// <summary>系统脚本仓储，用于联动清理引用被删除变量的脚本。</summary>
     private readonly ISystemScriptRepository _systemScriptRepository;
     /// <summary>运行时设备管理器，用于增删改后热加载设备采集。</summary>
@@ -33,6 +35,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         IDataPointMappingRepository repository,
         IDataPointRepository dataPointRepository,
         IDeviceRepository deviceRepository,
+        IDeviceDataModelRepository deviceDataModelRepository,
         ISystemScriptRepository systemScriptRepository,
         IRuntimeDeviceManager runtimeDeviceManager,
         IUnitOfWork uow)
@@ -40,6 +43,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         _repository = repository;
         _dataPointRepository = dataPointRepository;
         _deviceRepository = deviceRepository;
+        _deviceDataModelRepository = deviceDataModelRepository;
         _systemScriptRepository = systemScriptRepository;
         _runtimeDeviceManager = runtimeDeviceManager;
         _uow = uow;
@@ -55,7 +59,9 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         }
 
         var dataPointMappings = await _repository.GetListAsync(dv => dv.DeviceId == deviceId);
-        var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == device.ModelId);
+        // 模板范围 = 设备绑定模型集合（主模型 ∪ 附加绑定模型，Bug#2）：附加模型的映射在此也能取到完整模板信息。
+        var boundModelIds = await GetBoundModelIdsAsync(device);
+        var dataPoints = await _dataPointRepository.GetListAsync(mv => boundModelIds.Contains(mv.ModelId));
         var mvMap = dataPoints.ToDictionary(mv => mv.Id);
 
         return dataPointMappings.Select(dv =>
@@ -74,13 +80,14 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             throw new BusinessException($"ID 为 {dto.DeviceId} 的设备不存在");
         }
 
-        // 2. 模板存在性，且必须隶属于该设备所绑定的数据模型
+        // 2. 模板存在性，且必须隶属于该设备所绑定的数据模型（主模型 ∪ 附加绑定模型）
         var mv = await _dataPointRepository.GetByIdAsync(dto.DataPointId);
         if (mv == null)
         {
             throw new BusinessException($"ID 为 {dto.DataPointId} 的变量模板不存在");
         }
-        if (mv.ModelId != device.ModelId)
+        var boundModelIds = await GetBoundModelIdsAsync(device);
+        if (!boundModelIds.Contains(mv.ModelId))
         {
             throw new BusinessException($"变量模板 '{mv.Name}' 不属于设备 '{device.Name}' 所绑定的数据模型，无法实例化到该设备");
         }
@@ -181,6 +188,21 @@ public class DataPointMappingAppService : IDataPointMappingAppService
 
         var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
         return MapToDto(entity, mv);
+    }
+
+    /// <summary>
+    /// 取设备可实例化变量模板的模型集合 = 设备绑定模型（DeviceDataModels，含主/附加）
+    /// ∪ <see cref="Device.ModelId"/> 兜底（兼容理论上绑定表缺主行的旧数据；正常路径绑定表含主行）。
+    /// </summary>
+    private async Task<List<int>> GetBoundModelIdsAsync(Device device)
+    {
+        var bindings = await _deviceDataModelRepository.GetByDeviceAsync(device.Id);
+        var modelIds = bindings.Select(b => b.DataModelId).ToList();
+        if (!modelIds.Contains(device.ModelId))
+        {
+            modelIds.Add(device.ModelId);
+        }
+        return modelIds;
     }
 
     /// <summary>
