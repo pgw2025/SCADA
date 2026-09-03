@@ -43,11 +43,11 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<Area> Areas => Set<Area>();
         public DbSet<ConfigLog> ConfigLogs => Set<ConfigLog>();
         public DbSet<Controller> Controllers => Set<Controller>();
-        public DbSet<DatabaseConfig> DatabaseConfigs => Set<DatabaseConfig>();
-        public DbSet<DataConversion> DataConversions => Set<DataConversion>();
+        public DbSet<DatabaseConfig> DatabaseConfigs => Set<DatabaseConfig>();        public DbSet<DataConversion> DataConversions => Set<DataConversion>();
         public DbSet<DataModel> DataModels => Set<DataModel>();
         public DbSet<DbVersion> DbVersions => Set<DbVersion>();
         public DbSet<Device> Devices => Set<Device>();
+        public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();
         public DbSet<DeviceVariable> DeviceVariables => Set<DeviceVariable>();
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
@@ -141,6 +141,30 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasForeignKey(c => c.ProtocolId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Controllers_Protocols_ProtocolId");
+            // 设备连接表（阶段 3 新增）：连接参数从 Device.JsonConfig 抽取为独立实体。
+            // FK 均 Restrict——控制器/协议被连接引用后不可删除，杜绝静默级联。
+            modelBuilder.Entity<DeviceConnection>().ToTable("DeviceConnections");
+            modelBuilder.Entity<DeviceConnection>()
+                .Property(c => c.Name).HasMaxLength(100);
+            modelBuilder.Entity<DeviceConnection>()
+                .Property(c => c.Host).HasMaxLength(100);
+            modelBuilder.Entity<DeviceConnection>()
+                .Property(c => c.ConfigJson).HasColumnType("longtext");
+            modelBuilder.Entity<DeviceConnection>()
+                .HasIndex(c => c.ControllerId)
+                .HasDatabaseName("ix_deviceconnections_controllerid");
+            modelBuilder.Entity<DeviceConnection>()
+                .HasOne(c => c.Controller)
+                .WithMany(c => c.Connections)
+                .HasForeignKey(c => c.ControllerId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DeviceConnections_Controllers_ControllerId");
+            modelBuilder.Entity<DeviceConnection>()
+                .HasOne(c => c.Protocol)
+                .WithMany()
+                .HasForeignKey(c => c.ProtocolId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DeviceConnections_Protocols_ProtocolId");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
             modelBuilder.Entity<DataModel>().ToTable("DataModels");
@@ -308,6 +332,22 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasForeignKey(d => d.ModelId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Devices_DataModels_ModelId");
+
+            // 阶段 3 新增：设备 → 控制器 / 设备连接（可空 FK，Restrict）。
+            // 连接实体被设备引用后不可删除（与 HmiComponent.BindDeviceId SetNull 不同：此处为结构归属）。
+            modelBuilder.Entity<Device>()
+                .HasOne(d => d.Controller)
+                .WithMany()
+                .HasForeignKey(d => d.ControllerId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Devices_Controllers_ControllerId");
+
+            modelBuilder.Entity<Device>()
+                .HasOne(d => d.Connection)
+                .WithMany()
+                .HasForeignKey(d => d.ConnectionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Devices_DeviceConnections_ConnectionId");
 
             modelBuilder.Entity<ExposedInterface>()
                 .HasOne(x => x.Device)

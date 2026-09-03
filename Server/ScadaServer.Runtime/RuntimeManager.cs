@@ -171,9 +171,12 @@ namespace ScadaServer.Runtime
             var db = sp.GetRequiredService<ScadaDbContext>();
 
             // 加载所有启用设备及其完整运行期依赖：
-            // Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)
+            // Device → Controller / Connection(→Protocol) / DataModel(→Protocol) → DeviceVariable(→ModelVariable)
+            // 阶段 3：Connection 为连接参数优先真相源（双读兼容：缺失时回退 Model.Protocol + Device.JsonConfig）。
             // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
             var devices = await db.Devices
+                .Include(d => d.Controller)
+                .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
                 .Include(d => d.Model).ThenInclude(m => m!.Protocol)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .Where(d => d.IsEnabled)
@@ -340,7 +343,8 @@ namespace ScadaServer.Runtime
         }
 
         /// <summary>
-        /// 按设备 ID 加载其完整运行期依赖对象图（Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)）。
+        /// 按设备 ID 加载其完整运行期依赖对象图
+        /// （Device → Controller / Connection(→Protocol) / DataModel(→Protocol) → DeviceVariable(→ModelVariable)）。
         /// 每次调用处于独立 Scope 内解析 DbContext，避免 Singleton 持有 Scoped DbContext。
         /// </summary>
         private async Task<Device?> LoadDeviceGraphByIdAsync(int deviceId)
@@ -348,6 +352,8 @@ namespace ScadaServer.Runtime
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
             return await db.Devices
+                .Include(d => d.Controller)
+                .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
                 .Include(d => d.Model).ThenInclude(m => m!.Protocol)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);
@@ -368,11 +374,13 @@ namespace ScadaServer.Runtime
                     return false;
                 }
 
-                // 协议真相源为 Protocol.DriverKey（模型必绑协议后不再回退过渡字段）；缺少则跳过该设备。
-                var driverKey = model.Protocol?.DriverKey;
+                // 协议真相源（阶段 3 起为回退链）：优先设备默认连接所绑协议，连接缺失时回退数据模型协议。
+                // 双读兼容期两者语义一致（回填后 Connection.Protocol 即原 DataModel.Protocol）；缺少则跳过该设备。
+                var effectiveProtocol = device.Connection?.Protocol ?? device.Model?.Protocol;
+                var driverKey = effectiveProtocol?.DriverKey;
                 if (string.IsNullOrWhiteSpace(driverKey))
                 {
-                    _logger.LogWarning("设备 {Key} 的数据模型未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
+                    _logger.LogWarning("设备 {Key} 未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
                     return false;
                 }
                 var protocolLabel = driverKey;
@@ -383,7 +391,7 @@ namespace ScadaServer.Runtime
                 {
                     Device = device,
                     Model = model,
-                    Protocol = model.Protocol,
+                    Protocol = effectiveProtocol,
                     Area = device.Area
                 };
 

@@ -72,8 +72,33 @@ namespace ScadaServer.Application.DTOs
         /// 设备连接参数的<strong>唯一真相源</strong>。下面一组连接字段均为由本字段按
         /// <c>Protocol.DriverKey</c> 派生的只读投影，不单独持久化。
         /// </para>
+        /// <para>兼容期旧字段：阶段 3 后运行时以 <see cref="Connection"/> 的 ConfigJson 为真相源，
+        /// 本字段仍保留只读输出（与 Connection.ConfigJson 双写一致），旧前端可继续使用。</para>
         /// </summary>
         public string? ConfigJson { get; set; }
+
+        #region 阶段3 连接/控制器关联（只读，来自 Device.Controller/Device.Connection 导航）
+
+        /// <summary>
+        /// 所属控制器 ID（可空：阶段 3 过渡列，未回填/手工场景可为 null）。
+        /// 由 DeviceAppService 双写自动回填（P3-D），前端只读。
+        /// </summary>
+        public int? ControllerId { get; set; }
+
+        /// <summary>
+        /// 默认连接 ID（可空：阶段 3 过渡列，未回填/手工场景可为 null）。
+        /// 由 DeviceAppService 双写自动回填（P3-D），前端只读。
+        /// </summary>
+        public int? ConnectionId { get; set; }
+
+        /// <summary>
+        /// 连接摘要（阶段 3：连接参数抽取结果，含控制器/协议/端点冗余列）。
+        /// 运行时读取配置的优先来源为 <c>Connection.ConfigJson</c>（回退 <see cref="ConfigJson"/>），
+        /// 前端据此展示控制器/连接信息；为 null 表示设备尚未关联连接（回退 JsonConfig 运行）。
+        /// </summary>
+        public DeviceConnectionSummaryDto? Connection { get; set; }
+
+        #endregion
 
         #region 连接参数（派生只读，由 ConfigJson 投影，PUT 时被后端忽略）
 

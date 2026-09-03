@@ -25,6 +25,10 @@ namespace ScadaServer.Application.Services
         private readonly IAlarmRecordRepository _alarmRecordRepository;
         /// <summary>系统脚本仓储，用于联动清理引用被删设备的脚本。</summary>
         private readonly ISystemScriptRepository _systemScriptRepository;
+        /// <summary>设备连接仓储（阶段 3：删除设备时清理其独占连接）。</summary>
+        private readonly IDeviceConnectionRepository _connectionRepository;
+        /// <summary>控制器仓储（阶段 3：删除设备时清理其独占控制器）。</summary>
+        private readonly IControllerRepository _controllerRepository;
         /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
 
@@ -36,6 +40,8 @@ namespace ScadaServer.Application.Services
             IAlarmRuleRepository alarmRuleRepository,
             IAlarmRecordRepository alarmRecordRepository,
             ISystemScriptRepository systemScriptRepository,
+            IDeviceConnectionRepository connectionRepository,
+            IControllerRepository controllerRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
@@ -44,6 +50,8 @@ namespace ScadaServer.Application.Services
             _alarmRuleRepository = alarmRuleRepository;
             _alarmRecordRepository = alarmRecordRepository;
             _systemScriptRepository = systemScriptRepository;
+            _connectionRepository = connectionRepository;
+            _controllerRepository = controllerRepository;
             _uow = uow;
         }
 
@@ -75,11 +83,48 @@ namespace ScadaServer.Application.Services
                 // 一并停用「监听该设备」的 OnChange 脚本，并从读/写授权 scope 中剔除该设备条目。
                 await CleanupScriptsByDeviceAsync(entity.Key);
 
-                // 删除设备
+                // 删除设备（先释放 Device → Controller/Connection 的 Restrict 外键引用）
                 await _repository.DeleteAsync(entity);
+
+                // 阶段 3 级联清理：删除设备独占的 DeviceConnection + Controller（P3-A/P3-D 过渡列指向）。
+                // 仅当无其他设备/连接仍引用时才删除，避免误删手工共享（多设备共用连接）的资源。
+                await CleanupExclusiveControllerAndConnectionAsync(entity);
 
                 return true;
             });
+        }
+
+        /// <summary>
+        /// 级联清理设备独占的 <see cref="DeviceConnection"/> 与 <see cref="Controller"/>（阶段 3）。
+        /// <para>
+        /// 过渡期结构为"1 设备 = 1 独占 Connection + 1 独占 Controller"；但允许手工演进为多设备共享，
+        /// 故删除前检查引用：Connection 仅当无其他 Device.ConnectionId 指向时删除；
+        /// Controller 仅当无其他 Device.ControllerId 指向且无其他 Connection.ControllerId 指向时删除。
+        /// </para>
+        /// </summary>
+        private async Task CleanupExclusiveControllerAndConnectionAsync(Device entity)
+        {
+            // Connection：设备行已删除，若仍有其它设备指向则保留（共享连接场景）。
+            // 用 DeleteRangeAsync（跟踪查询）删除，避免 AsNoTracking 图 Remove 引发的重复跟踪冲突。
+            if (entity.ConnectionId.HasValue)
+            {
+                var usedByOtherDevices = await _repository.AnyAsync(d => d.ConnectionId == entity.ConnectionId.Value);
+                if (!usedByOtherDevices)
+                {
+                    await _connectionRepository.DeleteRangeAsync(c => c.Id == entity.ConnectionId.Value);
+                }
+            }
+
+            // Controller：无其它设备指向且控制器下无其它连接时才删除。
+            if (entity.ControllerId.HasValue)
+            {
+                var usedByOtherDevices = await _repository.AnyAsync(d => d.ControllerId == entity.ControllerId.Value);
+                var hasOtherConnections = await _connectionRepository.AnyAsync(c => c.ControllerId == entity.ControllerId.Value);
+                if (!usedByOtherDevices && !hasOtherConnections)
+                {
+                    await _controllerRepository.DeleteRangeAsync(c => c.Id == entity.ControllerId.Value);
+                }
+            }
         }
 
         /// <summary>

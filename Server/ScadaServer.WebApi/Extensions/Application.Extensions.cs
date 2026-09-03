@@ -29,6 +29,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IDataConversionAppService, DataConversionAppService>();
             services.AddScoped<IDataModelAppService, DataModelAppService>();
             services.AddScoped<IDeviceAppService, DeviceAppService>();
+            services.AddScoped<IDeviceConnectionAppService, DeviceConnectionAppService>();
             services.AddScoped<IDeviceDeletionService, DeviceDeletionService>();
             services.AddScoped<DatabaseInitializer>();
             services.AddScoped<IExposedInterfaceAppService, ExposedInterfaceAppService>();

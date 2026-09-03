@@ -48,6 +48,12 @@ namespace ScadaServer.Application.DTOs
         /// <summary>协议名称（派生展示字段，来自 Protocol 导航）。</summary>
         public string ProtocolName { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 控制器下的连接数量（阶段 3：连接参数抽取后用于资产展示/删除风险评估）。
+        /// 派生统计字段，来自 DeviceConnections 表按 ControllerId 分组计数。
+        /// </summary>
+        public int ConnectionCount { get; set; }
+
         /// <summary>创建时间</summary>
         public DateTime CreatedAt { get; set; }
 

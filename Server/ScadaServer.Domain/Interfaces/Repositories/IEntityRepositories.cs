@@ -54,6 +54,22 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IDataConversionRepository : IRepository<DataConversion, int> { }
 
     /// <summary>
+    /// 设备连接仓储接口（阶段 3：连接参数抽取实体）。
+    /// </summary>
+    public interface IDeviceConnectionRepository : IRepository<DeviceConnection, int>
+    {
+        /// <summary>
+        /// 更新专用加载：跟踪查询，仅加载连接本体（不含导航），使 Update(entity) 无需附加导航对象图。
+        /// </summary>
+        Task<DeviceConnection?> GetByIdForUpdateAsync(int id);
+
+        /// <summary>
+        /// 统计每个控制器下的连接数（ControllerId → 数量），供控制器列表/详情展示连接数量。
+        /// </summary>
+        Task<Dictionary<int, int>> GetCountsByControllerAsync();
+    }
+
+    /// <summary>
     /// 设备仓储接口
     /// </summary>
     public interface IDeviceRepository : IRepository<Device, int>

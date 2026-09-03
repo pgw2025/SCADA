@@ -49,6 +49,32 @@ namespace ScadaServer.Domain.Entities
         public DataModel? Model { get; set; }
 
         /// <summary>
+        /// 所属控制器 ID（可空：阶段 3 过渡列，未回填/手工场景可为 NULL；FK → Controllers，Restrict）。
+        /// </summary>
+        public int? ControllerId { get; set; }
+
+        /// <summary>
+        /// 所属控制器导航属性（对应 <see cref="ControllerId"/>）。
+        /// </summary>
+        [ForeignKey(nameof(ControllerId))]
+        public Controller? Controller { get; set; }
+
+        /// <summary>
+        /// 默认设备连接 ID（可空：阶段 3 过渡列，未回填/手工场景可为 NULL；FK → DeviceConnections，Restrict）。
+        /// <para>
+        /// 运行时读取连接参数的优先来源：非空时以 <see cref="DeviceConnection.ConfigJson"/> 为连接配置，
+        /// 为空则回退 <see cref="JsonConfig"/>（双读兼容层，阶段 6 前保留）。
+        /// </para>
+        /// </summary>
+        public int? ConnectionId { get; set; }
+
+        /// <summary>
+        /// 默认设备连接导航属性（对应 <see cref="ConnectionId"/>）。
+        /// </summary>
+        [ForeignKey(nameof(ConnectionId))]
+        public DeviceConnection? Connection { get; set; }
+
+        /// <summary>
         /// 是否启用采集
         /// </summary>
         public bool IsEnabled { get; set; } = true;

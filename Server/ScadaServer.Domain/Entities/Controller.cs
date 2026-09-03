@@ -50,6 +50,12 @@ namespace ScadaServer.Domain.Entities
         /// <summary>是否启用（禁用后不可被后续连接引用）。</summary>
         public bool IsEnabled { get; set; } = true;
 
+        /// <summary>
+        /// 该控制器下的连接集合（阶段 3 起：DeviceConnection.ControllerId FK → 本表）。
+        /// 过渡期每连接独占一个控制器；多设备共享控制器的演进由管理界面合并。
+        /// </summary>
+        public List<DeviceConnection> Connections { get; set; } = new();
+
         /// <summary>创建时间（UTC 存储）。</summary>
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

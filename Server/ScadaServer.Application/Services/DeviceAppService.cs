@@ -26,6 +26,10 @@ namespace ScadaServer.Application.Services
         private readonly IModelVariableRepository _modelVariableRepository;
         /// <summary>设备变量实例仓储，用于聚合设备变量。</summary>
         private readonly IDeviceVariableRepository _deviceVariableRepository;
+        /// <summary>控制器仓储（阶段 3 双写：为设备维护独占控制器）。</summary>
+        private readonly IControllerRepository _controllerRepository;
+        /// <summary>设备连接仓储（阶段 3 双写：连接参数抽取实体）。</summary>
+        private readonly IDeviceConnectionRepository _connectionRepository;
         /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
         /// <summary>运行时状态供应，用于解析设备在线状态。</summary>
@@ -42,6 +46,8 @@ namespace ScadaServer.Application.Services
             IDataModelRepository modelRepository,
             IModelVariableRepository modelVariableRepository,
             IDeviceVariableRepository deviceVariableRepository,
+            IControllerRepository controllerRepository,
+            IDeviceConnectionRepository connectionRepository,
             IUnitOfWork uow,
             IRuntimeStatusProvider runtimeStatusProvider,
             IDeviceDeletionService deletionService,
@@ -52,6 +58,8 @@ namespace ScadaServer.Application.Services
             _modelRepository = modelRepository;
             _modelVariableRepository = modelVariableRepository;
             _deviceVariableRepository = deviceVariableRepository;
+            _controllerRepository = controllerRepository;
+            _connectionRepository = connectionRepository;
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
             _deletionService = deletionService;
@@ -124,13 +132,43 @@ namespace ScadaServer.Application.Services
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
                 ConfigJson = entity.JsonConfig,
+                ControllerId = entity.ControllerId,
+                ConnectionId = entity.ConnectionId,
+                Connection = MapConnectionSummary(entity),
                 RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
                 Variables = variables
             };
 
-            // 真相源是 JsonConfig，以下仅为按协议投影出的只读连接字段
+            // 真相源是 JsonConfig，以下仅为按协议投影出的只读连接字段（兼容期旧字段；新真相源见 Connection 摘要）
             ApplyConnectionFields(dto, entity.Model?.Protocol?.DriverKey, entity.JsonConfig);
             return dto;
+        }
+
+        /// <summary>
+        /// 阶段 3：将设备默认连接映射为只读摘要（含控制器/协议/端点冗余列）。
+        /// 设备尚未关联连接（Connection 导航为 null，回退 JsonConfig 运行的过渡场景）时返回 null。
+        /// </summary>
+        private static DeviceConnectionSummaryDto? MapConnectionSummary(Device entity)
+        {
+            var connection = entity.Connection;
+            if (connection == null) return null;
+
+            return new DeviceConnectionSummaryDto
+            {
+                Id = connection.Id,
+                ControllerId = connection.ControllerId,
+                ControllerCode = connection.Controller?.Code,
+                ControllerName = connection.Controller?.Name,
+                ProtocolId = connection.ProtocolId,
+                ProtocolKey = connection.Protocol?.Key,
+                ProtocolName = connection.Protocol?.Name,
+                Host = connection.Host,
+                Port = connection.Port,
+                TimeoutMs = connection.TimeoutMs,
+                ReconnectIntervalMs = connection.ReconnectIntervalMs,
+                IsEnabled = connection.IsEnabled,
+                UpdatedAt = connection.UpdatedAt
+            };
         }
 
         /// <summary>
@@ -375,21 +413,29 @@ namespace ScadaServer.Application.Services
         /// 仅当配置解析成功且地址非空时才参与去重；Modbus/MQTT/Virtual 不参与。
         /// 兼容纯驱动键（S7/OPCUA）与驱动类名（S7Driver/OPCUADriver）。
         /// </summary>
-        private async Task EnsureEndpointUniqueAsync(string? driverKey, string configJson, int? excludeId)
+        /// <param name="exemptConnectionId">
+        /// 阶段 3.6：高级模式显式附加到已有连接（可多设备共享同一 Connection 行）时传入该连接 ID，
+        /// 指向同一连接行的设备视为「同一连接配置」的合法复用，跳过端点去重（与手工共享验收语义一致）。
+        /// </param>
+        private async Task EnsureEndpointUniqueAsync(string? driverKey, string configJson, int? excludeId, int? exemptConnectionId = null)
         {
             if (string.IsNullOrWhiteSpace(configJson)) return;   // 更新语义：空=保留原配置
 
             var probeKey = ParseEndpointKey(driverKey, configJson);
             if (probeKey == null) return;                         // 非 S7/OPC UA 或地址为空，跳过
 
-            var all = await _repository.GetListAsync();           // 带导航（Area/Model.Protocol），AsNoTracking
+            var all = await _repository.GetListAsync();           // 带导航（Area/Model.Protocol/Controller/Connection），AsNoTracking
             foreach (var d in all)
             {
                 if (d.Id == excludeId) continue;
-                var dk = d.Model?.Protocol?.DriverKey;
+                // 高级模式共享连接豁免：与目标连接共用同一配置行的设备不做端点去重。
+                if (exemptConnectionId.HasValue && d.ConnectionId == exemptConnectionId.Value) continue;
+                // 双读：设备连接（阶段 3 真相源）优先，回退 Device.JsonConfig，与 DeviceRuntime.ConfigJson 口径一致。
+                var dk = d.Connection?.Protocol?.DriverKey ?? d.Model?.Protocol?.DriverKey;
                 if (dk == null) continue;
 
-                var peerKey = ParseEndpointKey(dk, d.JsonConfig ?? string.Empty);
+                var peerJson = d.Connection?.ConfigJson ?? d.JsonConfig ?? string.Empty;
+                var peerKey = ParseEndpointKey(dk, peerJson);
                 if (peerKey != null
                     && string.Equals(peerKey, probeKey, StringComparison.OrdinalIgnoreCase))
                 {
@@ -517,6 +563,155 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
+        /// 阶段 3 双写辅助：确保设备拥有独占的 Controller + DeviceConnection（P3-A），
+        /// 并将 <paramref name="configJson"/> 完整原文写入连接（P3-B），同时提取 Host/Port 冗余列。
+        /// <para>
+        /// 语义：
+        /// ① 设备已有默认连接（ConnectionId 非空且行存在）→ 同步连接字段（ConfigJson/Host/Port/超时/UpdatedAt），控制器不动；
+        /// ② 设备尚无连接（新建设备或历史数据未回填/连接行丢失）→ 按 "PLC{设备Id}" 复用/创建独占控制器，
+        ///    新建连接并回填 <c>Device.ControllerId</c>/<c>Device.ConnectionId</c>。
+        /// </para>
+        /// <para>连接行在方法内持久化；② 情形回填的 Device 过渡列由调用方在事务内 UpdateAsync(entity) 一并保存。</para>
+        /// </summary>
+        private async Task EnsureExclusiveConnectionAsync(
+            Device entity, DataModel model, string? driverKey, string configJson, DateTime now)
+        {
+            // ① 已有默认连接：同步连接字段（ConfigJson 原文 + 冗余列），连接名/协议/控制器不动。
+            if (entity.ConnectionId.HasValue)
+            {
+                var existing = await _connectionRepository.GetByIdForUpdateAsync(entity.ConnectionId.Value);
+                if (existing != null)
+                {
+                    ApplyConnectionConfig(existing, driverKey, configJson, now);
+                    await _connectionRepository.UpdateAsync(existing);
+                    return;
+                }
+                // 连接行已被删除的异常情形：走 ② 重建（会覆盖 entity.ConnectionId 指向，原孤儿 ID 不再引用）。
+            }
+
+            // ② 尚无有效连接：复用/创建独占控制器（Code = PLC{Id}，保证唯一，与回填命名一致）。
+            var controllerCode = $"PLC{entity.Id}";
+            var controller = (await _controllerRepository.GetListAsync(c => c.Code == controllerCode))
+                .FirstOrDefault();
+            if (controller == null)
+            {
+                controller = new Controller
+                {
+                    Code = controllerCode,
+                    Name = DeviceConnectionProfile.Truncate($"{entity.Name} 控制器", 100) ?? string.Empty,
+                    ProtocolId = model.ProtocolId,
+                    Manufacturer = DeviceConnectionProfile.Truncate(model.Vendor, 100),
+                    Model = DeviceConnectionProfile.Truncate(model.ModelName, 100),
+                    IsEnabled = true,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+                await _controllerRepository.InsertAsync(controller);
+            }
+
+            var summary = DeviceConnectionProfile.ParseConnectionSummary(driverKey, configJson);
+            var connection = new DeviceConnection
+            {
+                ControllerId = controller.Id,
+                Name = DeviceConnectionProfile.Truncate($"{entity.Name} 连接", 100) ?? string.Empty,
+                ProtocolId = model.ProtocolId,
+                Host = summary.Host,
+                Port = summary.Port,
+                ConfigJson = configJson,
+                TimeoutMs = summary.TimeoutMs,
+                ReconnectIntervalMs = 5000,
+                IsEnabled = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            await _connectionRepository.InsertAsync(connection);
+
+            entity.ControllerId = controller.Id;
+            entity.ConnectionId = connection.Id;
+        }
+
+        /// <summary>将协议配置原文同步到连接实体（ConfigJson 完整原文 + Host/Port/超时冗余列 + UpdatedAt）。</summary>
+        private static void ApplyConnectionConfig(DeviceConnection connection, string? driverKey, string configJson, DateTime now)
+        {
+            var summary = DeviceConnectionProfile.ParseConnectionSummary(driverKey, configJson);
+            connection.ConfigJson = configJson;
+            connection.Host = summary.Host;
+            connection.Port = summary.Port;
+            connection.TimeoutMs = summary.TimeoutMs;
+            connection.UpdatedAt = now;
+        }
+
+        /// <summary>
+        /// 阶段 3.6 高级模式：解析「显式附加到已有连接」的目标连接（可多设备共享）。
+        /// <para>
+        /// 语义：<paramref name="controllerId"/> 与 <paramref name="connectionId"/> 必须成对出现
+        /// （均提供 = 高级模式；均缺省 = 快速模式由调用方走自动维护路径）；仅其一 = 入参错误。
+        /// 校验：连接存在、启用、属于所声明的控制器、协议与设备所绑模型协议一致（地址/变量语义匹配）。
+        /// 返回 null 表示未走高级模式（快速模式）。
+        /// </para>
+        /// </summary>
+        private async Task<DeviceConnection?> ResolveAttachConnectionAsync(
+            DataModel model, int? controllerId, int? connectionId)
+        {
+            if (!controllerId.HasValue && !connectionId.HasValue)
+            {
+                return null;    // 快速模式：未附加
+            }
+            if (!controllerId.HasValue || !connectionId.HasValue)
+            {
+                throw new BusinessException("高级模式需同时选择控制器与连接，请重新选择");
+            }
+
+            var connection = await _connectionRepository.GetByIdAsync(connectionId.Value);
+            if (connection == null)
+            {
+                throw new BusinessException($"ID 为 {connectionId.Value} 的连接不存在");
+            }
+            if (connection.ControllerId != controllerId.Value)
+            {
+                throw new BusinessException("所选连接不属于所选控制器，请重新选择");
+            }
+            if (!connection.IsEnabled)
+            {
+                throw new BusinessException($"连接 '{connection.Name}' 已禁用，不可被设备引用");
+            }
+            if (connection.ProtocolId != model.ProtocolId)
+            {
+                throw new BusinessException(
+                    $"连接 '{connection.Name}' 的协议与设备所绑模型不一致，无法附加（模型协议 {model.Protocol?.Name ?? "#" + model.ProtocolId} ≠ 连接协议 {connection.Protocol?.Name ?? "#" + connection.ProtocolId}）");
+            }
+            return connection;
+        }
+
+        /// <summary>
+        /// 阶段 3.6：清理设备切换连接后遗留的无引用独占 Controller/Connection。
+        /// 设备从「快速模式专属连接」切换到「高级模式共享连接」（或反向）时，旧连接行/控制器行若不再被
+        /// 任何设备/连接引用，则一并删除，避免孤儿数据堆积（与 DeviceDeletionService 引用口径一致）。
+        /// 注意：须在删除连接前由调用方捕获旧的 ConnectionId/ControllerId 后传入。
+        /// </summary>
+        private async Task CleanupOrphanConnectionAsync(int? oldConnectionId, int? oldControllerId)
+        {
+            if (oldConnectionId.HasValue)
+            {
+                var usedByOtherDevices = await _repository.AnyAsync(d => d.ConnectionId == oldConnectionId.Value);
+                if (!usedByOtherDevices)
+                {
+                    await _connectionRepository.DeleteRangeAsync(c => c.Id == oldConnectionId.Value);
+                }
+            }
+
+            if (oldControllerId.HasValue)
+            {
+                var usedByOtherDevices = await _repository.AnyAsync(d => d.ControllerId == oldControllerId.Value);
+                var hasOtherConnections = await _connectionRepository.AnyAsync(c => c.ControllerId == oldControllerId.Value);
+                if (!usedByOtherDevices && !hasOtherConnections)
+                {
+                    await _controllerRepository.DeleteRangeAsync(c => c.Id == oldControllerId.Value);
+                }
+            }
+        }
+
+        /// <summary>
         /// 判断 EF 保存异常是否为 MySQL 唯一键冲突（错误码 1062，如设备标识唯一索引）。
         /// </summary>
         private static bool IsUniqueIndexConflict(DbUpdateException ex)
@@ -551,12 +746,32 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"协议 {driverKey ?? "(未绑定)"} 的驱动尚未实现，暂不支持创建设备。当前可用协议：S7、OPC UA、Virtual。");
             }
 
-            // 2. 验证协议配置 JSON 格式（按协议驱动键对应的配置类校验）
-            ValidateConfigJson(driverKey, dto.ConfigJson);
+            // 阶段 3.6：解析「显式附加到已有连接」（高级模式）。成对 ControllerId/ConnectionId 均提供 =
+            // 高级模式（连接配置以 Connection.ConfigJson 为真相源）；均缺省 = 快速模式（Payload 配置为真相源）。
+            var attachConnection = await ResolveAttachConnectionAsync(model, dto.ControllerId, dto.ConnectionId);
+
+            // 2. 验证协议配置 JSON 格式（快速模式用提交配置；高级模式用连接配置，创建连接时已校验）
+            if (attachConnection == null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.ConfigJson))
+                {
+                    throw new BusinessException("协议配置不能为空（快速模式）");
+                }
+                ValidateConfigJson(driverKey, dto.ConfigJson);
+            }
 
             // 3.5 名称唯一 + S7/OPC UA 端点唯一（新建设备无 Id，排除项传 null）
+            //     高级模式：以连接配置为端点快照；同一连接行被多设备共享时豁免去重。
             dto.Name = (await ResolveUniqueNameAsync(dto.Name, null)).normName;
-            await EnsureEndpointUniqueAsync(driverKey, dto.ConfigJson, null);
+            if (attachConnection != null)
+            {
+                await EnsureEndpointUniqueAsync(
+                    driverKey, attachConnection.ConfigJson ?? "{}", null, attachConnection.Id);
+            }
+            else
+            {
+                await EnsureEndpointUniqueAsync(driverKey, dto.ConfigJson, null);
+            }
 
             // 4. 设备标识：未提供则由后台按区域自动生成（如 BLR-001），并确保全局唯一
             if (string.IsNullOrWhiteSpace(dto.Key))
@@ -574,15 +789,22 @@ namespace ScadaServer.Application.Services
 
             var created = await _uow.ExecuteInTransactionAsync(async transaction =>
             {
+                // 配置原文：快速模式取提交配置；高级模式镜像所附连接配置（P3-B 双写兼容层）。
+                var jsonConfig = attachConnection != null
+                    ? (attachConnection.ConfigJson ?? "{}")
+                    : (string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson!);
+
                 var entity = new Device
                 {
                     Name = dto.Name,
                     Key = dto.Key!,
                     AreaId = dto.AreaId,
                     ModelId = dto.ModelId,
+                    ControllerId = attachConnection?.ControllerId,
+                    ConnectionId = attachConnection?.Id,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
-                    JsonConfig = string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson,
+                    JsonConfig = jsonConfig,
                     Version = 1,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -611,6 +833,19 @@ namespace ScadaServer.Application.Services
                         IsEnabled = true
                     }).ToList();
                     await _deviceVariableRepository.InsertRangeAsync(deviceVariables);
+                }
+
+                // 阶段 3 双写（P3-A/P3-D）：快速模式下为新建设备同步创建独占 Controller + DeviceConnection
+                // 并回填过渡列。与 DatabaseInitializer 启动回填保持同一"1 设备 = 1 Controller + 1 Connection"结构，
+                // 保证 JsonConfig（旧路径）与 Connection.ConfigJson（新路径）数据一致，运行时双读无差异。
+                // 高级模式（attachConnection != null）：设备行已直接写入 ControllerId/ConnectionId，跳过自动维护。
+                if (attachConnection == null)
+                {
+                    await EnsureExclusiveConnectionAsync(
+                        entity, model, driverKey, jsonConfig, DateTime.UtcNow);
+
+                    // 持久化回填的过渡列（entity 为已跟踪实例，Update 仅更新标量列，不附加导航图）。
+                    await _repository.UpdateAsync(entity);
                 }
 
                 return await GetByIdAsync(entity.Id)
@@ -675,10 +910,21 @@ namespace ScadaServer.Application.Services
                 ValidateConfigJson(model.Protocol?.DriverKey, dto.ConfigJson);
             }
 
+            // 阶段 3.6：解析「显式附加到已有连接」（高级模式）。成对 ControllerId/ConnectionId 均提供 =
+            // 高级模式（连接配置以 Connection.ConfigJson 为真相源，忽略提交的 ConfigJson）；
+            // 均缺省 = 快速模式（ConfigJson 为真相源，后端自动维护专属连接）。
+            var attachConnection = await ResolveAttachConnectionAsync(model, dto.ControllerId, dto.ConnectionId);
+
             // 3.5 名称唯一（排除自身）+ S7/OPC UA 端点唯一（排除自身）
             //     更新语义：ConfigJson 为空表示保留原配置，跳过端点去重。
             dto.Name = (await ResolveUniqueNameAsync(dto.Name, dto.Id)).normName;
-            if (!string.IsNullOrEmpty(dto.ConfigJson))
+            if (attachConnection != null)
+            {
+                // 高级模式端点去重：以连接配置为端点快照；同一连接行被多设备共享时豁免去重。
+                await EnsureEndpointUniqueAsync(
+                    model.Protocol?.DriverKey, attachConnection.ConfigJson ?? "{}", dto.Id, attachConnection.Id);
+            }
+            else if (!string.IsNullOrEmpty(dto.ConfigJson))
             {
                 await EnsureEndpointUniqueAsync(model.Protocol?.DriverKey!, dto.ConfigJson, dto.Id);
             }
@@ -693,14 +939,48 @@ namespace ScadaServer.Application.Services
                 entity.PollingInterval = dto.PollingInterval;
                 entity.UpdatedAt = DateTime.UtcNow;
 
-                await _repository.UpdateAsync(entity);
-
-                // 更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）。
-                // 配置字段已内联到 Device（原 DeviceConfig），版本号随配置更新自增。
-                if (!string.IsNullOrEmpty(dto.ConfigJson))
+                if (attachConnection != null)
                 {
+                    // 高级模式：切换/维持对目标连接的引用（可能与其他设备共享）。
+                    var oldConnectionId = entity.ConnectionId;
+                    var oldControllerId = entity.ControllerId;
+                    var mirror = attachConnection.ConfigJson ?? "{}";
+
+                    entity.ConnectionId = attachConnection.Id;
+                    entity.ControllerId = attachConnection.ControllerId;
+                    // P3-B 双写镜像：Device.JsonConfig 同步连接配置原文，保持兼容期旧路径数据一致。
+                    if (entity.JsonConfig != mirror)
+                    {
+                        entity.JsonConfig = mirror;
+                        entity.Version++;
+                    }
+
+                    // 先落库 FK 切换（Release 旧连接 Restrict 外键），再清理无引用的旧独占连接/控制器。
+                    await _repository.UpdateAsync(entity);
+                    if (oldConnectionId != attachConnection.Id || oldControllerId != attachConnection.ControllerId)
+                    {
+                        await CleanupOrphanConnectionAsync(oldConnectionId, oldControllerId);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(dto.ConfigJson))
+                {
+                    // 快速模式：更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）。
+                    // 配置字段已内联到 Device（原 DeviceConfig），版本号随配置更新自增。
                     entity.JsonConfig = dto.ConfigJson;
                     entity.Version++;
+
+                    // 阶段 3 双写：同步独占 Connection（ConfigJson 原文 + Host/Port 冗余列 + UpdatedAt）。
+                    // Connection 不存在（回填遗漏等异常）时按 PLC{Id} 自动补建并回填 Device 过渡列。
+                    await EnsureExclusiveConnectionAsync(
+                        entity, model, model.Protocol?.DriverKey, dto.ConfigJson, DateTime.UtcNow);
+
+                    // 统一持久化设备标量（含 JsonConfig/Version 及新建连接时回填的 ControllerId/ConnectionId）。
+                    await _repository.UpdateAsync(entity);
+                }
+                else
+                {
+                    // 快速模式且未改配置：仅持久化标量（保留既有连接关联）。
+                    await _repository.UpdateAsync(entity);
                 }
 
                 return await GetByIdAsync(dto.Id)

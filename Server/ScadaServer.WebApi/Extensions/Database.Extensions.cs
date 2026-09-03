@@ -52,6 +52,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IDatabaseConfigRepository, DatabaseConfigRepository>();
             services.AddScoped<IDataConversionRepository, DataConversionRepository>();
             services.AddScoped<IDataModelRepository, DataModelRepository>();
+            services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
             services.AddScoped<IDeviceRepository, DeviceRepository>();
             services.AddScoped<IExposedInterfaceRepository, ExposedInterfaceRepository>();
             services.AddScoped<IHmiComponentRepository, HmiComponentRepository>();

@@ -24,8 +24,15 @@ public class DeviceRuntime : IRuntimeDevice
     /// <summary>设备业务键（IRuntimeDevice）。</summary>
     public string Key => Device.Key;
 
-    /// <summary>设备连接配置 JSON（IRuntimeDevice，来自 Device.JsonConfig，空时以 "{}" 兜底）。</summary>
-    public string ConfigJson => Device.JsonConfig ?? "{}";
+    /// <summary>
+    /// 设备连接配置 JSON（IRuntimeDevice，阶段 3 起双读兼容层）。
+    /// <para>
+    /// 新路径：<c>Device.Connection.ConfigJson</c>（连接表，回填后 = 原 JsonConfig 原文）；
+    /// 旧路径回退：尚未回填 / 新建未迁移数据时取 <c>Device.JsonConfig</c>，再兜底 "{}"。
+    /// 驱动始终消费本属性的同一份 JSON，对数据来源无感知（P3-C）。
+    /// </para>
+    /// </summary>
+    public string ConfigJson => Device.Connection?.ConfigJson ?? Device.JsonConfig ?? "{}";
 
     /// <summary>变量运行时只读视图（IRuntimeDevice 显式实现，驱动仅可遍历不可改集合）。</summary>
     IEnumerable<IRuntimeVariable> IRuntimeDevice.Variables => Variables.Values;
@@ -33,7 +40,7 @@ public class DeviceRuntime : IRuntimeDevice
     // 所属数据模型
     public DataModel Model { get; init; } = null!;
 
-    // 协议实体（来自 DataModel.Protocol，模型必绑协议后作为驱动派发真相源）
+    // 协议实体（阶段 3 起：优先来自 Device.Connection.Protocol，连接缺失时回退 DataModel.Protocol）
     public Protocol? Protocol { get; init; }
 
     // 区域（可能未加载，可为 null）
