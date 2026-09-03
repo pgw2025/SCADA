@@ -223,29 +223,28 @@ namespace ScadaServer.WebApi.HostedServices
         }
 
         /// <summary>
-        /// 将恢复事件关联到"最新一条同键未恢复"记录并更新其恢复时间/值。
+        /// 将恢复事件关联到"同键（设备+变量+规则）全部未恢复记录"并批量闭合其恢复时间/值。
+        /// <para>
+        /// 语义：单条规则/兜底在同一时刻只有一段越限区间，同键存在多条未恢复 = 前序恢复事件
+        /// 在重启窗口丢失（Bug#3）；一次恢复代表"该变量当前已恢复正常"，闭合全部与事实一致。
+        /// </para>
         /// </summary>
         private static async Task MarkRecoveredAsync(ScadaDbContext db, AlarmEvent evt, CancellationToken token)
         {
-            var query = db.AlarmRecords
-                .Where(r => r.DeviceId == evt.DeviceId
-                            && r.VariableKey == evt.VariableKey
-                            && r.RecoveredAt == null);
-
-            // 规则告警严格按 RuleId 关联；兜底告警关联 RuleId 为空的记录。
-            query = evt.RuleId.HasValue
-                ? query.Where(r => r.RuleId == evt.RuleId.Value)
-                : query.Where(r => r.RuleId == null);
-
-            var record = await query
-                .OrderByDescending(r => r.TriggeredAt)
-                .FirstOrDefaultAsync(token);
-
-            if (record != null)
+            if (evt.RuleId.HasValue)
             {
-                record.RecoveredAt = evt.TriggeredAt;
-                record.RecoveryValue = evt.ActualValue;
-                await db.SaveChangesAsync(token);
+                // 规则告警：按 RuleId 精确闭合该键全部未恢复记录。
+                // 注意：插值字符串须为单一字面量（$""+$"" 会退化为 string，丢失 FormattableString 语义）。
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE `AlarmRecords` SET `RecoveredAt` = {evt.TriggeredAt}, `RecoveryValue` = {evt.ActualValue} WHERE `DeviceId` = {evt.DeviceId} AND `VariableKey` = {evt.VariableKey} AND `RuleId` = {evt.RuleId.Value} AND `RecoveredAt` IS NULL",
+                    token);
+            }
+            else
+            {
+                // 兜底告警（Min/Max）：RuleId IS NULL 的同键全部未恢复记录。
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE `AlarmRecords` SET `RecoveredAt` = {evt.TriggeredAt}, `RecoveryValue` = {evt.ActualValue} WHERE `DeviceId` = {evt.DeviceId} AND `VariableKey` = {evt.VariableKey} AND `RuleId` IS NULL AND `RecoveredAt` IS NULL",
+                    token);
             }
         }
 

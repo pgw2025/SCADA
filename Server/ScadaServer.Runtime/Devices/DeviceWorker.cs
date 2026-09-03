@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Alarms;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Runtime.Alarms;
@@ -550,7 +551,7 @@ namespace ScadaServer.Runtime.Devices
         /// </summary>
         private void EvaluateRule(VariableRuntime vr, AlarmRuleSnapshot rule, double value)
         {
-            var matched = MatchesCondition(rule.Condition, value, rule.Threshold);
+            var matched = AlarmConditionEvaluator.IsMatched(rule.Condition, value, rule.Threshold);
             var key = BuildRuleStateKey(vr.Key, rule.Id);
             _ruleStates.TryGetValue(key, out var state);
             state ??= new AlarmRuleState { RuleId = rule.Id };
@@ -605,24 +606,6 @@ namespace ScadaServer.Runtime.Devices
                     _ruleStates[key] = state;
                 }
             }
-        }
-
-        /// <summary>
-        /// 条件比较，浮点相等使用容差避免精度抖动。
-        /// </summary>
-        private static bool MatchesCondition(TriggerConditionEnum condition, double value, double threshold)
-        {
-            const double epsilon = 1e-9;
-            return condition switch
-            {
-                TriggerConditionEnum.GreaterThan => value > threshold,
-                TriggerConditionEnum.GreaterOrEqual => value >= threshold,
-                TriggerConditionEnum.LessThan => value < threshold,
-                TriggerConditionEnum.LessOrEqual => value <= threshold,
-                TriggerConditionEnum.EqualTo => Math.Abs(value - threshold) <= epsilon,
-                TriggerConditionEnum.NotEqualTo => Math.Abs(value - threshold) > epsilon,
-                _ => false
-            };
         }
 
         /// <summary>
