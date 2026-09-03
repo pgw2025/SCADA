@@ -110,6 +110,16 @@ namespace ScadaServer.Domain.Entities
         public DeviceStatus? LastKnownStatus { get; set; }
 
         /// <summary>
+        /// 机器运行状态（DeviceRunState 枚举值持久化；null = Unknown，未置位）。
+        /// 管理员经 PUT /api/devices/{id}/runtime/runstate 置位时写入；
+        /// 服务重启/设备重载后由运行时回读恢复（方案 P3：维护状态不得因重启丢失）。
+        /// </summary>
+        public DeviceRunState? RunState { get; set; }
+
+        /// <summary>RunState 最近变更时刻（UTC，随置位端点写入）。</summary>
+        public DateTime? RunStateChangedAt { get; set; }
+
+        /// <summary>
         /// 该设备下的设备变量实例（变量在设备上的具体实现）。
         /// <para>
         /// 一台设备可包含多条 <see cref="DataPointMapping"/>，每条对应其模型 <see cref="DataModel"/> 中
