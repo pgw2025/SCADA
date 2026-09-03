@@ -1,13 +1,13 @@
 import { http } from './http';
-import { ModelVariable, VariableImportPreview, VariableImportResult, ConflictStrategy } from '../types';
+import { DataPoint, VariableImportPreview, VariableImportResult, ConflictStrategy } from '../types';
 import { systemConfig, addLog } from '../store/index';
 
-const BASE_URL = () => `${systemConfig.value.backendApiUrl}/api/ModelVariable`;
+const BASE_URL = () => `${systemConfig.value.backendApiUrl}/api/DataPoint`;
 
-// GET /api/ModelVariable - 获取所有变量
-export const fetchVariables = async (): Promise<ModelVariable[]> => {
+// GET /api/DataPoint - 获取所有变量
+export const fetchVariables = async (): Promise<DataPoint[]> => {
   try {
-    const response = await http.get<ModelVariable[]>(BASE_URL());
+    const response = await http.get<DataPoint[]>(BASE_URL());
     return response.data;
   } catch (error: any) {
     addLog('变量管理', `获取变量列表失败: ${error.message}`, 'warning');
@@ -15,10 +15,10 @@ export const fetchVariables = async (): Promise<ModelVariable[]> => {
   }
 };
 
-// GET /api/ModelVariable/{id} - 获取单个变量
-export const fetchVariableById = async (id: number): Promise<ModelVariable> => {
+// GET /api/DataPoint/{id} - 获取单个变量
+export const fetchVariableById = async (id: number): Promise<DataPoint> => {
   try {
-    const response = await http.get<ModelVariable>(`${BASE_URL()}/${id}`);
+    const response = await http.get<DataPoint>(`${BASE_URL()}/${id}`);
     return response.data;
   } catch (error: any) {
     addLog('变量管理', `获取变量详情失败 [${id}]: ${error.message}`, 'warning');
@@ -26,10 +26,10 @@ export const fetchVariableById = async (id: number): Promise<ModelVariable> => {
   }
 };
 
-// GET /api/ModelVariable/by-model/{modelId} - 获取指定模型的变量
-export const fetchVariablesByModelId = async (modelId: number): Promise<ModelVariable[]> => {
+// GET /api/DataPoint/by-model/{modelId} - 获取指定模型的变量
+export const fetchVariablesByModelId = async (modelId: number): Promise<DataPoint[]> => {
   try {
-    const response = await http.get<ModelVariable[]>(`${BASE_URL()}/by-model/${modelId}`);
+    const response = await http.get<DataPoint[]>(`${BASE_URL()}/by-model/${modelId}`);
     return response.data;
   } catch (error: any) {
     addLog('变量管理', `获取模型变量失败 [模型ID:${modelId}]: ${error.message}`, 'warning');
@@ -37,10 +37,10 @@ export const fetchVariablesByModelId = async (modelId: number): Promise<ModelVar
   }
 };
 
-// POST /api/ModelVariable - 创建新变量
-export const createVariable = async (variable: Omit<ModelVariable, 'id'>): Promise<ModelVariable> => {
+// POST /api/DataPoint - 创建新变量
+export const createVariable = async (variable: Omit<DataPoint, 'id'>): Promise<DataPoint> => {
   try {
-    const response = await http.post<ModelVariable>(BASE_URL(), variable);
+    const response = await http.post<DataPoint>(BASE_URL(), variable);
     addLog('变量管理', `已创建变量: ${variable.key}`, 'normal');
     return response.data;
   } catch (error: any) {
@@ -49,10 +49,10 @@ export const createVariable = async (variable: Omit<ModelVariable, 'id'>): Promi
   }
 };
 
-// PUT /api/ModelVariable - 更新变量
-export const updateVariable = async (variable: ModelVariable): Promise<ModelVariable> => {
+// PUT /api/DataPoint - 更新变量
+export const updateVariable = async (variable: DataPoint): Promise<DataPoint> => {
   try {
-    const response = await http.put<ModelVariable>(`${BASE_URL()}/${variable.id}`, variable);
+    const response = await http.put<DataPoint>(`${BASE_URL()}/${variable.id}`, variable);
     addLog('变量管理', `已更新变量: ${variable.key}`, 'normal');
     return response.data;
   } catch (error: any) {
@@ -61,7 +61,7 @@ export const updateVariable = async (variable: ModelVariable): Promise<ModelVari
   }
 };
 
-// DELETE /api/ModelVariable/{id} - 删除变量
+// DELETE /api/DataPoint/{id} - 删除变量
 export const deleteVariable = async (id: number): Promise<void> => {
   try {
     await http.delete(`${BASE_URL()}/${id}`);
@@ -72,7 +72,7 @@ export const deleteVariable = async (id: number): Promise<void> => {
   }
 };
 
-// POST /api/ModelVariable/import/preview - 解析并预览导入文件（不入库）
+// POST /api/DataPoint/import/preview - 解析并预览导入文件（不入库）
 export const previewVariableImport = async (modelId: number, file: File): Promise<VariableImportPreview> => {
   const form = new FormData();
   form.append('modelId', String(modelId));
@@ -81,7 +81,7 @@ export const previewVariableImport = async (modelId: number, file: File): Promis
   return response.data;
 };
 
-// POST /api/ModelVariable/import - 确认导入（按冲突策略批量写入）
+// POST /api/DataPoint/import - 确认导入（按冲突策略批量写入）
 export const submitVariableImport = async (
   modelId: number,
   file: File,
@@ -95,7 +95,7 @@ export const submitVariableImport = async (
   return response.data;
 };
 
-// GET /api/ModelVariable/by-model/{modelId}/export - 导出模型变量（xlsx/csv，blob 由调用方落地下载）
+// GET /api/DataPoint/by-model/{modelId}/export - 导出模型变量（xlsx/csv，blob 由调用方落地下载）
 export const exportVariables = async (modelId: number, format: 'xlsx' | 'csv' = 'xlsx'): Promise<Blob> => {
   const response = await http.get<Blob>(`${BASE_URL()}/by-model/${modelId}/export`, {
     params: { format },

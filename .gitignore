@@ -34,3 +34,6 @@ Server/ScadaServer.WebApi/uploads/
 # ── db-refactor 键值快照基线 ──
 # 阶段0/6.1 约定：Devices/ModelVariables/DeviceVariables 键值快照存本地不入库
 docs/db-refactor/_baseline/
+
+# db-refactor 批次B 全量备份（删列前 mysqldump 替代物：pymysql 逻辑备份）
+docs/db-refactor/_backups/

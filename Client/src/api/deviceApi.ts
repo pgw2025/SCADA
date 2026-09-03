@@ -41,7 +41,7 @@ export const deleteDeviceOnBackend = async (id: number) => {
 };
 
 // POST /api/Device/{deviceId}/variables/{variableKey}/write - 向设备运行时变量写入值（下发强制/控制命令）
-export const writeDeviceVariable = async (deviceId: number, variableKey: string, value: number | boolean) => {
+export const writeDataPointMapping = async (deviceId: number, variableKey: string, value: number | boolean) => {
   const response = await http.post<any>(`${getBaseUrl()}/api/Device/${deviceId}/variables/${variableKey}/write`, { value });
   return response;
 };

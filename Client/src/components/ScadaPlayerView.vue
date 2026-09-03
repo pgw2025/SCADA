@@ -11,7 +11,7 @@ import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
 import { ROLE_OPERATOR, ROLE_ADMIN } from '../constants/roles';
 import { addLog } from '../store';
-import { getDeviceVariableValue, setDeviceVariableValue } from '../services/dataOrchestration';
+import { getDataPointMappingValue, setDataPointMappingValue } from '../services/dataOrchestration';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { pushTrendPoint, clearTrendHistory, trendHistory } from '../utils/trendHistory';
 import { getEffectiveTrendSeries, resolveSeriesValue } from '../utils/trendSeries';
@@ -240,7 +240,7 @@ const handleTriggerToggleValue = (
     return;
   }
 
-  const current = getDeviceVariableValue(deviceId, key);
+  const current = getDataPointMappingValue(deviceId, key);
   let targetVal: any;
   if (actionType === 'setValue' && val !== undefined) {
     targetVal = val;
@@ -255,7 +255,7 @@ const handleTriggerToggleValue = (
     else if (typeof current === 'number') targetVal = current === 0 ? 1 : 0;
     else targetVal = val ?? 1;
   }
-  setDeviceVariableValue(deviceId, key, targetVal);
+  setDataPointMappingValue(deviceId, key, targetVal);
 };
 
 // ===== var-display 设值弹窗 =====
@@ -265,7 +265,7 @@ const setValueTarget = ref<HMIComponent | null>(null);
 const setValueCurrentValue = computed<number | boolean | undefined>(() => {
   const c = setValueTarget.value;
   if (!c || c.bindDeviceId == null || !c.bindVariableKey) return undefined;
-  return getDeviceVariableValue(c.bindDeviceId, c.bindVariableKey);
+  return getDataPointMappingValue(c.bindDeviceId, c.bindVariableKey);
 });
 let lastSetValueAt = 0;
 const SET_VALUE_COOLDOWN_MS = 1200;

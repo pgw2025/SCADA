@@ -36,7 +36,7 @@ export const mapRuntimeStatusToStatus = (runtimeStatus?: string | number): numbe
  * 将后端返回的原始设备数组标准化：补全 runtimeStatus 并把 status 映射为统一数值。
  * 同时把未携带 status 的设备兜底为离线，避免界面出现 undefined 状态。
  *
- * 关键归一化：后端 DeviceDto.Variables 是对象数组（DeviceVariableDto[]，仅含定义/配置，不含实时值），
+ * 关键归一化：后端 DeviceDto.Variables 是对象数组（DataPointMappingDto[]，仅含定义/配置，不含实时值），
  * 而前端消费模型是 `Record<变量Key, 实时值>`（如 `dev.variables[key]`）。
  * 这里把数组转成键值表并预置 null 占位，使 SignalR 实时值推送到达时即有落点
  * （`dev.variables[variableKey] !== undefined` 判断可命中），实时值/触发器/换算等消费方零改动。
@@ -57,7 +57,7 @@ export const normalizeDevices = (raw: Device[], prevDevices?: Device[]): Device[
     const variableMeta: Record<string, any> = {};
     const prevVars = prevMap.get(d.id) ?? {};
     if (Array.isArray(d.variables)) {
-      // 后端 DeviceDto.Variables 为 DeviceVariableDto[]：含实例级权限/地址/覆盖字段。
+      // 后端 DeviceDto.Variables 为 DataPointMappingDto[]：含实例级权限/地址/覆盖字段。
       // 一份按 key 索引保留完整元数据（variableMeta），供实时监控页取 effectiveIsReadOnly 等；
       // 另一份压扁为 variables 键值表（预置 null 占位），等待 SignalR 实时值推送落点。
       (d.variables as any[]).forEach((v: any) => {

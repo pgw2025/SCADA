@@ -5,10 +5,10 @@ import { dataModels, addLog, systemConfig } from '../store/index';
 import { syncDevices } from '../services/deviceService';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
-import { writeDeviceVariable, fetchDeviceRealtime } from '../api/deviceApi';
-import { fetchDeviceVariables } from '../api/deviceVariableApi';
+import { writeDataPointMapping, fetchDeviceRealtime } from '../api/deviceApi';
+import { fetchDataPointMappings } from '../api/dataPointMappingApi';
 import { extractApiError } from '../api/http';
-import { DEVICE_TYPES, type DeviceVariable } from '../types';
+import { DEVICE_TYPES, type DataPointMapping } from '../types';
 import {
   Database,
   Search,
@@ -61,29 +61,29 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => String(m.id) === String(selectedDevice.value.modelId));
 });
 
-// 设备变量实例列表（获取自 /api/DeviceVariable/by-device/{id}，与"设备变量"页同源）。
+// 设备变量实例列表（获取自 /api/DataPointMapping/by-device/{id}，与"设备变量"页同源）。
 // 实时监控页以此作为列表数据源头：只会展示该设备真正实例化的变量，
 // 而非数据模型里的全部模板（修复"数量=模型变量数而非设备变量数"的问题）。
-const deviceVariables = ref<DeviceVariable[]>([]);
+const dataPointMappings = ref<DataPointMapping[]>([]);
 const isLoadingVars = ref(false);
 
-const loadDeviceVariables = async () => {
+const loadDataPointMappings = async () => {
   if (!selectedDevice.value || systemConfig.value.isSimulationActive) {
-    deviceVariables.value = [];
+    dataPointMappings.value = [];
     return;
   }
   isLoadingVars.value = true;
   try {
-    deviceVariables.value = await fetchDeviceVariables(selectedDevice.value.id);
+    dataPointMappings.value = await fetchDataPointMappings(selectedDevice.value.id);
   } catch (e: any) {
-    deviceVariables.value = [];
+    dataPointMappings.value = [];
     addLog('实时监控', `获取设备变量列表失败: ${extractApiError(e)}`, 'warning');
   } finally {
     isLoadingVars.value = false;
   }
 };
 
-// 模板元数据兜底 map（DeviceVariableDto 未携带 min/max/type/description，从当前模型模板按 key 补齐，
+// 模板元数据兜底 map（DataPointMappingDto 未携带 min/max/type/description，从当前模型模板按 key 补齐，
 // 仅用于默认值、显示范围与 digital/analog 判定，不参与列表数量）。
 const templateByKey = computed(() => {
   const map = new Map<string, any>();
@@ -107,7 +107,7 @@ const qualityLabel = (quality?: string | null): string => {
 const renderedVariables = computed(() => {
   if (!selectedDevice.value) return [];
 
-  return deviceVariables.value.map((dv) => {
+  return dataPointMappings.value.map((dv) => {
     const tpl = templateByKey.value.get(dv.key);
     // digital/analog 判定：模板 type 优先，缺省按 dataType 派生
     const type: 'digital' | 'analog' = tpl?.type
@@ -208,7 +208,7 @@ const commitOverride = async (varKey: string, type: 'analog' | 'digital') => {
   try {
     isSubmitting.value = true;
     // 真实写入链路：后端下发到设备驱动（服务端校验只读/越限/连接状态），失败直接抛错回滚 UI。
-    await writeDeviceVariable(Number(selectedDevice.value.id as any), varKey, finalVal);
+    await writeDataPointMapping(Number(selectedDevice.value.id as any), varKey, finalVal);
 
     // 乐观更新：直接写入全局 store 的变量表（而非独立强制值表），
     // 后续 SignalR 真实遥测推送（或下轮采集回读）会自然覆盖为设备实际值。
@@ -279,7 +279,7 @@ watch(selectedDevId, (id, oldId) => {
   if (oldId) unsubscribeDeviceTelemetry(oldId);
   if (id) subscribeDeviceTelemetry(id);
   loadRealtime(id);
-  loadDeviceVariables();
+  loadDataPointMappings();
 }, { immediate: true });
 
 // 卸载时退订当前设备，避免离开监控页后仍接收该设备全量变量推送

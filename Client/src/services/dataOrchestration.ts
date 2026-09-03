@@ -1,10 +1,10 @@
 import { devices } from '../store/deviceStore';
 import { dataConversions } from '../store/configStore';
 import { addLog, systemConfig } from '../store/index';
-import { writeDeviceVariable } from '../api/deviceApi';
+import { writeDataPointMapping } from '../api/deviceApi';
 import { showToast } from '../services/toastService';
 
-export const setDeviceVariableValue = (
+export const setDataPointMappingValue = (
   deviceId: number,
   variableKey: string,
   newValue: number | boolean
@@ -103,12 +103,12 @@ export const writeVariableToBackend = async (
   // 全局 JWT FallbackPolicy 鉴权零成本；RuntimeManager 完成校验链
   // （设备在线→变量存在→启用→只读→驱动就绪→已连接）→ 写驱动 → SignalR 写后回读广播。
   // 不再依赖设计规范.md 中未实现的 SignalR Hub.WritePlcVariable（ScadaHub 当前为纯下行 [AllowAnonymous]）。
-  await writeDeviceVariable(deviceId, variableKey, value);
+  await writeDataPointMapping(deviceId, variableKey, value);
   addLog('REST 写入', `下行写指令成功 (HTTP): 设备#${deviceId} [${variableKey}] = ${value}`, 'info');
 };
 
 // Synchronize all dev/custom simulator variables back to the active HMI components values!
-export const getDeviceVariableValue = (deviceId: number, variableKey: string): number | boolean => {
+export const getDataPointMappingValue = (deviceId: number, variableKey: string): number | boolean => {
   // 严格模式：deviceId 必填，精准读取指定设备的变量（禁止裸 key 跨设备查找）
   const dev = devices.value.find((d) => String(d.id) === String(deviceId));
   if (dev && dev.variables && dev.variables[variableKey] !== undefined) {

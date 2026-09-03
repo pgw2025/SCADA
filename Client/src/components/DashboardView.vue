@@ -96,7 +96,7 @@ const memColor = computed(() => {
 const recentLogs = computed(() => logs.value.slice(0, 5));
 
 // Get variable count for a device by looking up its associated model
-const getDeviceVariableCount = (device: typeof devices.value[0]) => {
+const getDataPointMappingCount = (device: typeof devices.value[0]) => {
   const model = dataModels.value.find(m => parseInt(m.id) === device.modelId);
   return model?.variables?.length || 0;
 };
@@ -364,7 +364,7 @@ const getDeviceVariableCount = (device: typeof devices.value[0]) => {
             <span class="text-slate-400">更新时间: <b class="font-mono text-slate-600 dark:text-slate-300">{{ dev.lastUpdated }}</b></span>
             <!-- Variables counts -->
             <span class="text-[#1890ff] bg-sky-50 dark:bg-sky-950/50 font-mono px-1 rounded font-bold leading-none py-0.5">
-              {{ getDeviceVariableCount(dev) }} 个变量 
+              {{ getDataPointMappingCount(dev) }} 个变量 
             </span>
           </div>
         </div>

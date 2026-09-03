@@ -338,7 +338,7 @@ export type UpdateMode = 'polling' | 'subscription';
 // 读写访问模式（阶段 4 权威；与旧 bool IsReadOnly 并存，一个版本周期后移除后者）
 export type AccessMode = 'Read' | 'Write' | 'ReadWrite';
 
-export interface ModelVariable {
+export interface DataPoint {
   id: number;
   modelId: number;
   key: string;
@@ -361,7 +361,7 @@ export interface ModelVariable {
   deadBand?: number;
 
   // ===== 阶段 4 数据定义层增强（AccessMode 权威，IsReadOnly 保留兼容）=====
-  /** 读写访问模式（阶段 4 权威，与后端 ModelVariableDto.AccessMode 对齐）。 */
+  /** 读写访问模式（阶段 4 权威，与后端 DataPointDto.AccessMode 对齐）。 */
   accessMode?: AccessMode;
   /** 是否必采/必填（模板级定义），默认 false */
   isRequired?: boolean;
@@ -378,19 +378,19 @@ export interface ModelVariable {
 }
 
 /**
- * 设备变量实例：变量模板（ModelVariable）在某台具体设备上的落地配置。
- * 对应后端 DeviceVariableDto（ScadaServer.Application.DTOs.DeviceVariableDto）。
+ * 设备变量实例：变量模板（DataPoint）在某台具体设备上的落地配置。
+ * 对应后端 DataPointMappingDto（ScadaServer.Application.DTOs.DataPointMappingDto）。
  * "是什么"（Key/Name/DataType/Unit）来自模板；"怎么采集"（Address/BitOffset/PollingInterval/覆盖值）为实例级。
- * 创建（POST）仅需 deviceId + modelVariableId + isEnabled，地址等需后续 PUT 补全。
+ * 创建（POST）仅需 deviceId + dataPointId + isEnabled，地址等需后续 PUT 补全。
  */
-export interface DeviceVariable {
+export interface DataPointMapping {
   id: number;
   deviceId: number;
-  modelVariableId: number;
-  key: string;               // 来自模板 ModelVariable.Key
-  name: string;              // 来自模板 ModelVariable.Name
-  dataType: DataTypeEnum;    // 来自模板 ModelVariable.DataType
-  unit?: string;             // 来自模板 ModelVariable.Unit
+  dataPointId: number;
+  key: string;               // 来自模板 DataPoint.Key
+  name: string;              // 来自模板 DataPoint.Name
+  dataType: DataTypeEnum;    // 来自模板 DataPoint.DataType
+  unit?: string;             // 来自模板 DataPoint.Unit
   address?: string | null;           // 实例级：实际寄存器地址（展示串，由后端从 addressConfigJson 自动生成，只读）
   addressConfigJson?: string | null; // 实例级：结构化地址 JSON（权威机读形态），前端仅编辑本字段
   bitOffset?: number | null;         // 实例级：位偏移（BOOL/BIT 用）
@@ -744,7 +744,7 @@ export interface DataModel {
   protocolId: number;
   protocolKey?: string;
   protocolName?: string;
-  variables: ModelVariable[];
+  variables: DataPoint[];
 }
 
 /**
@@ -812,7 +812,7 @@ export interface Device {
   // normalizeDevices 把后端数组压扁成 variables 键值表时，同步保留这里以便消费方
   // 取 effectiveIsReadOnly / isReadOnlyOverride / templateIsReadOnly 等实例级权限，
   // 实时监控页据此判断写入按钮显隐（设备级覆盖优先于模板 isReadOnly）。
-  variableMeta?: Record<string, DeviceVariable>;
+  variableMeta?: Record<string, DataPointMapping>;
 
   // Advanced connection parameters（同为后端派生只读，见上方说明）
   cpuType?: string | null;  // S7 CPU类型 (e.g. S7-1200, S7-1500, S7-300, S7-400)
@@ -1416,7 +1416,7 @@ export interface VariableImportRow {
   isEnabled?: boolean | null;
 }
 
-/** 导入预览结果（POST /api/ModelVariable/import/preview 返回） */
+/** 导入预览结果（POST /api/DataPoint/import/preview 返回） */
 export interface VariableImportPreview {
   modelId: number;
   totalRows: number;
@@ -1426,7 +1426,7 @@ export interface VariableImportPreview {
   rows: VariableImportRow[];
 }
 
-/** 导入结果（POST /api/ModelVariable/import 返回） */
+/** 导入结果（POST /api/DataPoint/import 返回） */
 export interface VariableImportResult {
   inserted: number;
   updated: number;

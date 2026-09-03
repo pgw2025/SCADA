@@ -17,16 +17,16 @@ import {
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
-import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DeviceVariable, ModelVariable, DeviceModelBinding, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
+import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DataPointMapping, DataPoint, DeviceModelBinding, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { extractApiError } from '../api/http';
 import {
-  fetchDeviceVariables,
-  createDeviceVariable,
-  updateDeviceVariable,
-  deleteDeviceVariable
-} from '../api/deviceVariableApi';
+  fetchDataPointMappings,
+  createDataPointMapping,
+  updateDataPointMapping,
+  deleteDataPointMapping
+} from '../api/dataPointMappingApi';
 
 const route = useRoute();
 
@@ -72,24 +72,24 @@ const headerModelMeta = computed(() => {
 });
 
 // ---------- 变量实例表格（右栏） ----------
-const deviceVariables = ref<DeviceVariable[]>([]);
+const dataPointMappings = ref<DataPointMapping[]>([]);
 const isLoading = ref<boolean>(false);
 const loadError = ref<string>('');
 
 // 该设备模型下未实例化的模板（用于“添加/一键补齐”去重）
-const modelTemplates = computed<ModelVariable[]>(() => currentModel.value?.variables || []);
-const instancedTemplateIds = computed(() => new Set(deviceVariables.value.map(v => v.modelVariableId)));
+const modelTemplates = computed<DataPoint[]>(() => currentModel.value?.variables || []);
+const instancedTemplateIds = computed(() => new Set(dataPointMappings.value.map(v => v.dataPointId)));
 const uninstancedTemplates = computed(() => modelTemplates.value.filter(mv => !instancedTemplateIds.value.has(mv.id)));
 
 const loadVariables = async () => {
   if (!selectedDevice.value || systemConfig.value.isSimulationActive) {
-    deviceVariables.value = [];
+    dataPointMappings.value = [];
     return;
   }
   isLoading.value = true;
   loadError.value = '';
   try {
-    deviceVariables.value = await fetchDeviceVariables(selectedDevice.value.id);
+    dataPointMappings.value = await fetchDataPointMappings(selectedDevice.value.id);
   } catch (e: any) {
     // extractApiError 提取后端 message，避免只显示 axios 泛泛的 "Request failed with status code xxx"
     loadError.value = extractApiError(e);
@@ -127,7 +127,7 @@ const confirmAdd = async () => {
   addLog('设备变量', `开始为设备#${selectedDevice.value.key} 添加 ${addSelectedIds.value.length} 个变量实例`, 'info');
   for (const mvId of addSelectedIds.value) {
     try {
-      await createDeviceVariable({ deviceId, modelVariableId: mvId, isEnabled: true });
+      await createDataPointMapping({ deviceId, dataPointId: mvId, isEnabled: true });
       ok++;
     } catch (e: any) {
       addLog('设备变量', `创建模板[ID:${mvId}]失败: ${e.message}`, 'warning');
@@ -144,10 +144,10 @@ const confirmAdd = async () => {
 
 // ---------- 编辑实例 ----------
 const showEditModal = ref<boolean>(false);
-const editingForm = ref<DeviceVariable | null>(null);
+const editingForm = ref<DataPointMapping | null>(null);
 const editingCfg = ref<AddressConfig | null>(null); // 结构化地址（权威编辑对象）
 
-const openEditModal = (v: DeviceVariable) => {
+const openEditModal = (v: DataPointMapping) => {
   // 浅拷贝到可编辑副本；覆盖字段保留 null（null 表示"用模板值"，见下方提示文案）
   // isReadOnlyOverride 归一化：undefined → null，保证三态下拉"继承"项能正确选中。
   editingForm.value = { ...v, isReadOnlyOverride: v.isReadOnlyOverride ?? null };
@@ -238,7 +238,7 @@ const saveEdit = async () => {
     }
   }
   try {
-    await updateDeviceVariable(editingForm.value);
+    await updateDataPointMapping(editingForm.value);
     addLog('设备变量', `已保存设备变量实例 [${editingForm.value.key}]`, 'normal');
     showEditModal.value = false;
     await refreshAll();
@@ -248,11 +248,11 @@ const saveEdit = async () => {
 };
 
 // 行内启用开关
-const toggleEnabled = async (v: DeviceVariable) => {
+const toggleEnabled = async (v: DataPointMapping) => {
   const next = { ...v, isEnabled: !v.isEnabled };
   try {
-    await updateDeviceVariable(next);
-    deviceVariables.value = deviceVariables.value.map(x => x.id === next.id ? next : x);
+    await updateDataPointMapping(next);
+    dataPointMappings.value = dataPointMappings.value.map(x => x.id === next.id ? next : x);
     addLog('设备变量', `已${next.isEnabled ? '启用' : '停用'}采集 [${v.key}]`, 'normal');
   } catch (e: any) {
     addLog('设备变量', `切换启用状态失败 [${v.key}]: ${e.message}`, 'warning');
@@ -260,10 +260,10 @@ const toggleEnabled = async (v: DeviceVariable) => {
 };
 
 // ---------- 删除实例 ----------
-const confirmDelete = async (v: DeviceVariable) => {
+const confirmDelete = async (v: DataPointMapping) => {
   if (!confirm(`确认删除设备变量实例 [${v.key}]？删除后该设备将停止采集此变量。`)) return;
   try {
-    await deleteDeviceVariable(v.id, v.key);
+    await deleteDataPointMapping(v.id, v.key);
     await refreshAll();
   } catch (e: any) {
     addLog('设备变量', `删除失败 [${v.key}]: ${e.message}`, 'warning');
@@ -277,13 +277,13 @@ const isBitType = (t?: string) => ['BOOL', 'BIT'].includes(String(t || '').toUpp
 const accessLabel = (m?: string): string =>
   m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
 /** 实例有效访问模式 = 覆盖 ?? 模板；旧后端无 effectiveAccessMode 时按 effectiveIsReadOnly 推导 */
-const effectiveAccessOf = (v: DeviceVariable): string =>
+const effectiveAccessOf = (v: DataPointMapping): string =>
   v.effectiveAccessMode ?? (v.effectiveIsReadOnly ? 'Read' : 'ReadWrite');
 /** 模板定义的访问模式；旧后端无 templateAccessMode 时按 templateIsReadOnly 推导 */
-const templateAccessOf = (v: DeviceVariable): string =>
+const templateAccessOf = (v: DataPointMapping): string =>
   v.templateAccessMode ?? (v.templateIsReadOnly ? 'Read' : 'ReadWrite');
 /** 列表徽章样式：Read 灰 / Write 琥珀 / ReadWrite 绿 */
-const accessBadgeClass = (v: DeviceVariable): string => {
+const accessBadgeClass = (v: DataPointMapping): string => {
   const mode = effectiveAccessOf(v);
   return mode === 'Read'
     ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
@@ -405,7 +405,7 @@ onMounted(async () => {
         <div class="flex items-center gap-2 shrink-0 self-start sm:self-center">
           <span
             class="text-xs font-mono text-slate-400 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 px-2 py-1 rounded border border-slate-200/40 dark:border-slate-800">
-            已配置 <b class="text-emerald-600 dark:text-emerald-400">{{ deviceVariables.length }}</b> /
+            已配置 <b class="text-emerald-600 dark:text-emerald-400">{{ dataPointMappings.length }}</b> /
             {{ modelTemplates.length }} 个模板变量
           </span>
         </div>
@@ -458,7 +458,7 @@ onMounted(async () => {
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                <tr v-for="v in deviceVariables" :key="v.id"
+                <tr v-for="v in dataPointMappings" :key="v.id"
                   class="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-all font-mono">
                   <td class="px-4 py-3.5">
                     <span class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300">
@@ -514,7 +514,7 @@ onMounted(async () => {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="!isLoading && deviceVariables.length === 0">
+                <tr v-if="!isLoading && dataPointMappings.length === 0">
                   <td :colspan="tableColspan"
                     class="p-10 text-center text-slate-400 dark:text-slate-500 text-xs font-sans">
                     <Database class="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -532,7 +532,7 @@ onMounted(async () => {
 
           <!-- Mobile list -->
           <div class="block md:hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
-            <div v-for="v in deviceVariables" :key="v.id" class="p-4 space-y-2 text-left">
+            <div v-for="v in dataPointMappings" :key="v.id" class="p-4 space-y-2 text-left">
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
                   <div class="flex items-center gap-1 font-bold font-mono text-xs">
@@ -565,7 +565,7 @@ onMounted(async () => {
                   class="flex-1 text-[10px] font-bold text-rose-500 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-center cursor-pointer">删除</button>
               </div>
             </div>
-            <div v-if="!isLoading && deviceVariables.length === 0" class="p-8 text-center text-slate-400 text-xs">
+            <div v-if="!isLoading && dataPointMappings.length === 0" class="p-8 text-center text-slate-400 text-xs">
               该设备尚未配置变量实例
             </div>
           </div>

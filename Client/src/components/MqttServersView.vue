@@ -31,7 +31,7 @@ const selectedServer = computed(() =>
 const statusOf = (srv: MqttServer): MqttServerStatus | undefined => statuses.value[srv.id];
 
 // ===== 候选变量（全部设备变量） =====
-const allDeviceVariables = computed(() => {
+const allDataPointMappings = computed(() => {
   const list: { deviceId: number; deviceName: string; variableKey: string; variableName: string }[] = [];
   devices.value.forEach(dev => {
     const meta = dev.variableMeta || {};
@@ -54,7 +54,7 @@ const associatedKeys = computed(() => {
 });
 
 const unassociatedVariables = computed(() =>
-  allDeviceVariables.value.filter(v => !associatedKeys.value.has(`${v.deviceId}:${v.variableKey}`))
+  allDataPointMappings.value.filter(v => !associatedKeys.value.has(`${v.deviceId}:${v.variableKey}`))
 );
 
 // ===== 加载 =====

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable, updateVariable, deleteVariable, exportVariables } from '../store/index';
-import { DataModel, ModelVariable, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
+import { DataModel, DataPoint, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
 import VariableImportDialog from './VariableImportDialog.vue';
 
 onMounted(() => {
@@ -156,7 +156,7 @@ const varStoreIntervalMs = ref<number | ''>(300000);
 // OPCUA custom state properties
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 
-// 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DeviceVariable，模板层不再维护）
+// 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DataPointMapping，模板层不再维护）
 const varScaleExpression = ref<string>('');
 const varDeadBand = ref<number | null | ''>(null);
 // 阶段 4：读写权限以 AccessMode(Read/Write/ReadWrite) 为权威（替代旧二态只读开关）；
@@ -179,7 +179,7 @@ const filteredVariables = computed(() => {
 const accessLabel = (m?: string): string =>
   m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
 // 模板变量有效访问模式：新字段 accessMode 优先；旧数据（未回填）按 isReadOnly 推导兼容
-const accessOfVar = (v: ModelVariable): string =>
+const accessOfVar = (v: DataPoint): string =>
   v.accessMode ?? (v.isReadOnly === false ? 'ReadWrite' : 'Read');
 
 // Create standard new model schema
@@ -237,11 +237,11 @@ const handleDeleteModel = async (id: string, name: string) => {
   }
 };
 
-// 与后端 ModelVariableDto 的 DataAnnotations 保持一致的前端校验
+// 与后端 DataPointDto 的 DataAnnotations 保持一致的前端校验
 const KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 // 打开编辑弹窗：将既有变量各字段回填至表单（含协议专属/存储/工业级字段）
-const openEditVariable = (v: ModelVariable) => {
+const openEditVariable = (v: DataPoint) => {
   editingVariableId.value = v.id;
   varKey.value = v.key;
   varName.value = v.name;
@@ -322,9 +322,9 @@ const handleSaveVariable = async () => {
   }
 
   // 模板变量不再承载协议地址/采集周期：Address / BitOffset / PollingIntervalMs
-  // 已下放至设备实例级 DeviceVariable，由运行时按设备实例配置采集细节。
+  // 已下放至设备实例级 DataPointMapping，由运行时按设备实例配置采集细节。
 
-  const newVar: ModelVariable = {
+  const newVar: DataPoint = {
     // 创建模式 id=0 占位（后端 CreateAsync 忽略入参 Id）；编辑模式为真实主键
     id: editingVariableId.value ?? 0,
     modelId: Number(model.id),
@@ -364,7 +364,7 @@ const handleSaveVariable = async () => {
           ...updated,
           // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
           type: String(updated.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
-        } as ModelVariable;
+        } as DataPoint;
       }
       addLog('模型建立', `模型 [${model.name}] 更新变量 [${name}]`, 'normal');
     } else {
@@ -376,7 +376,7 @@ const handleSaveVariable = async () => {
           ...created,
           // 后端 VariableType 为大写(Analog/Digital),前端约定小写,统一归一化
           type: String(created.type).toLowerCase() === 'digital' ? 'digital' : 'analog'
-        } as ModelVariable);
+        } as DataPoint);
       }
 
       // Synchronize new variable in all existing online devices relying on this model!
@@ -400,7 +400,7 @@ const handleSaveVariable = async () => {
 };
 
 // Delete a variable mapping from the active data blueprint（先落库再改本地，失败则中止）
-const handleDeleteVariable = async (v: ModelVariable) => {
+const handleDeleteVariable = async (v: DataPoint) => {
   const model = currentModel.value;
   if (!model) return;
 
@@ -1133,7 +1133,7 @@ const handleImportDone = async () => {
             </div>
           </div>
 
-          <!-- MQTT 协议：模板变量不再承载主题地址/刷新周期（已下放设备实例级 DeviceVariable） -->
+          <!-- MQTT 协议：模板变量不再承载主题地址/刷新周期（已下放设备实例级 DataPointMapping） -->
           <div v-if="currentModel && currentModelProtocol === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl border border-teal-100/50 dark:border-teal-800 text-teal-900 dark:text-teal-200">
             <div class="font-bold text-[10px] text-teal-800 dark:text-teal-400 uppercase tracking-wider">MQTT 配置（主题地址在设备实例级配置）</div>
             <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">MQTT 主题地址与刷新周期已下放至设备实例级，此处仅维护变量定义。</p>
