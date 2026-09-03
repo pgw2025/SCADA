@@ -65,6 +65,21 @@ namespace ScadaServer.Runtime
         private readonly ConcurrentDictionary<int, DeviceStatus> _lastPushedStatus = new();
 
         /// <summary>
+        /// 设备自动重连的进程级统计：key = 设备ID。
+        /// 生命周期为进程级：跨 runtime 重建（重连/重载会整体替换 DeviceRuntime 对象）累计——
+        /// 挂在 DeviceRuntime 实例上的计数会在每次重连时随旧对象销毁而丢失（方案 P1）。
+        /// 语义：进程启动以来自动重连发起次数（含初始连接失败后的占位重连）。
+        /// </summary>
+        private readonly ConcurrentDictionary<int, DeviceReconnectStats> _reconnectStats = new();
+
+        /// <summary>单设备重连统计（进程级聚合）。</summary>
+        private sealed class DeviceReconnectStats
+        {
+            public int Count { get; set; }
+            public DateTime? LastReconnectAt { get; set; }
+        }
+
+        /// <summary>
         /// 设备运行时状态变更事件（仅在对外状态值变化时触发）。
         /// </summary>
         public event EventHandler<DeviceStatusChangedEventArgs>? StatusChanged;
@@ -271,6 +286,13 @@ namespace ScadaServer.Runtime
             {
                 return;
             }
+
+            // 重连计数（进程级）：仅统计实际发起的重连（门闸通过 = 本次重连成立）。
+            // 初始连接失败不计入——它由 ConnectionStateChangedAt + LastError + DeviceStatus=Fault
+            // 共同表达；避免「初始失败→占位→重连失败→再占位」链式重复计数。
+            var stats = _reconnectStats.GetOrAdd(deviceId, _ => new DeviceReconnectStats());
+            stats.Count++;
+            stats.LastReconnectAt = DateTime.UtcNow;
 
             _lastPushedStatus.TryRemove(deviceId, out _);
 

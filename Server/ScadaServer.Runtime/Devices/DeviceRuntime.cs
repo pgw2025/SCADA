@@ -61,6 +61,8 @@ public class DeviceRuntime : IRuntimeDevice
         {
             if (_connectionState == value) return;
             _connectionState = value;
+            // 仅值变化时推进状态翻转时刻（UTC），供观测「本次连接周期内最近一次翻转」
+            ConnectionStateChangedAt = DateTime.UtcNow;
             // 状态变更时通知运行时管理器，用于实时推送与持久化
             ConnectionStateChanged?.Invoke(Device.Id, value);
         }
@@ -108,6 +110,20 @@ public class DeviceRuntime : IRuntimeDevice
 
     // 平均响应时间
     public double AverageResponseTime { get; set; }
+
+    /// <summary>
+    /// 最近一次采集/连接失败的原因（截断至 500 字符）。
+    /// 生命周期：连接周期级——runtime 重建（重连/重载）即清空；
+    /// 采集成功后不清空（D3-b：保留最近错误利于排障），由下次失败覆盖。
+    /// </summary>
+    public string? LastError { get; set; }
+
+    /// <summary>
+    /// 本次连接周期内最近一次连接状态翻转时刻（UTC）。
+    /// 由 ConnectionState setter 在值变化分支推进；runtime 重建后为 null，直至首次状态变化。
+    /// 注意：与进程级 ReconnectCount（RuntimeManager 维护）生命周期不同，见方案 P1。
+    /// </summary>
+    public DateTime? ConnectionStateChangedAt { get; set; }
 
     // 运行时锁
     public SemaphoreSlim Lock { get; } = new(1, 1);

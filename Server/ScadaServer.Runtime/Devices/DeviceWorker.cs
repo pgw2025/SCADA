@@ -246,6 +246,7 @@ namespace ScadaServer.Runtime.Devices
                         {
                             // 单个变量读取失败，标记通信错误但不中断其他变量
                             vr.Quality = VariableQuality.CommunicationError;
+                            _runtime.LastError = TruncateError(ex.Message);
                             if (previousQuality != VariableQuality.CommunicationError)
                             {
                                 notifications.Add((vr.Key, vr.Value, vr.Quality, now));
@@ -284,6 +285,9 @@ namespace ScadaServer.Runtime.Devices
                         _runtime.FailureCount++;
                         _runtime.ConsecutiveFailureCount++;
 
+                        // 全失败无异常路径：无可记异常对象，写聚合失败描述（与下方 LogWarning 文案对齐）
+                        _runtime.LastError = TruncateError($"本轮 {due.Count} 个到期变量全部读取失败");
+
                         // 仅在首次失败时告警一次，持续失败由设备状态（Fault）体现，避免每轮刷屏。
                         if (_runtime.ConsecutiveFailureCount == 1)
                         {
@@ -313,6 +317,7 @@ namespace ScadaServer.Runtime.Devices
                     _runtime.ConnectionState = DeviceConnectionState.Error;
                     _runtime.FailureCount++;
                     _runtime.ConsecutiveFailureCount++;
+                    _runtime.LastError = TruncateError(ex.Message);
                     _logger.LogError(ex, "DeviceWorker {DeviceKey} encountered an error.", _runtime.Device.Key);
                 }
                 finally
@@ -771,6 +776,13 @@ namespace ScadaServer.Runtime.Devices
                 if (value is bool b) return b ? 1.0 : 0.0;
                 return null;
             }
+        }
+
+        /// <summary>失败原因截断（上限 500 字符），防止异常消息超长撑爆快照/日志。</summary>
+        private static string? TruncateError(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return message;
+            return message.Length <= 500 ? message : message[..500];
         }
 
         /// <summary>
