@@ -35,6 +35,18 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// 更新/删除专用加载（跟踪查询、不含导航）：仅加载数据模型本体。
+        /// 不使用 AsNoTracking、不 Include Protocol，使 Update(entity)/Remove(entity) 无需附加
+        /// 导航对象图，避免与协议存在性校验加载的 Protocol 实体产生同主键跟踪冲突
+        /// （与 Controller/Device/DeviceConnection 仓储的 GetByIdForUpdateAsync 模式一致）。
+        /// </summary>
+        public async Task<DataModel?> GetByIdForUpdateAsync(int id)
+        {
+            return await Db.DataModels
+                .FirstOrDefaultAsync(m => m.Id == id);
+        }
+
+        /// <summary>
         /// 显式加载与 <see cref="GetByIdAsync"/> 一致的导航属性（<c>Protocol</c>）。
         /// </summary>
         /// <returns>全部数据模型列表（每项均含 Protocol 导航属性）。</returns>

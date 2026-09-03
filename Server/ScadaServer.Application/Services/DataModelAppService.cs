@@ -185,7 +185,9 @@ namespace ScadaServer.Application.Services
             dto.Name = dto.Name.Trim();
             var code = dto.Code?.Trim() ?? string.Empty;
 
-            var entity = await _repository.GetByIdAsync(dto.Id);
+            // 更新专用加载（跟踪查询、不含导航）：避免随 Update(entity) 附加 Include 出的
+            // Protocol 导航图，与 ResolveProtocolIdAsync 中 FindAsync 已跟踪的 Protocol 同 key 冲突（Bug#1）。
+            var entity = await _repository.GetByIdForUpdateAsync(dto.Id);
             if (entity == null)
             {
                 throw new BusinessException($"ID 为 {dto.Id} 的数据模型不存在");
@@ -224,7 +226,9 @@ namespace ScadaServer.Application.Services
             entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
 
-            return await MapToDtoAsync(entity, includeVariables: true);
+            // 更新后重读返回（仿 DeviceConnectionAppService）：ForUpdate 实体不含 Protocol 导航，
+            // 直接 MapToDtoAsync 会丢 ProtocolKey/ProtocolName；重读可同时修正"改绑协议后响应仍是旧协议名"。
+            return (await GetByIdAsync(dto.Id))!;
         }
 
         /// <summary>归一化版本号：空白 → "1.0"（与实体默认一致），并修剪两端空格。</summary>
@@ -234,7 +238,9 @@ namespace ScadaServer.Application.Services
         /// <summary>删除数据模型：先校验是否被设备引用，未引用时在同一事务内删除其变量模板与模型本身。</summary>
         public async Task DeleteAsync(int id)
         {
-            var entity = await _repository.GetByIdAsync(id);
+            // 更新专用加载（跟踪查询、不含导航）：删除仅需本体，避免 AsNoTracking+Include
+            // 游离图的 Remove 触发导航对象图附加（与 ControllerAppService.DeleteAsync 先例一致）。
+            var entity = await _repository.GetByIdForUpdateAsync(id);
             if (entity == null)
             {
                 return;

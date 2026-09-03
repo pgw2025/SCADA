@@ -115,9 +115,23 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     }
 
     /// <summary>
-    /// 数据模型仓储接口
+    /// 数据模型仓储接口。
+    /// <para>
+    /// 读路径（<see cref="IRepository{TEntity,TKey}.GetByIdAsync(TKey)"/>）由实现覆盖为
+    /// AsNoTracking + Include Protocol；更新/删除路径须使用 <see cref="GetByIdForUpdateAsync"/>
+    /// （跟踪查询、不含导航），避免 Update/Remove 附加导航对象图与协议校验加载的 Protocol
+    /// 产生同主键跟踪冲突（与 Controller/Device/DeviceConnection 仓储一致）。
+    /// </para>
     /// </summary>
-    public interface IDataModelRepository : IRepository<DataModel, int> { }
+    public interface IDataModelRepository : IRepository<DataModel, int>
+    {
+        /// <summary>
+        /// 更新/删除专用加载（跟踪查询、不含导航）：仅加载模型本体。
+        /// 不使用 AsNoTracking、不 Include Protocol，使 Update(entity) / Remove(entity)
+        /// 无需附加导航对象图，避免与协议存在性校验加载的 Protocol 实体产生同主键跟踪冲突。
+        /// </summary>
+        Task<DataModel?> GetByIdForUpdateAsync(int id);
+    }
 
     /// <summary>
     /// 暴露接口仓储接口
