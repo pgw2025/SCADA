@@ -335,7 +335,7 @@ export type DataTypeEnum =
 // 更新模式枚举
 export type UpdateMode = 'polling' | 'subscription';
 
-// 读写访问模式（阶段 4 权威；与旧 bool IsReadOnly 并存，一个版本周期后移除后者）
+// 读写访问模式（阶段 6 起唯一权威；旧 bool IsReadOnly 列/字段已删除）
 export type AccessMode = 'Read' | 'Write' | 'ReadWrite';
 
 export interface DataPoint {
@@ -360,20 +360,15 @@ export interface DataPoint {
   scaleExpression?: string | null;
   deadBand?: number;
 
-  // ===== 阶段 4 数据定义层增强（AccessMode 权威，IsReadOnly 保留兼容）=====
-  /** 读写访问模式（阶段 4 权威，与后端 DataPointDto.AccessMode 对齐）。 */
-  accessMode?: AccessMode;
+  // ===== 阶段 4 数据定义层增强（AccessMode 阶段 6 起唯一权威，旧 bool IsReadOnly 已删除）=====
+  /** 读写访问模式（Read/Write/ReadWrite，唯一权威；后端 DataPointDto.AccessMode）。 */
+  accessMode: AccessMode;
   /** 是否必采/必填（模板级定义），默认 false */
   isRequired?: boolean;
   /** 排序权重（值越小越靠前），默认 0；存量回填 = 行号 */
   sort?: number;
   /** 模板级是否启用，默认 true */
   isEnabled?: boolean;
-  /**
-   * @deprecated 阶段 4 起由 accessMode 取代（语义：只读 == accessMode==='Read'）。
-   * 保留以兼容旧后端/旧 store 缓存；读写权限的展示与编辑请使用 accessMode。
-   */
-  isReadOnly: boolean;
   extensionData?: Record<string, string>;
 }
 
@@ -398,23 +393,16 @@ export interface DataPointMapping {
   isEnabled: boolean;                // 实例级：是否启用采集
   scaleExpressionOverride?: string | null; // 实例级覆盖：换算表达式，空=用模板值
   deadBandOverride?: number | null;     // 实例级覆盖：死区，空=用模板值
-  isReadOnlyOverride?: boolean | null;  // 实例级覆盖：读写权限，空=继承模板（阶段 4 语义保持：Override ?? 模板）
+  /** 实例级覆盖：读写模式（Read/Write/ReadWrite），空=继承模板 AccessMode（阶段 6 起取代旧 bool isReadOnlyOverride） */
+  accessModeOverride?: AccessMode | null;
   // ===== 阶段 4 数据定义层增强（ConnectionId/RawDataType 本阶段仅透传，运行时阶段 6 启用）=====
   /** 实例级连接覆盖（FK→DeviceConnections.Id），空=使用设备默认连接 */
   connectionId?: number | null;
   /** 记录性字段：创建实例时快照的模板 DataType 字符串（如 "REAL"），本阶段不启用校验 */
   rawDataType?: string | null;
-  /**
-   * @deprecated 阶段 4 由 templateAccessMode 取代（== templateAccessMode === 'Read'）。
-   */
-  templateIsReadOnly?: boolean;         // 回显：模板定义的只读权限
-  /**
-   * @deprecated 阶段 4 由 effectiveAccessMode 取代（== effectiveAccessMode === 'Read'，运行时实际生效值）。
-   */
-  effectiveIsReadOnly?: boolean;        // 回显：有效权限（Override ?? 模板）
   /** 回显：模板定义的访问模式（只出不进） */
   templateAccessMode?: AccessMode;
-  /** 回显：有效访问模式 = 实例覆盖 ?? 模板（只出不进） */
+  /** 回显：有效访问模式 = 实例覆盖 ?? 模板（只出不进，==='Read' 即只读，用于可写门控） */
   effectiveAccessMode?: AccessMode;
   quality?: string;                     // 运行期实时值质量（Good/Bad/Uncertain/CommunicationError/…），组态运行端分级显示
 }
@@ -810,8 +798,8 @@ export interface Device {
   variableTimestamps?: Record<string, string>;
   // 设备实例级变量元数据（按 key 索引，来源后端 DeviceDto.Variables 数组）。
   // normalizeDevices 把后端数组压扁成 variables 键值表时，同步保留这里以便消费方
-  // 取 effectiveIsReadOnly / isReadOnlyOverride / templateIsReadOnly 等实例级权限，
-  // 实时监控页据此判断写入按钮显隐（设备级覆盖优先于模板 isReadOnly）。
+  // 取 effectiveAccessMode / accessModeOverride / templateAccessMode 等实例级权限，
+  // 实时监控页据此判断写入按钮显隐（只读 == effectiveAccessMode === 'Read'）。
   variableMeta?: Record<string, DataPointMapping>;
 
   // Advanced connection parameters（同为后端派生只读，见上方说明）

@@ -159,8 +159,7 @@ const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 // 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DataPointMapping，模板层不再维护）
 const varScaleExpression = ref<string>('');
 const varDeadBand = ref<number | null | ''>(null);
-// 阶段 4：读写权限以 AccessMode(Read/Write/ReadWrite) 为权威（替代旧二态只读开关）；
-// 提交时仍按 ==Read 派生 isReadOnly 兼容旧消费方（LiveData 写按钮等），旧字段一个版本周期后移除
+// 阶段 4 起读写权限以 AccessMode(Read/Write/ReadWrite) 为唯一权威；阶段 6 已删旧 bool isReadOnly
 const varAccessMode = ref<'Read' | 'Write' | 'ReadWrite'>('Read');
 
 // Filtered variables for search
@@ -178,9 +177,9 @@ const filteredVariables = computed(() => {
 // AccessMode 展示辅助（阶段 4）：三值 → 中文徽章文案
 const accessLabel = (m?: string): string =>
   m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
-// 模板变量有效访问模式：新字段 accessMode 优先；旧数据（未回填）按 isReadOnly 推导兼容
+// 模板变量有效访问模式：后端 DataPointDto.AccessMode 恒为三值之一（阶段 6 起唯一权威）
 const accessOfVar = (v: DataPoint): string =>
-  v.accessMode ?? (v.isReadOnly === false ? 'ReadWrite' : 'Read');
+  v.accessMode ?? 'Read';
 
 // Create standard new model schema
 const handleCreateModel = async () => {
@@ -262,8 +261,8 @@ const openEditVariable = (v: DataPoint) => {
   // 工业级参数：换算表达式优先取正式字段；旧数据兼容回填 extensionData.scaleExpr（保存后即迁入正式字段）
   varScaleExpression.value = v.scaleExpression ?? v.extensionData?.scaleExpr ?? '';
   varDeadBand.value = v.deadBand ?? null;
-  // 阶段 4：AccessMode 权威；旧数据(无 accessMode)按 isReadOnly 推导兼容
-  varAccessMode.value = v.accessMode ?? (v.isReadOnly === false ? 'ReadWrite' : 'Read');
+  // 阶段 4 起 AccessMode 权威（后端恒回填，无需旧字段推导）
+  varAccessMode.value = v.accessMode ?? 'Read';
   showVarModal.value = true;
 };
 
@@ -345,9 +344,8 @@ const handleSaveVariable = async () => {
     // 换算表达式：空串发 null（后端语义 = 恒等变换）
     scaleExpression: varScaleExpression.value.trim() === '' ? null : varScaleExpression.value.trim(),
     deadBand: varDeadBand.value === '' ? null : varDeadBand.value,
-    // 阶段 4：AccessMode 权威；isReadOnly 派生同步(兼容旧消费方，@deprecated)
+    // 阶段 4 起 AccessMode 唯一权威（旧 bool isReadOnly 已在阶段 6 删除）
     accessMode: varAccessMode.value,
-    isReadOnly: varAccessMode.value === 'Read',
     extensionData: {
       accessLevel: varAccessLevel.value
     }

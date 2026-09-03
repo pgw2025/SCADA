@@ -234,7 +234,7 @@ const handleTriggerToggleValue = (
 
   const dev = devices.value.find((d) => String(d.id) === String(deviceId));
   const meta = dev?.variableMeta?.[key];
-  const isReadOnly = meta?.effectiveIsReadOnly ?? false;
+  const isReadOnly = meta?.effectiveAccessMode === 'Read';
   if (isReadOnly) {
     showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
     return;

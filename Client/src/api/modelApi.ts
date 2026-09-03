@@ -77,14 +77,9 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
           updateMode: (String(v.updateMode ?? '').toLowerCase() === 'subscription' ? 'subscription' : 'polling') as 'polling' | 'subscription',
           scaleExpression: v.scaleExpression ?? '',
           deadBand: v.deadBand,
-          // 仅当后端缺省（null/undefined）时回退到安全默认 true；
-          // 后端明确返回 false（可写）时须保留 false，否则会被 || true 误判为只读导致写入按钮恒隐藏。
-          // @deprecated isReadOnly：阶段 4 起读写以 accessMode 为权威（== accessMode==='Read'）。
-          isReadOnly: v.isReadOnly ?? true,
-          // 阶段 4 定义字段：accessMode 权威；旧后端（无 accessMode）按 isReadOnly 推导兼容
-          accessMode: isAccessMode(v.accessMode)
-            ? v.accessMode
-            : (v.isReadOnly === false ? 'ReadWrite' : 'Read'),
+          // 阶段 6 起读写以 accessMode 为唯一权威（后端 DataPointDto.AccessMode 恒为 Read/Write/ReadWrite）；
+          // 旧后端（无 accessMode）一律按安全默认 Read 兜底。
+          accessMode: isAccessMode(v.accessMode) ? v.accessMode : 'Read',
           isRequired: v.isRequired ?? false,
           sort: v.sort ?? 0,
           isEnabled: v.isEnabled ?? true,

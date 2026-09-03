@@ -628,10 +628,10 @@ const handleTriggerToggleValue = (deviceId: number | null, variableKey: string, 
     return;
   }
 
-  // 只读拦截：设备级有效只读权限优先于写操作（后端 RuntimeManager 仍会兜底校验 IsReadOnly）。
+  // 只读拦截：设备级有效权限优先于写操作（只读 == effectiveAccessMode === 'Read'；后端运行时仍会兜底校验）。
   const dev = devices.value.find((d) => String(d.id) === String(deviceId));
   const meta = dev?.variableMeta?.[key];
-  const isReadOnly = meta?.effectiveIsReadOnly ?? false;
+  const isReadOnly = meta?.effectiveAccessMode === 'Read';
   if (isReadOnly) {
     showToast(`变量 [${key}] 为只读，禁止写入`, 'warning');
     addLog('SCADA 写控', `写拦截：变量 [设备${deviceId}.${key}] 为只读`, 'warning');

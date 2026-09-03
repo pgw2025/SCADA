@@ -149,8 +149,8 @@ const editingCfg = ref<AddressConfig | null>(null); // 结构化地址（权威�
 
 const openEditModal = (v: DataPointMapping) => {
   // 浅拷贝到可编辑副本；覆盖字段保留 null（null 表示"用模板值"，见下方提示文案）
-  // isReadOnlyOverride 归一化：undefined → null，保证三态下拉"继承"项能正确选中。
-  editingForm.value = { ...v, isReadOnlyOverride: v.isReadOnlyOverride ?? null };
+  // accessModeOverride 归一化：undefined → null，保证下拉"继承"项能正确选中。
+  editingForm.value = { ...v, accessModeOverride: v.accessModeOverride ?? null };
   // 结构化地址（JSON 权威）：优先解析已有 JSON，否则按当前设备协议给默认骨架。
   editingCfg.value = parseAddressConfig(v.addressConfigJson) ?? newAddressConfig(selectedDevice.value?.type || 'Virtual');
   showEditModal.value = true;
@@ -273,15 +273,15 @@ const confirmDelete = async (v: DataPointMapping) => {
 // 覆盖值可见性：仅布尔/位类型需要位偏移
 const isBitType = (t?: string) => ['BOOL', 'BIT'].includes(String(t || '').toUpperCase());
 
-// ---- 阶段 4：读写权限改由 AccessMode（Read/Write/ReadWrite）回显，旧 bool 字段 deprecated 兼容 ----
+// ---- 阶段 6：读写权限以 AccessMode（Read/Write/ReadWrite）为唯一回显，旧 bool 字段已删除 ----
 const accessLabel = (m?: string): string =>
   m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
-/** 实例有效访问模式 = 覆盖 ?? 模板；旧后端无 effectiveAccessMode 时按 effectiveIsReadOnly 推导 */
+/** 实例有效访问模式 = 覆盖(accessModeOverride) ?? 模板（后端恒回显，缺省 Read 兜底） */
 const effectiveAccessOf = (v: DataPointMapping): string =>
-  v.effectiveAccessMode ?? (v.effectiveIsReadOnly ? 'Read' : 'ReadWrite');
-/** 模板定义的访问模式；旧后端无 templateAccessMode 时按 templateIsReadOnly 推导 */
+  v.effectiveAccessMode ?? v.templateAccessMode ?? 'Read';
+/** 模板定义的访问模式（后端恒回显，缺省 Read 兜底） */
 const templateAccessOf = (v: DataPointMapping): string =>
-  v.templateAccessMode ?? (v.templateIsReadOnly ? 'Read' : 'ReadWrite');
+  v.templateAccessMode ?? 'Read';
 /** 列表徽章样式：Read 灰 / Write 琥珀 / ReadWrite 绿 */
 const accessBadgeClass = (v: DataPointMapping): string => {
   const mode = effectiveAccessOf(v);
@@ -476,10 +476,10 @@ onMounted(async () => {
                   </td>
                   <td class="px-4 py-3.5">
                     <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
-                      :class="accessBadgeClass(v)" :title="v.isReadOnlyOverride != null
+                      :class="accessBadgeClass(v)" :title="v.accessModeOverride != null
                         ? '该设备实例覆盖模板 → ' + accessLabel(effectiveAccessOf(v))
                         : '继承模板：' + accessLabel(templateAccessOf(v))">
-                      {{ accessLabel(effectiveAccessOf(v)) }}<span v-if="v.isReadOnlyOverride != null"
+                      {{ accessLabel(effectiveAccessOf(v)) }}<span v-if="v.accessModeOverride != null"
                         class="ml-0.5 opacity-70">·覆盖</span>
                     </span>
                   </td>
@@ -553,7 +553,7 @@ onMounted(async () => {
                   <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
                   <span class="inline-block px-1 py-px rounded border font-bold"
                     :class="accessBadgeClass(v)">{{ accessLabel(effectiveAccessOf(v))
-                    }}{{ v.isReadOnlyOverride != null ? '·覆盖' : '' }}</span>
+                    }}{{ v.accessModeOverride != null ? '·覆盖' : '' }}</span>
                 </span>
                 <button @click="toggleEnabled(v)" class="text-[10px] font-bold"
                   :class="v.isEnabled ? 'text-emerald-500' : 'text-slate-400'">{{ v.isEnabled ? '启用' : '停用' }}</button>
@@ -768,13 +768,14 @@ onMounted(async () => {
           </div>
           <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">读写权限</label>
-            <select v-model="editingForm.isReadOnlyOverride"
+            <select v-model="editingForm.accessModeOverride"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
               <option :value="null">继承模板（当前：{{ accessLabel(templateAccessOf(editingForm)) }}）</option>
-              <option :value="true">强制只读</option>
-              <option :value="false">强制读写</option>
+              <option value="Read">强制只读（Read）</option>
+              <option value="Write">强制只写（Write）</option>
+              <option value="ReadWrite">强制读写（ReadWrite）</option>
             </select>
-            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed">实例级覆盖优先于模板：强制只读=Read；强制读写=ReadWrite（模板为「只写」时可被覆盖为可读可写）。</p>
+            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed">实例级覆盖优先于模板：Read=只读、Write=只写、ReadWrite=读写（留空继承模板权限）。</p>
           </div>
           <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-sans">
             <span>启用采集</span>

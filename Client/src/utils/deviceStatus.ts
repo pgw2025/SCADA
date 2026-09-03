@@ -58,7 +58,7 @@ export const normalizeDevices = (raw: Device[], prevDevices?: Device[]): Device[
     const prevVars = prevMap.get(d.id) ?? {};
     if (Array.isArray(d.variables)) {
       // 后端 DeviceDto.Variables 为 DataPointMappingDto[]：含实例级权限/地址/覆盖字段。
-      // 一份按 key 索引保留完整元数据（variableMeta），供实时监控页取 effectiveIsReadOnly 等；
+      // 一份按 key 索引保留完整元数据（variableMeta），供实时监控页取 effectiveAccessMode 等；
       // 另一份压扁为 variables 键值表（预置 null 占位），等待 SignalR 实时值推送落点。
       (d.variables as any[]).forEach((v: any) => {
         if (v && v.key) {

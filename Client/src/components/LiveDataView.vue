@@ -137,9 +137,9 @@ const renderedVariables = computed(() => {
       value,
       // 是否为该实例启用采集（isEnabled=false 时交由页面置灰/标停用）
       isEnabled: dv.isEnabled,
-      // 读写权限：优先取设备实例级有效权限（effectiveIsReadOnly，含 IsReadOnlyOverride 覆盖结果），
-      // 缺省回退模板 isReadOnly，保证"设备变量"页覆盖为可写后此处可写。
-      isReadOnly: dv.effectiveIsReadOnly ?? tpl?.isReadOnly ?? true,
+      // 读写权限：以实例级有效权限（effectiveAccessMode，含 AccessModeOverride 覆盖结果）为准，
+      // 缺省回退模板 accessMode；只读 == 有效模式为 'Read'。
+      isReadOnly: (dv.effectiveAccessMode ?? tpl?.accessMode ?? 'Read') === 'Read',
       // 质量位（SignalR 结构化推送与 REST realtime 回填同源写入 variableMeta）
       quality: selectedDevice.value?.variableMeta?.[dv.key]?.quality as string | undefined,
       // 优先展示变量级实时推送时间戳（后端采集时刻），无推送时回退设备更新时间
