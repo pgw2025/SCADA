@@ -18,8 +18,9 @@ namespace ScadaServer.Application.Services
     /// <para>
     /// 引用语义（与 DeviceDeletionService 对称）：
     /// 连接被设备引用（Device.ConnectionId 指向）后，其生命周期移交设备接口管理（改参/删除走设备页，
-    /// 双写单点保证 Device.JsonConfig 与 Connection.ConfigJson 一致）；故对"被引用连接"的更新与删除直接拒绝，
-    /// 避免绕过双写单点破坏一致性。删除未被引用的连接后，若其控制器无其它连接且无设备引用，则一并清理。
+    /// Connection.ConfigJson 即连接配置唯一真相源，阶段 6 起不再与 Device.JsonConfig 双写）；
+    /// 故对"被引用连接"的更新与删除直接拒绝，避免绕过设备接口破坏端点唯一性与共享语义。
+    /// 删除未被引用的连接后，若其控制器无其它连接且无设备引用，则一并清理。
     /// </para>
     /// </summary>
     public class DeviceConnectionAppService : IDeviceConnectionAppService
@@ -121,12 +122,12 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {id} 的连接不存在");
             }
 
-            // 已被设备引用 → 拒绝直接修改：连接参数变更必须走设备页（DeviceAppService 双写单点），
-            // 否则会造成 Connection.ConfigJson 与 Device.JsonConfig 不一致，破坏阶段 3 双读等价验收。
+            // 已被设备引用 → 拒绝直接修改：设备连接参数变更必须走设备页（设备接口单点维护，
+            // 含端点唯一性与共享语义；阶段 6 起 Connection.ConfigJson 即连接配置唯一真相源）。
             var inUseByDevice = await _deviceRepository.AnyAsync(d => d.ConnectionId == id);
             if (inUseByDevice)
             {
-                throw new BusinessException("该连接已被设备使用，请在设备管理页修改连接参数（连接与设备 JsonConfig 需保持双写一致）");
+                throw new BusinessException("该连接已被设备使用，请在设备管理页修改连接参数（被引用连接的参数由设备接口单点维护）");
             }
 
             var name = dto.Name?.Trim() ?? string.Empty;

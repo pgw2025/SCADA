@@ -60,10 +60,10 @@ namespace ScadaServer.Domain.Entities
         public Controller? Controller { get; set; }
 
         /// <summary>
-        /// 默认设备连接 ID（可空：阶段 3 过渡列，未回填/手工场景可为 NULL；FK → DeviceConnections，Restrict）。
+        /// 默认设备连接 ID（可空：历史过渡列，未回填/手工场景可为 NULL；FK → DeviceConnections，Restrict）。
         /// <para>
-        /// 运行时读取连接参数的优先来源：非空时以 <see cref="DeviceConnection.ConfigJson"/> 为连接配置，
-        /// 为空则回退 <see cref="JsonConfig"/>（双读兼容层，阶段 6 前保留）。
+        /// 阶段 6 起设备连接参数的唯一来源：非空时以 <see cref="DeviceConnection.ConfigJson"/> 为连接配置；
+        /// 运行时不再回退 <see cref="JsonConfig"/>（历史列自阶段 6 起停止写入，待阶段 6.4 评估删除）。
         /// </para>
         /// </summary>
         public int? ConnectionId { get; set; }
@@ -86,8 +86,9 @@ namespace ScadaServer.Domain.Entities
         public int PollingInterval { get; set; } = 1000;
 
         /// <summary>
-        /// 协议配置 JSON（原独立表 DeviceConfigs.JsonConfig）。
-        /// 可空：未配置时运行时以 "{}" 兜底。
+        /// 协议配置 JSON（历史列：原 DeviceConfigs.JsonConfig）。
+        /// 阶段 6 起连接配置唯一真相源为 <see cref="DeviceConnection.ConfigJson"/>，本列不再写入
+        /// （存量历史值仅作只读兜底），待阶段 6.4 评估删除。
         /// </summary>
         [Column(TypeName = "longtext")]
         public string? JsonConfig { get; set; }

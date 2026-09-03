@@ -135,7 +135,6 @@ namespace ScadaServer.Application.Services
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 LastCommunicationTime = entity.LastCommunicationTime,
-                ConfigJson = entity.JsonConfig,
                 ControllerId = entity.ControllerId,
                 ConnectionId = entity.ConnectionId,
                 Connection = MapConnectionSummary(entity),
@@ -144,8 +143,12 @@ namespace ScadaServer.Application.Services
                 Models = MapBindingDtos(entity)
             };
 
-            // 真相源是 JsonConfig，以下仅为按协议投影出的只读连接字段（兼容期旧字段；新真相源见 Connection 摘要）
-            ApplyConnectionFields(dto, entity.Model?.Protocol?.DriverKey, entity.JsonConfig);
+            // 连接参数投影真相源（阶段 6 起）：Device.Connection.ConfigJson。
+            // 历史行 Device.JsonConfig 已停止写入，仅作为连接缺失（应不存在的过渡场景）的只读兜底。
+            ApplyConnectionFields(
+                dto,
+                entity.Connection?.Protocol?.DriverKey ?? entity.Model?.Protocol?.DriverKey,
+                entity.Connection?.ConfigJson ?? entity.JsonConfig);
             return dto;
         }
 
@@ -180,7 +183,7 @@ namespace ScadaServer.Application.Services
 
         /// <summary>
         /// 阶段 3：将设备默认连接映射为只读摘要（含控制器/协议/端点冗余列）。
-        /// 设备尚未关联连接（Connection 导航为 null，回退 JsonConfig 运行的过渡场景）时返回 null。
+        /// 设备尚未关联连接时返回 null（阶段 6 起该场景应不存在——所有设备均随创建回填独占连接）。
         /// </summary>
         private static DeviceConnectionSummaryDto? MapConnectionSummary(Device entity)
         {
@@ -206,10 +209,10 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
-        /// 由协议配置 JSON 派生连接参数并写入 DTO 的只读字段。
+        /// 由连接配置 JSON 派生连接参数并写入 DTO 的只读字段。
         /// <para>
-        /// 真相源为 <c>Device.JsonConfig</c>：按 <c>Protocol.DriverKey</c> 路由到对应配置类，
-        /// 反序列化后投影。不做任何回写，<c>JsonConfig</c> 仍是唯一可写入口。
+        /// 真相源为 <c>Device.Connection.ConfigJson</c>：按驱动键路由到对应配置类，反序列化后投影。
+        /// 不做任何回写——连接配置只经 DeviceAppService 连接分支与 DeviceConnectionAppService 写入。
         /// </para>
         /// <para>
         /// 解析失败（配置缺失、JSON 非法、协议未识别）一律静默返回、字段保持 null，
@@ -464,11 +467,11 @@ namespace ScadaServer.Application.Services
                 if (d.Id == excludeId) continue;
                 // 高级模式共享连接豁免：与目标连接共用同一配置行的设备不做端点去重。
                 if (exemptConnectionId.HasValue && d.ConnectionId == exemptConnectionId.Value) continue;
-                // 双读：设备连接（阶段 3 真相源）优先，回退 Device.JsonConfig，与 DeviceRuntime.ConfigJson 口径一致。
-                var dk = d.Connection?.Protocol?.DriverKey ?? d.Model?.Protocol?.DriverKey;
+                // 阶段 6：连接配置只读 Connection.ConfigJson（与运行时单真相源一致；JsonConfig 历史列不再读取）。
+                var dk = d.Connection?.Protocol?.DriverKey;
                 if (dk == null) continue;
 
-                var peerJson = d.Connection?.ConfigJson ?? d.JsonConfig ?? string.Empty;
+                var peerJson = d.Connection?.ConfigJson ?? string.Empty;
                 var peerKey = ParseEndpointKey(dk, peerJson);
                 if (peerKey != null
                     && string.Equals(peerKey, probeKey, StringComparison.OrdinalIgnoreCase))
@@ -823,7 +826,9 @@ namespace ScadaServer.Application.Services
 
             var created = await _uow.ExecuteInTransactionAsync(async transaction =>
             {
-                // 配置原文：快速模式取提交配置；高级模式镜像所附连接配置（P3-B 双写兼容层）。
+                // 配置原文：快速模式取提交配置；高级模式镜像所附连接配置。
+                // 阶段 6 起连接配置只写入 Connection.ConfigJson（下方 EnsureExclusiveConnectionAsync 落库），
+                // 不再双写到 Device.JsonConfig（历史列保持 NULL，待阶段 6.4 评估删除）。
                 var jsonConfig = attachConnection != null
                     ? (attachConnection.ConfigJson ?? "{}")
                     : (string.IsNullOrEmpty(dto.ConfigJson) ? "{}" : dto.ConfigJson!);
@@ -838,7 +843,6 @@ namespace ScadaServer.Application.Services
                     ConnectionId = attachConnection?.Id,
                     IsEnabled = dto.IsEnabled,
                     PollingInterval = dto.PollingInterval,
-                    JsonConfig = jsonConfig,
                     Version = 1,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -883,9 +887,9 @@ namespace ScadaServer.Application.Services
                     UpdatedAt = bindingNow
                 });
 
-                // 阶段 3 双写（P3-A/P3-D）：快速模式下为新建设备同步创建独占 Controller + DeviceConnection
-                // 并回填过渡列。与 DatabaseInitializer 启动回填保持同一"1 设备 = 1 Controller + 1 Connection"结构，
-                // 保证 JsonConfig（旧路径）与 Connection.ConfigJson（新路径）数据一致，运行时双读无差异。
+                // 阶段 3 结构（P3-A/P3-D）：快速模式下为新建设备同步创建独占 Controller + DeviceConnection，
+                // 连接配置原文（jsonConfig）随之写入 Connection.ConfigJson；与 DatabaseInitializer 启动回填保持
+                // 同一"1 设备 = 1 Controller + 1 Connection"结构。
                 // 高级模式（attachConnection != null）：设备行已直接写入 ControllerId/ConnectionId，跳过自动维护。
                 if (attachConnection == null)
                 {
@@ -911,7 +915,8 @@ namespace ScadaServer.Application.Services
 
         /// <summary>
         /// 更新设备：禁止变更设备绑定的数据模型，校验设备标识唯一性与区域/模型存在，
-        /// 事务内更新设备属性与协议配置（ConfigJson 为空时保留原配置）；
+        /// 事务内更新设备属性与连接参数（阶段 6 起连接配置只写 Connection.ConfigJson；
+        /// ConfigJson 为空时保留原连接配置）；
         /// 提交成功后按启用状态变化执行运行时注册/注销/重载（热加载）。
         /// </summary>
         public async Task<DeviceDto> UpdateAsync(DeviceDto dto)
@@ -990,16 +995,15 @@ namespace ScadaServer.Application.Services
                 if (attachConnection != null)
                 {
                     // 高级模式：切换/维持对目标连接的引用（可能与其他设备共享）。
+                    // 阶段 6：不再镜像写 Device.JsonConfig（连接 ConfigJson 为唯一真相源）。
                     var oldConnectionId = entity.ConnectionId;
                     var oldControllerId = entity.ControllerId;
-                    var mirror = attachConnection.ConfigJson ?? "{}";
 
                     entity.ConnectionId = attachConnection.Id;
                     entity.ControllerId = attachConnection.ControllerId;
-                    // P3-B 双写镜像：Device.JsonConfig 同步连接配置原文，保持兼容期旧路径数据一致。
-                    if (entity.JsonConfig != mirror)
+                    if (attachConnection.Id != oldConnectionId)
                     {
-                        entity.JsonConfig = mirror;
+                        // 关联的连接行变化即配置变化：配置版本号自增（追踪语义，同快速模式）。
                         entity.Version++;
                     }
 
@@ -1013,16 +1017,16 @@ namespace ScadaServer.Application.Services
                 else if (!string.IsNullOrEmpty(dto.ConfigJson))
                 {
                     // 快速模式：更新协议配置（ConfigJson 为空时保留旧配置，非全量清空语义）。
-                    // 配置字段已内联到 Device（原 DeviceConfig），版本号随配置更新自增。
-                    entity.JsonConfig = dto.ConfigJson;
+                    // 阶段 6：配置原文只写入独占 Connection（ConfigJson + Host/Port 冗余列 + UpdatedAt），
+                    // Device.JsonConfig 历史列不再刷新；版本号随配置更新自增。
                     entity.Version++;
 
-                    // 阶段 3 双写：同步独占 Connection（ConfigJson 原文 + Host/Port 冗余列 + UpdatedAt）。
-                    // Connection 不存在（回填遗漏等异常）时按 PLC{Id} 自动补建并回填 Device 过渡列。
+                    // 阶段 3 结构：同步独占 Connection；Connection 不存在（回填遗漏等异常）时按 PLC{Id} 自动补建
+                    // 并回填 Device 过渡列。
                     await EnsureExclusiveConnectionAsync(
                         entity, model, model.Protocol?.DriverKey, dto.ConfigJson, DateTime.UtcNow);
 
-                    // 统一持久化设备标量（含 JsonConfig/Version 及新建连接时回填的 ControllerId/ConnectionId）。
+                    // 统一持久化设备标量（含 Version 及新建连接时回填的 ControllerId/ConnectionId）。
                     await _repository.UpdateAsync(entity);
                 }
                 else

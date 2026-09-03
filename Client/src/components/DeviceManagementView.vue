@@ -718,19 +718,10 @@ const openEditDeviceModal = (device: Device) => {
   devRack.value = device.rack !== undefined ? device.rack : 0;
   devSlot.value = device.slot !== undefined ? device.slot : 1;
 
-  // Virtual config: 从 configJson 回填表单
-  devVirtualIntervalMs.value = 1000;
-  devVirtualRandomValues.value = true;
-  const rawConfig = (device as any).configJson;
-  if (typeof rawConfig === 'string' && rawConfig.trim()) {
-    try {
-      const parsed = JSON.parse(rawConfig);
-      if (typeof parsed.IntervalMs === 'number') devVirtualIntervalMs.value = parsed.IntervalMs;
-      if (typeof parsed.RandomValues === 'boolean') devVirtualRandomValues.value = parsed.RandomValues;
-    } catch {
-      // 旧配置格式不兼容,保留默认值
-    }
-  }
+  // Virtual config: 从后端派生投影字段回填表单（阶段 6 起 DeviceDto 不再输出 configJson 原文，
+  // 配置原文改经 Connection API 由 refreshEditConnectionFields 权威回填，此处仅做打开即用的同步初值）。
+  if (typeof device.intervalMs === 'number') devVirtualIntervalMs.value = device.intervalMs;
+  if (typeof device.randomValues === 'boolean') devVirtualRandomValues.value = device.randomValues;
 
   // 阶段 3.6：编辑态连接信息初始化。默认仍走快速模式（与"推荐渐进"一致，连接参数可直接编辑；
   // 后端快速模式会同步更新该设备关联的连接行）。连接被多台设备共享时给出警示，避免误改共享参数。

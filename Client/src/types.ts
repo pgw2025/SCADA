@@ -790,14 +790,14 @@ export interface Device {
   // 阶段 3：连接/控制器关联（只读，后端 DeviceDto 填充；快速模式由后端自动维护，高级模式显式附加）。
   controllerId?: number | null;
   connectionId?: number | null;
-  // 连接摘要（DeviceDto.Connection）：host/port/协议/控制器/启用等；null = 设备尚未关联连接（回退 JsonConfig 运行）。
+  // 连接摘要（DeviceDto.Connection）：host/port/协议/控制器/启用等；null = 设备尚未关联连接。
   connection?: DeviceConnectionSummary | null;
   protocolKey?: string; // 后端 DeviceDto 直接携带的协议标识（S7/OPCUA/ModbusTcp...），归一化据此推导 type
   type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
   /**
-   * 以下连接参数均为后端派生只读字段：由 DeviceDto 从唯一的真相源 `configJson`
-   * 按 protocolKey 投影而来（后端 Device 表不存这些列）。
-   * 提交创建/更新时不要发送这些字段，后端会忽略它们——写入一律走 configJson。
+   * 以下连接参数均为后端派生只读字段：由 DeviceDto 从唯一真相源 `Connection.ConfigJson`
+   * 按协议投影而来（阶段 6 起后端 Device 详情不再输出 configJson 原文；原文经连接 API 读取）。
+   * 提交创建/更新时不要发送这些字段，后端会忽略它们——写入一律走 configJson（快速模式）。
    * 配置缺失或 JSON 非法时后端返回 null，前端应显示「未配置」而不是编造默认值。
    */
   ipAddress?: string | null; // S7/ModbusTcp 主机；OPCUA 由 endpointUrl 解析出的 host
@@ -828,9 +828,6 @@ export interface Device {
   publishTopic?: string;
   subscribeTopic?: string;
   payloadTemplate?: string;
-
-  // 后端协议配置 JSON(对应 CreateDeviceDto.ConfigJson)
-  configJson?: string;
 }
 
 // 后端 MqttServerDto

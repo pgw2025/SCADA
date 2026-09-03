@@ -7,8 +7,9 @@ namespace ScadaServer.Application.Interfaces
     /// 管理 <c>DeviceConnection</c> 资产：按控制器查询、CRUD。
     /// <para>
     /// 引用语义：连接被设备引用（Device.ConnectionId 指向）后，连接生命周期移交设备管理
-    /// （删除设备/改连接参数均走设备接口，保证与 Device.JsonConfig 的双写一致）；
-    /// 故更新/删除被设备引用的连接会被拒绝，避免绕过双写单点破坏 P3-B"ConfigJson 逐字节一致"。
+    /// （删除设备/改连接参数均走设备接口；阶段 6 起 Connection.ConfigJson 即连接配置唯一真相源，
+    /// 不再与 Device.JsonConfig 双写）；故更新/删除被设备引用的连接会被拒绝，
+    /// 避免绕过设备接口破坏端点唯一性与共享语义。
     /// </para>
     /// </summary>
     public interface IDeviceConnectionAppService
