@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
@@ -617,6 +618,57 @@ namespace ScadaServer.Runtime
 
             status = DeviceStatus.Offline;
             return false;
+        }
+
+        /// <inheritdoc/>
+        public bool TryGetRuntimeSnapshot(int deviceId, out DeviceRuntimeSnapshotDto? snapshot)
+        {
+            if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+            {
+                snapshot = null;
+                return false;
+            }
+
+            _reconnectStats.TryGetValue(deviceId, out var stats);
+
+            // 无锁读取多个内存字段：字段间一致性不保证（误差窗口 ≤ 一个采集轮次）。
+            // 刻意不加 DeviceRuntime.Lock——那会与采集循环互相阻塞，见方案 P6。
+            snapshot = new DeviceRuntimeSnapshotDto
+            {
+                DeviceId = runtime.Device.Id,
+                DeviceKey = runtime.Device.Key,
+                DeviceName = runtime.Device.Name,
+                IsEnabled = runtime.Device.IsEnabled,
+
+                Status = MapConnectionStateToStatus(runtime),   // 复用既有映射，保证与列表接口同源同值
+                ConnectionState = runtime.ConnectionState,
+                ConnectionStateChangedAt = runtime.ConnectionStateChangedAt,
+
+                RunState = runtime.RunState,
+                RunStateChangedAt = runtime.StateChangedAt,
+                HasAlarm = runtime.HasAlarm,
+
+                LastError = runtime.LastError,
+                LastCommunicationTime = runtime.LastCommunicationTime,
+                ConsecutiveFailureCount = runtime.ConsecutiveFailureCount,
+                ReconnectCount = stats?.Count ?? 0,             // 进程级（P1/D9-a）
+                LastReconnectAt = stats?.LastReconnectAt,
+                AverageResponseTimeMs = runtime.AverageResponseTime,
+                SuccessCount = runtime.SuccessCount,
+                FailureCount = runtime.FailureCount,
+                PollRoundCount = runtime.PollRoundCount,
+
+                VariableCount = runtime.Variables.Count,
+                EnabledVariableCount = runtime.Variables.Values.Count(v => v.IsEnabled)
+            };
+            return true;
+        }
+
+        /// <inheritdoc/>
+        public void SetDeviceRunState(int deviceId, DeviceRunState runState)
+        {
+            if (DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+                runtime.SetRunState(runState);
         }
 
         /// <inheritdoc/>

@@ -1,3 +1,4 @@
+using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Runtime.Interface;
@@ -20,5 +21,10 @@ public class RuntimeStatusProviderAdapter : IRuntimeStatusProvider
     public bool TryGetRuntimeStatus(int deviceId, out DeviceStatus status)
     {
         return _runtimeManager.TryGetRuntimeStatus(deviceId, out status);
+    }
+
+    public bool TryGetRuntimeSnapshot(int deviceId, out DeviceRuntimeSnapshotDto? snapshot)
+    {
+        return _runtimeManager.TryGetRuntimeSnapshot(deviceId, out snapshot);
     }
 }

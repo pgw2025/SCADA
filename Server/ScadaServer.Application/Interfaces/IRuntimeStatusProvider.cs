@@ -1,3 +1,4 @@
+using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.Interfaces;
@@ -17,4 +18,13 @@ public interface IRuntimeStatusProvider
     /// <param name="status">映射后的对外设备状态</param>
     /// <returns>设备是否存在于运行中</returns>
     bool TryGetRuntimeStatus(int deviceId, out DeviceStatus status);
+
+    /// <summary>
+    /// 尝试获取设备运行时聚合快照（连接态 + 运行态 + 报警 + 统计）。
+    /// 设备未注册到运行时（禁用/初始化失败/重连窗口期）返回 false，调用方回退 404（D5-a）。
+    /// </summary>
+    /// <param name="deviceId">设备 ID</param>
+    /// <param name="snapshot">聚合快照；未注册时为 null</param>
+    /// <returns>设备是否注册到运行中</returns>
+    bool TryGetRuntimeSnapshot(int deviceId, out DeviceRuntimeSnapshotDto? snapshot);
 }

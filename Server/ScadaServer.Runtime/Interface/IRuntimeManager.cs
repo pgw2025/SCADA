@@ -1,4 +1,5 @@
 using System;
+using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Runtime.Interface;
@@ -41,6 +42,24 @@ public interface IRuntimeManager
     /// <param name="status">映射后的对外设备状态</param>
     /// <returns>设备是否存在于运行中</returns>
     bool TryGetRuntimeStatus(int deviceId, out DeviceStatus status);
+
+    /// <summary>
+    /// 尝试获取设备运行时聚合快照（连接态 + 运行态 + 报警 + 统计）。
+    /// 设备未注册到运行时返回 false（snapshot = null），调用方回退 404（D5-a）。
+    /// 实现为无锁读取多个内存字段，字段间一致性不保证，误差窗口 ≤ 一个采集轮次（方案 P6）。
+    /// </summary>
+    /// <param name="deviceId">设备 ID</param>
+    /// <param name="snapshot">聚合快照；未注册时为 null</param>
+    /// <returns>设备是否注册到运行中</returns>
+    bool TryGetRuntimeSnapshot(int deviceId, out DeviceRuntimeSnapshotDto? snapshot);
+
+    /// <summary>
+    /// 即时更新已注册设备的机器运行状态（仅内存，不落库——落库由调用方负责）。
+    /// 设备不在运行时（禁用/未注册/重连窗口）时静默忽略：重启或启用后由 RestoreRunState 恢复。
+    /// </summary>
+    /// <param name="deviceId">设备 ID</param>
+    /// <param name="runState">目标运行状态</param>
+    void SetDeviceRunState(int deviceId, DeviceRunState runState);
 
     /// <summary>
     /// 设备运行时状态变更事件。状态由连接态映射而来，仅在对外状态值变化时触发，
