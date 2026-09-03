@@ -30,3 +30,7 @@ appsettings.dboverride.json
 # ── Runtime uploads ──
 # 组态图片图库：运行时上传的用户图片（GUID_原名），不入库
 Server/ScadaServer.WebApi/uploads/
+
+# ── db-refactor 键值快照基线 ──
+# 阶段0/6.1 约定：Devices/ModelVariables/DeviceVariables 键值快照存本地不入库
+docs/db-refactor/_baseline/
