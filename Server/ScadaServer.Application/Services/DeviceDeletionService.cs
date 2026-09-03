@@ -58,7 +58,10 @@ namespace ScadaServer.Application.Services
         /// <summary>按主键删除设备：先检查对外接口引用，再在事务内级联清理数据后删除设备本身。</summary>
         public async Task DeleteAsync(int deviceId)
         {
-            var entity = await _repository.GetByIdAsync(deviceId);
+            // 更新专用加载（跟踪查询，仅含 Config 导航）：删除仅需本体+唯一级联配置，
+            // 避免 GetByIdAsync(AsNoTracking+Include 全导航) 的游离图在 Remove 时附加导航对象图，
+            // 与事务内 DeleteRangeAsync/UpdateAsync 已跟踪的同 key 实体产生 identity 冲突（Bug#4 稳健化）。
+            var entity = await _repository.GetByIdForUpdateAsync(deviceId);
             if (entity == null) return;
 
             // 1. 依赖检查：检查是否被对外接口引用
