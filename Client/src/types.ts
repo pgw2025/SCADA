@@ -747,6 +747,34 @@ export interface DataModel {
   variables: ModelVariable[];
 }
 
+/**
+ * 设备-数据模型绑定摘要（阶段 5，对应后端 DeviceModelBindingDto）。
+ * 描述设备与数据模型的多对多绑定关系：一台设备至多一条 IsPrimary=true（主模型，
+ * 与后端 Device.ModelId 严格一致），其余为附加模型（仅供管理，运行时暂不参与采集）。
+ */
+export interface DeviceModelBinding {
+  /** 绑定行 ID（主键，管理用）。 */
+  id: number;
+  /** 绑定行的设备 ID。 */
+  deviceId: number;
+  /** 所绑定数据模型 ID。 */
+  dataModelId: number;
+  /** 模型编码（只读，来自 DataModel.Code）。 */
+  code?: string;
+  /** 模型名称（只读，来自 DataModel.Name）。 */
+  name?: string;
+  /** 绑定版本快照（绑定时刻的模型版本）。 */
+  version: string;
+  /** 是否主模型（主模型行与 Device.ModelId 严格一致）。 */
+  isPrimary: boolean;
+  /** 绑定是否启用（MVP 预留）。 */
+  isEnabled: boolean;
+  /** 该模型的模型变量数（绑定列表接口填充；设备详情列表为 0）。 */
+  variableCount: number;
+  /** 创建时间。 */
+  createdAt: string;
+}
+
 export interface Device {
   id: number;
   name: string;
@@ -756,6 +784,9 @@ export interface Device {
   areaName?: string;
   modelId: number;
   modelName?: string;
+  // 阶段 5：该设备全部数据模型绑定（后端 DeviceDto.Models；含主模型行，与 device.modelId 一致）。
+  // normalizeDevices 保留该数组，供设备变量视图顶栏展示主模型 Code/Version 等只读信息。
+  models?: DeviceModelBinding[];
   // 阶段 3：连接/控制器关联（只读，后端 DeviceDto 填充；快速模式由后端自动维护，高级模式显式附加）。
   controllerId?: number | null;
   connectionId?: number | null;

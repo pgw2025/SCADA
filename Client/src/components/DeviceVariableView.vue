@@ -17,7 +17,7 @@ import {
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
-import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DeviceVariable, ModelVariable, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
+import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DeviceVariable, ModelVariable, DeviceModelBinding, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { extractApiError } from '../api/http';
@@ -53,6 +53,22 @@ const selectedDevice = computed(() => {
 const currentModel = computed(() => {
   if (!selectedDevice.value) return null;
   return dataModels.value.find(m => String(m.id) === String(selectedDevice.value.modelId)) || null;
+});
+
+// 阶段 5：选中设备的模型绑定摘要（后端 DeviceDto.Models），顶栏只读展示主模型 Code/Version。
+const deviceBindingModels = computed<DeviceModelBinding[]>(() => selectedDevice.value?.models ?? []);
+const primaryBindingModel = computed(() => deviceBindingModels.value.find(b => b.isPrimary) ?? null);
+
+/** 顶栏只读展示的主模型摘要：Code/Version 以绑定行（含绑定快照）为权威，缺失时回退模板 dataModels。 */
+const headerModelMeta = computed(() => {
+  const b = primaryBindingModel.value;
+  const m = currentModel.value;
+  return {
+    name: b?.name || m?.name || '',
+    code: b?.code || m?.code || '',
+    // 绑定行 Version 为绑定时刻快照；模板行 Version 为模型当前版本。优先绑定快照。
+    version: b?.version || m?.version || '1.0'
+  };
 });
 
 // ---------- 变量实例表格（右栏） ----------
@@ -307,7 +323,7 @@ onMounted(async () => {
               <span class="bg-slate-100 dark:bg-slate-700 px-1 rounded text-slate-600 dark:text-slate-300 font-mono">{{
                 selectedDevice?.type || 'DEV' }}</span>
               <span>•</span>
-              <span class="truncate">{{ currentModel?.name || '未配置模型' }}</span>
+              <span class="truncate">{{ headerModelMeta.name || '未配置模型' }}<template v-if="headerModelMeta.code"> · {{ headerModelMeta.code }}</template></span>
             </div>
           </div>
         </div>
@@ -377,8 +393,12 @@ onMounted(async () => {
             <span
               class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700 rounded-full font-mono uppercase text-slate-500 dark:text-slate-400">{{
               selectedDevice.type }}</span>
-            <span class="text-xs font-mono text-slate-400 dark:text-slate-500">模型: {{ currentModel?.name || '未配置'
-              }}</span>
+            <span class="text-xs font-mono text-slate-400 dark:text-slate-500">
+              模型: {{ headerModelMeta.name || '未配置' }}
+              <template v-if="headerModelMeta.code"> · {{ headerModelMeta.code }}</template>
+              <template v-if="headerModelMeta.version"> · v{{ headerModelMeta.version }}</template>
+              <template v-if="deviceBindingModels.length > 1">（另有 {{ deviceBindingModels.length - 1 }} 个附加模型）</template>
+            </span>
           </div>
           <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight">{{ selectedDevice.name }}</h2>
         </div>

@@ -39,9 +39,19 @@ import {
   Info,
   Filter,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  Link2,
+  Unlink2,
+  Star,
+  Loader2
 } from 'lucide-vue-next';
-import { Device, Area, AreaTreeNode, DeviceType, ControllerOption, DeviceConnection, DeviceConnectionSummary, DeviceConnectionRequest, protocolKeyToDeviceType } from '../types';
+import { Device, Area, AreaTreeNode, DeviceType, ControllerOption, DeviceConnection, DeviceConnectionSummary, DeviceConnectionRequest, DeviceModelBinding, protocolKeyToDeviceType } from '../types';
+import {
+  fetchDeviceDataModelBindings,
+  bindDeviceDataModel,
+  setPrimaryDeviceDataModel,
+  unbindDeviceDataModel
+} from '../api/deviceDataModelApi';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -88,6 +98,111 @@ const devSlot = ref<number>(1);
 // Virtual-specific config (matches backend VirtualConfig)
 const devVirtualIntervalMs = ref<number>(1000);
 const devVirtualRandomValues = ref<boolean>(true);
+
+// ---- 阶段 5：设备-数据模型绑定管理（编辑态弹窗内「模型绑定」分区） ----
+const deviceBindings = ref<DeviceModelBinding[]>([]);   // 当前编辑设备的全部绑定（主模型行在前）
+const bindingsLoading = ref<boolean>(false);
+const bindingError = ref<string>('');
+const bindTargetModelId = ref<string>('');              // 「绑定新模型」下拉：dataModels[].id（string）
+const bindingBusy = ref<boolean>(false);                // 绑定/解绑/设主 进行中（按钮防抖）
+
+/** 当前主模型绑定行（后端保证每设备至多一条 IsPrimary=true；理论上恒有，缺省时回退 modelId 语义）。 */
+const primaryBinding = computed(() => deviceBindings.value.find(b => b.isPrimary) ?? null);
+
+/** 候选绑定模型：dataModels 中未发布禁选；已绑定同一模型去重；主模型自身也已绑定故自动排除。 */
+const bindableModels = computed(() => {
+  const boundIds = new Set(deviceBindings.value.map(b => String(b.dataModelId)));
+  return dataModels.value.filter(m =>
+    m.isPublished !== false && !boundIds.has(String(m.id))
+  );
+});
+
+/** 绑定面板操作入口（仅编辑态且设备已持久化时可用）。 */
+const openBindings = async (deviceId: number) => {
+  deviceBindings.value = [];
+  bindingError.value = '';
+  bindTargetModelId.value = '';
+  bindingsLoading.value = true;
+  try {
+    deviceBindings.value = await fetchDeviceDataModelBindings(deviceId);
+    // 打开面板即回填主模型下拉（正常情形与 devModel 一致；后端双写为权威）。
+    // 若绑定主行与设备 ModelId 不一致（脏数据），以下拉跟随绑定主行为准并同步协议展示。
+    const primary = deviceBindings.value.find(b => b.isPrimary);
+    if (primary && String(primary.dataModelId) !== String(devModel.value)) {
+      devModel.value = String(primary.dataModelId);
+      const targetModel = dataModels.value.find(m => String(m.id) === String(primary.dataModelId));
+      if (targetModel) devType.value = protocolKeyToDeviceType(targetModel.protocolKey);
+      resetAdvancedOnModelChange();
+    }
+  } finally {
+    bindingsLoading.value = false;
+  }
+};
+
+/** 绑定新模型为附加模型（后端校验模型已发布；IsPrimary=false 仅作附加，不抢占主模型）。 */
+const handleBindModel = async () => {
+  if (editingDeviceId.value == null || !bindTargetModelId.value) return;
+  const target = dataModels.value.find(m => String(m.id) === bindTargetModelId.value);
+  if (!target) return;
+  bindingBusy.value = true;
+  bindingError.value = '';
+  try {
+    deviceBindings.value = await bindDeviceDataModel(editingDeviceId.value, {
+      dataModelId: Number(bindTargetModelId.value),
+      isPrimary: false
+    });
+    bindTargetModelId.value = '';
+    addLog('设备数据模型', `设备 [${devName.value}] 已绑定附加模型 [${target.name}]`, 'normal');
+    // 绑定改变不影响 Device.ModelId（仍为主模型），但刷新设备列表保持 models 字段最新
+    syncDevices();
+  } catch (err: any) {
+    bindingError.value = err?.response?.data?.message || err?.message || '绑定附加模型失败';
+  } finally {
+    bindingBusy.value = false;
+  }
+};
+
+/** 设为主模型（后端事务内降级旧主 + 同步 Device.ModelId + 热重载运行时）。 */
+const handleSetPrimary = async (binding: DeviceModelBinding) => {
+  if (editingDeviceId.value == null || binding.isPrimary) return;
+  if (!confirm(`确认将 [${binding.name || binding.code || binding.dataModelId}] 设为主模型？\n主模型决定设备的协议与采集变量集，启用中的设备将自动热重载。`)) return;
+  bindingBusy.value = true;
+  bindingError.value = '';
+  try {
+    deviceBindings.value = await setPrimaryDeviceDataModel(editingDeviceId.value, binding.dataModelId);
+    const primary = deviceBindings.value.find(b => b.isPrimary);
+    if (primary) {
+      // 主模型下拉同步；协议随模型推导（protocolKey → DeviceType），高级模式连接兼容集按新协议重算。
+      devModel.value = String(primary.dataModelId);
+      const targetModel = dataModels.value.find(m => String(m.id) === String(primary.dataModelId));
+      if (targetModel) devType.value = protocolKeyToDeviceType(targetModel.protocolKey);
+      resetAdvancedOnModelChange();
+    }
+    addLog('设备数据模型', `设备 [${devName.value}] 主模型已切换为 [${binding.name || binding.code || binding.dataModelId}]`, 'warning');
+    syncDevices();
+  } catch (err: any) {
+    bindingError.value = err?.response?.data?.message || err?.message || '切换主模型失败';
+  } finally {
+    bindingBusy.value = false;
+  }
+};
+
+/** 解绑附加模型（主模型不可解绑——后端拒绝；先切换主模型再解绑）。 */
+const handleUnbind = async (binding: DeviceModelBinding) => {
+  if (editingDeviceId.value == null || binding.isPrimary) return;
+  if (!confirm(`确认解绑附加模型 [${binding.name || binding.code || binding.dataModelId}]？\n该模型将不再与设备关联（主模型不受影响）。`)) return;
+  bindingBusy.value = true;
+  bindingError.value = '';
+  try {
+    deviceBindings.value = await unbindDeviceDataModel(editingDeviceId.value, binding.dataModelId);
+    addLog('设备数据模型', `设备 [${devName.value}] 已解绑附加模型 [${binding.name || binding.code || binding.dataModelId}]`, 'warning');
+    syncDevices();
+  } catch (err: any) {
+    bindingError.value = err?.response?.data?.message || err?.message || '解绑模型失败';
+  } finally {
+    bindingBusy.value = false;
+  }
+};
 
 // ---- 阶段 3.6：连接方式（快速模式=内联配置/后端自动维护专属连接；高级模式=显式附加控制器+连接，可跨设备共享） ----
 type DeviceConnMode = 'quick' | 'advanced';
@@ -543,6 +658,12 @@ const openNewDeviceModal = () => {
   editingConnectionLabel.value = '';
   editingConnectionSharedBy.value = 0;
 
+  // 阶段 5：新增态绑定表随后端 CreateAsync 双写一条主绑定，面板不适用（清空避免残留上一设备）。
+  deviceBindings.value = [];
+  bindTargetModelId.value = '';
+  bindingError.value = '';
+  bindingBusy.value = false;
+
   // 依据当前选中模型类型,统一刷新协议相关默认值(IP/端口/虚拟参数等),
   // 避免上一个设备的残留值(如 OPC UA 的 4840 端口)污染本次初始化。
   onModelChange();
@@ -635,6 +756,15 @@ const openEditDeviceModal = (device: Device) => {
   // 防止共享连接被其它设备修改后、本设备 JsonConfig 镜像过期导致"未改动即回退"。
   if (device.connectionId != null) {
     refreshEditConnectionFields(device);
+  }
+
+  // 阶段 5：编辑态异步加载模型绑定列表（含主/附加模型行）。不阻塞弹窗打开，面板内自显 loading。
+  deviceBindings.value = [];
+  bindTargetModelId.value = '';
+  bindingError.value = '';
+  bindingBusy.value = false;
+  if (!systemConfig.value.isSimulationActive) {
+    openBindings(device.id);
   }
 
   showDeviceModal.value = true;
@@ -1380,15 +1510,118 @@ const toggleDeviceEnabled = async (device: Device) => {
               </select>
             </div>
             <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">数据模型</label>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                数据模型<template v-if="isEditingDevice">（主模型）</template>
+              </label>
               <select 
                 v-model="devModel"
                 @change="onModelChange"
-                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-[#1890ff] dark:text-sky-400 font-bold"
+                :disabled="isEditingDevice"
+                :title="isEditingDevice ? '设备绑定模型不可直接变更，请在下方「模型绑定」中切换主模型或管理附加模型' : ''"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none text-[#1890ff] dark:text-sky-400 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option v-for="m in dataModels" :key="m.id" :value="m.id">{{ m.name }}</option>
               </select>
+              <span v-if="!isEditingDevice" class="text-slate-400 dark:text-slate-500 text-[10px] mt-1 block">保存后即作为主模型绑定，可在编辑时再附加其他模型</span>
+              <span v-else class="text-amber-500/90 dark:text-amber-400/80 text-[10px] mt-1 block">编辑态模型锁定，切换请用下方「模型绑定」</span>
             </div>
+          </div>
+
+          <!-- 阶段 5：模型绑定管理（仅编辑态；主模型行与后端 Device.ModelId 双写一致，附加模型仅管理、运行时暂不采集） -->
+          <div
+            v-if="isEditingDevice && editingDeviceId != null"
+            class="p-3 bg-slate-50 dark:bg-slate-950/70 rounded-xl border border-sky-100 dark:border-slate-800 space-y-2.5"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 text-[10px] text-[#1890ff] dark:text-sky-400 font-bold uppercase tracking-wider">
+                <Link2 class="w-3.5 h-3.5" />
+                <span>模型绑定</span>
+              </div>
+              <span class="text-[10px] font-mono text-slate-400">
+                <template v-if="bindingsLoading"><Loader2 class="w-3 h-3 inline animate-spin mr-0.5" />加载中…</template>
+                <template v-else>{{ deviceBindings.length }} 个绑定 · {{ primaryBinding ? '主：' + (primaryBinding.name || '') : '无主模型' }}</template>
+              </span>
+            </div>
+
+            <div v-if="bindingError" class="rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1.5 text-[10px] text-rose-600 dark:text-rose-400 leading-relaxed">
+              {{ bindingError }}
+            </div>
+
+            <!-- 绑定列表（主模型行在前） -->
+            <div v-if="!bindingsLoading && deviceBindings.length > 0" class="space-y-1.5">
+              <div
+                v-for="b in deviceBindings"
+                :key="b.id"
+                class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]"
+                :class="b.isPrimary
+                  ? 'border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/30'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'"
+              >
+                <Star v-if="b.isPrimary" class="w-3.5 h-3.5 text-[#1890ff] dark:text-sky-400 shrink-0" fill="currentColor" />
+                <template v-else><Link2 class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" /></template>
+                <div class="min-w-0 flex-1 leading-tight">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-slate-800 dark:text-slate-100 truncate">{{ b.name || ('模型 #' + b.dataModelId) }}</span>
+                    <span v-if="b.code" class="font-mono text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 rounded">{{ b.code }}</span>
+                    <span class="font-mono text-[9px] text-slate-400">{{ b.isPrimary ? '★ 主模型' : '附加' }}</span>
+                  </div>
+                  <div class="font-mono text-[9px] text-slate-400 dark:text-slate-500">
+                    v{{ b.version || '1.0' }} · {{ b.variableCount }} 个模板变量
+                    <span v-if="!b.isEnabled"> · 已停用</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 shrink-0" v-if="!b.isPrimary">
+                  <button
+                    type="button"
+                    @click="handleSetPrimary(b)"
+                    :disabled="bindingBusy"
+                    class="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/60 text-[#1890ff] dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200/70 dark:border-sky-800 disabled:opacity-40 cursor-pointer"
+                    title="切换为主模型（事务内降级旧主并同步设备主模型，启用中设备将热重载）"
+                  >设为主</button>
+                  <button
+                    type="button"
+                    @click="handleUnbind(b)"
+                    :disabled="bindingBusy"
+                    class="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200/70 dark:border-rose-800 disabled:opacity-40 cursor-pointer"
+                    title="解绑该附加模型"
+                  ><Unlink2 class="w-2.5 h-2.5" />解绑</button>
+                </div>
+                <span v-else class="text-[9px] font-bold text-sky-500 dark:text-sky-400 shrink-0">运行生效</span>
+              </div>
+            </div>
+
+            <!-- 空态：无绑定（异常情形）兜底提示 -->
+            <div v-else-if="!bindingsLoading" class="rounded-lg border border-dashed border-amber-300 dark:border-amber-700 px-2.5 py-2 text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
+              该设备暂无绑定记录。请先绑定一个数据模型，首个绑定将自动设为主模型。
+            </div>
+
+            <!-- 绑定新模型（下拉候选 = 已发布且未绑定的模型） -->
+            <div v-if="bindableModels.length > 0" class="flex items-center gap-1.5 pt-0.5">
+              <select
+                v-model="bindTargetModelId"
+                class="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[10px] font-bold text-slate-800 dark:text-white focus:outline-none"
+              >
+                <option value="" disabled>（选择要绑定的附加模型）</option>
+                <option v-for="m in bindableModels" :key="m.id" :value="m.id">
+                  {{ m.name }}{{ m.code ? ' · ' + m.code : '' }}
+                </option>
+              </select>
+              <button
+                type="button"
+                @click="handleBindModel"
+                :disabled="!bindTargetModelId || bindingBusy"
+                class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded bg-[#1890ff] hover:bg-sky-600 text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+              >
+                <Link2 class="w-3 h-3" /> 绑定附加
+              </button>
+            </div>
+            <p v-else class="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              没有更多可绑定的模型（其余模型均已绑定，或尚未发布）。
+            </p>
+
+            <p class="text-[9px] leading-relaxed text-slate-400 dark:text-slate-500 border-t border-slate-200/60 dark:border-slate-800 pt-1.5">
+              附加模型仅作绑定管理，运行时仍只按主模型采集；切换主模型会同步设备协议与变量集，启用中的设备将自动热重载。
+            </p>
           </div>
 
           <!-- 阶段 3.6：连接方式（快速模式=下方内联配置/后端自动维护专属连接；高级模式=显式附加控制器+连接） -->
