@@ -121,6 +121,21 @@ namespace ScadaServer.Domain.Entities
         public bool? IsReadOnlyOverride { get; set; }
 
         /// <summary>
+        /// 变量级连接覆盖（阶段 4 新增，可空 FK → <see cref="DeviceConnection"/>）。
+        /// <para>空 = 使用设备默认连接（<c>Device.ConnectionId</c>）。存量数据迁移时按所属设备回填；
+        /// 运行时本阶段不读该列，列的启用放阶段 6。</para>
+        /// </summary>
+        public int? ConnectionId { get; set; }
+
+        /// <summary>
+        /// 原始数据类型字符串形式（阶段 4 新增，记录性字段，如 "REAL" / "DINT"）。
+        /// <para>存量回填取 <see cref="ModelVariable.DataType"/> 的字符串形式；驱动仍按
+        /// <c>DataTypeEnum</c> 解释，本阶段不启用校验。</para>
+        /// </summary>
+        [MaxLength(32)]
+        public string? RawDataType { get; set; }
+
+        /// <summary>
         /// 扩展数据（JSON 格式，设备实例级附加信息，如设备厂商私有参数等）
         /// </summary>
         [Column(TypeName = "longtext")]

@@ -127,6 +127,31 @@ namespace ScadaServer.Domain.Entities
         public bool IsReadOnly { get; set; } = true;
 
         /// <summary>
+        /// 读写模式（Read=只读 / Write=只写 / ReadWrite=读写），阶段 4 新增的权限权威列（字符串枚举）。
+        /// <para>
+        /// 与 <see cref="IsReadOnly"/> 并存：写入路径以本字段为权威，由应用服务层单点同步维护
+        /// <c>IsReadOnly = (AccessMode == "Read")</c>，保证两列永不矛盾；旧列在阶段 6 删除。
+        /// </para>
+        /// </summary>
+        [MaxLength(16)]
+        public string AccessMode { get; set; } = "Read";
+
+        /// <summary>
+        /// 是否必填，默认 false（采集/校验场景：缺失时按必填规则告警）
+        /// </summary>
+        public bool IsRequired { get; set; } = false;
+
+        /// <summary>
+        /// 排序号（模型内展示顺序），默认 0；存量数据迁移时回填为 Id 保持既有顺序
+        /// </summary>
+        public int Sort { get; set; } = 0;
+
+        /// <summary>
+        /// 是否启用该模板变量，默认 true
+        /// </summary>
+        public bool IsEnabled { get; set; } = true;
+
+        /// <summary>
         /// 扩展数据（JSON格式）
         /// </summary>
         [Column(TypeName = "longtext")]

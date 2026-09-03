@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    partial class ScadaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903090327_AddDataModelDefinitionFields")]
+    partial class AddDataModelDefinitionFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -378,10 +381,6 @@ namespace ScadaServer.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_datamodels_code");
-
                     b.HasIndex("ProtocolId");
 
                     b.ToTable("DataModels", (string)null);
@@ -611,9 +610,6 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.Property<int?>("BitOffset")
                         .HasColumnType("int");
 
-                    b.Property<int?>("ConnectionId")
-                        .HasColumnType("int");
-
                     b.Property<double?>("DeadBandOverride")
                         .HasColumnType("double");
 
@@ -635,18 +631,11 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.Property<int?>("PollingIntervalMs")
                         .HasColumnType("int");
 
-                    b.Property<string>("RawDataType")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
                     b.Property<string>("ScaleExpressionOverride")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ConnectionId")
-                        .HasDatabaseName("ix_devicevariables_connectionid");
 
                     b.HasIndex("ModelVariableId");
 
@@ -1608,12 +1597,6 @@ namespace ScadaServer.Infrastructure.Migrations
 
             modelBuilder.Entity("ScadaServer.Domain.Entities.DeviceVariable", b =>
                 {
-                    b.HasOne("ScadaServer.Domain.Entities.DeviceConnection", null)
-                        .WithMany()
-                        .HasForeignKey("ConnectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_DeviceVariables_DeviceConnections_ConnectionId");
-
                     b.HasOne("ScadaServer.Domain.Entities.Device", "Device")
                         .WithMany("DeviceVariables")
                         .HasForeignKey("DeviceId")

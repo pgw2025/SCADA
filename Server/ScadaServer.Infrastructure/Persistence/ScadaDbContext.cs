@@ -167,7 +167,18 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasConstraintName("FK_DeviceConnections_Protocols_ProtocolId");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
+            // 数据模型（阶段 4 补全 Code/Version）：Code/Version 显式限长映射为 varchar
+            // （Pomelo 对无长度 string 默认映射 longtext，无法建索引）；Code 唯一索引见 AddDataModelCodeUniqueIndex 迁移。
             modelBuilder.Entity<DataModel>().ToTable("DataModels");
+            modelBuilder.Entity<DataModel>()
+                .Property(dm => dm.Code).HasMaxLength(100);
+            modelBuilder.Entity<DataModel>()
+                .Property(dm => dm.Version).HasMaxLength(20);
+            // 模型编码唯一（业务键，阶段 4）：NULL 允许多条共存（存量回填已完成后再建索引）。
+            modelBuilder.Entity<DataModel>()
+                .HasIndex(dm => dm.Code)
+                .IsUnique()
+                .HasDatabaseName("ix_datamodels_code");
             modelBuilder.Entity<DbVersion>().ToTable("DbVersion");
             modelBuilder.Entity<Device>().ToTable("Devices");
             modelBuilder.Entity<ExposedInterface>().ToTable("ExposedInterfaces");
@@ -201,6 +212,9 @@ namespace ScadaServer.Infrastructure.Persistence
             // 工程换算表达式：显式限长，与实体 [MaxLength(200)] 及应用层校验保持一致
             modelBuilder.Entity<ModelVariable>()
                 .Property(m => m.ScaleExpression).HasMaxLength(200);
+            // 读写模式（阶段 4）：显式限长映射为 varchar(16)，与实体 [MaxLength(16)] 一致
+            modelBuilder.Entity<ModelVariable>()
+                .Property(m => m.AccessMode).HasMaxLength(16);
             modelBuilder.Entity<ModelVariable>()
                 .HasIndex(m => new { m.ModelId, m.Key })
                 .IsUnique()
@@ -244,6 +258,9 @@ namespace ScadaServer.Infrastructure.Persistence
             // 工程换算表达式覆盖值：显式限长，与实体 [MaxLength(200)] 保持一致
             modelBuilder.Entity<DeviceVariable>()
                 .Property(dv => dv.ScaleExpressionOverride).HasMaxLength(200);
+            // 原始数据类型字符串形式（阶段 4）：显式限长映射为 varchar(32)，与实体 [MaxLength(32)] 一致
+            modelBuilder.Entity<DeviceVariable>()
+                .Property(dv => dv.RawDataType).HasMaxLength(32);
             modelBuilder.Entity<DeviceVariable>()
                 .HasIndex(dv => new { dv.DeviceId, dv.ModelVariableId })
                 .IsUnique()
@@ -422,6 +439,18 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasForeignKey(dv => dv.ModelVariableId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_DeviceVariables_ModelVariables_ModelVariableId");
+
+            // 阶段 4 新增：设备变量 → 连接（可空 FK，Restrict，语义同 Device.ConnectionId——变量级覆盖，
+            // 连接被引用后不可删除）。索引支撑「按连接检索变量」。
+            modelBuilder.Entity<DeviceVariable>()
+                .HasOne<DeviceConnection>()
+                .WithMany()
+                .HasForeignKey(dv => dv.ConnectionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DeviceVariables_DeviceConnections_ConnectionId");
+            modelBuilder.Entity<DeviceVariable>()
+                .HasIndex(dv => dv.ConnectionId)
+                .HasDatabaseName("ix_devicevariables_connectionid");
 
             // 长文本列类型（MySQL 不支持 nvarchar(max)/text 默认映射，显式指定）
             modelBuilder.Entity<HmiComponent>()

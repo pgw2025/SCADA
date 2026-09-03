@@ -26,6 +26,25 @@ namespace ScadaServer.Domain.Entities
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
+        /// 模型编码（业务唯一键，阶段 4 新增）。
+        /// <para>可空：存量数据回填取 <see cref="Name"/>（重名追加 -2/-3 去重后缀）；库级唯一索引
+        /// <c>ix_datamodels_code</c> 建于回填之后（独立迁移），NULL 允许多条共存。</para>
+        /// </summary>
+        [MaxLength(100)]
+        public string? Code { get; set; }
+
+        /// <summary>
+        /// 模型版本号，默认 "1.0"
+        /// </summary>
+        [MaxLength(20)]
+        public string Version { get; set; } = "1.0";
+
+        /// <summary>
+        /// 是否已发布，默认 true。用于标识模型是否允许被新建设备引用/下发运行。
+        /// </summary>
+        public bool IsPublished { get; set; } = true;
+
+        /// <summary>
         /// 设备厂商（如 "Siemens"、"Schneider"）。
         /// 与 <see cref="ModelName"/> 组合可完整表示设备型号，例如 Vendor="Siemens" + ModelName="S7-1500" → "Siemens S7-1500"。
         /// </summary>
@@ -52,7 +71,7 @@ namespace ScadaServer.Domain.Entities
         public string? Description { get; set; }
 
         /// <summary>
-        /// 关联通信协议的外部键（必填）。协议真相源统一为 <see cref="Protocol"/>，
+        /// 默认协议（新建设备时预选，P3-E）。协议真相源统一为 <see cref="Protocol"/>，
         /// 一台设备通过本模型绑定的协议确定其驱动方式。
         /// </summary>
         public int ProtocolId { get; set; }
