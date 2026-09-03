@@ -50,5 +50,14 @@ namespace ScadaServer.Infrastructure.Repositories
                     .ThenInclude(m => m!.Protocol)
                 .ToListAsync();
         }
+
+        /// <inheritdoc/>
+        public async Task<Dictionary<int, int>> GetCountByAreaAsync()
+        {
+            return await Db.Devices
+                .GroupBy(d => d.AreaId)
+                .Select(g => new { AreaId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.AreaId, x => x.Count);
+        }
     }
 }

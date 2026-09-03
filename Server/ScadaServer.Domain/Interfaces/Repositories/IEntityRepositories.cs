@@ -43,6 +43,11 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         /// 仅 Include Config（更新事务中唯一需要的导航），避免附加大对象图引发实体跟踪冲突。
         /// </summary>
         Task<Device?> GetByIdForUpdateAsync(int id);
+
+        /// <summary>
+        /// 按区域统计设备数量（AreaId → 数量），供区域树展示各节点直接挂载的设备数。
+        /// </summary>
+        Task<Dictionary<int, int>> GetCountByAreaAsync();
     }
 
     /// <summary>

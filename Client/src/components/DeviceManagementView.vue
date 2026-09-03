@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
-import { syncAreas, createAreaAndSync, deleteAreaAndSync } from '../services/areaService';
+import { syncAreas, createAreaAndSync, updateAreaAndSync, deleteAreaAndSync, getAreaTree, getSubtreeDeviceIds, AreaFormData } from '../services/areaService';
+import AreaTree from './AreaTree.vue';
 import { dataModels, addLog, fetchDataModelsFromBackend } from '../store/index';
 import { syncDevices, createDeviceAndSync, updateDeviceAndSync, deleteDeviceAndSync, setDeviceEnabledAndSync } from '../services/deviceService';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 
 onMounted(() => {
   syncAreas();
+  loadAreaTree();
   syncDevices();
   // 模型列表在 App.vue 启动时(登录前)拉取会因无 token 而 401,登录后不会重拉;
   // 这里兜底刷新,确保 dataModels 就绪,设备卡片的"数据模型"才能正确显示名称。
@@ -31,17 +33,27 @@ import {
   X, 
   Check, 
   ToggleLeft, 
-  Info 
+  Info,
+  Filter,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-vue-next';
-import { Device, Area, DeviceType, protocolKeyToDeviceType } from '../types';
+import { Device, Area, AreaTreeNode, DeviceType, protocolKeyToDeviceType } from '../types';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
-// Area Form States
+// Area Form States（阶段 1 扩展为树形区域：父区域/编码/类型/排序/启用 + 编辑）
 const showAreaModal = ref<boolean>(false);
+const isEditingArea = ref<boolean>(false);
+const editingAreaId = ref<number | null>(null);
 const newAreaName = ref<string>('');
 const newAreaDesc = ref<string>('');
+const areaFormParentId = ref<number | null>(null);
+const areaFormCode = ref<string>('');
+const areaFormAreaType = ref<number>(4);
+const areaFormSort = ref<number>(0);
+const areaFormEnabled = ref<boolean>(true);
 const areaFormErrors = ref<Record<string, string>>({});
 const areaFormErrorMessage = ref<string>('');
 
@@ -80,6 +92,146 @@ const activeSection = ref<'list' | 'areas'>('list');
 // Expanded areas state for collapsible panels
 const expandedAreas = ref<Set<number>>(new Set());
 
+// ---- 阶段 1：区域树 + 设备区域筛选 ----
+const areaTree = ref<AreaTreeNode[]>([]);
+// 区域管理树：展开状态（按节点 ID 记忆）
+const areaManageExpanded = ref<Set<number>>(new Set());
+// 设备列表区域筛选：null = 全部区域（保持原有行为）；选中某区域后可按"仅当前区域/含子区域"过滤设备。
+const filterAreaId = ref<number | null>(null);
+const includeSubareas = ref<boolean>(false);
+const subtreeDeviceIds = ref<Set<number>>(new Set());
+
+/** 从后端拉取区域树（用于区域管理树、筛选下拉、设备表单区域下拉）。 */
+const loadAreaTree = async () => {
+  areaTree.value = await getAreaTree();
+  // 默认展开所有含子节点的层级，方便查看完整树
+  areaTreeRows.value.forEach(r => {
+    if (r.node.children?.length) areaManageExpanded.value.add(r.node.id);
+  });
+};
+
+/** 区域树 → 扁平行（含深度），供下拉/表格渲染。 */
+const flattenAreaTree = (nodes: AreaTreeNode[], depth = 0, out: { node: AreaTreeNode; depth: number }[] = []): { node: AreaTreeNode; depth: number }[] => {
+  nodes.forEach(n => {
+    out.push({ node: n, depth });
+    if (n.children?.length) flattenAreaTree(n.children, depth + 1, out);
+  });
+  return out;
+};
+
+/** 收集某节点的全部子孙 ID（不含自身），用于编辑区域时禁止选自己/后代为父。 */
+const collectDescendantIds = (nodes: AreaTreeNode[], targetId: number): Set<number> => {
+  const out = new Set<number>();
+  const findTarget = (list: AreaTreeNode[]): AreaTreeNode | null => {
+    for (const n of list) {
+      if (n.id === targetId) return n;
+      const found = findTarget(n.children ?? []);
+      if (found) return found;
+    }
+    return null;
+  };
+  const target = findTarget(nodes);
+  if (!target) return out;
+  const stack = [...(target.children ?? [])];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    out.add(cur.id);
+    stack.push(...(cur.children ?? []));
+  }
+  return out;
+};
+
+/** 区域树 → 扁平行（含深度），供下拉/表格渲染。 */
+const areaTreeRows = computed(() => flattenAreaTree(areaTree.value));
+
+/** 区域管理树可见行：根节点始终显示，子节点仅当父节点展开时显示。 */
+const visibleAreaRows = computed(() => {
+  const visibleSet = new Set<number>();
+  const out: { node: AreaTreeNode; depth: number }[] = [];
+  areaTreeRows.value.forEach(r => {
+    const parentVisible = r.node.parentId == null || (visibleSet.has(r.node.parentId) && areaManageExpanded.value.has(r.node.parentId));
+    if (parentVisible) {
+      visibleSet.add(r.node.id);
+      out.push(r);
+    }
+  });
+  return out;
+});
+
+const toggleAreaManage = (id: number) => {
+  if (areaManageExpanded.value.has(id)) areaManageExpanded.value.delete(id);
+  else areaManageExpanded.value.add(id);
+};
+const isAreaManageExpanded = (id: number) => areaManageExpanded.value.has(id);
+
+// 区域类型展示文案（AreaTypeEnum）
+const areaTypeLabel = (t?: number): string => {
+  switch (t) {
+    case 1: return '工厂';
+    case 2: return '车间';
+    case 3: return '产线';
+    case 4: return '区域';
+    case 5: return '仓库';
+    default: return '区域';
+  }
+};
+
+/** 设备筛选结果：未选区域时返回全部（保持原行为）。 */
+const filteredDevices = computed(() => {
+  if (filterAreaId.value == null) return devices.value;
+  if (includeSubareas.value) {
+    const ids = subtreeDeviceIds.value;
+    return devices.value.filter(d => ids.has(d.id));
+  }
+  return devices.value.filter(d => d.areaId === filterAreaId.value);
+});
+
+/** 设备列表要渲染的分区面板：未筛选时全部区域；筛选时仅选中区域一个面板。 */
+const visibleAreas = computed(() => {
+  if (filterAreaId.value == null) return areas.value;
+  const hit = areas.value.find(a => a.id === filterAreaId.value);
+  return hit ? [hit] : [];
+});
+
+/** 某面板内展示的设备：未筛选时按区域分组；筛选时统一展示过滤结果。 */
+const devicesInPanel = (areaId: number): Device[] => {
+  if (filterAreaId.value == null) return devicesByArea.value[areaId] || [];
+  return filteredDevices.value;
+};
+
+const onAreaFilterSelect = (node: AreaTreeNode) => {
+  filterAreaId.value = node.id;
+  if (includeSubareas.value) refreshSubtreeDeviceIds(node.id);
+};
+
+// 筛选下拉开关与选中回调（选中后收起下拉）
+const filterDropdownOpen = ref<boolean>(false);
+const onFilterSelect = (node: AreaTreeNode) => {
+  onAreaFilterSelect(node);
+  filterDropdownOpen.value = false;
+};
+const filterAreaLabel = computed(() => {
+  if (filterAreaId.value == null) return '';
+  return areas.value.find(a => a.id === filterAreaId.value)?.name || '';
+});
+
+const clearAreaFilter = () => {
+  filterAreaId.value = null;
+  includeSubareas.value = false;
+  subtreeDeviceIds.value = new Set();
+};
+
+const refreshSubtreeDeviceIds = async (areaId: number) => {
+  const ids = await getSubtreeDeviceIds(areaId);
+  subtreeDeviceIds.value = new Set(ids);
+};
+
+// 选中区域或切换"含子区域"时刷新子树设备 ID
+watch([filterAreaId, includeSubareas], ([aid, incl]) => {
+  if (aid != null && incl) refreshSubtreeDeviceIds(aid);
+  if (aid == null) subtreeDeviceIds.value = new Set();
+});
+
 // Computed: devices grouped by area
 const devicesByArea = computed(() => {
   const grouped: Record<number, typeof devices.value> = {};
@@ -114,8 +266,50 @@ const collapseAllAreas = () => {
   expandedAreas.value.clear();
 };
 
-// Trigger add area
-const handleAddArea = async () => {
+// ---- 区域管理：新增/编辑/删除（阶段 1 树形） ----
+
+// 打开新增区域弹窗
+const openAddAreaModal = () => {
+  isEditingArea.value = false;
+  editingAreaId.value = null;
+  newAreaName.value = '';
+  newAreaDesc.value = '';
+  areaFormParentId.value = null;
+  areaFormCode.value = '';
+  areaFormAreaType.value = 4;
+  areaFormSort.value = 0;
+  areaFormEnabled.value = true;
+  areaFormErrors.value = {};
+  areaFormErrorMessage.value = '';
+  showAreaModal.value = true;
+};
+
+// 打开编辑区域弹窗
+const openEditAreaModal = (area: Area) => {
+  isEditingArea.value = true;
+  editingAreaId.value = area.id ?? null;
+  newAreaName.value = area.name;
+  newAreaDesc.value = area.description || '';
+  areaFormParentId.value = area.parentId ?? null;
+  areaFormCode.value = area.code || '';
+  areaFormAreaType.value = area.areaType ?? 4;
+  areaFormSort.value = area.sort ?? 0;
+  areaFormEnabled.value = area.isEnabled ?? true;
+  areaFormErrors.value = {};
+  areaFormErrorMessage.value = '';
+  showAreaModal.value = true;
+};
+
+// 父区域下拉选项：全部区域（缩进层级），编辑时排除自身及其子孙（防环）。
+const areaFormParentOptions = computed(() => {
+  const rows = flattenAreaTree(areaTree.value);
+  if (!isEditingArea.value || editingAreaId.value == null) return rows;
+  const banned = collectDescendantIds(areaTree.value, editingAreaId.value);
+  banned.add(editingAreaId.value);
+  return rows.filter(r => !banned.has(r.node.id));
+});
+
+const handleSaveArea = async () => {
   areaFormErrors.value = {};
   areaFormErrorMessage.value = '';
 
@@ -124,17 +318,26 @@ const handleAddArea = async () => {
     return;
   }
 
-  const result = await createAreaAndSync({
+  const formData: AreaFormData = {
     name: newAreaName.value,
-    description: newAreaDesc.value
-  });
+    description: newAreaDesc.value,
+    parentId: areaFormParentId.value,
+    code: areaFormCode.value,
+    areaType: areaFormAreaType.value,
+    sort: areaFormSort.value,
+    isEnabled: areaFormEnabled.value
+  };
+
+  const result = isEditingArea.value && editingAreaId.value != null
+    ? await updateAreaAndSync(editingAreaId.value, formData)
+    : await createAreaAndSync(formData);
 
   if (result.success) {
-    addLog('设备管理', `添加新工艺区域: [${newAreaName.value}]`, 'normal');
-    newAreaName.value = '';
-    newAreaDesc.value = '';
+    addLog('设备管理', isEditingArea.value
+      ? `更新了工艺区域 [${newAreaName.value}]`
+      : `添加新工艺区域: [${newAreaName.value}]`, 'normal');
     showAreaModal.value = false;
-    areaFormErrors.value = {};
+    await loadAreaTree();
   } else if (result.error) {
     if (result.error.type === 'validation' && result.error.fieldErrors) {
       areaFormErrors.value = result.error.fieldErrors;
@@ -146,6 +349,11 @@ const handleAddArea = async () => {
 
 // Trigger delete area
 const handleDeleteArea = async (id: number, name: string) => {
+  const childCount = areaTreeRows.value.filter(r => r.node.parentId === id).length;
+  if (childCount > 0) {
+    alert(`无法删除区域 [${name}]: 该区域下仍有 ${childCount} 个子区域，请先移除或删除子区域。`);
+    return;
+  }
   const counts = devices.value.filter(d => d.areaId === id).length;
   if (counts > 0) {
     alert(`无法删除区域 [${name}]: 有 ${counts} 个处于连接中的工业设备已被部署在该区域内。`);
@@ -155,14 +363,10 @@ const handleDeleteArea = async (id: number, name: string) => {
   const result = await deleteAreaAndSync(id, name);
   if (result.success) {
     addLog('设备管理', `删除了工艺区域 [${name}]`, 'warning');
+    await loadAreaTree();
   }
   // 失败提示由 http 拦截器统一 Toast 弹出
 };
-
-// 初始化时从后端获取区域数据
-onMounted(() => {
-  syncAreas();
-});
 
 // Open Device modal
 const openNewDeviceModal = () => {
@@ -418,7 +622,7 @@ const toggleDeviceEnabled = async (device: Device) => {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
-            分组设备 ({{ devices.length }} 台)
+            分组设备 ({{ filteredDevices.length }} 台)
           </h3>
           <div class="flex items-center gap-1">
             <button 
@@ -445,9 +649,68 @@ const toggleDeviceEnabled = async (device: Device) => {
         </button>
       </div>
 
+      <!-- 区域筛选（阶段 1：树形区域选择 + 含子区域开关；默认全部区域 = 原有行为） -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div class="flex items-center gap-1.5 font-bold text-slate-500 dark:text-slate-400">
+          <Filter class="w-4 h-4" />
+          区域筛选
+        </div>
+
+        <!-- 区域树下拉 -->
+        <div class="relative">
+          <button
+            @click="filterDropdownOpen = !filterDropdownOpen"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer transition-all"
+            :class="filterAreaId != null
+              ? 'bg-[#1890ff]/10 border-[#1890ff]/40 text-[#1890ff] dark:text-sky-400 font-bold'
+              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'"
+          >
+            {{ filterAreaLabel || '全部区域' }}
+            <ChevronDown class="w-3.5 h-3.5" />
+          </button>
+
+          <div
+            v-if="filterDropdownOpen"
+            class="absolute z-30 mt-1.5 w-64 max-h-80 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 text-left"
+          >
+            <div
+              @click="clearAreaFilter(); filterDropdownOpen = false"
+              class="px-2 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer font-bold"
+              :class="filterAreaId == null ? 'text-[#1890ff] dark:text-sky-400' : 'text-slate-600 dark:text-slate-300'"
+            >
+              全部区域
+            </div>
+            <div class="my-1 border-t border-slate-100 dark:border-slate-800" />
+            <AreaTree :nodes="areaTree" :selected-id="filterAreaId" @select="onFilterSelect" />
+          </div>
+        </div>
+
+        <!-- 含子区域开关 -->
+        <label
+          class="flex items-center gap-1.5 font-bold cursor-pointer select-none"
+          :class="filterAreaId != null ? 'text-slate-600 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'"
+        >
+          <input
+            type="checkbox"
+            v-model="includeSubareas"
+            :disabled="filterAreaId == null"
+            class="text-[#1890ff] focus:ring-0"
+          />
+          包含子区域
+        </label>
+
+        <button
+          v-if="filterAreaId != null"
+          @click="clearAreaFilter"
+          class="text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
+        >
+          清除筛选
+        </button>
+      </div>
+
       <!-- Devices grouped by area with collapsible panels -->
       <div class="space-y-3">
-        <div v-for="area in areas" :key="area.id" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm transition-colors">
+        <div v-for="area in visibleAreas" :key="area.id" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm transition-colors">
           <!-- Area header (clickable to expand/collapse) -->
           <div 
             @click="toggleArea(area.id)"
@@ -462,24 +725,24 @@ const toggleDeviceEnabled = async (device: Device) => {
               </div>
               <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">{{ area.name }}</span>
               <span class="bg-sky-100 dark:bg-sky-950/60 text-[#1890ff] dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                {{ devicesByArea[area.id]?.length || 0 }} 台
+                {{ devicesInPanel(area.id).length }} 台
               </span>
             </div>
             <div class="flex items-center gap-4 text-[10px] text-slate-400 dark:text-slate-500">
-              <span v-if="devicesByArea[area.id]?.length === 0" class="italic">暂无设备</span>
+              <span v-if="devicesInPanel(area.id).length === 0" class="italic">暂无设备</span>
               <span class="font-mono">ID: {{ area.id }}</span>
             </div>
           </div>
           
           <!-- Device cards (shown when expanded) -->
           <div v-if="isAreaExpanded(area.id)" class="p-4">
-            <div v-if="devicesByArea[area.id]?.length === 0" class="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">
+            <div v-if="devicesInPanel(area.id).length === 0" class="text-center py-8 text-slate-400 dark:text-slate-500 text-xs">
               <Cpu class="w-8 h-8 mx-auto mb-2 opacity-30" />
               <span>该区域暂无设备，请点击"添加设备"创建</span>
             </div>
             <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-3">
               <div 
-                v-for="d in devicesByArea[area.id]" 
+                v-for="d in devicesInPanel(area.id)" 
                 :key="d.id"
                 class="bg-white dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 rounded-lg p-4 text-left flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden"
               >
@@ -593,15 +856,15 @@ const toggleDeviceEnabled = async (device: Device) => {
       </div>
     </div>
 
-    <!-- 2. SECTION: AREAS CONFIGURATION LIST -->
+    <!-- 2. SECTION: AREAS CONFIGURATION LIST（阶段 1：树形层级） -->
     <div v-else-if="activeSection === 'areas'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
-          所有区域
+          所有区域（{{ areas.length }}）
         </h3>
         
         <button 
-          @click="showAreaModal = true"
+          @click="openAddAreaModal"
           class="bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all text-center"
         >
           <Plus class="w-4 h-4" />
@@ -609,29 +872,67 @@ const toggleDeviceEnabled = async (device: Device) => {
         </button>
       </div>
 
-      <!-- Area table card -->
+      <!-- Area tree table card -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm text-left transition-colors">
         <table class="w-full text-xs hover:border-collapse">
           <thead>
             <tr class="bg-slate-50 dark:bg-slate-950/60 ring-1 ring-slate-100 dark:ring-slate-800 uppercase text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider">
               <th class="px-6 py-4">区域ID</th>
-              <th class="px-6 py-4">区域名称</th>
+              <th class="px-6 py-4">区域名称 / 类型</th>
+              <th class="px-6 py-4">编码</th>
               <th class="px-6 py-4">描述</th>
-              <th class="px-6 py-4">设备数量</th>
+              <th class="px-6 py-4">排序</th>
+              <th class="px-6 py-4">设备数</th>
               <th class="px-6 py-4 text-right">操作</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-            <tr v-for="a in areas" :key="a.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
-              <td class="px-6 py-4 font-bold text-slate-500 dark:text-slate-400">{{ a.id }}</td>
-              <td class="px-6 py-4 font-sans font-bold text-slate-800 dark:text-white text-[13px]">{{ a.name }}</td>
-              <td class="px-6 py-4 font-sans text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed max-w-sm">{{ a.description }}</td>
-              <td class="px-6 py-4 text-center">
+            <tr v-for="{ node: a, depth } in visibleAreaRows" :key="a.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
+              <td class="px-6 py-3 font-bold text-slate-500 dark:text-slate-400">{{ a.id }}</td>
+              <td class="px-6 py-3 font-sans font-bold text-slate-800 dark:text-white text-[13px]" :style="{ paddingLeft: `${depth * 18 + 24}px` }">
+                <span class="inline-flex items-center gap-1.5">
+                  <!-- 展开/折叠（有子节点时显示） -->
+                  <button
+                    v-if="a.children && a.children.length > 0"
+                    @click="toggleAreaManage(a.id)"
+                    class="w-4 h-4 inline-flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <ChevronDown v-if="isAreaManageExpanded(a.id)" class="w-3.5 h-3.5" />
+                    <ChevronRight v-else class="w-3.5 h-3.5" />
+                  </button>
+                  <span v-else class="w-4 h-4 block" />
+                  {{ a.name }}
+                </span>
+                <span
+                  class="ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                  :class="{
+                    'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400': a.areaType === 1,
+                    'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400': a.areaType === 2,
+                    'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400': a.areaType === 3,
+                    'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400': (a.areaType ?? 4) === 4,
+                    'bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400': a.areaType === 5
+                  }"
+                >
+                  {{ areaTypeLabel(a.areaType) }}
+                </span>
+                <span v-if="a.isEnabled === false" class="ml-1.5 text-[9px] font-bold text-slate-400 dark:text-slate-500">已停用</span>
+              </td>
+              <td class="px-6 py-3 text-slate-500 dark:text-slate-400 text-[11px]">{{ a.code || '—' }}</td>
+              <td class="px-6 py-3 font-sans text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed max-w-sm truncate">{{ a.description }}</td>
+              <td class="px-6 py-3 text-center text-slate-400 dark:text-slate-500">{{ a.sort }}</td>
+              <td class="px-6 py-3 text-center">
                 <span class="bg-sky-50 dark:bg-sky-950/60 font-sans text-[#1890ff] dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                  {{ devices.filter(d => d.areaId === a.id).length }} 台
+                  {{ a.deviceCount }} 台
                 </span>
               </td>
-              <td class="px-6 py-4 text-right">
+              <td class="px-6 py-3 text-right whitespace-nowrap">
+                <button 
+                  @click="openEditAreaModal(a)"
+                  class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5 mr-3"
+                >
+                  <Edit3 class="w-3.5 h-3.5" />
+                  编辑
+                </button>
                 <button 
                   @click="handleDeleteArea(a.id, a.name)"
                   class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
@@ -643,26 +944,30 @@ const toggleDeviceEnabled = async (device: Device) => {
             </tr>
           </tbody>
         </table>
+        <div v-if="visibleAreaRows.length === 0" class="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
+          暂无区域，点击右上角"添加区域"创建
+        </div>
       </div>
     </div>
 
-    <!-- MODAL: CREATE WORKSPACE AREA -->
+    <!-- MODAL: ADD / EDIT AREA（阶段 1：父区域/编码/类型/排序/启用） -->
     <div v-if="showAreaModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
-      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-sm w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
         <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <MapPin class="w-4 h-4 text-sky-400" />
-            <span>添加区域</span>
+            <span>{{ isEditingArea ? '编辑区域' : '添加区域' }}</span>
           </div>
-          <button @click="showAreaModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+          <button @click="showAreaModal = false; areaFormErrors = {}; areaFormErrorMessage = ''" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
-        <div class="p-5 space-y-4 text-xs">
+        <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[420px]">
           <div v-if="areaFormErrorMessage" class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3 text-rose-600 dark:text-rose-400">
             {{ areaFormErrorMessage }}
           </div>
+
           <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">区域名称</label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">区域名称 <span class="text-rose-500">*</span></label>
             <input
               v-model="newAreaName"
               type="text"
@@ -672,11 +977,77 @@ const toggleDeviceEnabled = async (device: Device) => {
             />
             <span v-if="areaFormErrors.Name" class="text-rose-500 text-[10px] mt-1 block">{{ areaFormErrors.Name }}</span>
           </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">父区域</label>
+              <select
+                v-model="areaFormParentId"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
+              >
+                <option :value="null">（作为根区域）</option>
+                <option v-for="r in areaFormParentOptions" :key="r.node.id" :value="r.node.id">
+                  {{ '　'.repeat(r.depth) }}{{ r.node.name }}
+                </option>
+              </select>
+              <p v-if="isEditingArea" class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">调整层级通过"父区域"下拉实现</p>
+            </div>
+            <div>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">区域类型</label>
+              <select
+                v-model="areaFormAreaType"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
+              >
+                <option :value="1">工厂</option>
+                <option :value="2">车间</option>
+                <option :value="3">产线</option>
+                <option :value="4">区域</option>
+                <option :value="5">仓库</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">区域编码</label>
+              <input
+                v-model="areaFormCode"
+                type="text"
+                placeholder="可选，用于设备编号前缀"
+                :class="areaFormErrors.Code ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 dark:border-slate-700 focus:border-[#1890ff]'"
+                class="w-full bg-slate-50 dark:bg-slate-950 border rounded-lg p-2 font-mono font-bold uppercase focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
+              />
+              <span v-if="areaFormErrors.Code" class="text-rose-500 text-[10px] mt-1 block">{{ areaFormErrors.Code }}</span>
+              <p class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">编码全局唯一，修改仅影响后续新生成设备编号</p>
+            </div>
+            <div>
+              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">排序</label>
+              <input
+                v-model.number="areaFormSort"
+                type="number"
+                min="0"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
+              />
+              <p class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">同级内展示顺序（升序）</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                v-model="areaFormEnabled"
+                class="text-[#1890ff] focus:ring-0"
+              />
+              启用该区域
+            </label>
+          </div>
+
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">描述</label>
             <textarea
               v-model="newAreaDesc"
-              rows="3"
+              rows="2"
               placeholder="阐述本区域所属流程及测温、变频流水分拣的具体物料方向..."
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-sans focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] leading-relaxed"
             />
@@ -691,7 +1062,7 @@ const toggleDeviceEnabled = async (device: Device) => {
             取消
           </button>
           <button 
-            @click="handleAddArea"
+            @click="handleSaveArea"
             class="px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs text-white cursor-pointer"
           >
             保存
@@ -751,7 +1122,9 @@ const toggleDeviceEnabled = async (device: Device) => {
                 v-model="devArea"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]"
               >
-                <option v-for="a in areas" :key="a.id" :value="a.id">{{ a.name }}</option>
+                <option v-for="r in areaTreeRows" :key="r.node.id" :value="r.node.id">
+                  {{ '　'.repeat(r.depth) }}{{ r.node.name }}
+                </option>
               </select>
             </div>
             <div>

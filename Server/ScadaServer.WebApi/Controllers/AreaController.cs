@@ -21,6 +21,13 @@ namespace ScadaServer.WebApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll() => Ok(await _appService.GetListAsync());
 
+        [HttpGet("tree")]
+        public async Task<IActionResult> GetTree() => Ok(await _appService.GetTreeAsync());
+
+        [HttpGet("{id}/device-ids")]
+        public async Task<IActionResult> GetDeviceIdsInSubtree(int id)
+            => Ok(await _appService.GetDeviceIdsInSubtreeAsync(id));
+
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));
 

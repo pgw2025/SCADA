@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using ScadaServer.Infrastructure.Persistence;
 namespace ScadaServer.Infrastructure.Migrations
 {
     [DbContext(typeof(ScadaDbContext))]
-    partial class ScadaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903061231_AddAreaTreeFields")]
+    partial class AddAreaTreeFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -201,10 +204,6 @@ namespace ScadaServer.Infrastructure.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_areas_code");
 
                     b.HasIndex("ParentId")
                         .HasDatabaseName("ix_areas_parentid");

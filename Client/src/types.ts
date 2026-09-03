@@ -303,8 +303,23 @@ export interface SimulationConfig {
 
 export interface Area {
   id?: number;
+  parentId?: number | null;
   name: string;
+  code?: string | null;
+  /** 区域类型（AreaTypeEnum：Factory=1/Workshop=2/ProductionLine=3/Area=4/Warehouse=5） */
+  areaType?: number;
   description?: string;
+  sort?: number;
+  isEnabled?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 区域树节点（GET /api/Area/tree 返回）：含直接挂载设备数与子节点。 */
+export interface AreaTreeNode extends Area {
+  id: number;
+  deviceCount: number;
+  children: AreaTreeNode[];
 }
 
 // 变量类型枚举

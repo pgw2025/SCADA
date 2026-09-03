@@ -93,6 +93,28 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasDatabaseName("ix_alarmrecord_deviceid");
             modelBuilder.Entity<LinkageRule>().ToTable("LinkageRules");
             modelBuilder.Entity<Area>().ToTable("Areas");
+            // 区域表：树形结构（自引用 ParentId）。列显式限长映射为 varchar
+            // （Pomelo 对无长度 string 默认映射 longtext，无法建索引）；Code 唯一索引见 AddAreaCodeUniqueIndex 迁移。
+            modelBuilder.Entity<Area>()
+                .Property(a => a.Code).HasMaxLength(50);
+            modelBuilder.Entity<Area>()
+                .Property(a => a.Name).HasMaxLength(100);
+            modelBuilder.Entity<Area>()
+                .Property(a => a.Description).HasMaxLength(500);
+            modelBuilder.Entity<Area>()
+                .HasOne(a => a.Parent)
+                .WithMany(a => a.Children)
+                .HasForeignKey(a => a.ParentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Areas_Areas_ParentId");
+            modelBuilder.Entity<Area>()
+                .HasIndex(a => a.ParentId)
+                .HasDatabaseName("ix_areas_parentid");
+            // 区域编码唯一（NULL 允许多条共存；空字符串由迁移清洗为 NULL 后再建索引）。
+            modelBuilder.Entity<Area>()
+                .HasIndex(a => a.Code)
+                .IsUnique()
+                .HasDatabaseName("ix_areas_code");
             modelBuilder.Entity<ConfigLog>().ToTable("ConfigLog");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
