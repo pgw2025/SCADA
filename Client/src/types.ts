@@ -404,6 +404,59 @@ export interface Protocol {
 }
 
 /**
+ * 控制器（Controller/PLC 资产台账，阶段 2）。
+ * 承接目标设计中"物理控制硬件资产"（S7-1500 PLC、Kepware 服务器等）；
+ * 当前阶段仅资产登记，不产生任何采集行为，运行连接配置在后续阶段接入。
+ */
+export interface Controller {
+  id: number;
+  code: string;              // 控制器编码（全局唯一）
+  name: string;
+  protocolId: number;        // 控制器类型/所用协议（S7、OPCUA...）
+  protocolName: string;      // 派生展示字段
+  manufacturer?: string;
+  model?: string;
+  description?: string;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 控制器创建/更新请求体（与后端 CreateControllerDto 对齐，PascalCase）。 */
+export interface ControllerRequest {
+  Code: string;
+  Name: string;
+  ProtocolId: number;
+  Manufacturer?: string;
+  Model?: string;
+  Description?: string;
+  IsEnabled?: boolean;
+}
+
+/** 控制器分页查询参数。 */
+export interface ControllerQueryParams {
+  protocolId?: number;
+  keyword?: string;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+/** 控制器分页结果（后端 camelCase 序列化：total/items）。 */
+export interface ControllerPagedResult {
+  total: number;
+  items: Controller[];
+}
+
+/** 控制器下拉选项（GET /api/controllers/options）。 */
+export interface ControllerOption {
+  id: number;
+  code: string;
+  name: string;
+  protocolId: number;
+  protocolName: string;
+}
+
+/**
  * 将后端 Protocol.Key 映射为前端 DeviceType(枚举)。
  * 协议真相源在 Protocol 实体后，protocolKey 取代 DataModel.Type 派生协议类型。
  */

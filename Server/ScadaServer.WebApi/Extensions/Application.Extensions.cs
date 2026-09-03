@@ -24,6 +24,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<ILinkageRuleAppService, LinkageRuleAppService>();
             services.AddScoped<IAreaAppService, AreaAppService>();
             services.AddScoped<IConfigLogAppService, ConfigLogAppService>();
+            services.AddScoped<IControllerAppService, ControllerAppService>();
             services.AddScoped<IDatabaseConfigAppService, DatabaseConfigAppService>();
             services.AddScoped<IDataConversionAppService, DataConversionAppService>();
             services.AddScoped<IDataModelAppService, DataModelAppService>();

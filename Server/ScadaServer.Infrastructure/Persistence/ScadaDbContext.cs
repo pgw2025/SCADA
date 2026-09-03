@@ -42,6 +42,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<LinkageRule> LinkageRules => Set<LinkageRule>();
         public DbSet<Area> Areas => Set<Area>();
         public DbSet<ConfigLog> ConfigLogs => Set<ConfigLog>();
+        public DbSet<Controller> Controllers => Set<Controller>();
         public DbSet<DatabaseConfig> DatabaseConfigs => Set<DatabaseConfig>();
         public DbSet<DataConversion> DataConversions => Set<DataConversion>();
         public DbSet<DataModel> DataModels => Set<DataModel>();
@@ -116,6 +117,30 @@ namespace ScadaServer.Infrastructure.Persistence
                 .IsUnique()
                 .HasDatabaseName("ix_areas_code");
             modelBuilder.Entity<ConfigLog>().ToTable("ConfigLog");
+            // 控制器表（阶段 2 新增，控制器/PLC 资产台账）：
+            // 编码唯一（Code 为业务键）；类型落地为 ProtocolId FK → Protocols（Restrict，
+            // 协议被控制器引用后不可删除，与 DataModel 绑定协议的删除约束行为一致）。
+            modelBuilder.Entity<Controller>().ToTable("Controllers");
+            modelBuilder.Entity<Controller>()
+                .Property(c => c.Code).HasMaxLength(50);
+            modelBuilder.Entity<Controller>()
+                .Property(c => c.Name).HasMaxLength(100);
+            modelBuilder.Entity<Controller>()
+                .Property(c => c.Manufacturer).HasMaxLength(100);
+            modelBuilder.Entity<Controller>()
+                .Property(c => c.Model).HasMaxLength(100);
+            modelBuilder.Entity<Controller>()
+                .Property(c => c.Description).HasMaxLength(500);
+            modelBuilder.Entity<Controller>()
+                .HasIndex(c => c.Code)
+                .IsUnique()
+                .HasDatabaseName("ix_controllers_code");
+            modelBuilder.Entity<Controller>()
+                .HasOne(c => c.Protocol)
+                .WithMany()
+                .HasForeignKey(c => c.ProtocolId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Controllers_Protocols_ProtocolId");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
             modelBuilder.Entity<DataModel>().ToTable("DataModels");

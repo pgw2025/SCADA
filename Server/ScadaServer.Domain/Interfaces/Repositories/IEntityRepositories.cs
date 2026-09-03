@@ -24,6 +24,26 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IConfigLogRepository : IRepository<ConfigLog, int> { }
 
     /// <summary>
+    /// 控制器仓储接口（控制器/PLC 资产台账，阶段 2）。
+    /// </summary>
+    public interface IControllerRepository : IRepository<Controller, int>
+    {
+        /// <summary>
+        /// 按条件分页查询控制器（协议/关键字过滤 + 分页），返回总数与当前页数据。
+        /// </summary>
+        Task<(int Total, List<Controller> Items)> QueryAsync(
+            int? protocolId,
+            string? keyword,
+            int pageIndex,
+            int pageSize);
+
+        /// <summary>
+        /// 更新专用加载：跟踪查询，仅加载控制器本体（不含导航），使 Update(entity) 无需附加导航对象图。
+        /// </summary>
+        Task<Controller?> GetByIdForUpdateAsync(int id);
+    }
+
+    /// <summary>
     /// 数据库配置仓储接口
     /// </summary>
     public interface IDatabaseConfigRepository : IRepository<DatabaseConfig, int> { }
