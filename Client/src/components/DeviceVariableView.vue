@@ -750,10 +750,11 @@ onMounted(async () => {
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">读写权限</label>
             <select v-model="editingForm.isReadOnlyOverride"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
-              <option :value="null">继承模板（当前：{{ editingForm.templateIsReadOnly ? '只读' : '可写' }}）</option>
+              <option :value="null">继承模板（当前：{{ accessLabel(templateAccessOf(editingForm)) }}）</option>
               <option :value="true">强制只读</option>
-              <option :value="false">强制可写</option>
+              <option :value="false">强制读写</option>
             </select>
+            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed">实例级覆盖优先于模板：强制只读=Read；强制读写=ReadWrite（模板为「只写」时可被覆盖为可读可写）。</p>
           </div>
           <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-sans">
             <span>启用采集</span>

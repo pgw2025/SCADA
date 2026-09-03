@@ -159,7 +159,9 @@ const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
 // 工业级增强字段（地址/位偏移/采集周期已下放至设备实例级 DeviceVariable，模板层不再维护）
 const varScaleExpression = ref<string>('');
 const varDeadBand = ref<number | null | ''>(null);
-const varIsReadOnly = ref<boolean>(true);
+// 阶段 4：读写权限以 AccessMode(Read/Write/ReadWrite) 为权威（替代旧二态只读开关）；
+// 提交时仍按 ==Read 派生 isReadOnly 兼容旧消费方（LiveData 写按钮等），旧字段一个版本周期后移除
+const varAccessMode = ref<'Read' | 'Write' | 'ReadWrite'>('Read');
 
 // Filtered variables for search
 const filteredVariables = computed(() => {
@@ -260,7 +262,8 @@ const openEditVariable = (v: ModelVariable) => {
   // 工业级参数：换算表达式优先取正式字段；旧数据兼容回填 extensionData.scaleExpr（保存后即迁入正式字段）
   varScaleExpression.value = v.scaleExpression ?? v.extensionData?.scaleExpr ?? '';
   varDeadBand.value = v.deadBand ?? null;
-  varIsReadOnly.value = v.isReadOnly ?? true;
+  // 阶段 4：AccessMode 权威；旧数据(无 accessMode)按 isReadOnly 推导兼容
+  varAccessMode.value = v.accessMode ?? (v.isReadOnly === false ? 'ReadWrite' : 'Read');
   showVarModal.value = true;
 };
 
@@ -279,7 +282,7 @@ const resetVarForm = () => {
   varUpdateMode.value = 'subscription';
   varScaleExpression.value = '';
   varDeadBand.value = null;
-  varIsReadOnly.value = true;
+  varAccessMode.value = 'Read';
 };
 
 // 关闭变量弹窗：清空编辑态并复位表单，避免下次"添加变量"残留编辑预填值
@@ -342,7 +345,9 @@ const handleSaveVariable = async () => {
     // 换算表达式：空串发 null（后端语义 = 恒等变换）
     scaleExpression: varScaleExpression.value.trim() === '' ? null : varScaleExpression.value.trim(),
     deadBand: varDeadBand.value === '' ? null : varDeadBand.value,
-    isReadOnly: varIsReadOnly.value,
+    // 阶段 4：AccessMode 权威；isReadOnly 派生同步(兼容旧消费方，@deprecated)
+    accessMode: varAccessMode.value,
+    isReadOnly: varAccessMode.value === 'Read',
     extensionData: {
       accessLevel: varAccessLevel.value
     }
@@ -1165,13 +1170,15 @@ const handleImportDone = async () => {
             <div class="font-bold text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wider">工业级参数</div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">只读模式</label>
+                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">访问模式</label>
                 <select
-                  v-model="varIsReadOnly"
+                  v-model="varAccessMode"
+                  title="读写访问权限：只读=不可写；只写=仅可下发不可读；读写=双向"
                   class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800 dark:text-white"
                 >
-                  <option :value="true">只读</option>
-                  <option :value="false">可写</option>
+                  <option value="Read">只读</option>
+                  <option value="Write">只写</option>
+                  <option value="ReadWrite">读写</option>
                 </select>
               </div>
               <div>
