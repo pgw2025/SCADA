@@ -751,6 +751,11 @@ namespace ScadaServer.Runtime.Devices
                     TriggeredAt = DateTime.UtcNow
                 };
 
+                // 设备级报警聚合打点（方案 P2/P8）：Triggered +1 / Recovered -1，clamp 下界 0。
+                // 单点覆盖全部报警路径（规则报警 + MinMax 兜底均汇聚到 FireEvent）。
+                // 纯内存 int 运算，无抛出路径；置于既有 try/catch 内，绝不影响报警通知与落库主链路。
+                _runtime.ApplyAlarmDelta(type == AlarmEventType.Triggered ? 1 : -1);
+
                 // 通知（SignalR）与落库均为异步安全路径：fire-and-forget 通知 + 非阻塞入队落库。
                 _ = _notificationService.NotifyAlarmAsync(evt);
                 _alarmRecorder.Record(evt);

@@ -397,6 +397,24 @@ namespace ScadaServer.Runtime
         }
 
         /// <summary>
+        /// 查询设备当前未恢复（活跃）报警条数（方案 P2：runtime 重建后与 AlarmRecords 对齐）。
+        /// 查询失败返回 0 并告警——不阻塞设备注册主流程（与报警规则加载失败同容错等级）。
+        /// </summary>
+        private async Task<int> CountActiveAlarmsAsync(ScadaDbContext db, int deviceId)
+        {
+            try
+            {
+                return await db.AlarmRecords
+                    .CountAsync(a => a.DeviceId == deviceId && a.RecoveredAt == null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "查询设备 {DeviceId} 活跃报警数失败，报警计数从 0 开始。", deviceId);
+                return 0;
+            }
+        }
+
+        /// <summary>
         /// 依据数据库实体构建并注册单个设备运行时（含驱动连接）。成功返回 true，失败/跳过返回 false。
         /// 同时用于启动初始化与运行期注册，避免两份实现漂移。
         /// </summary>
@@ -492,6 +510,21 @@ namespace ScadaServer.Runtime
                         Instance = dv,
                         NextPollTime = now // 首轮立即采集
                     };
+                }
+
+                // 状态初始化（方案 P2/P3）：连接成功后、注册前，从 DB 回填报警计数与 RunState。
+                // 设备级报警计数与 AlarmRecords 对齐：runtime 重建（重连/重载/重启）后
+                // 立即一致，消除「Worker 重建丢状态 → HasAlarm 卡 false/true」的幽灵报警窗口。
+                // RunState 从 Devices 持久化列恢复：重启/重载不丢失维护/停机标记。
+                // 每次注册/重接连通即一次轻量 COUNT 查询，频率极低，接受额外 scope 开销。
+                using (var initScope = _scopeFactory.CreateScope())
+                {
+                    var initDb = initScope.ServiceProvider.GetRequiredService<ScadaDbContext>();
+                    runtime.InitializeAlarmCount(await CountActiveAlarmsAsync(initDb, device.Id));
+                    if (device.RunState.HasValue)
+                    {
+                        runtime.RestoreRunState(device.RunState.Value, device.RunStateChangedAt);
+                    }
                 }
 
                 RegisterDevice(runtime);

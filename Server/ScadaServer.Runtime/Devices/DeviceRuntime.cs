@@ -125,6 +125,74 @@ public class DeviceRuntime : IRuntimeDevice
     /// </summary>
     public DateTime? ConnectionStateChangedAt { get; set; }
 
+    // ===================== 设备运行状态（阶段 2 新增，与连接态正交） =====================
+
+    private DeviceRunState _runState = DeviceRunState.Unknown;
+    private int _activeAlarmCount;
+
+    /// <summary>
+    /// 机器运行状态（Unknown/Stopped/Running/Paused/Fault/Maintenance）。
+    /// 与 ConnectionState（PLC 通信态）正交：Online+Stopped、Fault+Running 均为合法组合。
+    /// 持久化于 Devices.RunState，启动/重载时回读初始化（方案 P3）。
+    /// </summary>
+    public DeviceRunState RunState
+    {
+        get => _runState;
+        private set { /* 经 SetRunState / RestoreRunState 收口 */ }
+    }
+
+    /// <summary>RunState 最近一次变更时刻（UTC）。仅经 SetRunState / RestoreRunState 推进。</summary>
+    public DateTime? StateChangedAt { get; private set; }
+
+    /// <summary>
+    /// 设备级活跃（未恢复）报警计数。Worker FireEvent 打点 ±1；重建时从 AlarmRecords 初始化（方案 P2）。
+    /// </summary>
+    public int ActiveAlarmCount
+    {
+        get => _activeAlarmCount;
+        private set { /* 经 ApplyAlarmDelta / InitializeAlarmCount 收口 */ }
+    }
+
+    /// <summary>是否存在未恢复报警（派生只读）。</summary>
+    public bool HasAlarm => _activeAlarmCount > 0;
+
+    /// <summary>
+    /// 置位机器运行状态：仅值变化时更新并推进 StateChangedAt。
+    /// 不触发任何推送（D10-a：RunState 变化不进 SignalR，由快照轮询读取）。
+    /// </summary>
+    public void SetRunState(DeviceRunState state)
+    {
+        if (_runState == state) return;
+        _runState = state;
+        StateChangedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 报警计数增量打点（Worker FireEvent 出口调用）：Triggered 传 +1，Recovered 传 -1。
+    /// 下界 clamp 0，重复 Recovered 不会产生负计数。
+    /// </summary>
+    public void ApplyAlarmDelta(int delta)
+    {
+        var newValue = _activeAlarmCount + delta;
+        _activeAlarmCount = newValue < 0 ? 0 : newValue;
+    }
+
+    /// <summary>
+    /// 报警计数初始化（BuildAndRegisterDeviceAsync 重建 runtime 时从 AlarmRecords 查询结果回填）。
+    /// 与 ApplyAlarmDelta 互斥使用：仅注册路径调用一次。
+    /// </summary>
+    public void InitializeAlarmCount(int count)
+    {
+        _activeAlarmCount = count < 0 ? 0 : count;
+    }
+
+    /// <summary>注册路径专用：从持久化列恢复 RunState 与变更时刻（不经 SetRunState 的时间戳刷新）。</summary>
+    public void RestoreRunState(DeviceRunState state, DateTime? changedAt)
+    {
+        _runState = state;
+        StateChangedAt = changedAt;
+    }
+
     // 运行时锁
     public SemaphoreSlim Lock { get; } = new(1, 1);
 
