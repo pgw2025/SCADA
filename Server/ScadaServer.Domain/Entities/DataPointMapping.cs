@@ -112,13 +112,15 @@ namespace ScadaServer.Domain.Entities
         public double? DeadBandOverride { get; set; }
 
         /// <summary>
-        /// 读写权限覆盖值。
+        /// 读写模式覆盖值（设备实例级，Read=只读 / Write=只写 / ReadWrite=读写）。
         /// <para>
-        /// 允许为空：为空时回退到 <see cref="DataPoint.IsReadOnly"/> 模板值（继承模板权限）；
-        /// true = 强制只读；false = 强制可写。用于单台设备上对某变量权限做差异化覆盖，不影响模板及其它设备。
+        /// 允许为空：为空时回退到 <see cref="DataPoint.AccessMode"/> 模板值（继承模板权限）；
+        /// 非空 = 强制覆盖（如单台设备上对某变量权限做差异化设置），不影响模板及其它设备。
+        /// 旧 bool 列 <c>IsReadOnlyOverride</c> 已于阶段 6 迁移为 <c>AccessModeOverride</c>（true→"Read"，false→"ReadWrite"）。
         /// </para>
         /// </summary>
-        public bool? IsReadOnlyOverride { get; set; }
+        [MaxLength(16)]
+        public string? AccessModeOverride { get; set; }
 
         /// <summary>
         /// 变量级连接覆盖（阶段 4 新增，可空 FK → <see cref="DeviceConnection"/>）。

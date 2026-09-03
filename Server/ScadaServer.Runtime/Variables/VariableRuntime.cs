@@ -71,8 +71,17 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>该变量在设备实例上是否启用。</summary>
     public bool IsEnabled => Instance?.IsEnabled ?? true;
 
-    /// <summary>有效读写权限。来源：DataPointMapping.IsReadOnlyOverride 优先，否则模板 IsReadOnly。</summary>
-    public bool IsReadOnly => Instance?.IsReadOnlyOverride ?? Definition.IsReadOnly;
+    /// <summary>
+    /// 有效读写模式。来源：DataPointMapping.AccessModeOverride 优先，否则模板 AccessMode。
+    /// Read=只读 / Write=只写 / ReadWrite=读写。
+    /// </summary>
+    public string EffectiveAccessMode =>
+        !string.IsNullOrWhiteSpace(Instance?.AccessModeOverride)
+            ? Instance!.AccessModeOverride!
+            : Definition.AccessMode;
+
+    /// <summary>是否只读（禁止外部写入）。仅当有效读写模式为 Read（只读）时为 true。</summary>
+    public bool IsReadOnly => EffectiveAccessMode == "Read";
 
     /// <summary>历史存储模式（来自 DataPoint 模板）。</summary>
     public StoreModeEnum StoreMode => Definition.StoreMode;

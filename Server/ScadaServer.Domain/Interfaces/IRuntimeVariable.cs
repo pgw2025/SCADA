@@ -56,7 +56,13 @@ namespace ScadaServer.Domain.Interfaces
         /// <summary>该变量在设备实例上是否启用（DataPointMapping.IsEnabled）。</summary>
         bool IsEnabled { get; }
 
-        /// <summary>有效读写权限（DataPointMapping.IsReadOnlyOverride 优先，空则回退模板 IsReadOnly）。</summary>
+        /// <summary>
+        /// 有效读写模式（DataPointMapping.AccessModeOverride 优先，空则回退模板 AccessMode）。
+        /// Read=只读 / Write=只写 / ReadWrite=读写。
+        /// </summary>
+        string EffectiveAccessMode { get; }
+
+        /// <summary>是否只读（禁止外部写入）。仅当有效读写模式为 Read（只读）时为 true。</summary>
         bool IsReadOnly { get; }
     }
 }

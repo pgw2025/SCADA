@@ -304,6 +304,7 @@ namespace ScadaServer.Application.Services
         private static DataPointMappingDto MapDataPointMappingDto(DataPointMapping dv, Dictionary<int, DataPoint> mvMap)
         {
             mvMap.TryGetValue(dv.DataPointId, out var mv);
+            var templateAccessMode = mv?.AccessMode ?? "Read";
             return new DataPointMappingDto
             {
                 Id = dv.Id,
@@ -319,7 +320,13 @@ namespace ScadaServer.Application.Services
                 PollingIntervalMs = dv.PollingIntervalMs,
                 IsEnabled = dv.IsEnabled,
                 ScaleExpressionOverride = dv.ScaleExpressionOverride,
-                DeadBandOverride = dv.DeadBandOverride
+                DeadBandOverride = dv.DeadBandOverride,
+                AccessModeOverride = dv.AccessModeOverride,
+                // 权限回显：实例覆盖优先，空则继承模板 AccessMode（供前端实时监控可写门控）。
+                TemplateAccessMode = templateAccessMode,
+                EffectiveAccessMode = string.IsNullOrWhiteSpace(dv.AccessModeOverride)
+                    ? templateAccessMode
+                    : dv.AccessModeOverride!
             };
         }
 

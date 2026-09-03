@@ -122,16 +122,8 @@ namespace ScadaServer.Domain.Entities
         public double? DeadBand { get; set; }
 
         /// <summary>
-        /// 是否只读，默认true
-        /// </summary>
-        public bool IsReadOnly { get; set; } = true;
-
-        /// <summary>
-        /// 读写模式（Read=只读 / Write=只写 / ReadWrite=读写），阶段 4 新增的权限权威列（字符串枚举）。
-        /// <para>
-        /// 与 <see cref="IsReadOnly"/> 并存：写入路径以本字段为权威，由应用服务层单点同步维护
-        /// <c>IsReadOnly = (AccessMode == "Read")</c>，保证两列永不矛盾；旧列在阶段 6 删除。
-        /// </para>
+        /// 读写模式（Read=只读 / Write=只写 / ReadWrite=读写），权限权威列（字符串枚举，阶段 6 起唯一真值源）。
+        /// <para>写入路径一律以本字段为准；旧 bool 列 <c>IsReadOnly</c> 已于阶段 6 删除（== "Read" 即只读）。</para>
         /// </summary>
         [MaxLength(16)]
         public string AccessMode { get; set; } = "Read";

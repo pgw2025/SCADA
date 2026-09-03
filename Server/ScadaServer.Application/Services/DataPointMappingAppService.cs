@@ -169,7 +169,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         entity.ScaleExpressionOverride =
             string.IsNullOrWhiteSpace(dto.ScaleExpressionOverride) ? null : dto.ScaleExpressionOverride.Trim();
         entity.DeadBandOverride = dto.DeadBandOverride;
-        entity.IsReadOnlyOverride = dto.IsReadOnlyOverride;
+        entity.AccessModeOverride = NormalizeAccessModeOverride(dto.AccessModeOverride);
         // 阶段 4 新增列透传：变量级连接覆盖 + 原始类型字符串（空串归一化为 null，保持"未配置"语义）
         entity.ConnectionId = dto.ConnectionId;
         entity.RawDataType = string.IsNullOrWhiteSpace(dto.RawDataType) ? null : dto.RawDataType.Trim();
@@ -183,17 +183,28 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         return MapToDto(entity, mv);
     }
 
+    /// <summary>
+    /// 归一化实例级读写模式覆盖值：空白 → null（继承模板）；非空必须是 Read/Write/ReadWrite 之一，否则拒绝。
+    /// </summary>
+    private static string? NormalizeAccessModeOverride(string? overrideMode)
+    {
+        if (string.IsNullOrWhiteSpace(overrideMode)) return null;
+        var mode = overrideMode.Trim();
+        if (mode is not ("Read" or "Write" or "ReadWrite"))
+        {
+            throw new BusinessException($"设备变量读写模式覆盖值非法：'{overrideMode}'（可选 Read / Write / ReadWrite，留空=继承模板）");
+        }
+        return mode;
+    }
+
     /// <summary>将设备变量实体与其模板映射为 DTO；模板缺失时以空串/默认值兜底。</summary>
     private static DataPointMappingDto MapToDto(DataPointMapping dv, DataPoint? mv)
     {
         var templateAccessMode = mv?.AccessMode ?? "Read";
-        // 阶段 4 权限解析：实例覆盖组合语义保持——Override=true 强制只读、false 强制可写、null 继承模板。
-        var effectiveAccessMode = dv.IsReadOnlyOverride switch
-        {
-            true => "Read",
-            false => "ReadWrite",
-            null => templateAccessMode
-        };
+        // 阶段 6 权限解析：实例覆盖（字符串 AccessModeOverride）优先，空则继承模板 AccessMode。
+        var effectiveAccessMode = string.IsNullOrWhiteSpace(dv.AccessModeOverride)
+            ? templateAccessMode
+            : dv.AccessModeOverride!;
         return new DataPointMappingDto
         {
             Id = dv.Id,
@@ -210,13 +221,11 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             IsEnabled = dv.IsEnabled,
             ScaleExpressionOverride = dv.ScaleExpressionOverride,
             DeadBandOverride = dv.DeadBandOverride,
-            IsReadOnlyOverride = dv.IsReadOnlyOverride,
+            AccessModeOverride = dv.AccessModeOverride,
             ConnectionId = dv.ConnectionId,
             RawDataType = dv.RawDataType,
             TemplateAccessMode = templateAccessMode,
-            EffectiveAccessMode = effectiveAccessMode,
-            TemplateIsReadOnly = mv?.IsReadOnly ?? true,
-            EffectiveIsReadOnly = dv.IsReadOnlyOverride ?? (mv?.IsReadOnly ?? true)
+            EffectiveAccessMode = effectiveAccessMode
         };
     }
 

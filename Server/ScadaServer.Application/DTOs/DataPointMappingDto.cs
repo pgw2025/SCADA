@@ -66,8 +66,12 @@ public class DataPointMappingDto
     /// <summary>死区覆盖值。空 → 使用模板 DeadBand。</summary>
     public double? DeadBandOverride { get; set; }
 
-    /// <summary>读写权限覆盖值。空 → 继承模板 IsReadOnly。</summary>
-    public bool? IsReadOnlyOverride { get; set; }
+    /// <summary>
+    /// 读写模式覆盖值（设备实例级，Read=只读 / Write=只写 / ReadWrite=读写）。
+    /// 空 → 继承模板 <see cref="TemplateAccessMode"/>。
+    /// </summary>
+    [StringLength(16, ErrorMessage = "读写模式不能超过16个字符")]
+    public string? AccessModeOverride { get; set; }
 
     /// <summary>
     /// 变量级连接覆盖（阶段 4 新增，可空 → <c>DeviceConnections.Id</c>）。空 = 使用设备默认连接。
@@ -82,20 +86,13 @@ public class DataPointMappingDto
 
     // ===== 回显字段（来自 DataPoint 模板，只出不进）=====
 
-    /// <summary>模板定义的读写模式（阶段 4 权威，用于前端展示"继承"时的模板当前值）。</summary>
+    /// <summary>模板定义的读写模式（只出不进，用于前端展示"继承"时的模板当前值）。</summary>
     public string TemplateAccessMode { get; set; } = "Read";
 
     /// <summary>
-    /// 有效读写模式 = 实例覆盖 ?? 模板（阶段 4 权威）：
-    /// IsReadOnlyOverride=true → "Read"；false → "ReadWrite"；null → 模板 AccessMode。
+    /// 有效读写模式 = 实例覆盖（<see cref="AccessModeOverride"/>）?? 模板（只出不进，运行时实际生效值）。
     /// </summary>
     public string EffectiveAccessMode { get; set; } = "Read";
-
-    /// <summary>模板定义的只读权限（deprecated 兼容回显，== TemplateAccessMode=="Read"）。</summary>
-    public bool TemplateIsReadOnly { get; set; }
-
-    /// <summary>有效只读（deprecated 兼容回显，== EffectiveAccessMode=="Read"，运行时实际生效值）。</summary>
-    public bool EffectiveIsReadOnly { get; set; }
 }
 
 /// <summary>

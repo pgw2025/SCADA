@@ -12,12 +12,13 @@ public class CsvParser
 {
     /// <summary>
     /// CSV 标准列名（导出模板同款）。映射到 VariableImportRow 的导入字段。
+    /// 权限列仅列 AccessMode（阶段 6 起唯一权威）；旧文件含 IsReadOnly 列时仍按列名兼容解析（见 ApplyDetail）。
     /// </summary>
     public static readonly string[] Columns =
     {
         "Key", "Name", "DataType", "Unit", "Min", "Max", "Description", "Address",
         "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand",
-        "IsReadOnly", "AccessMode", "IsRequired", "Sort", "IsEnabled"
+        "AccessMode", "IsRequired", "Sort", "IsEnabled"
     };
 
     /// <summary>
