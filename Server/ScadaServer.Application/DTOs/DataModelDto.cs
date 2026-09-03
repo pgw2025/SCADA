@@ -15,6 +15,20 @@ namespace ScadaServer.Application.DTOs
         [StringLength(100, ErrorMessage = "模型名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 模型编码（业务唯一键，阶段 4 新增）。创建/更新必填且全局唯一；
+        /// DTO 可空仅为兼容库内历史行为（存量已回填），请求侧为空由应用层校验拒绝。
+        /// </summary>
+        [StringLength(100, ErrorMessage = "模型编码不能超过100个字符")]
+        public string? Code { get; set; }
+
+        /// <summary>模型版本号，默认 "1.0"；最长 20 字符</summary>
+        [StringLength(20, ErrorMessage = "版本号不能超过20个字符")]
+        public string Version { get; set; } = "1.0";
+
+        /// <summary>是否已发布（标识模型是否可被新建设备引用），默认 true</summary>
+        public bool IsPublished { get; set; } = true;
+
         /// <summary>模型描述；可空，最长 500 字符（校验特性）</summary>
         [StringLength(500, ErrorMessage = "描述不能超过500个字符")]
         public string? Description { get; set; }

@@ -98,8 +98,20 @@ public class VariableImportRow
     /// <summary>死区（可空）</summary>
     public double? DeadBand { get; set; }
 
-    /// <summary>是否只读（可空）</summary>
+    /// <summary>是否只读（可空，deprecated 兼容列——阶段 4 起由 AccessMode 列替代）</summary>
     public bool? IsReadOnly { get; set; }
+
+    /// <summary>读写模式（可空，Read/Write/ReadWrite；导出模板会带出，缺列时按 IsReadOnly 推导）</summary>
+    public string? AccessMode { get; set; }
+
+    /// <summary>是否必填（可空）</summary>
+    public bool? IsRequired { get; set; }
+
+    /// <summary>排序号（可空）</summary>
+    public int? Sort { get; set; }
+
+    /// <summary>是否启用（可空）</summary>
+    public bool? IsEnabled { get; set; }
 
     /// <summary>
     /// 该行是否为非法/无法处理的行（类型无法识别、Key 非法、为空白等）

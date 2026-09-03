@@ -91,6 +91,9 @@ namespace ScadaServer.Application.Services
             {
                 Id = entity.Id,
                 Name = entity.Name,
+                Code = entity.Code,
+                Version = entity.Version,
+                IsPublished = entity.IsPublished,
                 Description = entity.Description,
                 Vendor = entity.Vendor,
                 ModelName = entity.ModelName,
@@ -126,11 +129,18 @@ namespace ScadaServer.Application.Services
             return protocolId;
         }
 
-        /// <summary>新增数据模型：校验名称唯一性并绑定协议，返回含变量模板的最新 DTO。</summary>
+        /// <summary>新增数据模型：校验名称/编码唯一性并绑定协议，返回含变量模板的最新 DTO。</summary>
         public async Task<DataModelDto> CreateAsync(CreateDataModelDto dto)
         {
             // 0. 规范化：修剪空格
             dto.Name = dto.Name.Trim();
+            var code = dto.Code?.Trim() ?? string.Empty;
+
+            // 0.5 编码必填（阶段 4 权威业务键；[Required] 兜底后此处防御空白串）
+            if (code.Length == 0)
+            {
+                throw new BusinessException("模型编码不能为空");
+            }
 
             // 1. 业务校验：名称唯一性
             var existing = await _repository.GetListAsync(m => m.Name == dto.Name);
@@ -139,12 +149,22 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型名称 '{dto.Name}' 已存在");
             }
 
+            // 1.25 业务校验：编码唯一性（对应库级唯一索引 ix_datamodels_code）
+            var codeExists = await _repository.GetListAsync(m => m.Code == code);
+            if (codeExists.Any())
+            {
+                throw new BusinessException($"数据模型编码 '{code}' 已存在");
+            }
+
             // 1.5 协议绑定校验
             var protocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
 
             var entity = new DataModel
             {
                 Name = dto.Name,
+                Code = code,
+                Version = NormalizeVersion(dto.Version),
+                IsPublished = dto.IsPublished,
                 Description = dto.Description?.Trim(),
                 Vendor = dto.Vendor?.Trim(),
                 ModelName = dto.ModelName?.Trim(),
@@ -158,16 +178,23 @@ namespace ScadaServer.Application.Services
             return await MapToDtoAsync(entity, includeVariables: true);
         }
 
-        /// <summary>更新数据模型（全量替换语义）：校验存在性、名称唯一性并重新绑定协议，返回最新 DTO。</summary>
+        /// <summary>更新数据模型（全量替换语义）：校验存在性、名称/编码唯一性并重新绑定协议，返回最新 DTO。</summary>
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
         {
             // 0. 规范化：修剪空格
             dto.Name = dto.Name.Trim();
+            var code = dto.Code?.Trim() ?? string.Empty;
 
             var entity = await _repository.GetByIdAsync(dto.Id);
             if (entity == null)
             {
                 throw new BusinessException($"ID 为 {dto.Id} 的数据模型不存在");
+            }
+
+            // 0.5 编码必填（PUT 全量替换语义：Code 为业务键，不允许清空）
+            if (code.Length == 0)
+            {
+                throw new BusinessException("模型编码不能为空");
             }
 
             // 1. 业务校验：名称不能与其他模型重复
@@ -177,9 +204,19 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型名称 '{dto.Name}' 已存在");
             }
 
+            // 1.25 业务校验：编码不能与其他模型重复（排除自身）
+            var codeExists = await _repository.GetListAsync(m => m.Code == code && m.Id != dto.Id);
+            if (codeExists.Any())
+            {
+                throw new BusinessException($"数据模型编码 '{code}' 已存在");
+            }
+
             // 1.5 协议绑定校验（PUT 为全量替换语义：ProtocolId 必填，未传/为 0 由 DTO [Range] 拦截或在此抛异常）
             entity.ProtocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
             entity.Name = dto.Name;
+            entity.Code = code;
+            entity.Version = NormalizeVersion(dto.Version);
+            entity.IsPublished = dto.IsPublished;
             entity.Description = dto.Description?.Trim();
             entity.Vendor = dto.Vendor?.Trim();
             entity.ModelName = dto.ModelName?.Trim();
@@ -189,6 +226,10 @@ namespace ScadaServer.Application.Services
 
             return await MapToDtoAsync(entity, includeVariables: true);
         }
+
+        /// <summary>归一化版本号：空白 → "1.0"（与实体默认一致），并修剪两端空格。</summary>
+        private static string NormalizeVersion(string? version) =>
+            string.IsNullOrWhiteSpace(version) ? "1.0" : version.Trim();
 
         /// <summary>删除数据模型：先校验是否被设备引用，未引用时在同一事务内删除其变量模板与模型本身。</summary>
         public async Task DeleteAsync(int id)

@@ -17,7 +17,8 @@ public class VariableExportService
     private static readonly string[] Headers =
     {
         "Key", "Name", "DataType", "Unit", "Min", "Max", "Description", "Address",
-        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand", "IsReadOnly"
+        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand",
+        "IsReadOnly", "AccessMode", "IsRequired", "Sort", "IsEnabled"
     };
 
     /// <summary>
@@ -56,7 +57,12 @@ public class VariableExportService
             ws.Cell(row, 11).Value = v.UpdateMode.ToString();
             ws.Cell(row, 12).Value = v.ScaleExpression ?? string.Empty;
             ws.Cell(row, 13).Value = v.DeadBand;
+            // 权限列：IsReadOnly 兼容列与 AccessMode 权威列并存输出，保证往返无损
             ws.Cell(row, 14).Value = v.IsReadOnly;
+            ws.Cell(row, 15).Value = v.AccessMode ?? "Read";
+            ws.Cell(row, 16).Value = v.IsRequired;
+            ws.Cell(row, 17).Value = v.Sort;
+            ws.Cell(row, 18).Value = v.IsEnabled;
         }
 
         ws.Columns().AdjustToContents();
@@ -94,7 +100,11 @@ public class VariableExportService
               .Append(Csv.Quote(v.UpdateMode.ToString())).Append(',')
               .Append(Csv.Quote(v.ScaleExpression)).Append(',')
               .Append(Csv.Number(v.DeadBand)).Append(',')
-              .Append(v.IsReadOnly ? "true" : "false")
+              .Append(v.IsReadOnly ? "true" : "false").Append(',')
+              .Append(Csv.Quote(v.AccessMode ?? "Read")).Append(',')
+              .Append(v.IsRequired ? "true" : "false").Append(',')
+              .Append(v.Sort).Append(',')
+              .Append(v.IsEnabled ? "true" : "false")
               .Append('\n');
         }
 

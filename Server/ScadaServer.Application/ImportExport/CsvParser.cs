@@ -16,7 +16,8 @@ public class CsvParser
     public static readonly string[] Columns =
     {
         "Key", "Name", "DataType", "Unit", "Min", "Max", "Description", "Address",
-        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand", "IsReadOnly"
+        "StoreMode", "StoreIntervalMs", "UpdateMode", "ScaleExpression", "DeadBand",
+        "IsReadOnly", "AccessMode", "IsRequired", "Sort", "IsEnabled"
     };
 
     /// <summary>
@@ -117,6 +118,12 @@ public class CsvParser
         row.ScaleExpression = NullIfEmpty(Cell(cells, colIndex, "ScaleExpression"));
         row.DeadBand = TryDouble(Cell(cells, colIndex, "DeadBand"));
         row.IsReadOnly = TryBool(Cell(cells, colIndex, "IsReadOnly"));
+        // 阶段 4：读写模式仅接受 Read/Write/ReadWrite（可空，非法值忽略回退推导）
+        var am = Cell(cells, colIndex, "AccessMode")?.Trim();
+        if (am is "Read" or "Write" or "ReadWrite") row.AccessMode = am;
+        row.IsRequired = TryBool(Cell(cells, colIndex, "IsRequired"));
+        row.Sort = TryInt(Cell(cells, colIndex, "Sort"));
+        row.IsEnabled = TryBool(Cell(cells, colIndex, "IsEnabled"));
     }
 
     /// <summary>

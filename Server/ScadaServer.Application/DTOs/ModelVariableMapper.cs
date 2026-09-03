@@ -26,7 +26,11 @@ public static class ModelVariableMapper
         UpdateMode = v.UpdateMode,
         ScaleExpression = v.ScaleExpression,
         DeadBand = v.DeadBand,
+        AccessMode = v.AccessMode,
         IsReadOnly = v.IsReadOnly,
+        IsRequired = v.IsRequired,
+        Sort = v.Sort,
+        IsEnabled = v.IsEnabled,
         ExtensionData = v.ExtensionData
     };
 }

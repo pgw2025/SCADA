@@ -23,6 +23,9 @@ namespace ScadaServer.Application.Services
         private const string ModelKeyUniqueIndexName = "ix_modelvariable_model_key";
         private static readonly Regex KeyFormatRegex = new("^[a-zA-Z0-9_]+$", RegexOptions.Compiled);
 
+        /// <summary>读写模式合法值（与前端枚举/列定义一致）。</summary>
+        private static readonly HashSet<string> ValidAccessModes = new(StringComparer.Ordinal) { "Read", "Write", "ReadWrite" };
+
         /// <summary>模型变量仓储，提供持久化能力。</summary>
         private readonly IModelVariableRepository _repository;
         /// <summary>数据模型仓储，用于校验变量所属模型存在。</summary>
@@ -409,7 +412,12 @@ namespace ScadaServer.Application.Services
                 UpdateMode = row.UpdateMode ?? UpdateMode.Polling,
                 ScaleExpression = row.ScaleExpression,
                 DeadBand = row.DeadBand,
+                // 读写模式：AccessMode 列优先（导出模板会带出）；缺列时按 IsReadOnly 旧列推导（兼容旧文件）
+                AccessMode = row.AccessMode,
                 IsReadOnly = row.IsReadOnly ?? true,
+                IsRequired = row.IsRequired ?? false,
+                Sort = row.Sort ?? 0,
+                IsEnabled = row.IsEnabled ?? true,
                 ExtensionData = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             };
 
@@ -444,6 +452,15 @@ namespace ScadaServer.Application.Services
             if (row.ScaleExpression is not null) entity.ScaleExpression = row.ScaleExpression;
             if (row.DeadBand is not null) entity.DeadBand = row.DeadBand;
             if (row.IsReadOnly is not null) entity.IsReadOnly = row.IsReadOnly.Value;
+            // 阶段 4：AccessMode 权威（Overwrite 仅覆盖显式提供的字段）；与 IsReadOnly 同步单点。
+            if (row.AccessMode is not null && (row.AccessMode == "Read" || row.AccessMode == "Write" || row.AccessMode == "ReadWrite"))
+            {
+                entity.AccessMode = row.AccessMode;
+                entity.IsReadOnly = row.AccessMode == "Read";
+            }
+            if (row.IsRequired is not null) entity.IsRequired = row.IsRequired.Value;
+            if (row.Sort is not null) entity.Sort = row.Sort.Value;
+            if (row.IsEnabled is not null) entity.IsEnabled = row.IsEnabled.Value;
 
             // 地址：仅在新数据非空时覆盖（避免覆盖历史已有地址为空数据）
             if (!string.IsNullOrWhiteSpace(row.Address))
@@ -480,7 +497,28 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"变量 '{dto.Name}' 的换算表达式非法：{scaleError}");
             }
 
+            // E. 读写模式校验：仅当显式传入且非法时拒绝（可空 = 交给 IsReadOnly 旧列推导，兼容旧客户端）
+            var accessMode = dto.AccessMode?.Trim();
+            if (!string.IsNullOrEmpty(accessMode) && !ValidAccessModes.Contains(accessMode))
+            {
+                throw new BusinessException($"变量 '{dto.Name}' 的读写模式非法：'{accessMode}'（可选 Read / Write / ReadWrite）");
+            }
+
             // 数据类型合法性由枚举 + DTO JsonConverter 保证；信号类型由 DataType 派生，无需额外运行时校验。
+        }
+
+        /// <summary>
+        /// 归一化读写模式（阶段 4 权威解析，唯一入口）：
+        /// AccessMode 显式合法 → 取之；否则按旧列 IsReadOnly 推导（true=Read，false=ReadWrite，缺省 Read）。
+        /// </summary>
+        private static string ResolveAccessMode(string? accessMode, bool legacyIsReadOnly)
+        {
+            var mode = accessMode?.Trim();
+            if (!string.IsNullOrEmpty(mode) && ValidAccessModes.Contains(mode))
+            {
+                return mode;
+            }
+            return legacyIsReadOnly ? "Read" : "ReadWrite";
         }
 
         private static ModelVariable MapToEntity(ModelVariableDto dto, ModelVariable? entity = null)
@@ -499,7 +537,12 @@ namespace ScadaServer.Application.Services
             entity.UpdateMode = dto.UpdateMode;
             entity.ScaleExpression = dto.ScaleExpression;
             entity.DeadBand = dto.DeadBand;
-            entity.IsReadOnly = dto.IsReadOnly;
+            // 阶段 4 权限同步单点：AccessMode 为权威列，IsReadOnly 兼容列随之同步（两列永不矛盾）。
+            entity.AccessMode = ResolveAccessMode(dto.AccessMode, dto.IsReadOnly);
+            entity.IsReadOnly = entity.AccessMode == "Read";
+            entity.IsRequired = dto.IsRequired;
+            entity.Sort = dto.Sort;
+            entity.IsEnabled = dto.IsEnabled;
             entity.ExtensionData = dto.ExtensionData ?? new Dictionary<string, string>();
             return entity;
         }

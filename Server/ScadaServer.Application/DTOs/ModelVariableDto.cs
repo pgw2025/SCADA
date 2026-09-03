@@ -95,8 +95,28 @@ public class ModelVariableDto
     /// <summary>死区（变化阈值过滤，可空）</summary>
     public double? DeadBand { get; set; }
 
-    /// <summary>是否只读（禁止外部写入），默认 true</summary>
+    /// <summary>
+    /// 读写模式（Read=只读 / Write=只写 / ReadWrite=读写），阶段 4 权威字段。
+    /// 可空：未显式传入时后端按 <see cref="IsReadOnly"/> 推导（兼容旧客户端），输出恒为三值之一。
+    /// </summary>
+    [StringLength(16, ErrorMessage = "读写模式不能超过16个字符")]
+    public string? AccessMode { get; set; }
+
+    /// <summary>
+    /// 是否只读（禁止外部写入）。兼容保留（deprecated，阶段 6 移除）：
+    /// 输出侧与 <see cref="AccessMode"/> 同步（== "Read"），输入侧仅作旧客户端推导源；
+    /// 新客户端请直接传 <see cref="AccessMode"/>。
+    /// </summary>
     public bool IsReadOnly { get; set; } = true;
+
+    /// <summary>是否必填（采集/校验场景：缺失时按必填规则告警），默认 false</summary>
+    public bool IsRequired { get; set; }
+
+    /// <summary>排序号（模型内展示顺序），默认 0</summary>
+    public int Sort { get; set; }
+
+    /// <summary>是否启用该模板变量，默认 true</summary>
+    public bool IsEnabled { get; set; } = true;
 
     /// <summary>扩展数据（可空，前端自定义附加字段）</summary>
     public Dictionary<string, string>? ExtensionData { get; set; }

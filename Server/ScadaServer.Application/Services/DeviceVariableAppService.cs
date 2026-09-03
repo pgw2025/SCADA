@@ -97,6 +97,8 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             DeviceId = dto.DeviceId,
             ModelVariableId = dto.ModelVariableId,
             IsEnabled = dto.IsEnabled,
+            // 记录性字段：新建实例即按模板类型快照（与迁移回填语义一致，驱动仍以 DataTypeEnum 解释）
+            RawDataType = mv.DataType.ToString(),
             ExtensionData = null
         };
 
@@ -168,6 +170,9 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             string.IsNullOrWhiteSpace(dto.ScaleExpressionOverride) ? null : dto.ScaleExpressionOverride.Trim();
         entity.DeadBandOverride = dto.DeadBandOverride;
         entity.IsReadOnlyOverride = dto.IsReadOnlyOverride;
+        // 阶段 4 新增列透传：变量级连接覆盖 + 原始类型字符串（空串归一化为 null，保持"未配置"语义）
+        entity.ConnectionId = dto.ConnectionId;
+        entity.RawDataType = string.IsNullOrWhiteSpace(dto.RawDataType) ? null : dto.RawDataType.Trim();
 
         await _repository.UpdateAsync(entity);
 
@@ -179,26 +184,41 @@ public class DeviceVariableAppService : IDeviceVariableAppService
     }
 
     /// <summary>将设备变量实体与其模板映射为 DTO；模板缺失时以空串/默认值兜底。</summary>
-    private static DeviceVariableDto MapToDto(DeviceVariable dv, ModelVariable? mv) => new()
+    private static DeviceVariableDto MapToDto(DeviceVariable dv, ModelVariable? mv)
     {
-        Id = dv.Id,
-        DeviceId = dv.DeviceId,
-        ModelVariableId = dv.ModelVariableId,
-        Key = mv?.Key ?? string.Empty,
-        Name = mv?.Name ?? string.Empty,
-        DataType = mv?.DataType ?? default,
-        Unit = mv?.Unit,
-        Address = dv.Address,
-        AddressConfigJson = dv.AddressConfigJson,
-        BitOffset = dv.BitOffset,
-        PollingIntervalMs = dv.PollingIntervalMs,
-        IsEnabled = dv.IsEnabled,
-        ScaleExpressionOverride = dv.ScaleExpressionOverride,
-        DeadBandOverride = dv.DeadBandOverride,
-        IsReadOnlyOverride = dv.IsReadOnlyOverride,
-        TemplateIsReadOnly = mv?.IsReadOnly ?? true,
-        EffectiveIsReadOnly = dv.IsReadOnlyOverride ?? (mv?.IsReadOnly ?? true)
-    };
+        var templateAccessMode = mv?.AccessMode ?? "Read";
+        // 阶段 4 权限解析：实例覆盖组合语义保持——Override=true 强制只读、false 强制可写、null 继承模板。
+        var effectiveAccessMode = dv.IsReadOnlyOverride switch
+        {
+            true => "Read",
+            false => "ReadWrite",
+            null => templateAccessMode
+        };
+        return new DeviceVariableDto
+        {
+            Id = dv.Id,
+            DeviceId = dv.DeviceId,
+            ModelVariableId = dv.ModelVariableId,
+            Key = mv?.Key ?? string.Empty,
+            Name = mv?.Name ?? string.Empty,
+            DataType = mv?.DataType ?? default,
+            Unit = mv?.Unit,
+            Address = dv.Address,
+            AddressConfigJson = dv.AddressConfigJson,
+            BitOffset = dv.BitOffset,
+            PollingIntervalMs = dv.PollingIntervalMs,
+            IsEnabled = dv.IsEnabled,
+            ScaleExpressionOverride = dv.ScaleExpressionOverride,
+            DeadBandOverride = dv.DeadBandOverride,
+            IsReadOnlyOverride = dv.IsReadOnlyOverride,
+            ConnectionId = dv.ConnectionId,
+            RawDataType = dv.RawDataType,
+            TemplateAccessMode = templateAccessMode,
+            EffectiveAccessMode = effectiveAccessMode,
+            TemplateIsReadOnly = mv?.IsReadOnly ?? true,
+            EffectiveIsReadOnly = dv.IsReadOnlyOverride ?? (mv?.IsReadOnly ?? true)
+        };
+    }
 
     /// <summary>
     /// 归一化结构化地址：JSON 为唯一权威源。前端仅回传 <paramref name="addressConfigJson"/>，
