@@ -157,5 +157,14 @@ namespace ScadaServer.Application.DTOs
         /// <para>新增字段：前端可据此展示每个变量的"定义 + 设备配置"；既有接口字段不受影响，旧客户端可忽略。</para>
         /// </summary>
         public List<DeviceVariableDto>? Variables { get; set; }
+
+        /// <summary>
+        /// 设备-数据模型绑定列表（阶段 5：多对多绑定，含主模型 IsPrimary=true 行）。
+        /// <para>
+        /// 新增字段：与保留的 <see cref="ModelId"/>（= 主模型）双写一致；附加（非主）模型仅供管理界面
+        /// 与未来扩展，运行时仍只认主模型。绑定操作走 <c>/api/devices/{deviceId}/data-models</c> 子资源接口。
+        /// </para>
+        /// </summary>
+        public List<DeviceModelBindingDto>? Models { get; set; }
     }
 }

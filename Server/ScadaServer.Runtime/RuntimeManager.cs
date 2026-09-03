@@ -179,10 +179,25 @@ namespace ScadaServer.Runtime
                 .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
                 .Include(d => d.Model).ThenInclude(m => m!.Protocol)
                 .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
+                // 阶段 5：绑定行仅用于启动日志统计（N 台绑定 / 主模型），运行时变量解析仍以 Device.Model（主模型）为唯一生效集合。
+                .Include(d => d.DeviceDataModels)
                 .Where(d => d.IsEnabled)
                 .ToListAsync();
 
             _logger.LogInformation("找到 {Count} 个已启用设备。", devices.Count);
+
+            // 阶段 5 运维确认行：展示各设备绑定模型总数（≥1 含主模型）。
+            // 附加（非主）模型不参与采集——多模型变量合并为后续版本特性，本阶段运行时只认主模型。
+            foreach (var device in devices)
+            {
+                var bound = device.DeviceDataModels?.Count ?? 0;
+                var primary = device.DeviceDataModels?.FirstOrDefault(b => b.IsPrimary);
+                _logger.LogInformation(
+                    "设备 {Key}（ID {DeviceId}）绑定 {Bound} 个模型，主模型 {Primary}（ID {PrimaryId}）",
+                    device.Key, device.Id, bound,
+                    primary != null && device.Model != null ? device.Model.Name : (device.Model?.Name ?? "(缺失)"),
+                    device.ModelId);
+            }
 
             foreach (var device in devices)
             {

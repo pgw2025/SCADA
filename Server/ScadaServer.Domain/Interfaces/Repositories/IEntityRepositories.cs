@@ -87,6 +87,34 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     }
 
     /// <summary>
+    /// 设备-数据模型绑定仓储接口（阶段 5：DeviceDataModels 多对多中间表）。
+    /// <para>
+    /// 承载「设备 ↔ 数据模型」绑定行的查询；增删改走基类通用 CRUD。
+    /// 主模型（IsPrimary=true）行与 Device.ModelId 的双写一致性收敛于应用服务事务单点。
+    /// </para>
+    /// </summary>
+    public interface IDeviceDataModelRepository : IRepository<DeviceDataModel, int>
+    {
+        /// <summary>
+        /// 查询某设备的全部绑定（含 DataModel 摘要导航，AsNoTracking）。
+        /// 返回顺序：主模型优先，其次按 Id 升序（展示/管理稳定序）。
+        /// </summary>
+        Task<List<DeviceDataModel>> GetByDeviceAsync(int deviceId);
+
+        /// <summary>
+        /// 批量查询多台设备的绑定（含 DataModel 摘要导航，AsNoTracking），
+        /// 供设备列表 N+1 优化——一次性加载全部设备的绑定行后按 DeviceId 分组。
+        /// </summary>
+        Task<List<DeviceDataModel>> GetByDevicesAsync(IEnumerable<int> deviceIds);
+
+        /// <summary>
+        /// 更新专用加载（跟踪查询，不含导航）：加载某设备全部绑定行用于主模型降级/切换，
+        /// 使 Update(entity) 无需附加导航对象图，避免跟踪冲突。
+        /// </summary>
+        Task<List<DeviceDataModel>> GetByDeviceForUpdateAsync(int deviceId);
+    }
+
+    /// <summary>
     /// 数据模型仓储接口
     /// </summary>
     public interface IDataModelRepository : IRepository<DataModel, int> { }

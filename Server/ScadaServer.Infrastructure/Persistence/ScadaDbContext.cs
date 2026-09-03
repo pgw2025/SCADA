@@ -48,6 +48,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<DbVersion> DbVersions => Set<DbVersion>();
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();
+        public DbSet<DeviceDataModel> DeviceDataModels => Set<DeviceDataModel>();
         public DbSet<DeviceVariable> DeviceVariables => Set<DeviceVariable>();
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
@@ -165,6 +166,31 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasForeignKey(c => c.ProtocolId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_DeviceConnections_Protocols_ProtocolId");
+            // 设备-数据模型绑定表（阶段 5 新增，多对多中间表）：
+            // (DeviceId, DataModelId) 库级唯一索引防重复绑定；删设备 Cascade 自动清绑定行；
+            // 删模型 Restrict（被绑定模型不可删除）；Version 显式限长映射 varchar(20)。
+            // 「一台设备至多一条 IsPrimary=true」由应用层在事务内校验 + 降级旧主维护（MVP 不做库级部分唯一索引）。
+            modelBuilder.Entity<DeviceDataModel>().ToTable("DeviceDataModels");
+            modelBuilder.Entity<DeviceDataModel>()
+                .Property(b => b.Version).HasMaxLength(20);
+            modelBuilder.Entity<DeviceDataModel>()
+                .HasIndex(b => new { b.DeviceId, b.DataModelId })
+                .IsUnique()
+                .HasDatabaseName("ix_devicedatamodels_device_model");
+            modelBuilder.Entity<DeviceDataModel>()
+                .HasIndex(b => b.DeviceId)
+                .HasDatabaseName("ix_devicedatamodels_deviceid");
+            modelBuilder.Entity<DeviceDataModel>()
+                .HasOne(b => b.Device)
+                .WithMany(d => d.DeviceDataModels)
+                .HasForeignKey(b => b.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DeviceDataModel>()
+                .HasOne(b => b.DataModel)
+                .WithMany()
+                .HasForeignKey(b => b.DataModelId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DeviceDataModels_DataModels_DataModelId");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
             // 数据模型（阶段 4 补全 Code/Version）：Code/Version 显式限长映射为 varchar

@@ -17,6 +17,7 @@ namespace ScadaServer.Infrastructure.Repositories
         /// 从而 DeviceDto.ModelType/ProtocolKey 等派生字段取不到正确值。
         /// 协议配置（JsonConfig）已内联于 Device 行，无需再 Include。
         /// Controller/Connection 为阶段 3 新增过渡导航（连接参数抽取），详情接口需展示控制器与连接信息。
+        /// DeviceDataModels（阶段 5 多对多绑定）用于 DeviceDto.Models 摘要映射。
         /// </summary>
         public override async Task<Device?> GetByIdAsync(int id)
         {
@@ -30,6 +31,8 @@ namespace ScadaServer.Infrastructure.Repositories
                     .ThenInclude(c => c!.Protocol)
                 .Include(d => d.Connection)
                     .ThenInclude(c => c!.Controller)
+                .Include(d => d.DeviceDataModels)
+                    .ThenInclude(b => b!.DataModel)
                 .FirstOrDefaultAsync(d => d.Id == id);
         }
 
@@ -59,6 +62,8 @@ namespace ScadaServer.Infrastructure.Repositories
                     .ThenInclude(c => c!.Protocol)
                 .Include(d => d.Connection)
                     .ThenInclude(c => c!.Controller)
+                .Include(d => d.DeviceDataModels)
+                    .ThenInclude(b => b!.DataModel)
                 .ToListAsync();
         }
 

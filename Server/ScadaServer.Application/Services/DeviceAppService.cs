@@ -30,6 +30,8 @@ namespace ScadaServer.Application.Services
         private readonly IControllerRepository _controllerRepository;
         /// <summary>设备连接仓储（阶段 3 双写：连接参数抽取实体）。</summary>
         private readonly IDeviceConnectionRepository _connectionRepository;
+        /// <summary>设备-模型绑定仓储（阶段 5 双写：创建设备时落一条 IsPrimary 主绑定行）。</summary>
+        private readonly IDeviceDataModelRepository _bindingRepository;
         /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
         /// <summary>运行时状态供应，用于解析设备在线状态。</summary>
@@ -48,6 +50,7 @@ namespace ScadaServer.Application.Services
             IDeviceVariableRepository deviceVariableRepository,
             IControllerRepository controllerRepository,
             IDeviceConnectionRepository connectionRepository,
+            IDeviceDataModelRepository bindingRepository,
             IUnitOfWork uow,
             IRuntimeStatusProvider runtimeStatusProvider,
             IDeviceDeletionService deletionService,
@@ -60,6 +63,7 @@ namespace ScadaServer.Application.Services
             _deviceVariableRepository = deviceVariableRepository;
             _controllerRepository = controllerRepository;
             _connectionRepository = connectionRepository;
+            _bindingRepository = bindingRepository;
             _uow = uow;
             _runtimeStatusProvider = runtimeStatusProvider;
             _deletionService = deletionService;
@@ -136,12 +140,42 @@ namespace ScadaServer.Application.Services
                 ConnectionId = entity.ConnectionId,
                 Connection = MapConnectionSummary(entity),
                 RuntimeStatus = ResolveRuntimeStatus(entity.Id, entity.IsEnabled, entity.LastKnownStatus),
-                Variables = variables
+                Variables = variables,
+                Models = MapBindingDtos(entity)
             };
 
             // 真相源是 JsonConfig，以下仅为按协议投影出的只读连接字段（兼容期旧字段；新真相源见 Connection 摘要）
             ApplyConnectionFields(dto, entity.Model?.Protocol?.DriverKey, entity.JsonConfig);
             return dto;
+        }
+
+        /// <summary>
+        /// 阶段 5：将设备-模型绑定行映射为只读摘要列表（主模型 IsPrimary=true 行与 <see cref="Device.ModelId"/> 严格一致；
+        /// 附加模型仅供管理界面展示，运行时仍只认主模型）。绑定时数据模型摘要随仓储 Include 链加载。
+        /// </summary>
+        private static List<DeviceModelBindingDto>? MapBindingDtos(Device entity)
+        {
+            if (entity.DeviceDataModels == null || entity.DeviceDataModels.Count == 0)
+            {
+                return null;
+            }
+
+            return entity.DeviceDataModels
+                .OrderByDescending(b => b.IsPrimary)
+                .ThenBy(b => b.Id)
+                .Select(b => new DeviceModelBindingDto
+                {
+                    Id = b.Id,
+                    DeviceId = b.DeviceId,
+                    DataModelId = b.DataModelId,
+                    Code = b.DataModel?.Code,
+                    Name = b.DataModel?.Name,
+                    Version = b.Version,
+                    IsPrimary = b.IsPrimary,
+                    IsEnabled = b.IsEnabled,
+                    CreatedAt = b.CreatedAt
+                })
+                .ToList();
         }
 
         /// <summary>
@@ -834,6 +868,20 @@ namespace ScadaServer.Application.Services
                     }).ToList();
                     await _deviceVariableRepository.InsertRangeAsync(deviceVariables);
                 }
+
+                // 阶段 5 双写（P5）：主模型绑定行（IsPrimary=true）与 Device.ModelId 严格一致。
+                // 版本快照取绑定时刻模型当前版本；删设备时绑定行随 FK Cascade 自动清理，无需额外逻辑。
+                var bindingNow = DateTime.UtcNow;
+                await _bindingRepository.InsertAsync(new DeviceDataModel
+                {
+                    DeviceId = entity.Id,
+                    DataModelId = model.Id,
+                    Version = string.IsNullOrWhiteSpace(model.Version) ? "1.0" : model.Version.Trim(),
+                    IsPrimary = true,
+                    IsEnabled = true,
+                    CreatedAt = bindingNow,
+                    UpdatedAt = bindingNow
+                });
 
                 // 阶段 3 双写（P3-A/P3-D）：快速模式下为新建设备同步创建独占 Controller + DeviceConnection
                 // 并回填过渡列。与 DatabaseInitializer 启动回填保持同一"1 设备 = 1 Controller + 1 Connection"结构，

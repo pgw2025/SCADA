@@ -130,5 +130,14 @@ namespace ScadaServer.Domain.Entities
         /// </para>
         /// </summary>
         public List<DeviceVariable> DeviceVariables { get; set; } = new();
+
+        /// <summary>
+        /// 设备-数据模型绑定（阶段 5：多对多中间表，删设备时随 FK Cascade 自动清理）。
+        /// <para>
+        /// 主模型（IsPrimary=true）行与 <see cref="ModelId"/> 保持严格一致（双写单点维护）；
+        /// 附加（非主）模型绑定仅供管理界面与未来扩展，运行时仍只认主模型（<see cref="Model"/>）。
+        /// </para>
+        /// </summary>
+        public List<DeviceDataModel> DeviceDataModels { get; set; } = new();
     }
 }
