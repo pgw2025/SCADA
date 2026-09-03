@@ -9,7 +9,7 @@ namespace ScadaServer.Application.Services
     /// <summary>
     /// 设备删除服务实现：删除设备前检查对外接口引用，并在同一事务内级联清理
     /// 传感器、协议配置、关联系统脚本后再删除设备本身。
-    /// <para>注：设备变量（DeviceVariable）随设备删除由数据库外键级联清理（ON DELETE CASCADE），无需在此显式删除。</para>
+    /// <para>注：设备变量（DataPointMapping）随设备删除由数据库外键级联清理（ON DELETE CASCADE），无需在此显式删除。</para>
     /// </summary>
     public class DeviceDeletionService : IDeviceDeletionService
     {

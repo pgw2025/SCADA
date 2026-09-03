@@ -63,7 +63,7 @@ public class DatabaseInitializer
             await CreateDefaultAreaAsync();
             await CreateDefaultProtocolsAsync();
             await CreateDefaultAdminAsync();
-            await BackfillDeviceVariableAddressConfigAsync();
+            await BackfillDataPointMappingAddressConfigAsync();
             await BackfillControllerAndConnectionAsync();
             await SaveDbVersionAsync();
 
@@ -168,19 +168,19 @@ public class DatabaseInitializer
     }
 
     /// <summary>
-    /// 一次性回填：为历史 <c>DeviceVariable.Address</c>（旧展示串）生成结构化
+    /// 一次性回填：为历史 <c>DataPointMapping.Address</c>（旧展示串）生成结构化
     /// <c>AddressConfigJson</c>（JSON 权威源）。此后地址以 JSON 为唯一信任，展示串由后端重新生成。
     /// <para>
     /// 幂等：仅处理 <c>AddressConfigJson</c> 为空、<c>Address</c> 非空且协议解析成功的行；
     /// 无法解析的旧地址保持 JSON 为空、原字符串保留，交由前端后续人工重配。
     /// </para>
     /// </summary>
-    private async Task BackfillDeviceVariableAddressConfigAsync()
+    private async Task BackfillDataPointMappingAddressConfigAsync()
     {
         try
         {
             // 需解析的设备变量：延迟加载设备数据模型与协议，以拿到 DriverKey 判别协议。
-            var rows = await _db.Set<DeviceVariable>()
+            var rows = await _db.Set<DataPointMapping>()
                 .Include(dv => dv.Device)!.ThenInclude(d => d!.Model).ThenInclude(m => m!.Protocol)
                 .Where(dv => dv.AddressConfigJson == null && dv.Address != null && dv.Address != "")
                 .ToListAsync();
@@ -229,7 +229,7 @@ public class DatabaseInitializer
     /// 若上次执行中断残留了同名 Controller（Code = PLC{Id}），自动复用而非重建。
     /// </para>
     /// <para>
-    /// 设计说明：本方法采用项目内已有的一次性回填先例（<see cref="BackfillDeviceVariableAddressConfigAsync"/>），
+    /// 设计说明：本方法采用项目内已有的一次性回填先例（<see cref="BackfillDataPointMappingAddressConfigAsync"/>），
     /// 而非 EF 迁移内注入 DbContext——回填与结构迁移分离、可独立重试，符合阶段 3 双读兼容期的低风险要求。
     /// </para>
     /// </summary>

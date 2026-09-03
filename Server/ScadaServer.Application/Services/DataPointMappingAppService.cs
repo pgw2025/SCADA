@@ -10,15 +10,15 @@ using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services;
 
 /// <summary>
-/// 设备变量应用服务：负责设备变量（DeviceVariable）的查询与维护。
+/// 设备变量应用服务：负责设备变量（DataPointMapping）的查询与维护。
 /// 设备变量描述"变量模板在某台具体设备上的实例"，聚合模板定义与实例级覆盖配置。
 /// </summary>
-public class DeviceVariableAppService : IDeviceVariableAppService
+public class DataPointMappingAppService : IDataPointMappingAppService
 {
     /// <summary>设备变量仓储，提供持久化能力。</summary>
-    private readonly IDeviceVariableRepository _repository;
+    private readonly IDataPointMappingRepository _repository;
     /// <summary>模型变量仓储，用于解析变量模板定义。</summary>
-    private readonly IModelVariableRepository _modelVariableRepository;
+    private readonly IDataPointRepository _dataPointRepository;
     /// <summary>设备仓储，用于校验设备存在性及解析其绑定模型。</summary>
     private readonly IDeviceRepository _deviceRepository;
     /// <summary>系统脚本仓储，用于联动清理引用被删除变量的脚本。</summary>
@@ -29,16 +29,16 @@ public class DeviceVariableAppService : IDeviceVariableAppService
     private readonly IUnitOfWork _uow;
 
     /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储、运行时设备管理器及工作单元。</summary>
-    public DeviceVariableAppService(
-        IDeviceVariableRepository repository,
-        IModelVariableRepository modelVariableRepository,
+    public DataPointMappingAppService(
+        IDataPointMappingRepository repository,
+        IDataPointRepository dataPointRepository,
         IDeviceRepository deviceRepository,
         ISystemScriptRepository systemScriptRepository,
         IRuntimeDeviceManager runtimeDeviceManager,
         IUnitOfWork uow)
     {
         _repository = repository;
-        _modelVariableRepository = modelVariableRepository;
+        _dataPointRepository = dataPointRepository;
         _deviceRepository = deviceRepository;
         _systemScriptRepository = systemScriptRepository;
         _runtimeDeviceManager = runtimeDeviceManager;
@@ -46,7 +46,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
     }
 
     /// <summary>获取指定设备下的全部设备变量（聚合其变量模板定义）。</summary>
-    public async Task<List<DeviceVariableDto>> GetByDeviceAsync(int deviceId)
+    public async Task<List<DataPointMappingDto>> GetByDeviceAsync(int deviceId)
     {
         var device = await _deviceRepository.GetByIdAsync(deviceId);
         if (device == null)
@@ -54,18 +54,18 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             throw new BusinessException($"ID 为 {deviceId} 的设备不存在");
         }
 
-        var deviceVariables = await _repository.GetListAsync(dv => dv.DeviceId == deviceId);
-        var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == device.ModelId);
-        var mvMap = modelVariables.ToDictionary(mv => mv.Id);
+        var dataPointMappings = await _repository.GetListAsync(dv => dv.DeviceId == deviceId);
+        var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == device.ModelId);
+        var mvMap = dataPoints.ToDictionary(mv => mv.Id);
 
-        return deviceVariables.Select(dv =>
+        return dataPointMappings.Select(dv =>
         {
-            mvMap.TryGetValue(dv.ModelVariableId, out var mv);
+            mvMap.TryGetValue(dv.DataPointId, out var mv);
             return MapToDto(dv, mv);
         }).ToList();
     }
 
-    public async Task<DeviceVariableDto> CreateAsync(CreateDeviceVariableDto dto)
+    public async Task<DataPointMappingDto> CreateAsync(CreateDataPointMappingDto dto)
     {
         // 1. 设备存在性
         var device = await _deviceRepository.GetByIdAsync(dto.DeviceId);
@@ -75,10 +75,10 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         }
 
         // 2. 模板存在性，且必须隶属于该设备所绑定的数据模型
-        var mv = await _modelVariableRepository.GetByIdAsync(dto.ModelVariableId);
+        var mv = await _dataPointRepository.GetByIdAsync(dto.DataPointId);
         if (mv == null)
         {
-            throw new BusinessException($"ID 为 {dto.ModelVariableId} 的变量模板不存在");
+            throw new BusinessException($"ID 为 {dto.DataPointId} 的变量模板不存在");
         }
         if (mv.ModelId != device.ModelId)
         {
@@ -86,16 +86,16 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         }
 
         // 3. 唯一性：同一设备上不能重复实例化同一模板
-        if (await _repository.AnyAsync(dv => dv.DeviceId == dto.DeviceId && dv.ModelVariableId == dto.ModelVariableId))
+        if (await _repository.AnyAsync(dv => dv.DeviceId == dto.DeviceId && dv.DataPointId == dto.DataPointId))
         {
             throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
         }
 
         // 4. 实例化到设备（地址/位偏移/采集周期以设备实例级配置为准；模板层已不再携带这些字段）
-        var entity = new DeviceVariable
+        var entity = new DataPointMapping
         {
             DeviceId = dto.DeviceId,
-            ModelVariableId = dto.ModelVariableId,
+            DataPointId = dto.DataPointId,
             IsEnabled = dto.IsEnabled,
             // 记录性字段：新建实例即按模板类型快照（与迁移回填语义一致，驱动仍以 DataTypeEnum 解释）
             RawDataType = mv.DataType.ToString(),
@@ -108,7 +108,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         }
         catch (DbUpdateException ex) when (DbExceptionClassifier.IsUniqueIndexConflict(ex))
         {
-            // 并发竞态兜底：预检通过但落库时撞 (DeviceId, ModelVariableId) 唯一索引
+            // 并发竞态兜底：预检通过但落库时撞 (DeviceId, DataPointId) 唯一索引
             throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
         }
         // 设备变量集合变化需热加载设备运行时（重建 Worker 与变量集合）。
@@ -126,7 +126,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         await _uow.ExecuteInTransactionAsync(async _ =>
         {
             // 联动：停用引用该设备变量的 OnChange 脚本，并从写授权中剔除该变量条目。
-            await ScriptVariableCleanupHelper.CleanupScriptsByVariableAsync(entity, _deviceRepository, _modelVariableRepository, _systemScriptRepository);
+            await ScriptVariableCleanupHelper.CleanupScriptsByVariableAsync(entity, _deviceRepository, _dataPointRepository, _systemScriptRepository);
             await _repository.DeleteAsync(entity);
             return true;
         });
@@ -135,7 +135,7 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
     }
 
-    public async Task<DeviceVariableDto> UpdateAsync(DeviceVariableDto dto)
+    public async Task<DataPointMappingDto> UpdateAsync(DataPointMappingDto dto)
     {
         var entity = await _repository.GetByIdAsync(dto.Id);
         if (entity == null)
@@ -179,12 +179,12 @@ public class DeviceVariableAppService : IDeviceVariableAppService
         // 采集配置（地址/轮询/启用等）变化需热加载设备运行时。
         await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
 
-        var mv = await _modelVariableRepository.GetByIdAsync(entity.ModelVariableId);
+        var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
         return MapToDto(entity, mv);
     }
 
     /// <summary>将设备变量实体与其模板映射为 DTO；模板缺失时以空串/默认值兜底。</summary>
-    private static DeviceVariableDto MapToDto(DeviceVariable dv, ModelVariable? mv)
+    private static DataPointMappingDto MapToDto(DataPointMapping dv, DataPoint? mv)
     {
         var templateAccessMode = mv?.AccessMode ?? "Read";
         // 阶段 4 权限解析：实例覆盖组合语义保持——Override=true 强制只读、false 强制可写、null 继承模板。
@@ -194,11 +194,11 @@ public class DeviceVariableAppService : IDeviceVariableAppService
             false => "ReadWrite",
             null => templateAccessMode
         };
-        return new DeviceVariableDto
+        return new DataPointMappingDto
         {
             Id = dv.Id,
             DeviceId = dv.DeviceId,
-            ModelVariableId = dv.ModelVariableId,
+            DataPointId = dv.DataPointId,
             Key = mv?.Key ?? string.Empty,
             Name = mv?.Name ?? string.Empty,
             DataType = mv?.DataType ?? default,

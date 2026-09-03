@@ -96,6 +96,6 @@ namespace ScadaServer.Domain.Entities
         /// 模型包含的变量列表
         /// </summary>
         [NotMapped]
-        public List<ModelVariable>? Variables { get; set; }
+        public List<DataPoint>? Variables { get; set; }
     }
 }

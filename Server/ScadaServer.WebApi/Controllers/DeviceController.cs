@@ -51,7 +51,7 @@ namespace ScadaServer.WebApi.Controllers
         /// 端点受全局 FallbackPolicy 默认认证保护；物理写入结果经 SignalR 广播，各客户端刷新后可见新值。
         /// </summary>
         /// <param name="id">设备ID</param>
-        /// <param name="variableKey">变量业务键（ModelVariable.Key）</param>
+        /// <param name="variableKey">变量业务键（DataPoint.Key）</param>
         /// <param name="dto">写入请求，Value 为待写入原始值</param>
         /// <returns>统一成功响应；校验/写入失败抛 BusinessException 由全局异常处理返回</returns>
         /// 阶段6-2：控制写入（物理下发强制/控制命令）仅授权 Operator/Admin 角色，

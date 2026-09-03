@@ -27,7 +27,7 @@ public class VariableExportService
     /// </summary>
     /// <param name="variables">待导出的模型变量列表</param>
     /// <returns>xlsx 文件的字节数组</returns>
-    public byte[] ExportXlsx(List<ModelVariableDto> variables)
+    public byte[] ExportXlsx(List<DataPointDto> variables)
     {
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Variables");
@@ -79,7 +79,7 @@ public class VariableExportService
     /// </summary>
     /// <param name="variables">待导出的模型变量列表</param>
     /// <returns>CSV 文件的字节数组</returns>
-    public byte[] ExportCsv(List<ModelVariableDto> variables)
+    public byte[] ExportCsv(List<DataPointDto> variables)
     {
         var sb = new StringBuilder();
         sb.Append(string.Join(",", Headers)).Append('\n');

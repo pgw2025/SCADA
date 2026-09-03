@@ -8,7 +8,7 @@ namespace ScadaServer.Application.DTOs;
 /// <summary>
 /// 数据模型变量模板 DTO（定义模型下每个变量的类型、存储、缩放与读写权限）。
 /// </summary>
-public class ModelVariableDto
+public class DataPointDto
 {
     /// <summary>变量模板ID（主键，创建时由服务端生成）</summary>
     public int Id { get; set; }

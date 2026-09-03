@@ -10,7 +10,7 @@ namespace ScadaServer.Application.Converters
     /// 前端曾使用 Boolean / Int16 / Int32 / Float / Double / String / Integer / Word / Char 等习惯命名。
     /// 反序列化时按大小写不敏感 + 常见别名映射解析，序列化时输出后端规范枚举名。
     /// 通过 <c>[JsonConverter(typeof(DataTypeEnumJsonConverter))]</c> 特性标注在
-    /// <see cref="DTOs.ModelVariableDto"/> / <see cref="DTOs.DeviceVariableDto"/> 的 DataType 属性上。
+    /// <see cref="DTOs.DataPointDto"/> / <see cref="DTOs.DataPointMappingDto"/> 的 DataType 属性上。
     /// </summary>
     public class DataTypeEnumJsonConverter : JsonConverter<DataTypeEnum>
     {

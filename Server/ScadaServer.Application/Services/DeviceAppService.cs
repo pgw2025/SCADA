@@ -23,9 +23,9 @@ namespace ScadaServer.Application.Services
         /// <summary>数据模型仓储，用于校验模型是否存在并推导协议。</summary>
         private readonly IDataModelRepository _modelRepository;
         /// <summary>变量模板仓储，用于生成设备变量实例。</summary>
-        private readonly IModelVariableRepository _modelVariableRepository;
+        private readonly IDataPointRepository _dataPointRepository;
         /// <summary>设备变量实例仓储，用于聚合设备变量。</summary>
-        private readonly IDeviceVariableRepository _deviceVariableRepository;
+        private readonly IDataPointMappingRepository _dataPointMappingRepository;
         /// <summary>控制器仓储（阶段 3 双写：为设备维护独占控制器）。</summary>
         private readonly IControllerRepository _controllerRepository;
         /// <summary>设备连接仓储（阶段 3 双写：连接参数抽取实体）。</summary>
@@ -46,8 +46,8 @@ namespace ScadaServer.Application.Services
             IDeviceRepository repository,
             IAreaRepository areaRepository,
             IDataModelRepository modelRepository,
-            IModelVariableRepository modelVariableRepository,
-            IDeviceVariableRepository deviceVariableRepository,
+            IDataPointRepository dataPointRepository,
+            IDataPointMappingRepository dataPointMappingRepository,
             IControllerRepository controllerRepository,
             IDeviceConnectionRepository connectionRepository,
             IDeviceDataModelRepository bindingRepository,
@@ -59,8 +59,8 @@ namespace ScadaServer.Application.Services
             _repository = repository;
             _areaRepository = areaRepository;
             _modelRepository = modelRepository;
-            _modelVariableRepository = modelVariableRepository;
-            _deviceVariableRepository = deviceVariableRepository;
+            _dataPointRepository = dataPointRepository;
+            _dataPointMappingRepository = dataPointMappingRepository;
             _controllerRepository = controllerRepository;
             _connectionRepository = connectionRepository;
             _bindingRepository = bindingRepository;
@@ -76,7 +76,7 @@ namespace ScadaServer.Application.Services
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
 
-            var variables = await LoadDeviceVariablesAsync(entity.Id, entity.ModelId);
+            var variables = await LoadDataPointMappingsAsync(entity.Id, entity.ModelId);
             return ToDto(entity, variables);
         }
 
@@ -86,25 +86,25 @@ namespace ScadaServer.Application.Services
             var list = await _repository.GetListAsync();
 
             // N+1 优化：一次性加载全量设备变量与变量模板，循环内仅内存组装，避免每台设备额外查询。
-            Dictionary<int, List<DeviceVariableDto>>? variablesByDevice = null;
+            Dictionary<int, List<DataPointMappingDto>>? variablesByDevice = null;
             if (includeVariables && list.Count > 0)
             {
-                var allDeviceVariables = await _deviceVariableRepository.GetListAsync();
-                var allModelVariables = await _modelVariableRepository.GetListAsync();
-                var mvMap = allModelVariables.ToDictionary(mv => mv.Id);
+                var allDataPointMappings = await _dataPointMappingRepository.GetListAsync();
+                var allDataPoints = await _dataPointRepository.GetListAsync();
+                var mvMap = allDataPoints.ToDictionary(mv => mv.Id);
 
-                variablesByDevice = allDeviceVariables
+                variablesByDevice = allDataPointMappings
                     .GroupBy(dv => dv.DeviceId)
                     .ToDictionary(
                         g => g.Key,
-                        g => g.Select(dv => MapDeviceVariableDto(dv, mvMap)).ToList());
+                        g => g.Select(dv => MapDataPointMappingDto(dv, mvMap)).ToList());
             }
 
             return list.Select(entity =>
             {
-                List<DeviceVariableDto> variables = variablesByDevice != null && variablesByDevice.TryGetValue(entity.Id, out var vs)
+                List<DataPointMappingDto> variables = variablesByDevice != null && variablesByDevice.TryGetValue(entity.Id, out var vs)
                     ? vs
-                    : new List<DeviceVariableDto>();
+                    : new List<DataPointMappingDto>();
                 return ToDto(entity, variables);
             }).ToList();
         }
@@ -119,7 +119,7 @@ namespace ScadaServer.Application.Services
         };
 
         /// <summary>将设备实体映射为 DTO，并解析运行时状态与连接参数派生字段。</summary>
-        private DeviceDto ToDto(Device entity, List<DeviceVariableDto>? variables)
+        private DeviceDto ToDto(Device entity, List<DataPointMappingDto>? variables)
         {
             var dto = new DeviceDto
             {
@@ -301,14 +301,14 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>将设备变量实例与其变量模板映射为 DTO（模板缺失时 Key/Name 为空、DataType 取默认值）。</summary>
-        private static DeviceVariableDto MapDeviceVariableDto(DeviceVariable dv, Dictionary<int, ModelVariable> mvMap)
+        private static DataPointMappingDto MapDataPointMappingDto(DataPointMapping dv, Dictionary<int, DataPoint> mvMap)
         {
-            mvMap.TryGetValue(dv.ModelVariableId, out var mv);
-            return new DeviceVariableDto
+            mvMap.TryGetValue(dv.DataPointId, out var mv);
+            return new DataPointMappingDto
             {
                 Id = dv.Id,
                 DeviceId = dv.DeviceId,
-                ModelVariableId = dv.ModelVariableId,
+                DataPointId = dv.DataPointId,
                 Key = mv?.Key ?? string.Empty,
                 Name = mv?.Name ?? string.Empty,
                 DataType = mv?.DataType ?? default,
@@ -324,20 +324,20 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
-        /// 聚合某设备的设备变量：关联各自的变量模板（ModelVariable），输出"定义 + 设备实例配置"。
+        /// 聚合某设备的设备变量：关联各自的变量模板（DataPoint），输出"定义 + 设备实例配置"。
         /// </summary>
-        private async Task<List<DeviceVariableDto>> LoadDeviceVariablesAsync(int deviceId, int modelId)
+        private async Task<List<DataPointMappingDto>> LoadDataPointMappingsAsync(int deviceId, int modelId)
         {
-            var deviceVariables = await _deviceVariableRepository.GetListAsync(dv => dv.DeviceId == deviceId);
-            if (deviceVariables.Count == 0)
+            var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DeviceId == deviceId);
+            if (dataPointMappings.Count == 0)
             {
-                return new List<DeviceVariableDto>();
+                return new List<DataPointMappingDto>();
             }
 
-            var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == modelId);
-            var mvMap = modelVariables.ToDictionary(mv => mv.Id);
+            var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == modelId);
+            var mvMap = dataPoints.ToDictionary(mv => mv.Id);
 
-            return deviceVariables.Select(dv => MapDeviceVariableDto(dv, mvMap)).ToList();
+            return dataPointMappings.Select(dv => MapDataPointMappingDto(dv, mvMap)).ToList();
         }
 
         /// <summary>
@@ -858,19 +858,19 @@ namespace ScadaServer.Application.Services
                     throw new BusinessException($"设备标识 '{dto.Key}' 已存在");
                 }
 
-                // 根据数据模型的变量模板，自动生成设备变量实例（DeviceVariable）。
+                // 根据数据模型的变量模板，自动生成设备变量实例（DataPointMapping）。
                 // 地址/位偏移/轮询间隔等采集细节已迁移到设备实例层，此处仅创建实例（IsEnabled=true），
                 // 具体地址后续在设备变量接口上单独配置；模板层不再携带这些字段。
-                var modelVariables = await _modelVariableRepository.GetListAsync(mv => mv.ModelId == model.Id);
-                if (modelVariables.Any())
+                var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == model.Id);
+                if (dataPoints.Any())
                 {
-                    var deviceVariables = modelVariables.Select(mv => new DeviceVariable
+                    var dataPointMappings = dataPoints.Select(mv => new DataPointMapping
                     {
                         DeviceId = entity.Id,
-                        ModelVariableId = mv.Id,
+                        DataPointId = mv.Id,
                         IsEnabled = true
                     }).ToList();
-                    await _deviceVariableRepository.InsertRangeAsync(deviceVariables);
+                    await _dataPointMappingRepository.InsertRangeAsync(dataPointMappings);
                 }
 
                 // 阶段 5 双写（P5）：主模型绑定行（IsPrimary=true）与 Device.ModelId 严格一致。

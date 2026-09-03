@@ -9,7 +9,7 @@ namespace ScadaServer.Domain.Addresses
     /// 地址的<strong>权威机读形态</strong>：不同协议以 <see cref="Protocol"/> 判别器区分，
     /// 各协议字段相互独立（未使用字段保持默认值/空）。前端只编辑本结构，后端持久化它，
     /// 并由 <see cref="AddressConfigSerializer.ToDisplay"/> 自动生成可读/驱动可消费的展示串
-    /// （写回 <c>DeviceVariable.Address</c>），保证"JSON = 权威源、字符串 = 展示冗余"的一致性。
+    /// （写回 <c>DataPointMapping.Address</c>），保证"JSON = 权威源、字符串 = 展示冗余"的一致性。
     /// </para>
     /// </summary>
     public class AddressConfig
@@ -104,7 +104,7 @@ namespace ScadaServer.Domain.Addresses
         }
 
         /// <summary>
-        /// 由结构化地址生成可读展示串（写回 DeviceVariable.Address）。
+        /// 由结构化地址生成可读展示串（写回 DataPointMapping.Address）。
         /// 生成的串需被对应驱动的地址解析器接受：
         /// S7 → <c>S7Driver.ParseAddress</c>；OPC UA → NodeId；Modbus → 起始地址。
         /// 结构非法或协议不支持时返回 null。

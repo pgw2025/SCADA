@@ -19,7 +19,7 @@ namespace ScadaServer.Application.Services;
 /// </summary>
 public static class ScaleExpressionValidator
 {
-    /// <summary>表达式最大长度，与 <c>ModelVariable.ScaleExpression</c> 的 [MaxLength] 保持一致。</summary>
+    /// <summary>表达式最大长度，与 <c>DataPoint.ScaleExpression</c> 的 [MaxLength] 保持一致。</summary>
     public const int MaxLength = 200;
 
     /// <summary>

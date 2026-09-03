@@ -132,7 +132,7 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     /// <summary>
     /// 模型变量仓储接口
     /// </summary>
-    public interface IModelVariableRepository : IRepository<ModelVariable, int> { }
+    public interface IDataPointRepository : IRepository<DataPoint, int> { }
 
     /// <summary>
     /// 通信协议仓储接口

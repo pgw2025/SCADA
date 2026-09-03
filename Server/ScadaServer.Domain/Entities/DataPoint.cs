@@ -7,8 +7,8 @@ namespace ScadaServer.Domain.Entities
     /// <summary>
     /// 模型变量实体
     /// </summary>
-    [Table("ModelVariables")]
-    public class ModelVariable
+    [Table("DataPoints")]
+    public class DataPoint
     {
         /// <summary>
         /// 主键ID，自增字段
@@ -158,12 +158,12 @@ namespace ScadaServer.Domain.Entities
         public Dictionary<string, string>? ExtensionData { get; set; }
 
         /// <summary>
-        /// 该模型变量在各设备上的实例化集合（<see cref="DeviceVariable"/>）。
+        /// 该模型变量在各设备上的实例化集合（<see cref="DataPointMapping"/>）。
         /// <para>
-        /// 一个 <see cref="ModelVariable"/> 模板可被多台设备各自实例化出一条 <see cref="DeviceVariable"/>，
+        /// 一个 <see cref="DataPoint"/> 模板可被多台设备各自实例化出一条 <see cref="DataPointMapping"/>，
         /// 因此这里是 1:N 关系；具体地址、轮询、缩放等实现细节由设备实例决定。
         /// </para>
         /// </summary>
-        public List<DeviceVariable> DeviceVariables { get; set; } = new();
+        public List<DataPointMapping> DataPointMappings { get; set; } = new();
     }
 }

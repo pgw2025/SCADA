@@ -49,10 +49,10 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();
         public DbSet<DeviceDataModel> DeviceDataModels => Set<DeviceDataModel>();
-        public DbSet<DeviceVariable> DeviceVariables => Set<DeviceVariable>();
+        public DbSet<DataPointMapping> DataPointMappings => Set<DataPointMapping>();
         public DbSet<ExposedInterface> ExposedInterfaces => Set<ExposedInterface>();
         public DbSet<HmiComponent> HmiComponents => Set<HmiComponent>();
-        public DbSet<ModelVariable> ModelVariables => Set<ModelVariable>();
+        public DbSet<DataPoint> DataPoints => Set<DataPoint>();
         public DbSet<Protocol> Protocols => Set<Protocol>();
         public DbSet<MqttServer> MqttServers => Set<MqttServer>();
         public DbSet<MqttVariableConfig> MqttVariableConfigs => Set<MqttVariableConfig>();
@@ -226,32 +226,32 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<HmiComponent>().ToTable("HmiComponents");
             // 模型变量：列宽显式限制为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引），
             // 并建立 (ModelId, Key) 库级唯一索引兜底，杜绝并发/直写库造成"模型内变量键重复"。
-            modelBuilder.Entity<ModelVariable>().ToTable("ModelVariables");
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>().ToTable("DataPoints");
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.Key).HasMaxLength(50);
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.Name).HasMaxLength(50);
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.Unit).HasMaxLength(32);
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.Description).HasMaxLength(500);
             // 工程换算表达式：显式限长，与实体 [MaxLength(200)] 及应用层校验保持一致
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.ScaleExpression).HasMaxLength(200);
             // 读写模式（阶段 4）：显式限长映射为 varchar(16)，与实体 [MaxLength(16)] 一致
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.AccessMode).HasMaxLength(16);
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .HasIndex(m => new { m.ModelId, m.Key })
                 .IsUnique()
                 .HasDatabaseName("ix_modelvariable_model_key");
             // 模型变量归属数据模型：显式 Restrict，删除模型前由应用层显式清理变量，杜绝孤儿或静默级联。
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .HasOne<DataModel>()
                 .WithMany()
                 .HasForeignKey(m => m.ModelId)
                 .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("FK_ModelVariables_DataModels_ModelId");
+                .HasConstraintName("FK_DataPoints_DataModels_ModelId");
 
             modelBuilder.Entity<Protocol>().ToTable("Protocols");
             modelBuilder.Entity<Protocol>()
@@ -280,15 +280,15 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<ScadaProject>().ToTable("ScadaProjects");
             modelBuilder.Entity<ScheduledTask>().ToTable("ScheduledTasks");
             modelBuilder.Entity<Sensor>().ToTable("Sensors");
-            modelBuilder.Entity<DeviceVariable>().ToTable("DeviceVariables");
+            modelBuilder.Entity<DataPointMapping>().ToTable("DataPointMappings");
             // 工程换算表达式覆盖值：显式限长，与实体 [MaxLength(200)] 保持一致
-            modelBuilder.Entity<DeviceVariable>()
+            modelBuilder.Entity<DataPointMapping>()
                 .Property(dv => dv.ScaleExpressionOverride).HasMaxLength(200);
             // 原始数据类型字符串形式（阶段 4）：显式限长映射为 varchar(32)，与实体 [MaxLength(32)] 一致
-            modelBuilder.Entity<DeviceVariable>()
+            modelBuilder.Entity<DataPointMapping>()
                 .Property(dv => dv.RawDataType).HasMaxLength(32);
-            modelBuilder.Entity<DeviceVariable>()
-                .HasIndex(dv => new { dv.DeviceId, dv.ModelVariableId })
+            modelBuilder.Entity<DataPointMapping>()
+                .HasIndex(dv => new { dv.DeviceId, dv.DataPointId })
                 .IsUnique()
                 .HasDatabaseName("ix_devicevariable_device_model");
             modelBuilder.Entity<SystemConfig>().ToTable("SystemConfig");
@@ -453,28 +453,28 @@ namespace ScadaServer.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(s => s.DeviceId);
 
-            modelBuilder.Entity<DeviceVariable>()
+            modelBuilder.Entity<DataPointMapping>()
                 .HasOne(dv => dv.Device)
-                .WithMany(d => d.DeviceVariables)
+                .WithMany(d => d.DataPointMappings)
                 .HasForeignKey(dv => dv.DeviceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<DeviceVariable>()
-                .HasOne(dv => dv.ModelVariable)
-                .WithMany(mv => mv.DeviceVariables)
-                .HasForeignKey(dv => dv.ModelVariableId)
+            modelBuilder.Entity<DataPointMapping>()
+                .HasOne(dv => dv.DataPoint)
+                .WithMany(mv => mv.DataPointMappings)
+                .HasForeignKey(dv => dv.DataPointId)
                 .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("FK_DeviceVariables_ModelVariables_ModelVariableId");
+                .HasConstraintName("FK_DataPointMappings_DataPoints_DataPointId");
 
             // 阶段 4 新增：设备变量 → 连接（可空 FK，Restrict，语义同 Device.ConnectionId——变量级覆盖，
             // 连接被引用后不可删除）。索引支撑「按连接检索变量」。
-            modelBuilder.Entity<DeviceVariable>()
+            modelBuilder.Entity<DataPointMapping>()
                 .HasOne<DeviceConnection>()
                 .WithMany()
                 .HasForeignKey(dv => dv.ConnectionId)
                 .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("FK_DeviceVariables_DeviceConnections_ConnectionId");
-            modelBuilder.Entity<DeviceVariable>()
+                .HasConstraintName("FK_DataPointMappings_DeviceConnections_ConnectionId");
+            modelBuilder.Entity<DataPointMapping>()
                 .HasIndex(dv => dv.ConnectionId)
                 .HasDatabaseName("ix_devicevariables_connectionid");
 
@@ -483,12 +483,12 @@ namespace ScadaServer.Infrastructure.Persistence
                 .Property(c => c.PropsJson)
                 .HasColumnType("longtext");
 
-            modelBuilder.Entity<ModelVariable>()
+            modelBuilder.Entity<DataPoint>()
                 .Property(m => m.ExtensionData)
                 .HasConversion(ExtensionDataConverter, ExtensionDataComparer)
                 .HasColumnType("longtext");
 
-            modelBuilder.Entity<DeviceVariable>()
+            modelBuilder.Entity<DataPointMapping>()
                 .Property(dv => dv.ExtensionData)
                 .HasConversion(ExtensionDataConverter, ExtensionDataComparer)
                 .HasColumnType("longtext");

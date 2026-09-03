@@ -20,10 +20,10 @@ namespace ScadaServer.Infrastructure.Communication
     /// 负责连接管理、单点/批量读取、地址解析与线程安全的 PLC 访问。
     /// 接口严格遵循 IProtocolDriver，不引入任何第三方库。
     /// <para>
-    /// 地址与数据类型的职责划分：地址（DeviceVariable.Address）只描述
+    /// 地址与数据类型的职责划分：地址（DataPointMapping.Address）只描述
     /// <b>位置</b>（Area / DB 号 / 字节偏移 / 位偏移）与 <b>访问宽度</b>（1/2/4 字节）；
     /// 值的<b>解释类型</b>（BIT/BYTE/INT/DINT/REAL/...）唯一由
-    /// <see cref="IRuntimeVariable.DataType"/>（来源 ModelVariable.DataType）决定。
+    /// <see cref="IRuntimeVariable.DataType"/>（来源 DataPoint.DataType）决定。
     /// 地址助记符（DBW/DBD/DBR 等）不再决定数据类型，消除"DBD 固定按 DINT 解析"与
     /// DataType=REAL 的冲突。
     /// </para>
@@ -299,7 +299,7 @@ namespace ScadaServer.Infrastructure.Communication
                 // 地址只提供位置与宽度，值的解释类型由 DataType 决定：
                 // 按地址宽度读取原始字节，再按 DataType 提取，消除地址助记符
                 // 与 DataType 的类型冲突（如 DB1.DBD20 + REAL 按 REAL 解析而非 DINT）。
-                // 地址来源：RuntimeVariable.Address（由 DeviceVariable.Address 解析，驱动不感知 ModelVariable）。
+                // 地址来源：RuntimeVariable.Address（由 DataPointMapping.Address 解析，驱动不感知 DataPoint）。
                 var info = ParseAddress(variable.Address);
                 if (info == null)
                 {
@@ -371,7 +371,7 @@ namespace ScadaServer.Infrastructure.Communication
                 // 1) 解析地址并校验地址-数据类型匹配：非法地址或类型不匹配（点表配置错误）
                 //    立即反馈 INVALID_ADDRESS，空变量跳过。
                 //    地址只提供位置与宽度；值的解释类型由 RuntimeVariable.DataType 决定。
-                // 地址来源：RuntimeVariable.Address（DeviceVariable.Address 权威，驱动不感知 ModelVariable）。
+                // 地址来源：RuntimeVariable.Address（DataPointMapping.Address 权威，驱动不感知 DataPoint）。
                 var valid = new List<(IRuntimeVariable Variable, S7AddressInfo Info)>();
                 foreach (var v in variables)
                 {
@@ -991,7 +991,7 @@ namespace ScadaServer.Infrastructure.Communication
             };
 
             // 地址助记符仅决定访问宽度（位/字节=1、字=2、双字=4），不决定值的解释类型：
-            // 值类型统一由 ModelVariable.DataType（经 RuntimeVariable.DataType）决定。
+            // 值类型统一由 DataPoint.DataType（经 RuntimeVariable.DataType）决定。
             // DBR 与 DBD 同为 4 字节宽度（DBR 是 REAL 的习惯地址写法，仅表宽度）。
             switch (typeStr)
             {

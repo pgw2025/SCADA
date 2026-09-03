@@ -6,21 +6,21 @@ using ScadaServer.Domain.Enums;
 namespace ScadaServer.Application.DTOs;
 
 /// <summary>
-/// 设备变量 DTO：聚合"变量模板定义（来自 ModelVariable）"与"设备实例配置（来自 DeviceVariable）"。
+/// 设备变量 DTO：聚合"变量模板定义（来自 DataPoint）"与"设备实例配置（来自 DataPointMapping）"。
 /// 前端通过 Device.Variables 获取每台设备上每个变量的定义信息与在设备上的落地配置。
 /// </summary>
-public class DeviceVariableDto
+public class DataPointMappingDto
 {
-    /// <summary>设备变量实例ID（DeviceVariable.Id）</summary>
+    /// <summary>设备变量实例ID（DataPointMapping.Id）</summary>
     public int Id { get; set; }
 
     /// <summary>所属设备ID</summary>
     public int DeviceId { get; set; }
 
-    /// <summary>关联变量模板ID（ModelVariable.Id）</summary>
-    public int ModelVariableId { get; set; }
+    /// <summary>关联变量模板ID（DataPoint.Id）</summary>
+    public int DataPointId { get; set; }
 
-    // ===== 变量定义（来自 ModelVariable 模板）=====
+    // ===== 变量定义（来自 DataPoint 模板）=====
 
     /// <summary>变量标识（来自模板，全局唯一键）</summary>
     [StringLength(100, ErrorMessage = "变量键不能超过100个字符")]
@@ -38,7 +38,7 @@ public class DeviceVariableDto
     [StringLength(50, ErrorMessage = "单位不能超过50个字符")]
     public string? Unit { get; set; }
 
-    // ===== 设备实例配置（来自 DeviceVariable）=====
+    // ===== 设备实例配置（来自 DataPointMapping）=====
 
     /// <summary>设备实例上的实际寄存器地址。空 → 回退模板（过渡期兼容）。</summary>
     [StringLength(500, ErrorMessage = "地址不能超过500个字符")]
@@ -80,7 +80,7 @@ public class DeviceVariableDto
     [StringLength(32, ErrorMessage = "原始数据类型不能超过32个字符")]
     public string? RawDataType { get; set; }
 
-    // ===== 回显字段（来自 ModelVariable 模板，只出不进）=====
+    // ===== 回显字段（来自 DataPoint 模板，只出不进）=====
 
     /// <summary>模板定义的读写模式（阶段 4 权威，用于前端展示"继承"时的模板当前值）。</summary>
     public string TemplateAccessMode { get; set; } = "Read";

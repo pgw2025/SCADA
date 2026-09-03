@@ -33,7 +33,7 @@ namespace ScadaServer.Application.Interfaces
         /// 不抛异常：写入结果以 <see cref="ValueTuple{bool,String}"/> 返回，Success=false 时 ErrorMessage 为可展示原因。
         /// </summary>
         /// <param name="deviceId">设备 ID</param>
-        /// <param name="variableKey">变量业务键（ModelVariable.Key）</param>
+        /// <param name="variableKey">变量业务键（DataPoint.Key）</param>
         /// <param name="value">待写入的原始值</param>
         /// <param name="writeSource">写入来源（如「系统脚本」「变量绑定」）；非空时在运行时层记录写入审计日志，null（默认）表示 HTTP 用户写入（由 WebApi 审计过滤器记录）</param>
         /// <returns>(Success, ErrorMessage)；Success=true 时 ErrorMessage 为 null</returns>

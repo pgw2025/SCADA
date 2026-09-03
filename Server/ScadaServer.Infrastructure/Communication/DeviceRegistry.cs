@@ -12,14 +12,14 @@ namespace ScadaServer.Infrastructure.Communication
     /// </remarks>
     public class DeviceRegistry
     {
-        private readonly ConcurrentDictionary<int, (Device Device, List<ModelVariable> Variables)> _deviceCache = new();
+        private readonly ConcurrentDictionary<int, (Device Device, List<DataPoint> Variables)> _deviceCache = new();
 
         /// <summary>
         /// 更新设备配置
         /// </summary>
         /// <param name="device">设备实体</param>
         /// <param name="variables">变量列表</param>
-        public void UpdateDevice(Device device, List<ModelVariable> variables)
+        public void UpdateDevice(Device device, List<DataPoint> variables)
         {
             _deviceCache[device.Id] = (device, variables);
         }
@@ -38,7 +38,7 @@ namespace ScadaServer.Infrastructure.Communication
         /// </summary>
         /// <param name="deviceId">设备ID</param>
         /// <returns>设备及其变量元组，未找到返回null</returns>
-        public (Device Device, List<ModelVariable> Variables)? GetDeviceConfig(int deviceId)
+        public (Device Device, List<DataPoint> Variables)? GetDeviceConfig(int deviceId)
         {
             if (_deviceCache.TryGetValue(deviceId, out var config))
             {

@@ -88,7 +88,7 @@ public class TiaXlsxParser
                 Path = SafeString(GetCellText(worksheet, r, colPath))
             };
 
-            // Key 校验：与后端 ModelVariableDto 规则一致
+            // Key 校验：与后端 DataPointDto 规则一致
             if (string.IsNullOrWhiteSpace(row.Key))
             {
                 row.HasError = true;

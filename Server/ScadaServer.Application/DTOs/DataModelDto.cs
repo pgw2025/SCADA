@@ -71,6 +71,6 @@ namespace ScadaServer.Application.DTOs
         /// <summary>
         /// 模型下的变量列表
         /// </summary>
-        public List<ModelVariableDto>? Variables { get; set; }
+        public List<DataPointDto>? Variables { get; set; }
     }
 }

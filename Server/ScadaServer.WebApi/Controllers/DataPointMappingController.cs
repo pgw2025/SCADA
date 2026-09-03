@@ -8,16 +8,16 @@ namespace ScadaServer.WebApi.Controllers;
 
 /// <summary>
 /// 设备变量控制器：维护变量在设备上的实例配置（地址、位偏移、轮询间隔、启用状态、缩放/死区）。
-/// 与 ModelVariable（变量模板）相互独立——本控制器操作的是"某设备上的某变量实例"。
+/// 与 DataPoint（变量模板）相互独立——本控制器操作的是"某设备上的某变量实例"。
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "RequireAdmin")]
-public class DeviceVariableController : ControllerBase
+public class DataPointMappingController : ControllerBase
 {
-    private readonly IDeviceVariableAppService _appService;
+    private readonly IDataPointMappingAppService _appService;
 
-    public DeviceVariableController(IDeviceVariableAppService appService)
+    public DataPointMappingController(IDataPointMappingAppService appService)
     {
         _appService = appService;
     }
@@ -35,7 +35,7 @@ public class DeviceVariableController : ControllerBase
     /// </summary>
     [HttpPost]
     [AuditLog("设备变量", "CREATE")]
-    public async Task<IActionResult> Create([FromBody] CreateDeviceVariableDto dto) =>
+    public async Task<IActionResult> Create([FromBody] CreateDataPointMappingDto dto) =>
         Ok(await _appService.CreateAsync(dto));
 
     /// <summary>
@@ -55,6 +55,6 @@ public class DeviceVariableController : ControllerBase
     /// </summary>
     [HttpPut]
     [AuditLog("设备变量", "UPDATE")]
-    public async Task<IActionResult> Update([FromBody] DeviceVariableDto dto) =>
+    public async Task<IActionResult> Update([FromBody] DataPointMappingDto dto) =>
         Ok(await _appService.UpdateAsync(dto));
 }

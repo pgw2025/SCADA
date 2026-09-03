@@ -7,7 +7,7 @@ namespace ScadaServer.Runtime.Devices;
 /// <summary>
 /// 设备运行时对象（即"RuntimeDevice"）。
 /// 启动时由 RuntimeManager 依据以下链路构建：
-/// Device → DataModel(→Protocol) → DeviceVariable(→ModelVariable)。
+/// Device → DataModel(→Protocol) → DataPointMapping(→DataPoint)。
 /// 持有设备实体、数据模型、协议、配置、驱动实例，以及解析后的变量运行时集合。
 /// </summary>
 public class DeviceRuntime : IRuntimeDevice
@@ -49,7 +49,7 @@ public class DeviceRuntime : IRuntimeDevice
     // 驱动实例
     public IProtocolDriver Driver { get; set; } = null!;
 
-    // 变量运行时集合（key = DeviceVariable.Id）
+    // 变量运行时集合（key = DataPointMapping.Id）
     public Dictionary<int, VariableRuntime> Variables { get; } = new();
 
     // 通信状态

@@ -16,7 +16,7 @@ namespace ScadaServer.Application.Services
         /// <summary>数据模型仓储，提供持久化能力。</summary>
         private readonly IDataModelRepository _repository;
         /// <summary>模型变量仓储，用于加载/删除模型下的变量模板。</summary>
-        private readonly IModelVariableRepository _variableRepository;
+        private readonly IDataPointRepository _variableRepository;
         /// <summary>设备仓储，用于删除模型前校验引用。</summary>
         private readonly IDeviceRepository _deviceRepository;
         /// <summary>协议仓储，用于校验模型绑定的协议是否存在且启用。</summary>
@@ -27,7 +27,7 @@ namespace ScadaServer.Application.Services
         /// <summary>构造函数：注入模型、变量、设备、协议仓储及工作单元。</summary>
         public DataModelAppService(
             IDataModelRepository repository,
-            IModelVariableRepository variableRepository,
+            IDataPointRepository variableRepository,
             IDeviceRepository deviceRepository,
             IProtocolRepository protocolRepository,
             IUnitOfWork uow)
@@ -53,13 +53,13 @@ namespace ScadaServer.Application.Services
             var list = await _repository.GetListAsync();
 
             // N+1 优化：一次性取出全部模型变量并按 ModelId 分组，循环内仅内存组装。
-            Dictionary<int, List<ModelVariableDto>>? mvByModel = null;
+            Dictionary<int, List<DataPointDto>>? mvByModel = null;
             if (includeVariables)
             {
                 var allVariables = await _variableRepository.GetListAsync();
                 mvByModel = allVariables
                     .GroupBy(mv => mv.ModelId)
-                    .ToDictionary(g => g.Key, g => g.Select(ModelVariableMapper.ToDto).ToList());
+                    .ToDictionary(g => g.Key, g => g.Select(DataPointMapper.ToDto).ToList());
             }
 
             return list.Select(entity => ToDto(entity, mvByModel)).ToList();
@@ -71,20 +71,20 @@ namespace ScadaServer.Application.Services
         /// </summary>
         private async Task<DataModelDto> MapToDtoAsync(DataModel entity, bool includeVariables)
         {
-            Dictionary<int, List<ModelVariableDto>>? mvByModel = null;
+            Dictionary<int, List<DataPointDto>>? mvByModel = null;
             if (includeVariables)
             {
                 var variables = await _variableRepository.GetListAsync(mv => mv.ModelId == entity.Id);
-                mvByModel = new Dictionary<int, List<ModelVariableDto>>
+                mvByModel = new Dictionary<int, List<DataPointDto>>
                 {
-                    [entity.Id] = variables.Select(ModelVariableMapper.ToDto).ToList()
+                    [entity.Id] = variables.Select(DataPointMapper.ToDto).ToList()
                 };
             }
             return ToDto(entity, mvByModel);
         }
 
         /// <summary>实体 → DTO（同步组装）。优先复用 <paramref name="mvByModel"/> 一次加载的变量，未命中时输出空列表。</summary>
-        private static DataModelDto ToDto(DataModel entity, Dictionary<int, List<ModelVariableDto>>? mvByModel)
+        private static DataModelDto ToDto(DataModel entity, Dictionary<int, List<DataPointDto>>? mvByModel)
         {
             // 协议字段来自 Include 加载的 Protocol 导航属性
             var dto = new DataModelDto
@@ -101,7 +101,7 @@ namespace ScadaServer.Application.Services
                 ProtocolId = entity.ProtocolId,
                 ProtocolKey = entity.Protocol?.Key,
                 ProtocolName = entity.Protocol?.Name,
-                Variables = new List<ModelVariableDto>()
+                Variables = new List<DataPointDto>()
             };
 
             if (mvByModel != null && mvByModel.TryGetValue(entity.Id, out var variables))

@@ -126,11 +126,11 @@ namespace ScadaServer.Domain.Entities
         /// <summary>
         /// 该设备下的设备变量实例（变量在设备上的具体实现）。
         /// <para>
-        /// 一台设备可包含多条 <see cref="DeviceVariable"/>，每条对应其模型 <see cref="DataModel"/> 中
-        /// 一个 <see cref="ModelVariable"/> 的实例化；设备实例上可覆盖地址、轮询间隔、缩放、死区等。
+        /// 一台设备可包含多条 <see cref="DataPointMapping"/>，每条对应其模型 <see cref="DataModel"/> 中
+        /// 一个 <see cref="DataPoint"/> 的实例化；设备实例上可覆盖地址、轮询间隔、缩放、死区等。
         /// </para>
         /// </summary>
-        public List<DeviceVariable> DeviceVariables { get; set; } = new();
+        public List<DataPointMapping> DataPointMappings { get; set; } = new();
 
         /// <summary>
         /// 设备-数据模型绑定（阶段 5：多对多中间表，删设备时随 FK Cascade 自动清理）。

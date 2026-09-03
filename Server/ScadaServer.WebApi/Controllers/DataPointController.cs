@@ -9,11 +9,11 @@ namespace ScadaServer.WebApi.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize(Policy = "RequireAdmin")]
-    public class ModelVariableController : ControllerBase
+    public class DataPointController : ControllerBase
     {
-        private readonly IModelVariableAppService _appService;
+        private readonly IDataPointAppService _appService;
 
-        public ModelVariableController(IModelVariableAppService appService)
+        public DataPointController(IDataPointAppService appService)
         {
             _appService = appService;
         }
@@ -29,7 +29,7 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] ModelVariableDto dto)
+        public async Task<IActionResult> Create([FromBody] DataPointDto dto)
         {
             var result = await _appService.CreateAsync(dto);
             return Ok(result);
@@ -46,9 +46,9 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] ModelVariableDto dto)
+        public async Task<IActionResult> Update(int id, [FromBody] DataPointDto dto)
         {
-            // 从路由取 id，与前端 variableApi PUT /api/ModelVariable/{id} 契约对齐
+            // 从路由取 id，与前端 variableApi PUT /api/DataPoint/{id} 契约对齐
             dto.Id = id;
             var result = await _appService.UpdateAsync(dto);
             return Ok(result);

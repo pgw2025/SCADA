@@ -159,7 +159,7 @@ namespace ScadaServer.Application.DTOs
         /// 设备下的变量列表（聚合变量模板定义与设备实例配置）。
         /// <para>新增字段：前端可据此展示每个变量的"定义 + 设备配置"；既有接口字段不受影响，旧客户端可忽略。</para>
         /// </summary>
-        public List<DeviceVariableDto>? Variables { get; set; }
+        public List<DataPointMappingDto>? Variables { get; set; }
 
         /// <summary>
         /// 设备-数据模型绑定列表（阶段 5：多对多绑定，含主模型 IsPrimary=true 行）。

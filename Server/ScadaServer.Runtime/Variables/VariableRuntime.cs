@@ -4,60 +4,60 @@ using ScadaServer.Domain.Interfaces;
 
 /// <summary>
 /// 变量运行时对象（即"RuntimeVariable"）。
-/// 聚合"变量模板定义"(<see cref="ModelVariable"/>) 与"设备实例配置"(<see cref="DeviceVariable"/>)，
+/// 聚合"变量模板定义"(<see cref="DataPoint"/>) 与"设备实例配置"(<see cref="DataPointMapping"/>)，
 /// 形成运行时实际使用的解析结果，供采集调度与驱动调用消费。
 /// <para>
 /// 设计要点：
-/// 1. 变量"是什么"（Key / Name / DataType / Unit / 缩放定义等）来自 <see cref="Definition"/>（ModelVariable 模板）；
-/// 2. 变量"在具体设备上怎么实现"（Address / BitOffset / PollingInterval / 缩放覆盖等）来自 <see cref="Instance"/>（DeviceVariable 设备配置）；
+/// 1. 变量"是什么"（Key / Name / DataType / Unit / 缩放定义等）来自 <see cref="Definition"/>（DataPoint 模板）；
+/// 2. 变量"在具体设备上怎么实现"（Address / BitOffset / PollingInterval / 缩放覆盖等）来自 <see cref="Instance"/>（DataPointMapping 设备配置）；
 /// 3. 解析后的实际地址 / 轮询间隔 / 缩放均优先取自设备实例，为空时回退到模板；
-/// 4. <b>运行时严禁直接访问 ModelVariable.Address</b>——地址一律经 <see cref="Address"/> 由 DeviceVariable 提供。
+/// 4. <b>运行时严禁直接访问 DataPoint.Address</b>——地址一律经 <see cref="Address"/> 由 DataPointMapping 提供。
 /// </para>
 /// </summary>
 public class VariableRuntime : IRuntimeVariable
 {
-    /// <summary>变量模板定义（来自 ModelVariable）。</summary>
-    public ModelVariable Definition { get; init; } = null!;
+    /// <summary>变量模板定义（来自 DataPoint）。</summary>
+    public DataPoint Definition { get; init; } = null!;
 
-    /// <summary>设备实例配置（来自 DeviceVariable）。过渡期理论上一经初始化即有值；为空时按模板兜底。</summary>
-    public DeviceVariable? Instance { get; init; }
+    /// <summary>设备实例配置（来自 DataPointMapping）。过渡期理论上一经初始化即有值；为空时按模板兜底。</summary>
+    public DataPointMapping? Instance { get; init; }
 
-    // ===================== 变量定义（来自 ModelVariable） =====================
-    /// <summary>变量业务键（来自 ModelVariable.Key）。</summary>
+    // ===================== 变量定义（来自 DataPoint） =====================
+    /// <summary>变量业务键（来自 DataPoint.Key）。</summary>
     public string Key => Definition.Key;
 
-    /// <summary>变量名称（来自 ModelVariable.Name）。</summary>
+    /// <summary>变量名称（来自 DataPoint.Name）。</summary>
     public string Name => Definition.Name;
 
-    /// <summary>数据类型（来自 ModelVariable.DataType）。</summary>
+    /// <summary>数据类型（来自 DataPoint.DataType）。</summary>
     public DataTypeEnum DataType => Definition.DataType;
 
-    /// <summary>单位（来自 ModelVariable.Unit）。</summary>
+    /// <summary>单位（来自 DataPoint.Unit）。</summary>
     public string? Unit => Definition.Unit;
 
-    /// <summary>最小值（来自 ModelVariable.Min）。</summary>
+    /// <summary>最小值（来自 DataPoint.Min）。</summary>
     public double? Min => Definition.Min;
 
-    /// <summary>最大值（来自 ModelVariable.Max）。</summary>
+    /// <summary>最大值（来自 DataPoint.Max）。</summary>
     public double? Max => Definition.Max;
 
-    // ===================== 设备配置（来自 DeviceVariable，回退模板） =====================
+    // ===================== 设备配置（来自 DataPointMapping，回退模板） =====================
 
     /// <summary>
-    /// 实际寄存器地址。来源：DeviceVariable.Address（权威）。
-    /// <para>本阶段不回退到 ModelVariable.Address（已禁止运行时访问），缺失视为空地址。</para>
+    /// 实际寄存器地址。来源：DataPointMapping.Address（权威）。
+    /// <para>本阶段不回退到 DataPoint.Address（已禁止运行时访问），缺失视为空地址。</para>
     /// </summary>
     public string Address => Instance?.Address ?? string.Empty;
 
-    /// <summary>位偏移。来源：DeviceVariable.BitOffset（设备实例级权威；模板层已移除该字段）。</summary>
+    /// <summary>位偏移。来源：DataPointMapping.BitOffset（设备实例级权威；模板层已移除该字段）。</summary>
     public int? BitOffset => Instance?.BitOffset;
 
-    /// <summary>轮询间隔(ms)。来源：DeviceVariable.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。</summary>
+    /// <summary>轮询间隔(ms)。来源：DataPointMapping.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。</summary>
     public int PollingIntervalMs => Instance?.PollingIntervalMs ?? 1000;
 
     /// <summary>
     /// 工程换算表达式（原始值 → 工程值，以 x 代表原始值）。
-    /// 来源：DeviceVariable.ScaleExpressionOverride 优先，否则模板 ScaleExpression；空 = 恒等变换。
+    /// 来源：DataPointMapping.ScaleExpressionOverride 优先，否则模板 ScaleExpression；空 = 恒等变换。
     /// 求值由 <c>ScadaServer.Runtime.DataConversion.VariableScaling</c> 在采集/写入链路调用。
     /// </summary>
     public string? ScaleExpression =>
@@ -65,19 +65,19 @@ public class VariableRuntime : IRuntimeVariable
             ? Instance!.ScaleExpressionOverride
             : Definition.ScaleExpression;
 
-    /// <summary>死区。来源：DeviceVariable.DeadBandOverride 优先，否则模板 DeadBand。</summary>
+    /// <summary>死区。来源：DataPointMapping.DeadBandOverride 优先，否则模板 DeadBand。</summary>
     public double? DeadBand => Instance?.DeadBandOverride ?? Definition.DeadBand;
 
     /// <summary>该变量在设备实例上是否启用。</summary>
     public bool IsEnabled => Instance?.IsEnabled ?? true;
 
-    /// <summary>有效读写权限。来源：DeviceVariable.IsReadOnlyOverride 优先，否则模板 IsReadOnly。</summary>
+    /// <summary>有效读写权限。来源：DataPointMapping.IsReadOnlyOverride 优先，否则模板 IsReadOnly。</summary>
     public bool IsReadOnly => Instance?.IsReadOnlyOverride ?? Definition.IsReadOnly;
 
-    /// <summary>历史存储模式（来自 ModelVariable 模板）。</summary>
+    /// <summary>历史存储模式（来自 DataPoint 模板）。</summary>
     public StoreModeEnum StoreMode => Definition.StoreMode;
 
-    /// <summary>历史存储周期（毫秒，来自 ModelVariable 模板；为将来 DeviceVariable 覆盖预留扩展口子）。</summary>
+    /// <summary>历史存储周期（毫秒，来自 DataPoint 模板；为将来 DataPointMapping 覆盖预留扩展口子）。</summary>
     public int StoreIntervalMs => Definition.StoreIntervalMs;
 
     /// <summary>下一次应执行轮询的时间点（由采集调度维护）。</summary>

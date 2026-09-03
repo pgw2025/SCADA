@@ -5,7 +5,7 @@ namespace ScadaServer.Domain.Interfaces
     /// <para>
     /// 目的：让协议驱动层在连接设备时只依赖本接口（获得设备标识与连接配置），
     /// 而不感知具体运行时类型与 <c>Device</c> / <c>DataModel</c> 等实体，
-    /// 从而保证 <b>驱动不允许知道 DataModel / ModelVariable</b>。
+    /// 从而保证 <b>驱动不允许知道 DataModel / DataPoint</b>。
     /// </para>
     /// <para>
     /// 本接口定义在 Domain 层，保持依赖方向单向：Domain ← Infrastructure(驱动) ← Runtime(实现)。

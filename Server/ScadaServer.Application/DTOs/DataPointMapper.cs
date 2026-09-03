@@ -3,12 +3,12 @@ using ScadaServer.Domain.Entities;
 namespace ScadaServer.Application.DTOs;
 
 /// <summary>
-/// ModelVariable（变量模板实体）→ <see cref="ModelVariableDto"/> 的单一映射来源，
+/// DataPoint（变量模板实体）→ <see cref="DataPointDto"/> 的单一映射来源，
 /// 供数据模型服务与模型变量服务共用，避免字段漂移（如漏映射 StoreIntervalMs / Scale / DeadBand）。
 /// </summary>
-public static class ModelVariableMapper
+public static class DataPointMapper
 {
-    public static ModelVariableDto ToDto(ModelVariable v) => new()
+    public static DataPointDto ToDto(DataPoint v) => new()
     {
         Id = v.Id,
         ModelId = v.ModelId,

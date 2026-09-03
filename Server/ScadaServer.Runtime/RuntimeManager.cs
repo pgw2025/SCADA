@@ -171,14 +171,14 @@ namespace ScadaServer.Runtime
             var db = sp.GetRequiredService<ScadaDbContext>();
 
             // 加载所有启用设备及其完整运行期依赖：
-            // Device → Controller / Connection(→Protocol) / DataModel → DeviceVariable(→ModelVariable)
+            // Device → Controller / Connection(→Protocol) / DataModel → DataPointMapping(→DataPoint)
             // 阶段 6：连接参数与驱动协议均只取 Device.Connection（DataModel 仍加载用于主模型/绑定日志与空值守卫）。
-            // 运行时仅消费新模型；严禁直接访问 ModelVariable.Address，地址由 DeviceVariable 提供。
+            // 运行时仅消费新模型；严禁直接访问 DataPoint.Address，地址由 DataPointMapping 提供。
             var devices = await db.Devices
                 .Include(d => d.Controller)
                 .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
                 .Include(d => d.Model)
-                .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
+                .Include(d => d.DataPointMappings).ThenInclude(dv => dv.DataPoint)
                 // 阶段 5：绑定行仅用于启动日志统计（N 台绑定 / 主模型），运行时变量解析仍以 Device.Model（主模型）为唯一生效集合。
                 .Include(d => d.DeviceDataModels)
                 .Where(d => d.IsEnabled)
@@ -359,7 +359,7 @@ namespace ScadaServer.Runtime
 
         /// <summary>
         /// 按设备 ID 加载其完整运行期依赖对象图
-        /// （Device → Controller / Connection(→Protocol) / DataModel(→Protocol) → DeviceVariable(→ModelVariable)）。
+        /// （Device → Controller / Connection(→Protocol) / DataModel(→Protocol) → DataPointMapping(→DataPoint)）。
         /// 每次调用处于独立 Scope 内解析 DbContext，避免 Singleton 持有 Scoped DbContext。
         /// </summary>
         private async Task<Device?> LoadDeviceGraphByIdAsync(int deviceId)
@@ -370,7 +370,7 @@ namespace ScadaServer.Runtime
                 .Include(d => d.Controller)
                 .Include(d => d.Connection).ThenInclude(c => c!.Protocol)
                 .Include(d => d.Model)
-                .Include(d => d.DeviceVariables).ThenInclude(dv => dv.ModelVariable)
+                .Include(d => d.DataPointMappings).ThenInclude(dv => dv.DataPoint)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);
         }
 
@@ -401,7 +401,7 @@ namespace ScadaServer.Runtime
                 var protocolLabel = driverKey;
 
                 // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
-                // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / ModelVariable。
+                // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / DataPoint。
                 var runtime = new Devices.DeviceRuntime(device)
                 {
                     Device = device,
@@ -454,19 +454,19 @@ namespace ScadaServer.Runtime
                 runtime.ConnectionState = DeviceConnectionState.Connected;
 
                 var now = DateTime.UtcNow;
-                foreach (var dv in device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
+                foreach (var dv in device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
                 {
-                    if (dv.ModelVariable == null)
+                    if (dv.DataPoint == null)
                     {
                         _logger.LogWarning(
                             "设备 {Key} 的设备变量 #{DvId} 缺少关联模型变量，已跳过。", device.Key, dv.Id);
                         continue;
                     }
 
-                    // 构建 RuntimeVariable：变量定义来自 ModelVariable，设备配置来自 DeviceVariable。
+                    // 构建 RuntimeVariable：变量定义来自 DataPoint，设备配置来自 DataPointMapping。
                     runtime.Variables[dv.Id] = new VariableRuntime
                     {
-                        Definition = dv.ModelVariable,
+                        Definition = dv.DataPoint,
                         Instance = dv,
                         NextPollTime = now // 首轮立即采集
                     };
@@ -475,10 +475,10 @@ namespace ScadaServer.Runtime
                 RegisterDevice(runtime);
 
                 _deviceRegistry.UpdateDevice(device,
-                    (device.DeviceVariables ?? Enumerable.Empty<DeviceVariable>())
-                        .Select(dv => dv.ModelVariable)
+                    (device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
+                        .Select(dv => dv.DataPoint)
                         .Where(mv => mv != null)
-                        .Cast<ModelVariable>()
+                        .Cast<DataPoint>()
                         .ToList());
 
                 _logger.LogInformation(

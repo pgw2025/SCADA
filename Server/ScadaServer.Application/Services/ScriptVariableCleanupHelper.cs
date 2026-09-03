@@ -4,7 +4,7 @@ using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
 {
     /// <summary>
-    /// 删除设备变量（DeviceVariable）时的系统脚本联动清理，供设备变量服务与模型变量服务共用：
+    /// 删除设备变量（DataPointMapping）时的系统脚本联动清理，供设备变量服务与模型变量服务共用：
     /// ① 停用以 "设备键.变量键" 为 OnChange 监听目标的脚本（注明原因，脚本仍承载业务逻辑，需人工确认）；
     /// ② 从 ScopeWrite（"设备.变量" 级）授权中剔除对应条目。
     /// </summary>
@@ -15,14 +15,14 @@ namespace ScadaServer.Application.Services
         /// 并从其写授权（ScopeWrite）中剔除对应条目。
         /// </summary>
         public static async Task CleanupScriptsByVariableAsync(
-            DeviceVariable entity,
+            DataPointMapping entity,
             IDeviceRepository deviceRepository,
-            IModelVariableRepository modelVariableRepository,
+            IDataPointRepository dataPointRepository,
             ISystemScriptRepository systemScriptRepository)
         {
             var device = await deviceRepository.GetByIdAsync(entity.DeviceId);
             if (device == null) return;
-            var mv = entity.ModelVariableId > 0 ? await modelVariableRepository.GetByIdAsync(entity.ModelVariableId) : null;
+            var mv = entity.DataPointId > 0 ? await dataPointRepository.GetByIdAsync(entity.DataPointId) : null;
             var deviceKey = device.Key;
             var variableKey = mv?.Key;
             if (string.IsNullOrWhiteSpace(deviceKey) || string.IsNullOrWhiteSpace(variableKey)) return;

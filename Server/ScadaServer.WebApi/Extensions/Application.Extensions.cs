@@ -42,12 +42,12 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IHmiImageAppService>(sp => new HmiImageAppService(
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ScadaServer.Application.Options.HmiImageOptions>>().Value,
                 sp.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>().ContentRootPath));
-            services.AddScoped<IModelVariableAppService, ModelVariableAppService>();
+            services.AddScoped<IDataPointAppService, DataPointAppService>();
 
             // 模型变量导入/导出：解析器与导出服务均无状态，可注册为常驻单例。
             services.AddSingleton<IVariableImportParser, VariableImportParser>();
             services.AddSingleton<VariableExportService>();
-            services.AddScoped<IDeviceVariableAppService, DeviceVariableAppService>();
+            services.AddScoped<IDataPointMappingAppService, DataPointMappingAppService>();
             services.AddScoped<IProtocolAppService, ProtocolAppService>();
             services.AddScoped<IMqttServerAppService, MqttServerAppService>();
             services.AddScoped<IMqttVariableConfigAppService, MqttVariableConfigAppService>();

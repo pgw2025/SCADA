@@ -253,7 +253,7 @@ namespace ScadaServer.Infrastructure.Communication
 
             try
             {
-                // 节点地址来源：RuntimeVariable.Address（DeviceVariable.Address）
+                // 节点地址来源：RuntimeVariable.Address（DataPointMapping.Address）
                 // IO 引用计数归零前 Session 不会被关闭或替换，此处使用是安全的
                 var result = await session.ReadValueAsync(variable.Address);
 

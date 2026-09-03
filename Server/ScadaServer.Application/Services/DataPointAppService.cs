@@ -12,11 +12,11 @@ using System.Text.RegularExpressions;
 namespace ScadaServer.Application.Services
 {
     /// <summary>
-    /// 变量模型（ModelVariable，模型内变量模板）应用服务：负责模板的增删改查、批量导入/导出。
+    /// 变量模型（DataPoint，模型内变量模板）应用服务：负责模板的增删改查、批量导入/导出。
     /// 模板变更会影响引用它的设备实例，故增删改后需热加载相关设备运行时；
     /// 删除模板时会一并级联清理各设备上的实例化及关联脚本。
     /// </summary>
-    public class ModelVariableAppService : IModelVariableAppService
+    public class DataPointAppService : IDataPointAppService
     {
         // 与实体/DbContext 唯一索引 ix_modelvariable_model_key 对应的键格式约束。
         // 用于兜底捕获并发/直写库触发的唯一索引冲突；应用层预检用于友好提示。
@@ -27,11 +27,11 @@ namespace ScadaServer.Application.Services
         private static readonly HashSet<string> ValidAccessModes = new(StringComparer.Ordinal) { "Read", "Write", "ReadWrite" };
 
         /// <summary>模型变量仓储，提供持久化能力。</summary>
-        private readonly IModelVariableRepository _repository;
+        private readonly IDataPointRepository _repository;
         /// <summary>数据模型仓储，用于校验变量所属模型存在。</summary>
         private readonly IDataModelRepository _modelRepository;
         /// <summary>设备变量仓储，用于级联清理及定位受影响设备。</summary>
-        private readonly IDeviceVariableRepository _deviceVariableRepository;
+        private readonly IDataPointMappingRepository _dataPointMappingRepository;
         /// <summary>设备仓储，用于脚本联动清理时解析设备键。</summary>
         private readonly IDeviceRepository _deviceRepository;
         /// <summary>系统脚本仓储，用于联动清理引用被删变量的脚本。</summary>
@@ -46,10 +46,10 @@ namespace ScadaServer.Application.Services
         private readonly VariableExportService _exportService;
 
         /// <summary>构造函数：注入变量、模型、设备、脚本仓储及运行时、导入导出等服务。</summary>
-        public ModelVariableAppService(
-            IModelVariableRepository repository,
+        public DataPointAppService(
+            IDataPointRepository repository,
             IDataModelRepository modelRepository,
-            IDeviceVariableRepository deviceVariableRepository,
+            IDataPointMappingRepository dataPointMappingRepository,
             IDeviceRepository deviceRepository,
             ISystemScriptRepository systemScriptRepository,
             IRuntimeDeviceManager runtimeDeviceManager,
@@ -59,7 +59,7 @@ namespace ScadaServer.Application.Services
         {
             _repository = repository;
             _modelRepository = modelRepository;
-            _deviceVariableRepository = deviceVariableRepository;
+            _dataPointMappingRepository = dataPointMappingRepository;
             _deviceRepository = deviceRepository;
             _systemScriptRepository = systemScriptRepository;
             _runtimeDeviceManager = runtimeDeviceManager;
@@ -68,26 +68,26 @@ namespace ScadaServer.Application.Services
             _exportService = exportService;
         }
 
-        public async Task<ModelVariableDto?> GetByIdAsync(int id)
+        public async Task<DataPointDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
-            return ModelVariableMapper.ToDto(entity);
+            return DataPointMapper.ToDto(entity);
         }
 
-        public async Task<List<ModelVariableDto>> GetListAsync()
+        public async Task<List<DataPointDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(ModelVariableMapper.ToDto).ToList();
+            return list.Select(DataPointMapper.ToDto).ToList();
         }
 
-        public async Task<List<ModelVariableDto>> GetByModelIdAsync(int modelId)
+        public async Task<List<DataPointDto>> GetByModelIdAsync(int modelId)
         {
             var list = await _repository.GetListAsync(mv => mv.ModelId == modelId);
-            return list.Select(ModelVariableMapper.ToDto).ToList();
+            return list.Select(DataPointMapper.ToDto).ToList();
         }
 
-        public async Task<ModelVariableDto> CreateAsync(ModelVariableDto dto)
+        public async Task<DataPointDto> CreateAsync(DataPointDto dto)
         {
             // 0. 规范化
             dto.Key = dto.Key.Trim();
@@ -126,7 +126,7 @@ namespace ScadaServer.Application.Services
             return dto;
         }
 
-        public async Task<ModelVariableDto> UpdateAsync(ModelVariableDto dto)
+        public async Task<DataPointDto> UpdateAsync(DataPointDto dto)
         {
             // 0. 规范化
             dto.Key = dto.Key.Trim();
@@ -186,18 +186,18 @@ namespace ScadaServer.Application.Services
             await _uow.ExecuteInTransactionAsync(async _ =>
             {
                 // 级联清理：删除所有设备上对该模板的实例化（含脚本联动），再删模板本身。
-                // 数据库端 ModelVariable → DeviceVariable 外键为 Restrict，必须在此显式先行删除，杜绝静默级联。
-                var deviceVariables = await _deviceVariableRepository.GetListAsync(dv => dv.ModelVariableId == id);
-                affectedDeviceIds = deviceVariables.Select(dv => dv.DeviceId).Distinct().ToList();
+                // 数据库端 DataPoint → DataPointMapping 外键为 Restrict，必须在此显式先行删除，杜绝静默级联。
+                var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DataPointId == id);
+                affectedDeviceIds = dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList();
 
-                foreach (var dv in deviceVariables)
+                foreach (var dv in dataPointMappings)
                 {
                     await ScriptVariableCleanupHelper.CleanupScriptsByVariableAsync(dv, _deviceRepository, _repository, _systemScriptRepository);
                 }
 
-                if (deviceVariables.Count > 0)
+                if (dataPointMappings.Count > 0)
                 {
-                    await _deviceVariableRepository.DeleteRangeAsync(dv => dv.ModelVariableId == id);
+                    await _dataPointMappingRepository.DeleteRangeAsync(dv => dv.DataPointId == id);
                 }
 
                 await _repository.DeleteAsync(entity);
@@ -240,8 +240,8 @@ namespace ScadaServer.Application.Services
                 var existingList = await _repository.GetListAsync(v => v.ModelId == modelId);
                 var byKey = existingList.ToDictionary(v => v.Key, v => v, StringComparer.OrdinalIgnoreCase);
 
-                var toInsert = new List<ModelVariable>();
-                var toUpdate = new List<ModelVariable>();
+                var toInsert = new List<DataPoint>();
+                var toUpdate = new List<DataPoint>();
 
                 foreach (var row in preview.Rows)
                 {
@@ -287,7 +287,7 @@ namespace ScadaServer.Application.Services
                 if (toUpdate.Count > 0)
                 {
                     var ids = toUpdate.Select(v => v.Id).ToList();
-                    var affectedVars = await _deviceVariableRepository.GetListAsync(dv => ids.Contains(dv.ModelVariableId));
+                    var affectedVars = await _dataPointMappingRepository.GetListAsync(dv => ids.Contains(dv.DataPointId));
                     foreach (var dv in affectedVars) affectedDeviceIds.Add(dv.DeviceId);
                 }
 
@@ -308,7 +308,7 @@ namespace ScadaServer.Application.Services
             await EnsureModelAsync(modelId);
 
             var list = await _repository.GetListAsync(v => v.ModelId == modelId);
-            var dtos = list.Select(ModelVariableMapper.ToDto).ToList();
+            var dtos = list.Select(DataPointMapper.ToDto).ToList();
 
             return format?.ToLowerInvariant() switch
             {
@@ -320,10 +320,10 @@ namespace ScadaServer.Application.Services
         /// <summary>
         /// 查询引用该模板变量的所有设备并热重载其运行时（模板配置变更需重建设备 Worker）。
         /// </summary>
-        private async Task ReloadDevicesOfVariableAsync(int modelVariableId)
+        private async Task ReloadDevicesOfVariableAsync(int dataPointId)
         {
-            var deviceVariables = await _deviceVariableRepository.GetListAsync(dv => dv.ModelVariableId == modelVariableId);
-            await ReloadDevicesAsync(deviceVariables.Select(dv => dv.DeviceId).Distinct().ToList());
+            var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DataPointId == dataPointId);
+            await ReloadDevicesAsync(dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList());
         }
 
         private Task ReloadDevicesAsync(List<int> deviceIds)
@@ -393,10 +393,10 @@ namespace ScadaServer.Application.Services
         /// <summary>
         /// 将导入行映射为新建实体并应用各字段默认值（复用 MapToEntity 的默认值逻辑）。
         /// </summary>
-        private static ModelVariable MapRowToEntity(int modelId, VariableImportRow row)
+        private static DataPoint MapRowToEntity(int modelId, VariableImportRow row)
         {
             var varName = string.IsNullOrWhiteSpace(row.Name) ? row.Key : row.Name;
-            var dto = new ModelVariableDto
+            var dto = new DataPointDto
             {
                 ModelId = modelId,
                 Key = row.Key,
@@ -433,7 +433,7 @@ namespace ScadaServer.Application.Services
         /// <summary>
         /// 将导入行应用到已有实体（Overwrite 策略），仅更新文件提供的字段，未提供字段保持原值。
         /// </summary>
-        private static void ApplyRowToEntity(VariableImportRow row, ModelVariable entity)
+        private static void ApplyRowToEntity(VariableImportRow row, DataPoint entity)
         {
             if (!string.IsNullOrWhiteSpace(row.Name)) entity.Name = row.Name;
             entity.DataType = row.DataType;
@@ -470,7 +470,7 @@ namespace ScadaServer.Application.Services
             }
         }
 
-        private void ValidateVariableLogic(ModelVariableDto dto)
+        private void ValidateVariableLogic(DataPointDto dto)
         {
             // A. 历史存储检查
             if (dto.StoreMode == StoreModeEnum.None && dto.IsStored)
@@ -521,9 +521,9 @@ namespace ScadaServer.Application.Services
             return legacyIsReadOnly ? "Read" : "ReadWrite";
         }
 
-        private static ModelVariable MapToEntity(ModelVariableDto dto, ModelVariable? entity = null)
+        private static DataPoint MapToEntity(DataPointDto dto, DataPoint? entity = null)
         {
-            entity ??= new ModelVariable();
+            entity ??= new DataPoint();
             entity.ModelId = dto.ModelId;
             entity.Key = dto.Key;
             entity.Name = dto.Name;

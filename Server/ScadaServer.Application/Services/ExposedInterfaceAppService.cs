@@ -28,7 +28,7 @@ namespace ScadaServer.Application.Services
         /// <summary>设备仓储，用于校验接口绑定的设备存在性。</summary>
         private readonly IDeviceRepository _deviceRepository;
         /// <summary>模型变量仓储，用于校验映射变量是否存在于设备所属模型中。</summary>
-        private readonly IModelVariableRepository _modelVariableRepository;
+        private readonly IDataPointRepository _dataPointRepository;
         /// <summary>暴露接口内存注册表，配置变更后需重载以同步网关路由。</summary>
         private readonly IExposedApiRegistry _registry;
 
@@ -36,12 +36,12 @@ namespace ScadaServer.Application.Services
         public ExposedInterfaceAppService(
             IExposedInterfaceRepository repository,
             IDeviceRepository deviceRepository,
-            IModelVariableRepository modelVariableRepository,
+            IDataPointRepository dataPointRepository,
             IExposedApiRegistry registry)
         {
             _repository = repository;
             _deviceRepository = deviceRepository;
-            _modelVariableRepository = modelVariableRepository;
+            _dataPointRepository = dataPointRepository;
             _registry = registry;
         }
 
@@ -161,7 +161,7 @@ namespace ScadaServer.Application.Services
             if (device == null)
                 throw new BusinessException($"指定的设备（Id={dto.DeviceId}）不存在。");
 
-            var variableExists = await _modelVariableRepository.AnyAsync(
+            var variableExists = await _dataPointRepository.AnyAsync(
                 mv => mv.ModelId == device.ModelId && mv.Key == dto.ExposedKey);
             if (!variableExists)
                 throw new BusinessException($"设备 '{device.Name}' 所属的数据模型中不存在映射变量 '{dto.ExposedKey}'。");

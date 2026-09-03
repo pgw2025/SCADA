@@ -28,9 +28,9 @@ namespace ScadaServer.Application.Services
         /// <summary>数据模型仓储：校验模型存在/已发布并读取版本快照。</summary>
         private readonly IDataModelRepository _modelRepository;
         /// <summary>模型变量仓储：统计各模型变量数（绑定列表展示）。</summary>
-        private readonly IModelVariableRepository _modelVariableRepository;
+        private readonly IDataPointRepository _dataPointRepository;
         /// <summary>设备变量仓储：解绑前检查该模型下的设备变量实例引用。</summary>
-        private readonly IDeviceVariableRepository _deviceVariableRepository;
+        private readonly IDataPointMappingRepository _dataPointMappingRepository;
         /// <summary>工作单元：事务（主模型降级 + 提升 + Device.ModelId 双写）。</summary>
         private readonly IUnitOfWork _uow;
         /// <summary>运行时设备管理器：切主后按启用状态热重载（复用既有 ReloadDeviceAsync 链路）。</summary>
@@ -40,16 +40,16 @@ namespace ScadaServer.Application.Services
             IDeviceDataModelRepository repository,
             IDeviceRepository deviceRepository,
             IDataModelRepository modelRepository,
-            IModelVariableRepository modelVariableRepository,
-            IDeviceVariableRepository deviceVariableRepository,
+            IDataPointRepository dataPointRepository,
+            IDataPointMappingRepository dataPointMappingRepository,
             IUnitOfWork uow,
             IRuntimeDeviceManager runtimeDeviceManager)
         {
             _repository = repository;
             _deviceRepository = deviceRepository;
             _modelRepository = modelRepository;
-            _modelVariableRepository = modelVariableRepository;
-            _deviceVariableRepository = deviceVariableRepository;
+            _dataPointRepository = dataPointRepository;
+            _dataPointMappingRepository = dataPointMappingRepository;
             _uow = uow;
             _runtimeDeviceManager = runtimeDeviceManager;
         }
@@ -66,8 +66,8 @@ namespace ScadaServer.Application.Services
             }
 
             // 模型变量数：单次加载全量后按 ModelId 分组（变量模板表量级小，与设备列表 N+1 优化同思路）。
-            var modelVariables = await _modelVariableRepository.GetListAsync();
-            var countsByModel = modelVariables
+            var dataPoints = await _dataPointRepository.GetListAsync();
+            var countsByModel = dataPoints
                 .GroupBy(mv => mv.ModelId)
                 .ToDictionary(g => g.Key, g => g.Count());
 
@@ -214,13 +214,13 @@ namespace ScadaServer.Application.Services
             }
 
             // 引用检查：该模型下的模型变量是否被本设备实例化（此前曾为主模型后切走的残留场景）。
-            var modelVariableIds = (await _modelVariableRepository.GetListAsync(mv => mv.ModelId == dataModelId))
+            var dataPointIds = (await _dataPointRepository.GetListAsync(mv => mv.ModelId == dataModelId))
                 .Select(mv => mv.Id)
                 .ToList();
-            if (modelVariableIds.Count > 0)
+            if (dataPointIds.Count > 0)
             {
-                var referenced = await _deviceVariableRepository.CountAsync(dv =>
-                    dv.DeviceId == deviceId && modelVariableIds.Contains(dv.ModelVariableId));
+                var referenced = await _dataPointMappingRepository.CountAsync(dv =>
+                    dv.DeviceId == deviceId && dataPointIds.Contains(dv.DataPointId));
                 if (referenced > 0)
                 {
                     throw new BusinessException(

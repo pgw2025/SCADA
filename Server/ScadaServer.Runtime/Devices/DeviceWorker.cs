@@ -22,7 +22,7 @@ namespace ScadaServer.Runtime.Devices
     /// <remarks>
     /// 每个设备运行时对应一个 DeviceWorker 实例，由 DeviceScheduler 调度执行。
     /// 采集节奏由每个 RuntimeVariable 的 NextPollTime 决定（各自 PollingIntervalMs），
-    /// 不再依赖单一设备级固定延迟。地址等实现细节统一由 RuntimeVariable 解析（来自 DeviceVariable）。
+    /// 不再依赖单一设备级固定延迟。地址等实现细节统一由 RuntimeVariable 解析（来自 DataPointMapping）。
     /// </remarks>
     public class DeviceWorker
     {
@@ -156,8 +156,8 @@ namespace ScadaServer.Runtime.Devices
 
                     // 逐个读取到期变量。
                     // 第九阶段起：驱动只接收 RuntimeVariable（IRuntimeVariable 视图），
-                    // 地址 / 位偏移 / 轮询 / 缩放等由 RuntimeVariable 解析（来自 DeviceVariable），
-                    // 驱动不再感知 ModelVariable 模板实体。
+                    // 地址 / 位偏移 / 轮询 / 缩放等由 RuntimeVariable 解析（来自 DataPointMapping），
+                    // 驱动不再感知 DataPoint 模板实体。
                     foreach (var vr in due)
                     {
                         var previousQuality = vr.Quality;

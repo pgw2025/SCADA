@@ -143,10 +143,10 @@ namespace ScadaServer.Runtime.Tasks
             await AddAsync(nameof(db.DataConversions), db.DataConversions);
             await AddAsync(nameof(db.DataModels), db.DataModels);
             await AddAsync(nameof(db.Devices), db.Devices);
-            await AddAsync(nameof(db.DeviceVariables), db.DeviceVariables);
+            await AddAsync(nameof(db.DataPointMappings), db.DataPointMappings);
             await AddAsync(nameof(db.ExposedInterfaces), db.ExposedInterfaces);
             await AddAsync(nameof(db.HmiComponents), db.HmiComponents);
-            await AddAsync(nameof(db.ModelVariables), db.ModelVariables);
+            await AddAsync(nameof(db.DataPoints), db.DataPoints);
             await AddAsync(nameof(db.Protocols), db.Protocols);
             await AddAsync(nameof(db.MqttServers), db.MqttServers);
             await AddAsync(nameof(db.MqttVariableConfigs), db.MqttVariableConfigs);

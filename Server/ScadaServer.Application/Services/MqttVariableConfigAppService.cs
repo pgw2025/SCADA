@@ -19,9 +19,9 @@ namespace ScadaServer.Application.Services
         /// <summary>设备仓储，用于解析映射变量的设备名。</summary>
         private readonly IDeviceRepository _deviceRepository;
         /// <summary>设备变量仓储，用于解析变量名称。</summary>
-        private readonly IDeviceVariableRepository _deviceVariableRepository;
+        private readonly IDataPointMappingRepository _dataPointMappingRepository;
         /// <summary>模型变量仓储，用于映射设备变量到变量模板名称。</summary>
-        private readonly IModelVariableRepository _modelVariableRepository;
+        private readonly IDataPointRepository _dataPointRepository;
         /// <summary>实时值仓储，用于查询映射变量的当前值。</summary>
         private readonly IVariableRealtimeRepository _realtimeRepository;
         /// <summary>MQTT 管理器，映射变更后热重载运行时。</summary>
@@ -32,16 +32,16 @@ namespace ScadaServer.Application.Services
             IRepository<MqttVariableConfig, int> repository,
             IMqttServerRepository serverRepository,
             IDeviceRepository deviceRepository,
-            IDeviceVariableRepository deviceVariableRepository,
-            IModelVariableRepository modelVariableRepository,
+            IDataPointMappingRepository dataPointMappingRepository,
+            IDataPointRepository dataPointRepository,
             IVariableRealtimeRepository realtimeRepository,
             IMqttManager mqttManager)
         {
             _repository = repository;
             _serverRepository = serverRepository;
             _deviceRepository = deviceRepository;
-            _deviceVariableRepository = deviceVariableRepository;
-            _modelVariableRepository = modelVariableRepository;
+            _dataPointMappingRepository = dataPointMappingRepository;
+            _dataPointRepository = dataPointRepository;
             _realtimeRepository = realtimeRepository;
             _mqttManager = mqttManager;
         }
@@ -59,17 +59,17 @@ namespace ScadaServer.Application.Services
             var deviceNames = (await _deviceRepository.GetListAsync(d => deviceIds.Contains(d.Id)))
                 .ToDictionary(d => d.Id, d => d.Name);
 
-            // 变量名映射：(DeviceId, ModelVariable.Key) -> ModelVariable.Name
-            var deviceVariables = await _deviceVariableRepository.GetListAsync(dv => deviceIds.Contains(dv.DeviceId));
-            var modelVariableIds = deviceVariables.Select(dv => dv.ModelVariableId).Distinct().ToList();
-            var modelVariables = modelVariableIds.Count == 0
-                ? new List<ModelVariable>()
-                : await _modelVariableRepository.GetListAsync(mv => modelVariableIds.Contains(mv.Id));
-            var modelById = modelVariables.ToDictionary(mv => mv.Id, mv => mv);
+            // 变量名映射：(DeviceId, DataPoint.Key) -> DataPoint.Name
+            var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => deviceIds.Contains(dv.DeviceId));
+            var dataPointIds = dataPointMappings.Select(dv => dv.DataPointId).Distinct().ToList();
+            var dataPoints = dataPointIds.Count == 0
+                ? new List<DataPoint>()
+                : await _dataPointRepository.GetListAsync(mv => dataPointIds.Contains(mv.Id));
+            var modelById = dataPoints.ToDictionary(mv => mv.Id, mv => mv);
             var varNameLookup = new Dictionary<(int, string), string>();
-            foreach (var dv in deviceVariables)
+            foreach (var dv in dataPointMappings)
             {
-                if (modelById.TryGetValue(dv.ModelVariableId, out var mv))
+                if (modelById.TryGetValue(dv.DataPointId, out var mv))
                 {
                     varNameLookup[(dv.DeviceId, mv.Key)] = mv.Name;
                 }

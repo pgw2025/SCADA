@@ -35,7 +35,7 @@ namespace ScadaServer.Domain.Entities
         public string DeviceKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// 变量业务键（对应 ModelVariable.Key / DeviceVariable.Key）
+        /// 变量业务键（对应 DataPoint.Key / DataPointMapping.Key）
         /// </summary>
         public string VariableKey { get; set; } = string.Empty;
 
