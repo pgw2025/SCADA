@@ -53,7 +53,7 @@ export type WidgetCategory = 'equipment' | 'sensors' | 'structures' | 'headers';
 
 export interface WidgetDef {
   key?: string;
-  type: ComponentType;
+  type: string;
   name: string;
   defaultWidth: number;
   defaultHeight: number;

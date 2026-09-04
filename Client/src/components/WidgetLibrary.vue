@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { ComponentType } from '../types';
 import { widgetList, WidgetDef } from '../widgetRegistry';
 import {
   Search,
@@ -10,7 +9,7 @@ import {
 
 const emit = defineEmits<{
   // 签名与 ScadaTopologyView.handleAddWidget 对齐：点击落布无 x/y（传 undefined 取默认 40/60），extraProps 居第 7 位
-  (e: 'addWidget', type: ComponentType, w: number, h: number, name: string, x?: number, y?: number, extraProps?: Record<string, any>): void;
+  (e: 'addWidget', type: string, w: number, h: number, name: string, x?: number, y?: number, extraProps?: Record<string, any>): void;
   (e: 'collapse'): void;
 }>();
 

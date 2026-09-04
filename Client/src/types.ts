@@ -141,7 +141,8 @@ export interface HMIComponent {
   id: string;
   /** 后端自增主键（持久化后回填）；未保存的新组件为 undefined */
   serverId?: number;
-  type: ComponentType;
+  /** 渲染类型：内置类型见 ComponentType 联合类型；自定义 SVG 模板为 templateKey（D9/D10） */
+  type: string;
   name: string;
   x: number;
   y: number;

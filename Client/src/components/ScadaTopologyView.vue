@@ -523,7 +523,7 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
 
 // 阶段5-4：组件库拖拽投放落点（由 CanvasPanel 反算坐标后调用，x/y 为画布内坐标）
 const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>) => {
-  handleAddWidget(type as ComponentType, w, h, name, x, y, extraProps);
+  handleAddWidget(type, w, h, name, x, y, extraProps);
 };
 
 // ===== 图片图元：图库选图 → 按原图宽高比落布 =====
