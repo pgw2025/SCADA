@@ -356,3 +356,75 @@ export const importPage = async (projectId: number, pkg: TransferPackageDto): Pr
   const r = await http.post<ImportResultDto>(`${API()}/ScadaPage/import?projectId=${projectId}`, pkg);
   return r.data;
 };
+
+// ===== 组件模板（组件库动态化，P1 后端 /api/HmiWidgetTemplate 对齐，camelCase 线格式） =====
+export interface WidgetTemplateDto {
+  id: number;
+  templateKey: string;
+  renderType: string;
+  name: string;
+  category: 'equipment' | 'sensors' | 'structures' | 'headers';
+  description: string;
+  defaultWidth: number;
+  defaultHeight: number;
+  iconKind: 'lucide' | 'div' | 'svg' | 'emoji';
+  iconKey: string;
+  iconColor: string;
+  renderKind: 'builtin' | 'svg';
+  svgTemplate: string | null;
+  defaultPropsJson: string;
+  propSchemaJson: string;
+  isSystem: boolean;
+  sortOrder: number;
+}
+
+/** 模板导入结果（后端 ImportResult，camelCase） */
+export interface WidgetTemplateImportResult {
+  ok: boolean;
+  id: number;
+  mode: 'create' | 'overwrite' | 'renamed' | 'skipped';
+  newKey: string | null;
+}
+
+export const loadWidgetTemplates = async (): Promise<WidgetTemplateDto[]> => {
+  const r = await http.get<WidgetTemplateDto[]>(`${API()}/HmiWidgetTemplate`);
+  return r.data ?? [];
+};
+export const createWidgetTemplate = async (dto: Partial<WidgetTemplateDto>): Promise<WidgetTemplateDto> => {
+  const r = await http.post<WidgetTemplateDto>(`${API()}/HmiWidgetTemplate`, dto);
+  return r.data;
+};
+export const updateWidgetTemplate = async (dto: Partial<WidgetTemplateDto>): Promise<void> => {
+  await http.put(`${API()}/HmiWidgetTemplate`, dto);
+};
+export const deleteWidgetTemplate = async (id: number): Promise<void> => {
+  await http.delete(`${API()}/HmiWidgetTemplate/${id}`);
+};
+// 单条导入：后端 WidgetTemplateImportDto 契约 = { format, version, template, conflictMode }（camelCase）。
+// template 为完整模板 DTO；conflictMode ∈ overwrite | rename。
+export const importWidgetTemplate = async (
+  dto: Record<string, unknown>, conflictMode: 'overwrite' | 'rename',
+): Promise<WidgetTemplateImportResult> => {
+  const r = await http.post<WidgetTemplateImportResult>(`${API()}/HmiWidgetTemplate/import`,
+    { format: 'scada-widget-template', version: 1, template: dto, conflictMode });
+  return r.data;
+};
+// 批量导入（D11）：后端 import-bundle 仅接受 { format, version, templates }，
+// 冲突固定走 rename（控制器硬编码）；无冲突场景批量创建用此接口。
+export const importWidgetTemplates = async (
+  templates: unknown[],
+): Promise<WidgetTemplateImportResult[]> => {
+  const r = await http.post<WidgetTemplateImportResult[]>(`${API()}/HmiWidgetTemplate/import-bundle`,
+    { format: 'scada-widget-template', version: 1, templates });
+  return r.data;
+};
+// 导出（blob 下载，携带 Token；勿用 window.open —— 无 Authorization 会 401）
+export const exportWidgetTemplate = async (id: number, fileName: string): Promise<void> => {
+  const r = await http.get<Blob>(`${API()}/HmiWidgetTemplate/${id}/export`, { responseType: 'blob' });
+  downloadBlob(r.data, fileName);
+};
+export const exportWidgetTemplates = async (ids: number[], fileName: string): Promise<void> => {
+  const r = await http.post<Blob>(`${API()}/HmiWidgetTemplate/export-bundle`, ids,
+    { responseType: 'blob' });
+  downloadBlob(r.data, fileName);
+};

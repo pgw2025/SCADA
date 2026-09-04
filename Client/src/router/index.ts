@@ -19,6 +19,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/device-variables', component: () => import('../components/DataPointMappingView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/data-models', component: () => import('../components/DataModelView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/scada-editor', component: () => import('../components/ScadaTopologyView.vue'), meta: { roles: ADMIN_ROLES } },
+  { path: '/widget-templates', component: () => import('../components/WidgetTemplateManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/system-logs', component: () => import('../components/SystemLogsView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/task-management', component: () => import('../components/TaskManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/system-scripts', component: () => import('../components/SystemScriptsView.vue'), meta: { roles: ADMIN_ROLES } },

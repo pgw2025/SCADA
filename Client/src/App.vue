@@ -13,6 +13,7 @@ import {
   initTheme
 } from './store';
 import { initializeRealtimeSignals } from './services/signalRService';
+import { initializeWidgetTemplates } from './widgetTemplates';
 import { ROLE_ADMIN } from './constants/roles';
 import { startSystemResourceMonitoring } from './services/systemService';
 import { syncAreas } from './services/areaService';
@@ -54,7 +55,8 @@ import {
   Shuffle,
   Users,
   Sun,
-  Moon
+  Moon,
+  Shapes
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -124,7 +126,10 @@ watch(
     Promise.all([
       syncAreas(),
       fetchDataModelsFromBackend(),
-      syncDevices()
+      syncDevices(),
+      // P2-2.8：组件模板（组件库动态化）登录后并行预载；
+      // 失败静默走本地兜底种子（initializeWidgetTemplates 内部 catch，审查 B8），不阻断其他数据。
+      initializeWidgetTemplates()
     ]).catch(err => {
       console.error('初始化数据失败:', err);
     });
@@ -492,6 +497,17 @@ const handleChangeMyPassword = async () => {
                 <span v-if="!isSidebarCollapsed" class="truncate">组态设计</span>
               </button>
 
+              <button @click="navigate('/widget-templates')" :class="[
+                isActive('/widget-templates')
+                  ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent',
+                isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+              ]" class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full">
+                <Shapes class="w-4 h-4 shrink-0 transition-colors"
+                  :class="isActive('/widget-templates') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
+                <span v-if="!isSidebarCollapsed" class="truncate">组件模板</span>
+              </button>
+
               <button @click="navigate('/system-logs')" :class="[
                 isActive('/system-logs')
                   ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]'
@@ -763,6 +779,12 @@ const handleChangeMyPassword = async () => {
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
               <MonitorPlay class="w-4 h-4" />
               <span>组态设计</span>
+            </button>
+            <button @click="navigate('/widget-templates'); isMobileSidebarOpen = false;"
+              :class="[isActive('/widget-templates') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+              <Shapes class="w-4 h-4" />
+              <span>组件模板</span>
             </button>
             <button @click="navigate('/alarm-management'); isMobileSidebarOpen = false;"
               :class="[isActive('/alarm-management') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
