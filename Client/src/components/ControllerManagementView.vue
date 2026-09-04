@@ -23,6 +23,9 @@ import {
 } from '../api/controllerApi';
 import { extractApiError } from '../api/http';
 import { showToast } from '../services/toastService';
+import { devices } from '../store/deviceStore';
+import { syncDevices } from '../services/deviceService';
+import RefDevicesPanel from './RefDevicesPanel.vue';
 import { Controller, ControllerRequest, Protocol } from '../types';
 
 // ================= 列表 & 分页 =================
@@ -181,9 +184,29 @@ const fmtTime = (ts?: string | null) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+// ================= 左列表选中 + 右栏关联设备 =================
+const selectedId = ref<number | null>(null);
+const selectedItem = computed<Controller | null>(() =>
+  selectedId.value != null ? list.value.find(x => x.id === selectedId.value) ?? null : null
+);
+
+// 该控制器被多少设备引用（来自 devices store 全量）
+const deviceCount = (controllerId: number): number =>
+  devices.value.filter(d => Number(d.controllerId) === Number(controllerId)).length;
+
+const selectItem = (c: Controller) => {
+  selectedId.value = c.id;
+};
+
+const refreshAll = () => {
+  loadList();
+  syncDevices();
+};
+
 onMounted(async () => {
   await loadProtocols();
   loadList();
+  syncDevices();
 });
 </script>
 
@@ -206,164 +229,181 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- Filter bar -->
-    <div class="mt-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-      <div class="flex items-center gap-1.5 font-bold text-slate-500 dark:text-slate-400">
-        <Filter class="w-4 h-4" />
-        筛选
-      </div>
-      <select
-        v-model="filterProtocolId"
-        @change="applyFilter"
-        class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
-      >
-        <option :value="null">全部协议</option>
-        <option v-for="p in protocolOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-      </select>
-      <div class="flex items-center gap-1.5">
-        <div class="relative">
-          <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            v-model="keyword"
-            type="text"
-            placeholder="编码 / 名称 / 厂商 / 型号"
-            @keyup.enter="applyFilter"
-            class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 w-56 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
-          />
+    <!-- 左列表 + 右关联设备：左右分栏 -->
+    <div class="mt-5 flex flex-col md:flex-row gap-4">
+      <!-- 左栏：控制器列表（桌面端常显） -->
+      <aside class="hidden md:flex flex-col w-80 shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-left">
+        <div class="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
+          <select
+            v-model="filterProtocolId"
+            @change="applyFilter"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
+          >
+            <option :value="null">全部协议</option>
+            <option v-for="p in protocolOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <div class="relative">
+            <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              v-model="keyword"
+              type="text"
+              placeholder="编码 / 名称 / 厂商 / 型号"
+              @keyup.enter="applyFilter"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <button
+              @click="applyFilter"
+              class="px-2.5 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 text-white font-bold text-xs cursor-pointer hover:bg-slate-800 dark:hover:bg-sky-500"
+            >
+              查询
+            </button>
+            <button
+              v-if="filterProtocolId != null || keyword"
+              @click="resetFilter"
+              class="text-rose-500 hover:text-rose-700 font-bold cursor-pointer text-xs"
+            >
+              清除
+            </button>
+            <button
+              @click="refreshAll"
+              class="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer inline-flex items-center gap-1"
+            >
+              <RefreshCw class="w-3 h-3" :class="loading ? 'animate-spin' : ''" />
+              刷新
+            </button>
+          </div>
         </div>
-        <button
-          @click="applyFilter"
-          class="px-2.5 py-1.5 rounded-lg bg-slate-900 dark:bg-sky-600 text-white font-bold text-xs cursor-pointer hover:bg-slate-800 dark:hover:bg-sky-500"
-        >
-          查询
-        </button>
-        <button
-          v-if="filterProtocolId != null || keyword"
-          @click="resetFilter"
-          class="text-rose-500 hover:text-rose-700 font-bold cursor-pointer text-xs"
-        >
-          清除
-        </button>
-      </div>
-    </div>
 
-    <!-- Table -->
-    <div class="mt-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm text-left transition-colors">
-      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h3 class="text-xs font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
-          控制器列表（共 {{ total }} 条）
-        </h3>
-        <button
-          @click="loadList"
-          class="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer inline-flex items-center gap-1"
-        >
-          <RefreshCw class="w-3 h-3" :class="loading ? 'animate-spin' : ''" />
-          刷新
-        </button>
-      </div>
-
-      <table class="w-full text-xs">
-        <thead>
-          <tr class="bg-slate-50 dark:bg-slate-950/60 ring-1 ring-slate-100 dark:ring-slate-800 uppercase text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider">
-            <th class="px-4 py-3 text-left">ID</th>
-            <th class="px-4 py-3 text-left">编码</th>
-            <th class="px-4 py-3 text-left">名称</th>
-            <th class="px-4 py-3 text-left">协议类型</th>
-            <th class="px-4 py-3 text-left">厂商 / 型号</th>
-            <th class="px-4 py-3 text-left">状态</th>
-            <th class="px-4 py-3 text-left">更新时间</th>
-            <th class="px-4 py-3 text-right">操作</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-          <tr v-for="c in list" :key="c.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
-            <td class="px-4 py-3 font-bold text-slate-500 dark:text-slate-400">{{ c.id }}</td>
-            <td class="px-4 py-3 font-mono font-bold text-[#1890ff] dark:text-sky-400">{{ c.code }}</td>
-            <td class="px-4 py-3 font-sans font-bold text-slate-800 dark:text-white">
-              <span class="inline-flex items-center gap-1.5">
-                <Cpu class="w-3.5 h-3.5 text-slate-400" />
-                {{ c.name }}
+        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+          <div
+            v-for="c in list"
+            :key="c.id"
+            role="button"
+            @click="selectItem(c)"
+            :class="[
+              'px-3 py-2.5 cursor-pointer border-l-4 transition-all text-left',
+              selectedId === c.id
+                ? 'bg-sky-50 dark:bg-slate-800/80 border-l-[#1890ff]'
+                : 'border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            ]"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-sans font-bold text-slate-800 dark:text-white text-xs inline-flex items-center gap-1.5 min-w-0">
+                <Cpu class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span class="truncate">{{ c.name }}</span>
               </span>
-            </td>
-            <td class="px-4 py-3">
-              <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                {{ c.protocolName || `#${c.protocolId}` }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">
-              <template v-if="c.manufacturer || c.model">
-                <span class="font-sans font-medium">{{ c.manufacturer || '—' }}</span>
-                <span class="text-slate-300 dark:text-slate-600"> / </span>
-                <span class="font-sans font-medium">{{ c.model || '—' }}</span>
-              </template>
-              <span v-else class="text-slate-300 dark:text-slate-600">—</span>
-            </td>
-            <td class="px-4 py-3">
               <span
-                class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
-                :class="c.isEnabled
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
+                :class="deviceCount(c.id) > 0
+                  ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
               >
-                <Power class="w-3 h-3" />
-                {{ c.isEnabled ? '启用' : '停用' }}
+                {{ deviceCount(c.id) }} 台设备
               </span>
-            </td>
-            <td class="px-4 py-3 font-mono text-slate-400 dark:text-slate-500">{{ fmtTime(c.updatedAt) }}</td>
-            <td class="px-4 py-3 text-right whitespace-nowrap">
-              <button
-                @click="openEdit(c)"
-                class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5 mr-3"
-              >
-                <Edit3 class="w-3.5 h-3.5" />
-                编辑
-              </button>
-              <button
-                @click="remove(c)"
-                class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
-              >
-                <Trash2 class="w-3.5 h-3.5" />
-                删除
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div v-if="list.length === 0 && !loading" class="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
-        <Cpu class="w-8 h-8 mx-auto mb-2 opacity-30" />
-        <span>暂无控制器，点击右上角"添加控制器"登记第一台 PLC / 控制器</span>
-      </div>
-
-      <!-- Pagination -->
-      <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-xs">
-        <div class="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-          <span>每页</span>
-          <select v-model.number="pageSize" @change="applyFilter" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-xs focus:outline-none">
-            <option :value="10">10</option>
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-          </select>
-          <span>条</span>
-          <span class="ml-2">第 {{ pageIndex }} / {{ totalPages }} 页</span>
+            </div>
+            <div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
+              <span class="font-mono text-[#1890ff] dark:text-sky-400">{{ c.code }}</span>
+              <span>{{ c.protocolName || `#${c.protocolId}` }}</span>
+            </div>
+          </div>
+          <div v-if="list.length === 0 && !loading" class="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
+            暂无控制器
+          </div>
         </div>
-        <div class="flex items-center gap-1.5">
+
+        <!-- 左栏分页 -->
+        <div class="px-3 py-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
           <button
             @click="changePage(-1)"
             :disabled="pageIndex <= 1"
-            class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <ChevronLeft class="w-3.5 h-3.5" />
           </button>
+          <span>第 {{ pageIndex }} / {{ totalPages }} 页（每页 {{ pageSize }}）</span>
           <button
             @click="changePage(1)"
             :disabled="pageIndex >= totalPages"
-            class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <ChevronRight class="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
+      </aside>
+
+      <!-- 右栏：选中控制器 → 摘要 + 关联设备 -->
+      <main class="flex-1 min-w-0 flex flex-col gap-4">
+        <!-- 移动端选择器 -->
+        <div class="md:hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2">
+          <select
+            v-model="selectedId"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none"
+          >
+            <option :value="null" disabled>选择控制器</option>
+            <option v-for="c in list" :key="c.id" :value="c.id">{{ c.name }}（{{ c.code }}）</option>
+          </select>
+        </div>
+
+        <div v-if="!selectedItem" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
+          <Cpu class="w-8 h-8 mx-auto mb-2 opacity-20" />
+          <span>请从左侧选择一台控制器，查看其被哪些设备关联</span>
+        </div>
+
+        <template v-else>
+          <!-- 选中控制器摘要 + 操作 -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-left">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-lg bg-sky-50 dark:bg-sky-950/60 flex items-center justify-center shrink-0">
+                  <Cpu class="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white inline-flex items-center gap-2">
+                    {{ selectedItem.name }}
+                    <span class="font-mono text-xs text-[#1890ff] dark:text-sky-400">{{ selectedItem.code }}</span>
+                  </h3>
+                  <p class="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+                    协议 {{ selectedItem.protocolName || `#${selectedItem.protocolId}` }}
+                    <span class="text-slate-300 dark:text-slate-600"> · </span>
+                    厂商 {{ selectedItem.manufacturer || '—' }} / 型号 {{ selectedItem.model || '—' }}
+                    <span class="text-slate-300 dark:text-slate-600"> · </span>
+                    更新 {{ fmtTime(selectedItem.updatedAt) }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span
+                  class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                  :class="selectedItem.isEnabled
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
+                >
+                  <Power class="w-3 h-3" />
+                  {{ selectedItem.isEnabled ? '启用' : '停用' }}
+                </span>
+                <button
+                  @click="openEdit(selectedItem)"
+                  class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
+                >
+                  <Edit3 class="w-3.5 h-3.5" />
+                  编辑
+                </button>
+                <button
+                  @click="remove(selectedItem)"
+                  class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  删除
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <RefDevicesPanel owner-type="controller" :owner-id="selectedId" />
+        </template>
+      </main>
     </div>
 
     <!-- MODAL: ADD / EDIT -->
