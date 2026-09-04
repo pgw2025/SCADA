@@ -496,6 +496,8 @@ export interface DeviceConnection {
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+  /** 是否已被设备引用（后端填充；true 时本页禁改/禁删，须走设备管理页）。后端未实现时为 undefined。 */
+  inUseByDevice?: boolean;
 }
 
 /** 设备连接创建/更新请求体（与后端 CreateDeviceConnectionDto 对齐，PascalCase）。 */
@@ -665,7 +667,8 @@ const buildS7Display = (c: AddressConfig): string => {
   if (area === 'I' || area === 'Q' || area === 'M') return `${area}${s7Prefix(area, width)}${c.byteOffset}`;
   return '';
 };
-const s7Suffix = (w: string) => (w === 'BYTE' ? 'B' : w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B');
+const s7Suffix = (w: string) =>
+  w === 'BYTE' ? 'B' : w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : w === 'BIT' ? 'X' : 'B';
 const s7Prefix = (area: string, w: string) =>
   area === 'I' ? (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B')
   : area === 'Q' ? (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B')

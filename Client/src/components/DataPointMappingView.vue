@@ -156,6 +156,17 @@ const openEditModal = (v: DataPointMapping) => {
   showEditModal.value = true;
 };
 
+// 访问宽度联动：S7 切到 BIT 时回填位地址位偏移(0-7)让预览进入位地址分支；切出 BIT 时复位非位地址哨兵 -1
+const onAddressFieldWidthChange = () => {
+  const cfg = editingCfg.value;
+  if (!cfg || (cfg.protocol || '').toUpperCase() !== 'S7') return;
+  if (cfg.width === 'BIT') {
+    if (cfg.bitOffset == null || cfg.bitOffset < 0 || cfg.bitOffset > 7) cfg.bitOffset = 0;
+  } else if (cfg.bitOffset != null && cfg.bitOffset >= 0 && cfg.bitOffset <= 7) {
+    cfg.bitOffset = -1;
+  }
+};
+
 // 协议 → 实例字段需求：虚拟设备无地址/位偏移，无需采集属性配置
 const emptyFieldConfig = (): ProtocolFieldConfig => ({
   addressLabel: undefined, addressPlaceholder: undefined, addressRequired: false,
@@ -167,6 +178,12 @@ const needsAddress = computed(() => !!fieldConfig.value.addressLabel);
 const needsBitOffset = computed(() => !!fieldConfig.value.needsBitOffset);
 // 结构化字段是否已含位信息（S7/Modbus）；若含则隐藏独立的"位偏移"输入，避免重复编辑
 const structuredHasBit = computed(() => !!fieldConfig.value.addressFields?.some(f => f.key === 'bitOffset' || f.key === 'bitIndex'));
+// 仅当访问宽度为 BIT 时才显示 S7 位偏移字段；否则隐藏（S7 位地址专属字段，Modbus 等其他协议不受影响）
+const visibleAddressFields = computed(() => {
+  const isS7 = (editingCfg.value as any)?.protocol?.toUpperCase() === 'S7';
+  return (fieldConfig.value.addressFields || []).filter(f =>
+    !(isS7 && (f.key === 'bitOffset') && (editingCfg.value as any)?.width !== 'BIT'));
+});
 const tableColspan = computed(() => 7 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
 
 // 编辑弹窗内地址展示串预览（仅预览，最终展示串由后端权威生成）
@@ -717,10 +734,11 @@ onMounted(async () => {
               class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-600 dark:text-slate-300" />
             <!-- 结构化地址字段（按协议渲染，JSON 权威） -->
             <div class="mt-2 grid grid-cols-2 gap-2">
-              <div v-for="f in fieldConfig.addressFields" :key="f.key">
+              <div v-for="f in visibleAddressFields" :key="f.key">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{ f.label
                   }}<span class="text-rose-400" v-if="f.required"> *</span></label>
                 <select v-if="f.type === 'select'" v-model="(editingCfg as any)[f.key]"
+                  @change="onAddressFieldWidthChange"
                   class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
                   <option v-for="opt in f.options" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</option>
                 </select>
