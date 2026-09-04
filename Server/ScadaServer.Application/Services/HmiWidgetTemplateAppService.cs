@@ -117,10 +117,12 @@ namespace ScadaServer.Application.Services
                     .Replace("+", "").Replace("/", "")[..8].ToLowerInvariant();
                 var baseKey = dto.TemplateKey.Length > 55 ? dto.TemplateKey[..55] : dto.TemplateKey;
                 dto.TemplateKey = $"{baseKey}-{suffix}";
+                dto.IsSystem = false;   // 改名另存的是用户副本，不继承导出文件中的系统标记
                 var created = await CreateAsync(dto);
                 return new ImportResult { Ok = true, Id = created, Mode = "renamed", NewKey = dto.TemplateKey };
             }
 
+            dto.IsSystem = false;       // 导入内容一律视为用户模板，杜绝伪造 isSystem=true
             var id = await CreateAsync(dto);
             return new ImportResult { Ok = true, Id = id, Mode = "create" };
         }

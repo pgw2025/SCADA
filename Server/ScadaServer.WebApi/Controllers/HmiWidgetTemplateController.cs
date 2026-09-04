@@ -41,8 +41,10 @@ namespace ScadaServer.WebApi.Controllers
         {
             var guard = EnsureBody(dto); if (guard != null) return guard;
             var id = await _appService.CreateAsync(dto);
-            dto.Id = id;
-            return CreatedAtAction(nameof(GetById), new { id }, dto);
+            // 审查 C1：回读持久化实体而非回显输入 DTO——
+            // SVG 轨入库前已清洗，回显输入会把未清洗源码泄露给调用方。
+            var created = await _appService.GetByIdAsync(id);
+            return CreatedAtAction(nameof(GetById), new { id }, created);
         }
 
         /// <summary>更新模板。</summary>
@@ -81,8 +83,9 @@ namespace ScadaServer.WebApi.Controllers
             var results = new List<ImportResult>();
             foreach (var t in bundle.Templates)
             {
+                // 审查 C2：透传 bundle.Format，否则 ImportAsync 格式校验必 400
                 results.Add(await _appService.ImportAsync(
-                    new WidgetTemplateImportDto { Template = t, ConflictMode = "rename" }));
+                    new WidgetTemplateImportDto { Template = t, ConflictMode = "rename", Format = bundle.Format }));
             }
             return Ok(results);
         }
