@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-mini-card",
+    "renderType": "my-mini-card",
+    "name": "数据卡片",
+    "category": "sensors",
+    "description": "SVG轨示例：文本组合 value/unit/label 的极简看板卡",
+    "defaultWidth": 200,
+    "defaultHeight": 90,
+    "iconKind": "emoji",
+    "iconKey": "🪧",
+    "iconColor": "",
+    "renderKind": "svg",
+    "svgTemplate": "<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 200 90\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"4\" y=\"4\" width=\"192\" height=\"82\" rx=\"10\" fill=\"#0f172a\" stroke=\"{inactiveColor}\" stroke-width=\"1.5\"/>\n  <rect x=\"4\" y=\"4\" width=\"6\" height=\"82\" rx=\"3\" fill=\"{activeColor}\"/>\n  <text x=\"20\" y=\"30\" font-size=\"11\" fill=\"#94a3b8\">{label}</text>\n  <text x=\"20\" y=\"62\" font-size=\"26\" fill=\"#e2e8f0\">{value}</text>\n  <text x=\"186\" y=\"62\" font-size=\"12\" text-anchor=\"end\" fill=\"#94a3b8\">{unit}</text>\n</svg>",
+    "defaultPropsJson": "{\"activeColor\": \"#3b82f6\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 100, \"unit\": \"\", \"fontSize\": 12, \"thresholdMin\": 10, \"thresholdMax\": 90, \"onText\": \"开启\", \"offText\": \"关闭\"}",
+    "propSchemaJson": "[{\"key\": \"activeColor\", \"label\": \"运行色\", \"type\": \"color\"}, {\"key\": \"inactiveColor\", \"label\": \"底色\", \"type\": \"color\"}, {\"key\": \"minValue\", \"label\": \"量程下限\", \"type\": \"number\", \"default\": 0}, {\"key\": \"maxValue\", \"label\": \"量程上限\", \"type\": \"number\", \"default\": 100}, {\"key\": \"unit\", \"label\": \"单位\", \"type\": \"text\", \"placeholder\": \"e.g. %\"}, {\"key\": \"thresholdMax\", \"label\": \"高限报警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"thresholdMin\", \"label\": \"低限预警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"fontSize\", \"label\": \"字号\", \"type\": \"number\", \"min\": 8, \"max\": 72}, {\"key\": \"onText\", \"label\": \"开启文本\", \"type\": \"text\", \"default\": \"开启\"}, {\"key\": \"offText\", \"label\": \"关闭文本\", \"type\": \"text\", \"default\": \"关闭\"}]",
+    "isSystem": false,
+    "sortOrder": 300
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-warning-bar",
+    "renderType": "my-warning-bar",
+    "name": "预警条",
+    "category": "headers",
+    "description": "SVG轨示例：alertColor 边框 + 文本随阈值/质量变色",
+    "defaultWidth": 220,
+    "defaultHeight": 30,
+    "iconKind": "emoji",
+    "iconKey": "⚠️",
+    "iconColor": "",
+    "renderKind": "svg",
+    "svgTemplate": "<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 220 30\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"4\" y=\"6\" width=\"212\" height=\"18\" rx=\"4\" fill=\"#0f172a\" stroke=\"{alertColor}\" stroke-width=\"2\"/>\n  <polygon points=\"14,10 22,22 6,22\" fill=\"{alertColor}\"/>\n  <text x=\"30\" y=\"19\" font-size=\"11\" fill=\"{alertColor}\">{label}</text>\n</svg>",
+    "defaultPropsJson": "{\"activeColor\": \"#3b82f6\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 100, \"unit\": \"\", \"fontSize\": 12, \"thresholdMin\": 10, \"thresholdMax\": 90, \"onText\": \"开启\", \"offText\": \"关闭\"}",
+    "propSchemaJson": "[{\"key\": \"activeColor\", \"label\": \"运行色\", \"type\": \"color\"}, {\"key\": \"inactiveColor\", \"label\": \"底色\", \"type\": \"color\"}, {\"key\": \"minValue\", \"label\": \"量程下限\", \"type\": \"number\", \"default\": 0}, {\"key\": \"maxValue\", \"label\": \"量程上限\", \"type\": \"number\", \"default\": 100}, {\"key\": \"unit\", \"label\": \"单位\", \"type\": \"text\", \"placeholder\": \"e.g. %\"}, {\"key\": \"thresholdMax\", \"label\": \"高限报警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"thresholdMin\", \"label\": \"低限预警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"fontSize\", \"label\": \"字号\", \"type\": \"number\", \"min\": 8, \"max\": 72}, {\"key\": \"onText\", \"label\": \"开启文本\", \"type\": \"text\", \"default\": \"开启\"}, {\"key\": \"offText\", \"label\": \"关闭文本\", \"type\": \"text\", \"default\": \"关闭\"}]",
+    "isSystem": false,
+    "sortOrder": 300
+  }
+}

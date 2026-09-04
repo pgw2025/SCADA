@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-gauge-temp",
+    "renderType": "gauge-dial",
+    "name": "温度表盘(预设)",
+    "category": "sensors",
+    "description": "builtin轨预设变体：复用 gauge-dial SFC，量程-20~150℃，红色超温",
+    "defaultWidth": 120,
+    "defaultHeight": 120,
+    "iconKind": "emoji",
+    "iconKey": "🌡️",
+    "iconColor": "",
+    "renderKind": "builtin",
+    "svgTemplate": null,
+    "defaultPropsJson": "{\"activeColor\": \"#ef4444\", \"inactiveColor\": \"#94a3b8\", \"minValue\": -20, \"maxValue\": 150, \"unit\": \"℃\", \"thresholdMax\": 120, \"thresholdMin\": -10}",
+    "propSchemaJson": "[]",
+    "isSystem": false,
+    "sortOrder": 320
+  }
+}

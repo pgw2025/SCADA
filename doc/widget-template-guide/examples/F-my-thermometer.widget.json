@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-thermometer",
+    "renderType": "my-thermometer",
+    "name": "温度计",
+    "category": "sensors",
+    "description": "SVG轨示例：嵌套scale做单位换算（技巧4）+ alertColor",
+    "defaultWidth": 60,
+    "defaultHeight": 160,
+    "iconKind": "emoji",
+    "iconKey": "🌡️",
+    "iconColor": "",
+    "renderKind": "svg",
+    "svgTemplate": "<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 60 160\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"24\" y=\"20\" width=\"12\" height=\"110\" rx=\"6\" fill=\"#1e293b\" stroke=\"{inactiveColor}\" stroke-width=\"2\"/>\n  <circle cx=\"30\" cy=\"140\" r=\"14\" fill=\"{alertColor}\" stroke=\"{inactiveColor}\" stroke-width=\"2\"/>\n  <g transform=\"translate(0,130) scale(1,0.011) scale(1,{normalizedPercent})\">\n    <rect x=\"26\" y=\"-100\" width=\"8\" height=\"100\" rx=\"4\" fill=\"{alertColor}\"/>\n  </g>\n  <text x=\"30\" y=\"14\" font-size=\"{fontSize}\" text-anchor=\"middle\" fill=\"#e2e8f0\">{value}{unit}</text>\n</svg>",
+    "defaultPropsJson": "{\"activeColor\": \"#3b82f6\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 100, \"unit\": \"℃\", \"fontSize\": 12, \"thresholdMin\": 10, \"thresholdMax\": 90, \"onText\": \"开启\", \"offText\": \"关闭\"}",
+    "propSchemaJson": "[{\"key\": \"activeColor\", \"label\": \"运行色\", \"type\": \"color\"}, {\"key\": \"inactiveColor\", \"label\": \"底色\", \"type\": \"color\"}, {\"key\": \"minValue\", \"label\": \"量程下限\", \"type\": \"number\", \"default\": 0}, {\"key\": \"maxValue\", \"label\": \"量程上限\", \"type\": \"number\", \"default\": 100}, {\"key\": \"unit\", \"label\": \"单位\", \"type\": \"text\", \"placeholder\": \"e.g. %\"}, {\"key\": \"thresholdMax\", \"label\": \"高限报警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"thresholdMin\", \"label\": \"低限预警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"fontSize\", \"label\": \"字号\", \"type\": \"number\", \"min\": 8, \"max\": 72}, {\"key\": \"onText\", \"label\": \"开启文本\", \"type\": \"text\", \"default\": \"开启\"}, {\"key\": \"offText\", \"label\": \"关闭文本\", \"type\": \"text\", \"default\": \"关闭\"}]",
+    "isSystem": false,
+    "sortOrder": 300
+  }
+}

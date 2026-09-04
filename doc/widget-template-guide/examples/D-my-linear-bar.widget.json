@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-linear-bar",
+    "renderType": "my-linear-bar",
+    "name": "水平进度条",
+    "category": "sensors",
+    "description": "SVG轨示例：嵌套svg + 百分比宽度进度条",
+    "defaultWidth": 200,
+    "defaultHeight": 36,
+    "iconKind": "emoji",
+    "iconKey": "📊",
+    "iconColor": "",
+    "renderKind": "svg",
+    "svgTemplate": "<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 200 36\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"4\" y=\"10\" width=\"192\" height=\"16\" rx=\"8\" fill=\"#1e293b\" stroke=\"{inactiveColor}\" stroke-width=\"1.5\"/>\n  <svg x=\"4\" y=\"10\" width=\"192\" height=\"16\" viewBox=\"0 0 192 16\" preserveAspectRatio=\"none\">\n    <rect x=\"0\" y=\"0\" width=\"{normalizedPercent}%\" height=\"16\" rx=\"8\" fill=\"{alertColor}\"/>\n  </svg>\n  <text x=\"100\" y=\"32\" font-size=\"9\" text-anchor=\"middle\" fill=\"#94a3b8\">{label}</text>\n</svg>",
+    "defaultPropsJson": "{\"activeColor\": \"#3b82f6\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 100, \"unit\": \"%\", \"fontSize\": 12, \"thresholdMin\": 10, \"thresholdMax\": 90, \"onText\": \"开启\", \"offText\": \"关闭\"}",
+    "propSchemaJson": "[{\"key\": \"activeColor\", \"label\": \"运行色\", \"type\": \"color\"}, {\"key\": \"inactiveColor\", \"label\": \"底色\", \"type\": \"color\"}, {\"key\": \"minValue\", \"label\": \"量程下限\", \"type\": \"number\", \"default\": 0}, {\"key\": \"maxValue\", \"label\": \"量程上限\", \"type\": \"number\", \"default\": 100}, {\"key\": \"unit\", \"label\": \"单位\", \"type\": \"text\", \"placeholder\": \"e.g. %\"}, {\"key\": \"thresholdMax\", \"label\": \"高限报警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"thresholdMin\", \"label\": \"低限预警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"fontSize\", \"label\": \"字号\", \"type\": \"number\", \"min\": 8, \"max\": 72}, {\"key\": \"onText\", \"label\": \"开启文本\", \"type\": \"text\", \"default\": \"开启\"}, {\"key\": \"offText\", \"label\": \"关闭文本\", \"type\": \"text\", \"default\": \"关闭\"}]",
+    "isSystem": false,
+    "sortOrder": 300
+  }
+}

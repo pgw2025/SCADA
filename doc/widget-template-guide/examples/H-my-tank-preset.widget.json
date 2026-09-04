@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-tank-preset",
+    "renderType": "tank",
+    "name": "清水储罐(预设)",
+    "category": "equipment",
+    "description": "builtin轨预设变体：复用 tank SFC + 自定义默认参数，schema留空自动用内置",
+    "defaultWidth": 120,
+    "defaultHeight": 160,
+    "iconKind": "emoji",
+    "iconKey": "🛢️",
+    "iconColor": "",
+    "renderKind": "builtin",
+    "svgTemplate": null,
+    "defaultPropsJson": "{\"activeColor\": \"#0ea5e9\", \"fillColor\": \"#38bdf8\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 50, \"unit\": \"m³\", \"thresholdMax\": 45, \"thresholdMin\": 5, \"showLabel\": true}",
+    "propSchemaJson": "[]",
+    "isSystem": false,
+    "sortOrder": 320
+  }
+}

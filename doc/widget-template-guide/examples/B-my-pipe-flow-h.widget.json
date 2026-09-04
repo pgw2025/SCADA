@@ -1,0 +1,23 @@
+{
+  "format": "scada-widget-template",
+  "version": 1,
+  "template": {
+    "id": 0,
+    "templateKey": "my-pipe-flow-h",
+    "renderType": "my-pipe-flow-h",
+    "name": "流向管道",
+    "category": "structures",
+    "description": "SVG轨示例：animate + dasharray 实现流动虚线（技巧2 + <animate>）",
+    "defaultWidth": 200,
+    "defaultHeight": 40,
+    "iconKind": "emoji",
+    "iconKey": "〰️",
+    "iconColor": "",
+    "renderKind": "svg",
+    "svgTemplate": "<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 200 40\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"0\" y=\"14\" width=\"200\" height=\"12\" rx=\"6\" fill=\"#1e293b\" stroke=\"{inactiveColor}\" stroke-width=\"2\"/>\n  <line x1=\"10\" y1=\"20\" x2=\"190\" y2=\"20\" stroke=\"{activeColor}\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-dasharray=\"14 12\">\n    <animate attributeName=\"stroke-dashoffset\" from=\"0\" to=\"-26\" dur=\"0.8s\" repeatCount=\"indefinite\"/>\n  </line>\n</svg>",
+    "defaultPropsJson": "{\"activeColor\": \"#3b82f6\", \"inactiveColor\": \"#94a3b8\", \"minValue\": 0, \"maxValue\": 100, \"unit\": \"\", \"fontSize\": 12, \"thresholdMin\": 10, \"thresholdMax\": 90, \"onText\": \"开启\", \"offText\": \"关闭\"}",
+    "propSchemaJson": "[{\"key\": \"activeColor\", \"label\": \"运行色\", \"type\": \"color\"}, {\"key\": \"inactiveColor\", \"label\": \"底色\", \"type\": \"color\"}, {\"key\": \"minValue\", \"label\": \"量程下限\", \"type\": \"number\", \"default\": 0}, {\"key\": \"maxValue\", \"label\": \"量程上限\", \"type\": \"number\", \"default\": 100}, {\"key\": \"unit\", \"label\": \"单位\", \"type\": \"text\", \"placeholder\": \"e.g. %\"}, {\"key\": \"thresholdMax\", \"label\": \"高限报警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"thresholdMin\", \"label\": \"低限预警\", \"type\": \"number\", \"nullable\": true}, {\"key\": \"fontSize\", \"label\": \"字号\", \"type\": \"number\", \"min\": 8, \"max\": 72}, {\"key\": \"onText\", \"label\": \"开启文本\", \"type\": \"text\", \"default\": \"开启\"}, {\"key\": \"offText\", \"label\": \"关闭文本\", \"type\": \"text\", \"default\": \"关闭\"}]",
+    "isSystem": false,
+    "sortOrder": 300
+  }
+}
