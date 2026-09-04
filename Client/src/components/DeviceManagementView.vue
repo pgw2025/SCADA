@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { devices } from '../store/deviceStore';
 import { areas } from '../store/areaStore';
@@ -57,6 +57,9 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
+// 启停采集开关切换中的设备 id（防重复提交 / 展示 loading）
+const togglingId = ref<number | null>(null);
+
 // Area Form States（阶段 1 扩展为树形区域：父区域/编码/类型/排序/启用 + 编辑）
 const showAreaModal = ref<boolean>(false);
 const isEditingArea = ref<boolean>(false);
@@ -88,7 +91,7 @@ const devPort = ref<string>('');
 // 真相源是后端 ConfigJson.EndpointUrl，不要再用 ip+port 拼接，否则会丢掉路径部分。
 const devEndpointUrl = ref<string>('');
 
-const devStatus = ref<'online' | 'offline'>('online');
+
 
 // S7-specific connection details
 const devCpuType = ref<string>('S7-1205');
@@ -575,7 +578,6 @@ const openNewDeviceModal = () => {
   devIP.value = '192.168.1.100';
   devPort.value = '4840';
   devEndpointUrl.value = 'opc.tcp://192.168.1.10:4840';
-  devStatus.value = 'online';
 
   // S7 init
   devCpuType.value = 'S7-1200';
@@ -629,7 +631,6 @@ const openEditDeviceModal = (device: Device) => {
   devIP.value = device.ipAddress || '';
   devPort.value = String(device.port ?? '');
   devEndpointUrl.value = device.endpointUrl || '';
-  devStatus.value = device.status === 1 ? 'online' : 'offline';
 
   // S7 connections
   devCpuType.value = device.cpuType || 'S7-1200';
@@ -790,7 +791,6 @@ const handleSaveDevice = async () => {
     areaId: devArea.value,
     // Device.modelId 为 number；devModel 下拉值为 string，统一转 number 提交。
     modelId: Number(devModel.value) || 0,
-    status: devStatus.value === 'online' ? 1 : 0,
     controllerId: advancedControllerId.value,
     connectionId: targetConnectionId
   };
@@ -837,10 +837,16 @@ const handleDeleteDevice = async (id: number, name: string) => {
 };
 
 const toggleDeviceEnabled = async (device: Device) => {
+  if (togglingId.value === device.id) return;
   const next = !device.isEnabled;
   if (!next && !confirm(`确认停用设备 [${device.name}] 的采集吗？停用后将断开连接并停止采集。`)) return;
-  const result = await setDeviceEnabledAndSync(device.id, next);
-  if (!result.success) addLog('设备管理', `切换启用状态失败 [${device.name}]`, 'warning');
+  togglingId.value = device.id;
+  try {
+    const result = await setDeviceEnabledAndSync(device.id, next);
+    if (!result.success) addLog('设备管理', `切换启用状态失败 [${device.name}]`, 'warning');
+  } finally {
+    togglingId.value = null;
+  }
 };
 </script>
 
@@ -998,11 +1004,11 @@ const toggleDeviceEnabled = async (device: Device) => {
               <Cpu class="w-8 h-8 mx-auto mb-2 opacity-30" />
               <span>该区域暂无设备，请点击"添加设备"创建</span>
             </div>
-            <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4 gap-2">
               <div 
                 v-for="d in devicesInPanel(area.id)" 
                 :key="d.id"
-                class="bg-white dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 rounded-lg p-4 text-left flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden"
+                class="bg-white dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 rounded-lg p-2 text-left flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden"
               >
                 <!-- Status indicator -->
                 <div 
@@ -1010,15 +1016,15 @@ const toggleDeviceEnabled = async (device: Device) => {
                   :class="d.status === 1 ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
                 />
 
-          <div class="flex items-start justify-between gap-4 mt-1">
+          <div class="flex items-start justify-between gap-2 mt-0.5">
             <div class="space-y-1">
               <div class="flex items-center gap-1.5">
                 <span class="text-[9px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded uppercase">
                   {{ d.type }}
                 </span>
-                <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">KEY: {{ d.key }}</span>
+                <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[9rem]">KEY: {{ d.key }}</span>
               </div>
-              <h4 class="font-bold text-sm text-slate-900 dark:text-white font-sans mt-1.5 leading-snug">
+              <h4 class="font-bold text-xs text-slate-900 dark:text-white font-sans mt-1 leading-snug line-clamp-2">
                 {{ d.name }}
               </h4>
             </div>
@@ -1031,17 +1037,32 @@ const toggleDeviceEnabled = async (device: Device) => {
                 <div class="w-1.5 h-1.5 rounded-full" :class="d.status === 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'" />
                 {{ d.status === 1 ? '在线' : '离线' }}
               </span>
-              <button
-                @click="toggleDeviceEnabled(d)"
-                class="text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border transition-all cursor-pointer"
-                :class="d.isEnabled ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700'">
-                {{ d.isEnabled ? '启用采集' : '停用采集' }}
-              </button>
+              <!-- 启停采集滑动开关 -->
+              <label
+                class="relative inline-flex items-center cursor-pointer select-none"
+                :class="togglingId === d.id ? 'opacity-60 pointer-events-none' : ''"
+                :title="d.isEnabled ? '停用采集' : '启用采集'"
+              >
+                <input
+                  type="checkbox"
+                  class="sr-only peer"
+                  :checked="d.isEnabled"
+                  :disabled="togglingId === d.id"
+                  @click.prevent="toggleDeviceEnabled(d)"
+                />
+                <div
+                  class="w-9 h-5 rounded-full transition-colors peer-checked:bg-sky-500 bg-slate-300 dark:bg-slate-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"
+                />
+                <span
+                  class="ml-1.5 text-[10px] font-bold"
+                  :class="d.isEnabled ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'"
+                >{{ d.isEnabled ? '采集' : '停采' }}</span>
+              </label>
             </div>
           </div>
 
           <!-- Mid: Address properties -->
-          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 py-3 border-t border-b border-slate-100/80 dark:border-slate-800/80 mt-4 text-[11px] font-mono">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 py-1.5 border-t border-b border-slate-100/80 dark:border-slate-800/80 mt-2 text-[11px] font-mono">
             <div>
               <span class="text-slate-400 dark:text-slate-500">所属区域:</span>
               <span class="text-slate-800 dark:text-slate-200 font-sans font-medium block">
@@ -1090,15 +1111,16 @@ const toggleDeviceEnabled = async (device: Device) => {
           </div>
 
           <!-- Bottom: action edits -->
-          <div class="flex items-center justify-between mt-3 text-[11px]">
-            <span class="text-slate-400 dark:text-slate-500">最后更新: <b class="font-mono text-slate-600 dark:text-slate-300">{{ d.lastUpdated }}</b></span>
+          <div class="flex items-center justify-between mt-1.5 text-[10px]">
+            <span class="text-slate-400 dark:text-slate-500 truncate mr-2">更新: <b class="font-mono text-slate-600 dark:text-slate-300">{{ d.lastUpdated }}</b></span>
             
-            <div class="flex items-center gap-2">
-              <button 
+            <div class="flex items-center gap-1">
+
+              <button
                 @click="openEditDeviceModal(d)"
                 class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
               >
-                <Edit3 class="w-3.5 h-3.5" />
+                <Edit3 class="w-3 h-3" />
                 编辑
               </button>
               <button 
@@ -1106,14 +1128,14 @@ const toggleDeviceEnabled = async (device: Device) => {
                 class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-bold inline-flex items-center gap-0.5 cursor-pointer ml-1"
                 :title="`管理设备 ${d.name} 的变量实例`"
               >
-                <Braces class="w-3.5 h-3.5" />
+                <Braces class="w-3 h-3" />
                 变量
               </button>
               <button 
                 @click="handleDeleteDevice(d.id, d.name)"
                 class="text-rose-500 hover:text-rose-700 font-bold inline-flex items-center gap-0.5 cursor-pointer ml-1"
               >
-                <Trash2 class="w-3.5 h-3.5" />
+                <Trash2 class="w-3 h-3" />
                 删除
               </button>
             </div>
@@ -1754,20 +1776,7 @@ const toggleDeviceEnabled = async (device: Device) => {
             </div>
           </div>
 
-          <!-- Device state radio selection -->
-          <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">连接状态</label>
-            <div class="flex items-center gap-4 py-1">
-              <label class="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
-                <input type="radio" value="online" v-model="devStatus" class="text-emerald-500 focus:ring-0" />
-                在线
-              </label>
-              <label class="flex items-center gap-1.5 font-bold text-slate-400 dark:text-slate-500 cursor-pointer text-xs">
-                <input type="radio" value="offline" v-model="devStatus" class="text-rose-500 focus:ring-0" />
-                离线
-              </label>
-            </div>
-          </div>
+          <!-- Device state radio selection removed：新增设备启动状态由后端统一强制为停用 -->
         </div>
 
         <div class="bg-slate-50 dark:bg-slate-950 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">

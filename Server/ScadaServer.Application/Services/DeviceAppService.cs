@@ -698,7 +698,8 @@ namespace ScadaServer.Application.Services
                     ModelId = dto.ModelId,
                     ControllerId = attachConnection.ControllerId,
                     ConnectionId = attachConnection.Id,
-                    IsEnabled = dto.IsEnabled,
+                    // 新增设备一律强制停用采集（忽略入参 dto.IsEnabled，即便是 true）；需在设备管理页手动启用并通过地址配置校验。
+                    IsEnabled = false,
                     PollingInterval = dto.PollingInterval,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -894,6 +895,13 @@ namespace ScadaServer.Application.Services
                     ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
             }
 
+            // 启动闸门（置于状态提交之前）：所有已启用变量的采集地址必须已配置，否则拒绝启用，
+            // 保证"数据库 IsEnabled 与运行时注册"始终一致，不会出现"已启用但运行时未加载"的中间态。
+            if (enabled)
+            {
+                await ValidateVariablesConfiguredForStartAsync(entity);
+            }
+
             entity.IsEnabled = enabled;
             entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
@@ -910,6 +918,71 @@ namespace ScadaServer.Application.Services
 
             return await GetByIdAsync(id)
                 ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+        }
+
+        /// <summary>
+        /// 解析设备协议键（Protocol.Key，驱动派发真相源）。优先复用实体已加载的导航，未加载时回退到连接仓储查询。
+        /// </summary>
+        private async Task<string?> ResolveProtocolKeyAsync(Device entity)
+        {
+            var key = entity.Connection?.Protocol?.Key;
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                return key;
+            }
+
+            if (entity.ConnectionId is int connectionId)
+            {
+                var connection = await _connectionRepository.GetByIdAsync(connectionId);
+                return connection?.Protocol?.Key;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 启动采集前校验：设备的所有<strong>已启用</strong>变量必须已配置采集地址（寄存器/节点 ID/主题）。
+        /// 仅对依赖地址的协议（S7、ModbusTcp、OpcUa、Mqtt）校验；虚拟设备（Virtual，无地址概念）与未知协议豁免。
+        /// 任一已启用变量的地址缺失即抛 <see cref="BusinessException"/> 拒绝启动，由 SetEnabledAsync 在状态提交前调用。
+        /// </summary>
+        private async Task ValidateVariablesConfiguredForStartAsync(Device entity)
+        {
+            var kind = ResolveDriverKind(await ResolveProtocolKeyAsync(entity));
+            if (kind == DriverKind.Virtual || kind == DriverKind.Unknown)
+            {
+                return;
+            }
+
+            var mappings = await _dataPointMappingRepository.GetListAsync(m => m.DeviceId == entity.Id && m.IsEnabled);
+            if (mappings.Count == 0)
+            {
+                return;
+            }
+
+            // 地址权威形态为 AddressConfigJson（前端编辑），Address 为其展示串；两者任一非空即视为已配置。
+            var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == entity.ModelId);
+            var nameMap = dataPoints.ToDictionary(mv => mv.Id, mv => string.IsNullOrWhiteSpace(mv.Name) ? mv.Key : mv.Name);
+
+            var missing = mappings
+                .Where(m => string.IsNullOrWhiteSpace(m.Address) && string.IsNullOrWhiteSpace(m.AddressConfigJson))
+                .Select(m => nameMap.TryGetValue(m.DataPointId, out var display) && !string.IsNullOrWhiteSpace(display)
+                    ? display
+                    : $"(变量ID:{m.DataPointId})")
+                .ToList();
+
+            if (missing.Count == 0)
+            {
+                return;
+            }
+
+            var shown = string.Join("、", missing.Take(5));
+            if (missing.Count > 5)
+            {
+                shown += $" 等共 {missing.Count} 个变量";
+            }
+
+            throw new BusinessException(
+                $"设备 [{entity.Name}] 有 {missing.Count} 个已启用变量的采集地址未配置，无法启动。请先在设备变量的地址配置中补齐：{shown}");
         }
 
         /// <summary>

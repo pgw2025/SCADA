@@ -41,9 +41,9 @@ namespace ScadaServer.Application.DTOs
         public int? ConnectionId { get; set; }
 
         /// <summary>
-        /// 是否启用采集
+        /// 是否启用采集（默认停用，新增后需在设备管理页手动启用）
         /// </summary>
-        public bool IsEnabled { get; set; } = true;
+        public bool IsEnabled { get; set; } = false;
 
         /// <summary>
         /// 采集周期（毫秒）
