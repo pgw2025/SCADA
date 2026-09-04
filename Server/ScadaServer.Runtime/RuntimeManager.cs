@@ -16,6 +16,7 @@ using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.Runtime.Devices;
+using ScadaServer.Runtime.Connections;
 using ScadaServer.Runtime.Bindings;
 using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Alarms;
@@ -33,6 +34,13 @@ namespace ScadaServer.Runtime
         /// 设备运行时字典，键为设备ID
         /// </summary>
         public ConcurrentDictionary<int, Devices.DeviceRuntime> DeviceRuntimes { get; } = new();
+
+        /// <summary>
+        /// 连接级单例会话字典，键为 ConnectionId。
+        /// 一个 DeviceConnection 对应一个进程内 ConnectionSession（一条物理连接），其下挂载的多台设备共享驱动。
+        /// 挂载时的首台设备创建会话，末位设备卸载/销毁时移除会话。
+        /// </summary>
+        public ConcurrentDictionary<int, ConnectionSession> ConnectionSessions { get; } = new();
 
         private readonly ILogger<RuntimeManager> _logger;
         private readonly ILoggerFactory _loggerFactory;
@@ -270,50 +278,116 @@ namespace ScadaServer.Runtime
         }
 
         /// <summary>
-        /// 自动重连待重连设备（由 DeviceScheduler 按退避窗口触发）。
-        /// 移除旧运行时后重新走完整注册流程（加载设备图 → 连接新驱动 → 注册）；
-        /// 若连接仍失败，注册流程会再次注册占位运行时，形成退避重试循环。
+        /// 连接配置热更新归口（DeviceConnectionAppService.UpdateAsync 接线）。
         /// <para>
-        /// 适用两类入口：初始连接失败的占位运行时（无 Worker/驱动，各清理步骤自然跳过）；
-        /// 以及<b>运行中因断线转入重连</b>的运行时（Worker 判定连续失败已置
-        /// NeedsReconnect 并退出）——此时必须先停 Worker 收尾、Dispose 旧驱动，
-        /// 避免旧 Plc 连接泄漏与重建期间的双重采集。
+        /// 按 IsEnabled 与会话现状分派：
+        /// - 会话存在 &amp; 已启用 → 刷新配置引用后会话重连（旧驱动 Dispose → 新参数建连，复用重连闸门）；
+        /// - 会话存在 &amp; 已禁用 → 卸载全部挂载设备并销毁会话（设备转离线）；
+        /// - 会话不存在 &amp; 已启用 → 重建会话并挂载该连接下已启用设备（覆盖 false→true 或初始失败后手动触发）。
+        /// </para>
+        /// </summary>
+        public async Task ReloadConnectionAsync(int connectionId)
+        {
+            DeviceConnection? conn;
+            List<Device> enabledDevices;
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
+                conn = await db.DeviceConnections
+                    .AsNoTracking()
+                    .Include(c => c.Protocol)
+                    .FirstOrDefaultAsync(c => c.Id == connectionId);
+                if (conn == null)
+                {
+                    _logger.LogWarning("连接热更新失败：ID {ConnId} 不存在。", connectionId);
+                    return;
+                }
+                // 该连接下已启用设备（false→true 重建会话时挂载）。
+                enabledDevices = await db.Devices
+                    .Where(d => d.ConnectionId == connectionId && d.IsEnabled)
+                    .ToListAsync();
+            }
+
+            var session = ConnectionSessions.TryGetValue(connectionId, out var s) ? s : null;
+
+            if (session != null)
+            {
+                if (!conn.IsEnabled)
+                {
+                    // true→false：卸载全部挂载设备并销毁会话，设备转离线占位。
+                    _logger.LogInformation("连接 {ConnKey}(#{ConnId}) 已禁用，卸载其下 {Count} 台设备并销毁会话。",
+                        conn.Name, connectionId, session.MountCount);
+                    foreach (var rt in session.MountedSnapshot)
+                    {
+                        await RemoveDeviceAsync(rt.Device.Id);
+                    }
+                    return;
+                }
+
+                // 配置热重建：刷新配置真相源引用后触发会话重连（闸门保护，旧驱动释放→新参数建连）。
+                session.UpdateConnectionConfig(conn);
+                await session.ReconnectAsync();
+                return;
+            }
+
+            // 会话不存在：仅当连接已启用时重建会话并挂载其下启用设备。
+            if (!conn.IsEnabled)
+            {
+                return;
+            }
+            _logger.LogInformation("连接 {ConnKey}(#{ConnId}) 已启用且无会话，重建会话并挂载 {Count} 台设备。",
+                conn.Name, connectionId, enabledDevices.Count);
+            foreach (var device in enabledDevices)
+            {
+                await RegisterDeviceAsync(device.Id);
+            }
+        }
+
+        /// <summary>
+        /// 自动重连待重连设备（由 DeviceScheduler 按退避窗口触发）。
+        /// <para>
+        /// 连接级单例改造后归口为<b>会话级重连</b>：路径 A 转发所属会话重连（闸门去重）；
+        /// 路径 B（无会话的初始失败占位）重建会话并挂载。
         /// </para>
         /// </summary>
         /// <param name="deviceId">设备 ID</param>
         public async Task ReconnectDeviceAsync(int deviceId)
         {
             // 重入门闸：仅当当前在册运行时确为待重连状态时才执行，避免并发重连。
-            // 后续 TryRemove 作为原子闸门：并发调用中只有一个能成功移除并继续。
-            if (!DeviceRuntimes.TryGetValue(deviceId, out var current) || !current.NeedsReconnect)
+            if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime) || !runtime.NeedsReconnect)
             {
                 return;
             }
 
-            if (!DeviceRuntimes.TryRemove(deviceId, out var runtime))
+            IncrementReconnectStats(deviceId);
+            _lastPushedStatus.TryRemove(deviceId, out _);
+
+            // 路径 A（主流）：设备挂载于会话 → 转发会话级重连。
+            // 会话内闸门去重（多设备并发触发收敛为一次重建），重建成功后自动复位各设备
+            // NeedsReconnect/ConsecutiveFailureCount，调度器据 IsRunning=false 自然重派 Worker，无需本方法处理。
+            if (runtime.Session != null)
+            {
+                await runtime.Session.ReconnectAsync();
+                return;
+            }
+
+            // 路径 B：无会话（初始连接失败的占位运行时 / 会话已销毁）。
+            // 移除占位后重建会话并挂载；若仍失败，注册流程再次注册占位，形成退避重试循环。
+            if (!DeviceRuntimes.TryRemove(deviceId, out runtime))
             {
                 return;
             }
 
             // 保留被移除的占位运行时引用：重连 connect 期间该设备不在 DeviceRuntimes，
-            // 快照端点据此回退返回占位（断线诊断态），避免重连窗口 404（P4 回归修复）。
+            // 快照端点据此回退返回占位（断线诊断态），避免重连窗口 404（D5-a 回退）。
             _reconnecting[deviceId] = runtime;
 
             try
             {
-                // 重连计数（进程级）：仅统计实际发起的重连（门闸通过 = 本次重连成立）。
-                // 初始连接失败不计入——它由 ConnectionStateChangedAt + LastError + DeviceStatus=Fault
-                // 共同表达；避免「初始失败→占位→重连失败→再占位」链式重复计数。
-                var stats = _reconnectStats.GetOrAdd(deviceId, _ => new DeviceReconnectStats());
-                stats.Count++;
-                stats.LastReconnectAt = DateTime.UtcNow;
+                // 停止残留 Worker 并卸载（占位运行时无 Worker/会话，自然跳过）。
+                await StopWorkerAndUnmountDeviceAsync(runtime);
 
-                _lastPushedStatus.TryRemove(deviceId, out _);
-
-                // 停止残留 Worker 并释放旧驱动（占位运行时无 Worker/驱动，自然跳过）。
-                await StopWorkerAndDisposeDriverAsync(runtime);
-
-                // 重新走完整注册流程（内部先幂等移除，再加载、连接、注册）。
+                // 重新走完整注册流程（内部走 GetOrCreateSession + 挂载）。
                 await RegisterDeviceAsync(deviceId);
             }
             finally
@@ -322,6 +396,14 @@ namespace ScadaServer.Runtime
                 // 此处清除重连占位，避免在册恢复后仍读取到旧占位数据。
                 _reconnecting.TryRemove(deviceId, out _);
             }
+        }
+
+        /// <summary>进程级重连计数递增（含初始连接失败后的占位重连；跨 runtime 重建累计，不复位）。</summary>
+        private void IncrementReconnectStats(int deviceId)
+        {
+            var stats = _reconnectStats.GetOrAdd(deviceId, _ => new DeviceReconnectStats());
+            stats.Count++;
+            stats.LastReconnectAt = DateTime.UtcNow;
         }
 
         /// <inheritdoc/>
@@ -334,8 +416,8 @@ namespace ScadaServer.Runtime
 
             _lastPushedStatus.TryRemove(deviceId, out _);
 
-            // 1) 停止 Worker 并释放驱动（先收尾再释放，串行化驱动访问）。
-            await StopWorkerAndDisposeDriverAsync(runtime);
+            // 1) 停止 Worker 并卸载设备（末位离场才销毁会话/驱动）。先收尾再释放，串行化驱动访问。
+            await StopWorkerAndUnmountDeviceAsync(runtime);
 
             // 2) 推送 Offline，使界面即时反映设备已移除/被禁用。
             StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
@@ -354,11 +436,11 @@ namespace ScadaServer.Runtime
         }
 
         /// <summary>
-        /// 停止指定运行时的采集 Worker 并释放其驱动（RemoveDeviceAsync 与 ReconnectDeviceAsync 共用）。
+        /// 停止指定运行时的采集 Worker 并卸载设备（RemoveDeviceAsync 与 ReconnectDeviceAsync 无会话路径共用）。
         /// <para>
-        /// 顺序保证：先取消 Worker 并等待收尾（3s 超时容忍），再 Dispose 驱动——
-        /// 确保 Worker 不再访问驱动后才释放底层连接（如 S7 的 Plc），
-        /// 避免使用已关闭连接与 Plc 泄漏。占位运行时（无 Worker / 无驱动）各步骤自然跳过。
+        /// 顺序保证：先取消 Worker 并等待收尾（3s 超时容忍），再从会话卸载设备——
+        /// 确保 Worker 不再访问驱动后才卸载；末位设备离场时销毁会话（Dispose 会话持有的唯一驱动），
+        /// 保证底层连接（如 S7 的 Plc）只在使用方全部退出后释放。占位运行时（无 Worker/无会话）各步骤自然跳过。
         /// </para>
         /// <para>
         /// 在 DispatchSync 锁内取消并读取 WorkerTask：与调度器派发临界区串行化，
@@ -366,7 +448,7 @@ namespace ScadaServer.Runtime
         /// 移除该运行时，此后调度器派发校验（在册 + 同引用）必然失败，不会再有新 Worker。
         /// </para>
         /// </summary>
-        private async Task StopWorkerAndDisposeDriverAsync(Devices.DeviceRuntime runtime)
+        private async Task StopWorkerAndUnmountDeviceAsync(Devices.DeviceRuntime runtime)
         {
             Task? workerTask;
             lock (runtime.DispatchSync)
@@ -387,17 +469,37 @@ namespace ScadaServer.Runtime
                 }
             }
 
-            if (runtime.Driver != null)
+            await UnmountFromSessionAsync(runtime);
+        }
+
+        /// <summary>
+        /// 从所属会话卸载设备；末位离场时销毁会话（Dispose 会话持有的唯一驱动实例）。
+        /// 无会话（占位运行时）为 no-op。
+        /// </summary>
+        private async Task UnmountFromSessionAsync(Devices.DeviceRuntime runtime)
+        {
+            var session = runtime.Session;
+            if (session == null) return;
+
+            var isEmpty = await session.UnmountAsync(runtime.Device.Id);
+            if (isEmpty)
             {
-                try
-                {
-                    await runtime.Driver.DisposeAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
-                }
+                await DisposeSessionAsync(session);
             }
+        }
+
+        /// <summary>
+        /// 从会话表移除并销毁会话（Dispose 驱动）。幂等：会话已被移除则 no-op。
+        /// </summary>
+        private async Task DisposeSessionAsync(ConnectionSession session)
+        {
+            if (!ConnectionSessions.TryRemove(session.ConnectionId, out _))
+            {
+                return;
+            }
+
+            _logger.LogInformation("连接 {ConnKey}(#{ConnId}) 末位设备离场，会话销毁。", session.Key, session.ConnectionId);
+            await session.DisposeAsync();
         }
 
         /// <summary>
@@ -461,10 +563,8 @@ namespace ScadaServer.Runtime
                 }
                 var protocolLabel = driverKey;
 
-                // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeConnection 只读视图连接驱动。
-                // 第九阶段起：驱动只接收 RuntimeConnection / RuntimeVariable，不再感知 Device / DataModel / DataPoint。
-                // P1：此处用轻量适配层 DeviceConnectionContext 传递"该设备所在连接"的只读视图，
-                //      行为与旧签名（device.Connection.ConfigJson）逐字节等价；P2 起由 ConnectionSession 取代本适配层。
+                // 先构建运行时对象（Driver 经挂载会话转发），再由所属连接会话挂载。
+                // P1 曾用轻量适配层 DeviceConnectionContext 喂驱动；P2 起由 ConnectionSession 本体取代（P6 清理删除）。
                 var runtime = new Devices.DeviceRuntime(device)
                 {
                     Device = device,
@@ -473,48 +573,26 @@ namespace ScadaServer.Runtime
                     Area = device.Area
                 };
 
-                // 驱动创建与连接异常同样视为连接失败（进入占位重连路径），避免初始化异常被外层
-                // catch 吞掉后设备永不重试。
-                bool connected;
-                IProtocolDriver? driver = null;
-                try
-                {
-                    driver = _driverFactory.CreateDriver(driverKey);
-                    connected = await driver.ConnectAsync(new DeviceConnectionContext(device.Connection!));
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "设备 {Key} ({Protocol}) 连接时发生异常。", device.Key, protocolLabel);
-                    connected = false;
-                }
+                // 连接级单例：获取或创建连接会话（一条物理连接），首台设备创建会话（一次 CreateDriver+ConnectAsync），
+                // 同 ConnectionId 的后续设备复用会话、共享同一驱动实例。
+                var session = await GetOrCreateSessionAsync(device.Connection!, driverKey, protocolLabel);
 
-                // 连接成功则由运行时持有驱动；任何失败路径（返回 false 或抛异常）都必须释放驱动，
-                // 避免异常路径遗留驱动内部资源（如半开的 OPC UA 会话）。
-                if (connected)
+                if (session == null)
                 {
-                    runtime.Driver = driver!;
-                }
-                else if (driver != null)
-                {
-                    await driver.DisposeAsync();
-                }
-
-                if (!connected)
-                {
-                    // 注册占位运行时并标记待重连：调度器发现 NeedsReconnect 后按退避窗口
-                    // 触发 ReconnectDeviceAsync 自动重试，设备状态对外呈现 Fault。
+                    // 连接失败：不建会话，注册占位运行时并标记待重连（语义同现状）。
+                    // 调度器发现 NeedsReconnect 后按退避窗口触发 ReconnectDeviceAsync 自动重试，设备状态对外呈现 Fault。
                     runtime.NeedsReconnect = true;
                     runtime.ConnectionState = DeviceConnectionState.Error;
                     RegisterDevice(runtime);
                     _logger.LogWarning(
-                        "设备 {Key} ({Protocol}) 连接失败，已注册为待重连，调度器将按退避窗口自动重试。",
+                        "设备 {Key} ({Protocol}) 所属连接连接失败，已注册为待重连，调度器将按退避窗口自动重试。",
                         device.Key, protocolLabel);
                     return false;
                 }
 
-                // 驱动连接即视为已连接：设备无需等待首轮采集即可对外呈现在线，
-                // 并为空转（无启用变量）设备直接定格在线状态，避免停留在 Initializing/Offline。
-                runtime.ConnectionState = DeviceConnectionState.Connected;
+                // 挂载设备到会话：会话已在线（State=Connected），挂载同步设备连接状态并绑定 Session/Driver 转发。
+                // 设备无需等待首轮采集即可对外呈现在线，并为空转（无启用变量）设备直接定格在线状态。
+                await session.MountAsync(runtime);
 
                 var now = DateTime.UtcNow;
                 foreach (var dv in device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
@@ -572,6 +650,49 @@ namespace ScadaServer.Runtime
             }
         }
 
+        /// <summary>
+        /// 获取连接会话；不存在则创建并建连（连接级单例：一次 <see cref="IProtocolDriverFactory.CreateDriver"/>
+        /// + <see cref="ConnectionSession.ConnectAsync"/>）。同 ConnectionId 的后续设备直接复用会话。
+        /// <para>
+        /// 建连失败返回 null 且不建会话（设备走占位重连路径，调度器按退避窗口经
+        /// <see cref="ReconnectDeviceAsync"/> 重建会话再挂载）。
+        /// </para>
+        /// </summary>
+        private async Task<ConnectionSession?> GetOrCreateSessionAsync(DeviceConnection connection, string protocolKey, string protocolLabel)
+        {
+            if (ConnectionSessions.TryGetValue(connection.Id, out var existing))
+            {
+                return existing;
+            }
+
+            var session = new ConnectionSession(connection, protocolKey, _driverFactory,
+                _loggerFactory.CreateLogger<ConnectionSession>());
+
+            bool connected;
+            try
+            {
+                connected = await session.ConnectAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "连接 {ConnKey}(#{ConnId}) ({Protocol}) 连接时发生异常。",
+                    connection.Name, connection.Id, protocolLabel);
+                connected = false;
+            }
+
+            if (!connected)
+            {
+                _logger.LogWarning("连接 {ConnKey}(#{ConnId}) ({Protocol}) 连接失败，其下设备注册为待重连。",
+                    connection.Name, connection.Id, protocolLabel);
+                return null;
+            }
+
+            ConnectionSessions[connection.Id] = session;
+            _logger.LogInformation("连接 {ConnKey}(#{ConnId}) ({Protocol}) 共享会话建立，其下设备共享一条物理连接。",
+                connection.Name, connection.Id, protocolLabel);
+            return session;
+        }
+
         /// <inheritdoc/>
         public async Task StartAsync(CancellationToken token)
         {
@@ -608,22 +729,20 @@ namespace ScadaServer.Runtime
                 await scheduler.StopAsync();
             }
 
-            // 停止轮询后，断开所有设备驱动（如 S7 PLC 连接）并释放其资源，确保优雅关闭。
-            // 注意：待重连占位运行时没有驱动（Driver 为 null），需判空跳过。
-            foreach (var runtime in DeviceRuntimes.Values)
+            // 停止轮询后，逐会话释放共享驱动（如 S7 PLC 连接），确保优雅关闭。
+            // 顺序保证：调度器已聚合等待全部 Worker 退出，此处不再有 Worker 访问驱动。
+            foreach (var session in ConnectionSessions.Values)
             {
                 try
                 {
-                    if (runtime.Driver != null)
-                    {
-                        await runtime.Driver.DisposeAsync();
-                    }
+                    await DisposeSessionAsync(session);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "设备 {Key} 驱动断开连接时发生异常（已忽略）。", runtime.Device.Key);
+                    _logger.LogWarning(ex, "连接 {ConnKey}(#{ConnId}) 驱动释放时发生异常（已忽略）。", session.Key, session.ConnectionId);
                 }
             }
+            ConnectionSessions.Clear();
 
             // 清空变量绑定索引，避免停止后残留映射在重启前被误触发。
             _bindingEngine.Clear();
@@ -892,25 +1011,6 @@ namespace ScadaServer.Runtime
                 DeviceConnectionState.Disconnected or DeviceConnectionState.Unknown => DeviceStatus.Offline,
                 _ => DeviceStatus.Offline
             };
-        }
-
-        /// <summary>
-        /// 由 DeviceConnection 实体构建的连接运行时只读适配层（P1 临时层）。
-        /// 用于驱动 ConnectAsync(IRuntimeConnection) 的过渡期接入：每设备独立驱动时，
-        /// 以"该设备所在连接"的只读视图喂给驱动，行为与旧签名逐字节等价。
-        /// P2 起由 <c>ConnectionSession</c> 本体取代本适配层（P6 清理删除）。
-        /// </summary>
-        private sealed class DeviceConnectionContext : IRuntimeConnection
-        {
-            private readonly DeviceConnection _connection;
-
-            public DeviceConnectionContext(DeviceConnection connection) => _connection = connection;
-
-            public int ConnectionId => _connection.Id;
-
-            public string Key => string.IsNullOrEmpty(_connection.Name) ? $"#{_connection.Id}" : _connection.Name;
-
-            public string ConfigJson => _connection.ConfigJson ?? "{}";
         }
     }
 }

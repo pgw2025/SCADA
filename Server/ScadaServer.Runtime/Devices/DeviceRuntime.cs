@@ -1,6 +1,7 @@
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
+using ScadaServer.Runtime.Connections;
 
 namespace ScadaServer.Runtime.Devices;
 
@@ -46,8 +47,13 @@ public class DeviceRuntime : IRuntimeDevice
     // 区域（可能未加载，可为 null）
     public Area? Area { get; init; }
 
-    // 驱动实例
-    public IProtocolDriver Driver { get; set; } = null!;
+    // 驱动实例：连接级单例共享后，驱动由所属 ConnectionSession 持有；
+    // 本属性为转发快照（无会话/会话无驱动时为 null，语义覆盖写入门禁 runtime.Driver == null）。
+    // 注意：返回值是瞬时快照，长循环内不得缓存——每次读取经 Session?.Driver。
+    public IProtocolDriver? Driver => Session?.Driver;
+
+    /// <summary>设备所属连接会话（连接级单例，多设备共享同一条物理连接）。由 RuntimeManager 挂载时赋值、卸载时清空。</summary>
+    public ConnectionSession? Session { get; set; }
 
     // 变量运行时集合（key = DataPointMapping.Id）
     public Dictionary<int, VariableRuntime> Variables { get; } = new();

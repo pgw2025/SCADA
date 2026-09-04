@@ -155,16 +155,36 @@ namespace ScadaServer.Runtime.Devices
                     // 用于收尾时区分"部分成功=在线"与"全部失败=通讯故障"。
                     var anySuccess = false;
 
-                    // 逐个读取到期变量。
-                    // 第九阶段起：驱动只接收 RuntimeVariable（IRuntimeVariable 视图），
-                    // 地址 / 位偏移 / 轮询 / 缩放等由 RuntimeVariable 解析（来自 DataPointMapping），
-                    // 驱动不再感知 DataPoint 模板实体。
+                    // P5 批读（性能补偿，连接共享驱动串行化下的吞吐优化）：
+                    // 到期变量集合一次 ReadBatchAsync 取回，减少网络往返与驱动内锁竞争。
+                    // 整体抛异常 → batch=null，回退逐变量 ReadAsync（保留故障隔离与 LastError）。
+                    IDictionary<string, object>? batch = null;
+                    try
+                    {
+                        batch = await _runtime.Driver.ReadBatchAsync(due);
+                    }
+                    catch
+                    {
+                        batch = null;
+                    }
+
                     foreach (var vr in due)
                     {
                         var previousQuality = vr.Quality;
                         try
                         {
-                            var newValue = await _runtime.Driver.ReadAsync(vr);
+                            // P5：优先取批读结果；缺项（整体降级/驱动未返回/错误标记）走单变量补读。
+                            // 批读错误标记（S7 READ_ERROR / INVALID_ADDRESS、OPC UA READ_ERROR）——由
+                            // IsErrorMarker 识别为 null（走现有无效路径），保证"单变量失败不拖垮整轮"语义不变。
+                            object? newValue;
+                            if (batch != null && batch.TryGetValue(vr.Key, out var batched))
+                            {
+                                newValue = IsErrorMarker(batched) ? null : batched;
+                            }
+                            else
+                            {
+                                newValue = await _runtime.Driver.ReadAsync(vr);
+                            }
 
                             // 工程换算（raw → engineering）：表达式为空即恒等，求值失败保持原始值，
                             // 保证一条坏配置最多让该变量按原始值上报，不拖垮采集循环。
@@ -307,6 +327,21 @@ namespace ScadaServer.Runtime.Devices
                                 "设备 {DeviceKey} 连续 {Count} 轮采集全部失败，判定断线，转入自动重连流程。",
                                 _runtime.Device.Key, _runtime.ConsecutiveFailureCount);
                             _runtime.NeedsReconnect = true;
+                            // 连接级重连归口：将断线信号上抛所属会话（fire-and-forget，异常兜底）。
+                            // 会话侧先 IsAliveAsync 探测：连接存活则判定设备级故障不重建；死亡则进入会话重建
+                            //（多设备并发触发经会话闸门去重收敛为一次重建）。
+                            if (_runtime.Session != null)
+                            {
+                                try
+                                {
+                                    await _runtime.Session.SignalConnectionFailureAsync(_runtime.Device.Id);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogDebug(ex, "设备 {DeviceKey} 断线信号上抛会话失败（已忽略，继续按设备级重连退出）。",
+                                        _runtime.Device.Key);
+                                }
+                            }
                             break;
                         }
                     }
@@ -806,6 +841,18 @@ namespace ScadaServer.Runtime.Devices
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 批读错误标记判定：S7Driver / OpcUaDriver 以<b>非 null 字符串</b>标记单变量失败
+        /// （S7 的 <c>READ_ERROR</c> / <c>INVALID_ADDRESS</c>、OPC UA 的 <c>READ_ERROR</c>，见各自驱动 ReadBatchAsync 契约）。
+        /// Worker 据此将标记映射为 null（走现有无效路径），保证「单变量失败不拖垮整轮」语义与逐变量路径一致。
+        /// 仅识别约定标记字符串，真实字符串变量值不受影响。
+        /// </summary>
+        private static bool IsErrorMarker(object value)
+        {
+            return value is string s &&
+                   (s == "READ_ERROR" || s == "INVALID_ADDRESS");
         }
 
         /// <summary>

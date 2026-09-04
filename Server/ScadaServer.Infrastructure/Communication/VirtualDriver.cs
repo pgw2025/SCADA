@@ -111,6 +111,11 @@ namespace ScadaServer.Infrastructure.Communication
             return results;
         }
 
+        /// <summary>
+        /// 探测虚拟连接是否存活（仅用于会话级重连判定）。虚拟设备无真实连接，已连接即存活。
+        /// </summary>
+        public Task<bool> IsAliveAsync() => Task.FromResult(_connected);
+
         public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
         {
             // 虚拟设备采用轮询模式，订阅为空实现

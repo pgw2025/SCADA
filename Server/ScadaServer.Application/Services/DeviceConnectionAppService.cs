@@ -29,17 +29,20 @@ namespace ScadaServer.Application.Services
         private readonly IControllerRepository _controllerRepository;
         private readonly IProtocolRepository _protocolRepository;
         private readonly IDeviceRepository _deviceRepository;
+        private readonly IRuntimeDeviceManager _runtimeDeviceManager;
 
         public DeviceConnectionAppService(
             IDeviceConnectionRepository repository,
             IControllerRepository controllerRepository,
             IProtocolRepository protocolRepository,
-            IDeviceRepository deviceRepository)
+            IDeviceRepository deviceRepository,
+            IRuntimeDeviceManager runtimeDeviceManager)
         {
             _repository = repository;
             _controllerRepository = controllerRepository;
             _protocolRepository = protocolRepository;
             _deviceRepository = deviceRepository;
+            _runtimeDeviceManager = runtimeDeviceManager;
         }
 
         /// <summary>按主键获取连接（含控制器/协议导航），不存在时返回 null。</summary>
@@ -173,6 +176,11 @@ namespace ScadaServer.Application.Services
             }
 
             var now = DateTime.UtcNow;
+            // 记录连接配置真相源变更前快照，用于判定是否需要触发会话热更新（仅参数/启停变更才重建，改名不重建）。
+            var prevConfigJson = entity.ConfigJson;
+            var prevReconnectIntervalMs = entity.ReconnectIntervalMs;
+            var prevIsEnabled = entity.IsEnabled;
+
             entity.ControllerId = dto.ControllerId;
             entity.Name = DeviceConnectionProfile.Truncate(name, 100) ?? string.Empty;
             entity.ProtocolId = dto.ProtocolId;
@@ -192,6 +200,15 @@ namespace ScadaServer.Application.Services
 
             entity.UpdatedAt = now;
             await _repository.UpdateAsync(entity);
+
+            // 连接配置热更新接线（P4.2）：配置真相源（ConfigJson）/重连间隔/启用状态任一变化即通知运行时
+            // 重建/销毁/创建会话，使变更无需重启服务即时生效。仅改名称不触发。
+            if (entity.ConfigJson != prevConfigJson
+                || entity.ReconnectIntervalMs != prevReconnectIntervalMs
+                || entity.IsEnabled != prevIsEnabled)
+            {
+                await _runtimeDeviceManager.ReloadConnectionAsync(id);
+            }
 
             return await GetByIdAsync(id)
                 ?? throw new BusinessException($"更新连接后无法读取 ID 为 {id} 的连接记录");

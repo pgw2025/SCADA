@@ -600,6 +600,25 @@ namespace ScadaServer.Infrastructure.Communication
 
         #endregion
 
+        #region 连接探测
+
+        /// <summary>
+        /// 探测 PLC 物理连接是否仍存活（仅用于会话级重连判定，不做任何网络 IO）。
+        /// 终态或未建连返回 false。
+        /// </summary>
+        public Task<bool> IsAliveAsync()
+        {
+            // 只读探测 _plc 状态：_plc 仅在持 _plcLock 时更换，此处无需加锁（读取 volatile 引用快照；
+            // 即便与 Dispose 交错，返回 true 的下一次真实 IO 也会在锁内复检终态并失败，语义自洽）。
+            var plc = _plc;
+            var alive = Volatile.Read(ref _state) == StateActive
+                        && plc != null
+                        && plc.IsConnected;
+            return Task.FromResult(alive);
+        }
+
+        #endregion
+
         #region 写入
 
         public async Task WriteAsync(IRuntimeVariable variable, object value)

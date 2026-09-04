@@ -42,6 +42,17 @@ namespace ScadaServer.Domain.Interfaces
         Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables);
 
         /// <summary>
+        /// 探测物理连接是否仍存活。
+        /// <para>
+        /// 语义：<b>仅用于会话级重连判定</b>，不作为读写前置条件（避免每轮多一次往返）。
+        /// 各驱动实现为其"连接状态"的轻量化只读视图：S7 返回 PLC 是否仍连接；
+        /// OPC UA 返回会话是否可用；虚拟设备恒 true。不得在本方法内做任何网络 IO。
+        /// </para>
+        /// </summary>
+        /// <returns>连接存活返回 true；未连接/已失效/驱动已释放返回 false。</returns>
+        Task<bool> IsAliveAsync();
+
+        /// <summary>
         /// 写入单个变量值到物理设备。
         /// </summary>
         /// <param name="variable">变量运行时（地址来自 DataPointMapping，数据类型来自 DataType）</param>

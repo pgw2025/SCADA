@@ -405,6 +405,19 @@ namespace ScadaServer.Infrastructure.Communication
             return results;
         }
 
+        /// <summary>
+        /// 探测 OPC UA 会话是否仍可用（仅用于会话级重连判定，不做任何网络 IO）。
+        /// 仅 Connected 状态 + 底层 Session 连接视为存活。
+        /// </summary>
+        public Task<bool> IsAliveAsync()
+        {
+            var alive = !_disposed
+                        && _state == DriverState.Connected
+                        && _session != null
+                        && _session.Connected;
+            return Task.FromResult(alive);
+        }
+
         public async Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
         {
             if (_disposed) return;

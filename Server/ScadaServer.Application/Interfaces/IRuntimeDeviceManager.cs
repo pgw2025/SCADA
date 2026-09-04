@@ -28,6 +28,14 @@ namespace ScadaServer.Application.Interfaces
         Task ReloadDeviceAsync(int deviceId);
 
         /// <summary>
+        /// 连接配置热更新归口（DeviceConnectionAppService.UpdateAsync 接线）：
+        /// 重新加载连接配置，按 IsEnabled 与会话现状执行会话重建/销毁/创建。
+        /// 连接配置表变更即时生效，无需重启服务（区别于主数据库连接串，后者仍需重启）。
+        /// </summary>
+        /// <param name="connectionId">连接配置 ID</param>
+        Task ReloadConnectionAsync(int connectionId);
+
+        /// <summary>
         /// 向运行中的设备变量写入值：定位 DeviceRuntime → VariableRuntime → 驱动 WriteAsync，
         /// 写成功后同步变量运行时内存值并经 SignalR 广播，供所有客户端（含写入方自己刷新后）刷新值。
         /// 不抛异常：写入结果以 <see cref="ValueTuple{bool,String}"/> 返回，Success=false 时 ErrorMessage 为可展示原因。
