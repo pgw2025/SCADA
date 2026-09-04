@@ -63,11 +63,17 @@ const varDesc = ref<string>('');
 const dataTypeOptions = computed(() => {
   if (!currentModel.value) return [];
   // 数据模型不再绑定协议（协议真相源在设备连接 DeviceConnection 的 Protocol），
-  // 数据类型列表保持协议无关的通用默认集。
+  // 数据类型列表保持协议无关的通用默认集；
+  // 已覆盖 S7 驱动全部读写能力（BOOL/BIT、BYTE、INT、UINT16、WORD、DINT、UINT32、REAL、FLOAT）。
   return [
     { label: 'BOOL (布尔)', value: 'BOOL', type: 'digital' },
-    { label: 'INT (整型数)', value: 'INT', type: 'analog' },
+    { label: 'BIT (位)', value: 'BIT', type: 'digital' },
+    { label: 'BYTE (8位字节)', value: 'BYTE', type: 'analog' },
+    { label: 'INT (16位整型数)', value: 'INT', type: 'analog' },
+    { label: 'UINT16 (16位无符号整型)', value: 'UINT16', type: 'analog' },
+    { label: 'WORD (16位字)', value: 'WORD', type: 'analog' },
     { label: 'DINT (32位整型数)', value: 'DINT', type: 'analog' },
+    { label: 'UINT32 (32位无符号整型)', value: 'UINT32', type: 'analog' },
     { label: 'REAL (单精度浮点数)', value: 'REAL', type: 'analog' },
     { label: 'FLOAT (浮点数值)', value: 'FLOAT', type: 'analog' },
     { label: 'STRING (文本字段)', value: 'STRING', type: 'analog' }
