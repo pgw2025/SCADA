@@ -144,6 +144,17 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IHmiComponentRepository : IRepository<HmiComponent, int> { }
 
     /// <summary>
+    /// HMI 组件模板仓储接口（组件库动态化：模板元数据的唯一真相源）。
+    /// </summary>
+    public interface IHmiWidgetTemplateRepository : IRepository<HmiWidgetTemplate, int>
+    {
+        /// <summary>
+        /// 按唯一键查询（导入冲突检测 / 种子幂等用），未找到返回 null。
+        /// </summary>
+        Task<HmiWidgetTemplate?> GetByKeyAsync(string templateKey);
+    }
+
+    /// <summary>
     /// 模型变量仓储接口
     /// </summary>
     public interface IDataPointRepository : IRepository<DataPoint, int> { }

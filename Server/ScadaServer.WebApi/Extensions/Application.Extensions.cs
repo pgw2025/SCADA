@@ -45,6 +45,7 @@ namespace ScadaServer.WebApi.Extensions
             // 开放 API 暴露接口配置注册表：单例常驻，内存缓存 /open/* 网关匹配的启用接口。
             services.AddSingleton<IExposedApiRegistry, ExposedApiRegistry>();
             services.AddScoped<IHmiComponentAppService, HmiComponentAppService>();
+            services.AddScoped<IHmiWidgetTemplateAppService, HmiWidgetTemplateAppService>();
             // 组态图片图库：文件目录存储，无数据库依赖。经工厂注入 ContentRootPath 解析存储根目录
             // （Application 层不引用 ASP.NET Core 类型，运行期由 sp 解析 IWebHostEnvironment）。
             services.AddScoped<IHmiImageAppService>(sp => new HmiImageAppService(

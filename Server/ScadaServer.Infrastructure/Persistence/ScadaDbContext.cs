@@ -224,6 +224,13 @@ namespace ScadaServer.Infrastructure.Persistence
                 .IsUnique()
                 .HasDatabaseName("ix_exposedinterfaces_route_method");
             modelBuilder.Entity<HmiComponent>().ToTable("HmiComponents");
+            // 组件模板表（组件库动态化）：TemplateKey 为业务唯一键（导入冲突检测 / 种子幂等依赖），
+            // 列宽经实体 [MaxLength] 映射为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引）。
+            modelBuilder.Entity<HmiWidgetTemplate>().ToTable("HmiWidgetTemplates");
+            modelBuilder.Entity<HmiWidgetTemplate>()
+                .HasIndex(t => t.TemplateKey)
+                .IsUnique()
+                .HasDatabaseName("ix_hmiwidgettemplates_templatekey");
             // 模型变量：列宽显式限制为 varchar（Pomelo 对无长度 string 默认映射 longtext，无法建索引），
             // 并建立 (ModelId, Key) 库级唯一索引兜底，杜绝并发/直写库造成"模型内变量键重复"。
             modelBuilder.Entity<DataPoint>().ToTable("DataPoints");
