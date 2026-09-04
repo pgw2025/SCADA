@@ -172,6 +172,18 @@ namespace ScadaServer.Infrastructure.Communication
                     return false;
                 }
 
+                // 测试兼容：当请求的安全策略为 None 时，跳过栈内置的服务器证书 ApplicationUri 校验
+                //（BadCertificateUriInvalid）。此校验在 SDK 内硬编码直接抛异常，且不经过
+                // AutoAcceptUntrustedCertificates / CertificateValidation 事件，无法通过开关关闭；
+                // 置空端点携带的服务器证书后，OpenAsync 因无证书可校验而跳过该检查。
+                // 仅对 None 策略安全（无消息签名/加密，不需要服务器证书做密钥协商）；
+                // 生产环境应保持严格校验，改用与服务器证书 ApplicationUri 匹配的端点或修复服务器证书。
+                if (config.SecurityPolicy?.Equals("None", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    selectedEndpoint.ServerCertificate = null;
+                    _logger.LogDebug("OPC UA 已绕过服务器证书 ApplicationUri 校验（SecurityPolicy=None，测试模式）。");
+                }
+
                 var endpointConfiguration = EndpointConfiguration.Create(appConfig);
                 var managedEndpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
 
