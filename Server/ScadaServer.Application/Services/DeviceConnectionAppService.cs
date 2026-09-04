@@ -46,7 +46,11 @@ namespace ScadaServer.Application.Services
         public async Task<DeviceConnectionDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
-            return entity == null ? null : MapToDto(entity);
+            if (entity == null) return null;
+
+            var dto = MapToDto(entity);
+            dto.InUseByDevice = await _deviceRepository.AnyAsync(d => d.ConnectionId == id);
+            return dto;
         }
 
         /// <summary>获取连接列表（含控制器/协议导航）；controllerId 非空时仅返回该控制器下的连接。</summary>
@@ -57,7 +61,20 @@ namespace ScadaServer.Application.Services
             {
                 list = list.Where(c => c.ControllerId == controllerId.Value).ToList();
             }
-            return list.Select(MapToDto).ToList();
+
+            // 批量取被设备引用的连接 ID，避免逐条 N+1 查询。
+            var referenced = new HashSet<int>(
+                (await _deviceRepository.GetListAsync(d => d.ConnectionId.HasValue))
+                .Select(d => d.ConnectionId!.Value));
+
+            var dtos = new List<DeviceConnectionDto>(list.Count);
+            foreach (var entity in list)
+            {
+                var dto = MapToDto(entity);
+                dto.InUseByDevice = referenced.Contains(entity.Id);
+                dtos.Add(dto);
+            }
+            return dtos;
         }
 
         /// <summary>新增连接：校验控制器存在且启用、协议存在与配置 JSON 合法，按配置原文重算冗余列后写入。</summary>
@@ -122,12 +139,14 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {id} 的连接不存在");
             }
 
-            // 已被设备引用 → 拒绝直接修改：设备连接参数变更必须走设备页（设备接口单点维护，
-            // 含端点唯一性与共享语义；阶段 6 起 Connection.ConfigJson 即连接配置唯一真相源）。
+            // 已被设备引用 → 允许编辑参数字段（Name/IsEnabled/ReconnectIntervalMs/ConfigJson 及其派生的
+            // Host/Port/TimeoutMs），但冻结结构性绑定（ControllerId/ProtocolId）：改它们会改变设备协议/控制器
+            // 归属，必须走设备页维护。阶段 6 起 Connection.ConfigJson 即连接配置唯一真相源，此处直接改配置安全。
             var inUseByDevice = await _deviceRepository.AnyAsync(d => d.ConnectionId == id);
-            if (inUseByDevice)
+            if (inUseByDevice
+                && (dto.ControllerId != entity.ControllerId || dto.ProtocolId != entity.ProtocolId))
             {
-                throw new BusinessException("该连接已被设备使用，请在设备管理页修改连接参数（被引用连接的参数由设备接口单点维护）");
+                throw new BusinessException("该连接正被设备使用，所属控制器/协议不可在此变更，请在设备管理页调整设备归属");
             }
 
             var name = dto.Name?.Trim() ?? string.Empty;

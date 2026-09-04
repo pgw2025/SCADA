@@ -15,6 +15,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/live-data', component: () => import('../components/LiveDataView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/device-management', component: () => import('../components/DeviceManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/controller-management', component: () => import('../components/ControllerManagementView.vue'), meta: { roles: ADMIN_ROLES } },
+  { path: '/connection-management', component: () => import('../components/DeviceConnectionManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/device-variables', component: () => import('../components/DataPointMappingView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/data-models', component: () => import('../components/DataModelView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/scada-editor', component: () => import('../components/ScadaTopologyView.vue'), meta: { roles: ADMIN_ROLES } },

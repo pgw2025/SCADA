@@ -70,8 +70,15 @@ namespace ScadaServer.Application.DTOs
         /// <summary>创建时间</summary>
         public DateTime CreatedAt { get; set; }
 
-        /// <summary>最近更新时间</summary>
+        /// <summary>更新时间（UTC 存储）。</summary>
         public DateTime UpdatedAt { get; set; }
+
+        /// <summary>
+        /// 是否已被设备引用（Device.ConnectionId 指向）。
+        /// 为 true 时该连接的参数变更/删除需走设备管理页，本端点更新/删除将被拒绝。
+        /// 仅供连接管理页展示禁用态用。
+        /// </summary>
+        public bool InUseByDevice { get; set; }
     }
 
     /// <summary>

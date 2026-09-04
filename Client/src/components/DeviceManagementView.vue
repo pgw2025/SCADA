@@ -599,6 +599,9 @@ const openNewDeviceModal = () => {
   if (protocolOptions.value.length === 0) loadProtocolOptions();
   newConnProtocolId.value = null;
 
+  // 控制器下拉：惰性加载控制器列表（控制器管理页登记的数据），否则无选项且下拉被禁用。
+  loadControllerOptions();
+
   // 阶段 5：新增态绑定表随后端 CreateAsync 双写一条主绑定，面板不适用（清空避免残留上一设备）。
   deviceBindings.value = [];
   bindTargetModelId.value = '';
@@ -647,6 +650,9 @@ const openEditDeviceModal = (device: Device) => {
 
   // 「新建独立连接」协议选择：编辑态重新置空（连接协议由用户显式选择）。
   newConnProtocolId.value = null;
+
+  // 控制器下拉：惰性加载控制器列表（控制器管理页登记的数据），否则无选项且下拉被禁用。
+  loadControllerOptions();
 
   editingConnectionLabel.value = attachedConn
     ? [attachedConn.controllerCode, attachedConn.controllerName, attachedConn.protocolName]
