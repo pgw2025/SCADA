@@ -64,6 +64,7 @@
 ### 3.2 运行时读写契约（Application.Interfaces）
 - **`IRuntimeDeviceManager`**：运行期热注册/注销/重载单台设备（`RegisterDeviceAsync` / `RemoveDeviceAsync` / `ReloadDeviceAsync`），以及 `WriteVariableAsync(deviceId, variableKey, value, writeSource)`。所有方法**不抛异常**，结果以 `(bool Success, string? ErrorMessage)` 或静默日志返回，避免业务写操作被运行期异常误判。
 - **`IScadaNotificationService`**：实时推送（`NotifyVariableUpdateAsync` 带质量/时间、`NotifyDeviceStatusAsync`、`NotifyAlarmAsync`、`NotifySystemAlarmAsync`、`NotifyScriptExecutionAsync`）。实现方为 SignalR / MQTT，对 RuntimeManager 而言是下游黑盒。
+- **`IRuntimeManager.TryGetRuntimeSnapshot`**（阶段 3）：聚合快照查询（连接态 + 运行态 + 报警 + 通信统计，含进程级 `ReconnectCount`）；`Status` 与 `ConnectionState` 同源同值、`RunState`/`HasAlarm` 正交维度一并返回。
 - **`IHistoryRecorder` / `IRealtimeSnapshotService` / `IAlarmRecorder`**：均为**非阻塞入队、后台批量落库**模式（Channel/队列），绝不阻塞采集循环。
 
 ### 3.3 协议驱动契约（Domain.Interfaces）
@@ -171,6 +172,12 @@
 ### 6.5 进程内事件总线（`Events`）
 - `VariableChangeBus`（Singleton）：同步回调快照调用列表，**逐订阅者 try/catch**，单个订阅者失败不影响采集。事件源 `VariableChangeSource`（Polling / UserWrite / BindingWrite）供订阅者区分回声与去重。
 
+### 6.6 设备运行状态与报警聚合（`Devices` / `Alarms`，阶段 2/3 落地）
+- **双状态正交模型**（`DeviceRuntime`）：`ConnectionState`（PLC 通信态）↔ `RunState`（机器运行态）为两个**正交**维度。语义边界（P4）：`DeviceStatus.Fault` = **PLC 通信故障**（由 `MapConnectionStateToStatus` 由连接态派生）；`DeviceRunState.Fault` = **机器自身故障/急停**（人工置位）。`Online + Stopped`、`Fault连接 + Running机器` 均为合法组合。
+- **HasAlarm 聚合链路**：`DeviceWorker.FireEvent` **单点打点**（规则报警 + MinMax 兜底全覆盖）→ `DeviceRuntime.ApplyAlarmDelta(±1)`（clamp 0）→ `ActiveAlarmCount` / 派生 `HasAlarm`。**自愈闭环**：runtime 重建（重连/重启/重载）时 `BuildAndRegisterDeviceAsync` 从 `AlarmRecords` 计数 `RecoveredAt IS NULL` 初始化 `ActiveAlarmCount`，消除「Worker 重建丢状态 → HasAlarm 卡 true/false」的幽灵窗口。
+- **RunState 持久化链路**：`PUT /api/devices/{id}/runtime/runstate`（Operator/Admin + AuditLog）→ 写 `Devices.RunState / RunStateChangedAt` 列 → 运行时内存 `SetDeviceRunState` 即时生效 → 服务重启/设备启用时由 `RestoreRunState` 回读（维护状态不因重启丢失）。**刻意支持禁用设备置位**——维护常发生在停机设备，启用后自动恢复。
+- **聚合快照端点**：`GET /api/devices/{id}/runtime`（D5-a：未注册→404）一次返回连接态 + 运行态 + 报警 + 通信统计（含进程级 `ReconnectCount`）。无变量值（D4-1，预留 includeValues 扩展位）。实时变化仍走 SignalR。
+
 ---
 
 ## 7. 并发与线程模型（设计亮点）
@@ -182,6 +189,8 @@
 | `Channel<…>`（有界 `DropOldest`） | 绑定转发写入解耦事件回调与执行，背压丢旧不阻塞采集 |
 | `CancellationTokenSource` 链接链 | 全局关停 token → 调度器 token → Worker 独立 token（支持单设备启停）；所有权校验防旧 Worker 误释放新 token |
 | `ConcurrentDictionary` | `DeviceRuntimes` / `_retryAfter` / `_workerTasks` / 脚本 `_jobs` `_inflight` 等无锁并发容器 |
+| 快照组装（P6 决策） | `TryGetRuntimeSnapshot` **无锁读取**多个内存字段，容忍字段间微小不一致（误差窗口 ≤ 一个采集轮次）；**禁止**为求一致性对 `DeviceRuntime.Lock` 加锁（会与采集循环互相阻塞） |
+| 重连窗口快照回退（P4 修复） | 重连 connect 期间设备被移出 `DeviceRuntimes`（原子化重连、避免旧 Worker 残留），`TryGetRuntimeSnapshot` 回退读 `_reconnecting` 保留的占位运行时，保证断线诊断快照始终可查；连接完成新运行时权威接管 |
 | 退避窗口（5s） | 重连与失败重派均带退避，防刷屏/风暴 |
 | UTC 时间戳 | 采集时间统一 UTC，跨时区/时区变更无偏移 |
 
@@ -216,9 +225,17 @@
 4. 规则引擎快照整体替换、绑定环检测、脚本沙箱授权+熔断，安全与可用性兼顾。
 5. 严格生命周期边界（Singleton/Runtime 不持有 Scoped DbContext，靠 `IServiceScopeFactory`）。
 
-**待演进 / 风险点：**
-- `ProtocolDriverFactory` 中 **ModbusTcp / MQTT 仍为 `NotSupportedException`**——前端/配置已支持但运行时未实现（与 memory 中「MQTT 驱动待开发」一致）。
+**待演进 / 风险点（阶段 4 已登记）：**
+- ~~`DeviceRuntime` 内存状态实体与运行时层重名~~（已删除死代码，Domain 层不再有该实体）。
+- **D2-B RunState 自动推导**（暂缓）：待 D2-A 人工置位稳定运行一个迭代后，新增 `DeviceRunStateMappings` 独立映射表（不动 DataPoint 模板），`DeviceWorker` 采集成功后评估（位置紧邻 `TryCheckAlarm`）。
+- **快照 includeValues**（暂缓，D4-2）：`?includeValues=true` + 上限截断（>500 变量），DTO 已预留扩展位；启用时同步评估 `TelemetryDataController` / `ExposedApiMiddleware` 两处直接消费方（P5）迁移。
+- **RunState 变更推送**（暂缓，D10-b）：复用 `ReceiveDeviceStatus` 消息体附加 `runState` 字段（向后兼容，旧前端忽略新字段）。
+- **ReconnectCount 重置端点**（暂缓）：管理端点清零 `_reconnectStats`，本轮不做。
+- **报警去重状态跨 Worker 重建**（暂缓，F6 既有行为）：重连后重复 Triggered 若成实际困扰，将 `_ruleStates/_alarmStates` 上移到 `DeviceRuntime` 或引入持久化状态源。
+- `ProtocolDriverFactory` 中 **ModbusTcp / MQTT 仍为 `NotSupportedException`**——前端/配置已支持但运行时未实现。
 - `WriteVariableAsync` 的限幅校验、绑定写入在设备锁外执行网络 IO，逻辑完备但需关注极端并发下的「先读后写」时序。
-- `DeviceRegistry` 目前仅被「注册时缓存」使用，未看到被读写驱动消费的路径，存在轻量冗余（可后续评估是否并入 `DeviceRuntime`）。
-- 脚本/任务调度均依赖「内存作业快照 + 定时兜底重载」，若 DB 在两次重载间不可用，作业短暂停留在旧状态（已在 10min/30s 兜底内收敛）。
+- `DeviceRegistry` 目前仅被「注册时缓存」使用，未看到被读写驱动消费的路径，存在轻量冗余。
+- 脚本/任务调度均依赖「内存作业快照 + 定时兜底重载」，若 DB 在两次重载间不可用，作业短暂停留在旧状态。
+
+> **备注（P7）**：`ConfigUpdating` 为**预留死值**——配置热更新期间可置位，当前无产生路径。
 

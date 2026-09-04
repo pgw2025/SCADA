@@ -1,9 +1,10 @@
 # Runtime 改造方案：需要重构项与保持现状项
 
 > 依据：`docs/Runtime重构想法.md`（下称「方案」）+ 对现状 `ScadaServer.Runtime` 的逐项差异分析
-> 状态：**草案，待用户审批，未改动任何代码**
-> 日期：2026-09-03
-> 关联分支：feature/db-refactor（仅记录方案，不在本文件范围内动代码）
+> 状态：**已由 `docs/runtime-refactor` 方案取代并修正（P1–P3，阶段 0–4 已实施完成）**
+> 日期：2026-09-03（2026-09-04 标注取代关系）
+> 关联分支：feature/runtime-refactor
+> 实施说明：本文档为原始分析；正式实施以 `docs/runtime-refactor/00-总览与方案核实报告.md` 及其分阶段文档为准，其中已修正 P1（ReconnectCount 应为进程级）、P2（HasAlarm 重建应回填）、P3（RunState 应持久化）三处原始缺陷。原方案中的 R1/R2 已在 runtime-refactor 阶段 2/1 落地。
 
 ---
 
