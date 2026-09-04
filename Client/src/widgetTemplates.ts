@@ -8,6 +8,7 @@ import { ref, computed } from 'vue';
 import * as api from './api/scadaApi';
 import { getLucideIcon } from './lucideIcons';
 import { BUILTIN_SEEDS } from './builtinSeeds';
+import { BUILTIN_SCHEMAS, type PropSchemaItem } from './propSchemas';
 
 export type WidgetCategory = 'equipment' | 'sensors' | 'structures' | 'headers';
 
@@ -55,6 +56,13 @@ const safeParse = <T,>(json: string | null | undefined, fallback: T): T => {
   try { return JSON.parse(json ?? '') as T; } catch { return fallback; }
 };
 
+/** 属性 Schema：DB 有值用 DB（自定义模板可自建）；空则回退内置种子（按 key → 按 renderType，P5） */
+const resolvePropSchema = (t: api.WidgetTemplateDto): PropSchemaItem[] => {
+  const fromDb = safeParse(t.propSchemaJson, null as PropSchemaItem[] | null);
+  if (fromDb && fromDb.length > 0) return fromDb;
+  return BUILTIN_SCHEMAS[t.templateKey] ?? BUILTIN_SCHEMAS[t.renderType] ?? [];
+};
+
 const toDef = (t: api.WidgetTemplateDto): WidgetDef => ({
   key: t.templateKey,
   type: t.renderType,
@@ -69,18 +77,22 @@ const toDef = (t: api.WidgetTemplateDto): WidgetDef => ({
   defaultProps: () => safeParse(t.defaultPropsJson, {}),
   renderKind: t.renderKind,
   svgTemplate: t.svgTemplate,
-  propSchema: safeParse(t.propSchemaJson, []),
+  propSchema: resolvePropSchema(t),
   isSystem: t.isSystem,
   sortOrder: t.sortOrder,
 });
 
 /** 两级匹配（D2）：① store 按 key 精确 ② store 按 renderType 泛化（兼容存量 type）
- *  ③ 本地种子按 key ④ 本地种子按 type。语义与旧 widgetRegistry 等价。 */
+ *  ③ 本地种子按 key ④ 本地种子按 type。语义与旧 widgetRegistry 等价。
+ * store 命中统一经 toDef 映射为 WidgetDef（DTO 无 defaultProps/propSchema/icon 等运行字段，
+ * 裸返回会导致 InspectorPanel typeDefaults 调用 def.defaultProps() 抛错，P5 修复）。 */
 export const getWidgetDef = (typeOrKey: string): WidgetDef | undefined => {
   const store = widgetTemplates.value;
-  return store.find(t => t.templateKey === typeOrKey)
-      ?? store.find(t => t.renderType === typeOrKey)
-      ?? BUILTIN_SEEDS.find(d => d.key === typeOrKey)
+  const hit =
+      store.find(t => t.templateKey === typeOrKey)
+      ?? store.find(t => t.renderType === typeOrKey);
+  if (hit) return toDef(hit);
+  return BUILTIN_SEEDS.find(d => d.key === typeOrKey)
       ?? BUILTIN_SEEDS.find(d => d.type === typeOrKey);
 };
 

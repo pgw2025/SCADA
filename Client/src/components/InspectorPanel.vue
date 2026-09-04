@@ -4,6 +4,7 @@ import { HMIComponent, ScadaPage, HMILayer } from '../types';
 import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
 import { getWidgetDef } from '../widgetRegistry';
+import { BUILTIN_SCHEMAS } from '../propSchemas';
 import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Eye, EyeOff, Lock, Unlock, Sparkles } from 'lucide-vue-next';
 import ImageLibraryDialog from './ImageLibraryDialog.vue';
 import PageBackgroundInspector from './inspector/PageBackgroundInspector.vue';
@@ -11,6 +12,7 @@ import TrendChartInspector from './inspector/TrendChartInspector.vue';
 import MultiVarDashboardInspector from './inspector/MultiVarDashboardInspector.vue';
 import RoundedBtnInspector from './inspector/RoundedBtnInspector.vue';
 import NavMenuInspector from './inspector/NavMenuInspector.vue';
+import PropSchemaForm from './inspector/PropSchemaForm.vue';
 
 const props = defineProps<{
   selectedComponent: HMIComponent | null;
@@ -35,6 +37,13 @@ const componentProps = computed(() => {
 const typeDefaults = computed(() =>
   getWidgetDef(props.selectedComponent?.type ?? '')?.defaultProps() ?? {}
 );
+
+// P5：属性 Schema（DB 模板 → 内置种子兜底；legacy button 等无注册类型直接查 BUILTIN_SCHEMAS）
+const schemaItems = computed(() => {
+  const t = props.selectedComponent?.type ?? '';
+  if (!t) return [];
+  return getWidgetDef(t)?.propSchema ?? BUILTIN_SCHEMAS[t] ?? [];
+});
 
 // Prop mutator helper - emits change upwards
 const updateProp = (key: string, value: any) => {
@@ -314,271 +323,14 @@ const onPickComponentImage = (img: { url: string }) => {
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs" />
         </div>
 
-        <!-- showLabel — 外框浮签标签默认隐藏，勾选后显示（与 widgetRegistry.baseProps 真相源一致；排除本就无浮签的内部标签型组件） -->
-        <div class="flex items-center gap-2"
-          v-if="!['text', 'led', 'gauge-level', 'gauge-dial', 'digital-val'].includes(selectedComponent.type)">
-          <input type="checkbox" id="showLabelDef" :checked="componentProps.showLabel || false"
-            @change="updateProp('showLabel', ($event.target as HTMLInputElement).checked)"
-            class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-          <label htmlFor="showLabelDef" class="text-xs text-gray-700 dark:text-slate-300 select-none cursor-pointer">
-            显示外框标签名称
-          </label>
-        </div>
-
-        <!-- var-display 外观显隐：边框/背景/内部标签独立开关，支持边框颜色、粗细、圆角及样式 -->
-        <div v-if="selectedComponent.type === 'var-display'"
-          class="space-y-3 text-xs border border-gray-100 dark:border-slate-800 p-2.5 rounded-lg bg-gray-50/50 dark:bg-slate-950/60">
-          <div class="flex items-center justify-between">
-            <p class="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] uppercase tracking-wider">
-              外观与边框设置
-            </p>
-            <span class="text-[9px] text-gray-400 dark:text-slate-500 font-mono">var-display</span>
-          </div>
-
-          <!-- 1. 显示边框开关 -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-2 select-none cursor-pointer">
-                <input type="checkbox" id="vdispShowBorder" :checked="componentProps.showBorder === true"
-                  @change="updateProp('showBorder', ($event.target as HTMLInputElement).checked)"
-                  class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-                <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示边框 (Show Border)</span>
-              </label>
-              <span class="text-[9px] font-mono"
-                :class="componentProps.showBorder ? 'text-[#1890ff] font-semibold' : 'text-gray-400'">
-                {{ componentProps.showBorder ? '已显示' : '已隐藏' }}
-              </span>
-            </div>
-
-            <!-- 当开启显示边框时，展开边框详细样式配置 -->
-            <div v-if="componentProps.showBorder === true"
-              class="space-y-2 pl-5 pt-1 border-l-2 border-[#1890ff]/30 dark:border-sky-500/30">
-              <!-- 边框颜色 -->
-              <div>
-                <label class="text-[10px] text-gray-500 dark:text-slate-400">边框颜色</label>
-                <div class="flex items-center gap-1.5 mt-0.5">
-                  <input type="color" :value="componentProps.borderColor || componentProps.strokeColor || '#cbd5e1'"
-                    @input="updateProp('borderColor', ($event.target as HTMLInputElement).value); updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
-                    class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
-                  <input type="text" :value="componentProps.borderColor || componentProps.strokeColor || '#cbd5e1'"
-                    @input="updateProp('borderColor', ($event.target as HTMLInputElement).value); updateProp('strokeColor', ($event.target as HTMLInputElement).value)"
-                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
-                </div>
-                <!-- 快捷边框色 -->
-                <div class="flex items-center gap-1 mt-1.5">
-                  <button
-                    v-for="bc in ['#cbd5e1', '#94a3b8', '#475569', '#1890ff', '#38bdf8', '#10b981', '#f59e0b', '#ef4444', '#1e293b']"
-                    :key="bc" type="button" @click="updateProp('borderColor', bc); updateProp('strokeColor', bc)"
-                    class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
-                    :style="{ backgroundColor: bc }" :title="bc" />
-                </div>
-              </div>
-
-              <!-- 边框粗细与样式 -->
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="text-[10px] text-gray-500 dark:text-slate-400">边框粗细</label>
-                  <select :value="componentProps.borderWidth ?? 1.5"
-                    @change="updateProp('borderWidth', numInput(($event.target as HTMLSelectElement).value, 1.5))"
-                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
-                    <option :value="1">1 px (细)</option>
-                    <option :value="1.5">1.5 px (标准)</option>
-                    <option :value="2">2 px (中等)</option>
-                    <option :value="3">3 px (粗)</option>
-                    <option :value="4">4 px (加粗)</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-[10px] text-gray-500 dark:text-slate-400">边框线条</label>
-                  <select :value="componentProps.borderStyle || 'solid'"
-                    @change="updateProp('borderStyle', ($event.target as HTMLSelectElement).value)"
-                    class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1 focus:outline-none text-xs text-[#262626] dark:text-white mt-0.5">
-                    <option value="solid">实线 (Solid)</option>
-                    <option value="dashed">虚线 (Dashed)</option>
-                    <option value="dotted">点线 (Dotted)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- 圆角大小 -->
-              <div>
-                <label class="text-[10px] text-gray-500 dark:text-slate-400">圆角弧度</label>
-                <div class="flex items-center gap-2 mt-0.5">
-                  <input type="range" min="0" max="24" step="2" :value="componentProps.borderRadius ?? 8"
-                    @input="updateProp('borderRadius', numInput(($event.target as HTMLInputElement).value, 8))"
-                    class="flex-1 accent-[#1890ff]" />
-                  <span class="text-[10px] font-mono text-gray-600 dark:text-slate-300 w-8 text-right">{{
-                    componentProps.borderRadius ?? 8 }}px</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 2. 显示背景开关 -->
-          <div class="space-y-1.5 pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-2 select-none cursor-pointer">
-                <input type="checkbox" id="vdispShowBg" :checked="componentProps.showBackground === true"
-                  @change="updateProp('showBackground', ($event.target as HTMLInputElement).checked)"
-                  class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-                <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示背景底色</span>
-              </label>
-              <span class="text-[9px] font-mono"
-                :class="componentProps.showBackground ? 'text-[#1890ff] font-semibold' : 'text-gray-400'">
-                {{ componentProps.showBackground ? '已显示' : '透明' }}
-              </span>
-            </div>
-
-            <!-- 背景颜色配置 -->
-            <div v-if="componentProps.showBackground === true"
-              class="pl-5 pt-1 space-y-1.5 border-l-2 border-[#1890ff]/30 dark:border-sky-500/30">
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">底色</label>
-              <div class="flex items-center gap-1.5">
-                <input type="color" :value="componentProps.bgColor || '#ffffff'"
-                  @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
-                  class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
-                <input type="text" :value="componentProps.bgColor || '#ffffff'"
-                  @input="updateProp('bgColor', ($event.target as HTMLInputElement).value)"
-                  class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1.5 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
-              </div>
-              <div class="flex items-center gap-1 mt-1">
-                <button v-for="bgc in ['#ffffff', '#f8fafc', '#f1f5f9', '#0f172a', '#061426', '#111c2e', '#1e293b']"
-                  :key="bgc" type="button" @click="updateProp('bgColor', bgc)"
-                  class="w-4 h-4 rounded-full border border-black/20 dark:border-white/20 cursor-pointer transition-transform hover:scale-125"
-                  :style="{ backgroundColor: bgc }" :title="bgc" />
-              </div>
-            </div>
-          </div>
-
-          <!-- 3. 显示内部标签开关 -->
-          <div class="pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
-            <label class="flex items-center gap-2 select-none cursor-pointer">
-              <input type="checkbox" id="vdispShowInnerLabel" :checked="componentProps.showInnerLabel === true"
-                @change="updateProp('showInnerLabel', ($event.target as HTMLInputElement).checked)"
-                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-              <span class="text-xs font-semibold text-gray-700 dark:text-slate-300">显示内部变量标签</span>
-            </label>
-          </div>
-
-          <!-- 4. 报警边框变色联动开关 -->
-          <div class="pt-1.5 border-t border-gray-200/60 dark:border-slate-800">
-            <label class="flex items-center gap-2 select-none cursor-pointer">
-              <input type="checkbox" id="vdispEnableAlarmBorder" :checked="componentProps.enableAlarmBorder !== false"
-                @change="updateProp('enableAlarmBorder', ($event.target as HTMLInputElement).checked)"
-                class="rounded border-[#d9d9d9] dark:border-slate-700 text-[#1890ff] focus:ring-0" />
-              <span class="text-xs text-gray-700 dark:text-slate-300">超限时报警变色 (红/黄报警边框)</span>
-            </label>
-            <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5 leading-snug pl-5">
-              仅在配置了有效报警阈值且变量超限时生效；正常状态下严格遵从「显示边框」设置。
-            </p>
-          </div>
-        </div>
-
-        <!-- States color picks -->
-        <div class="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">运行激活光效</label>
-            <div class="flex items-center gap-1.5 mt-1">
-              <input type="color" :value="componentProps.activeColor || '#1890ff'"
-                @input="updateProp('activeColor', ($event.target as HTMLInputElement).value)"
-                class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
-              <input type="text" :value="componentProps.activeColor || '#1890ff'"
-                @input="updateProp('activeColor', ($event.target as HTMLInputElement).value)"
-                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
-            </div>
-          </div>
-
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">空闲正常底色</label>
-            <div class="flex items-center gap-1.5 mt-1">
-              <input type="color" :value="componentProps.inactiveColor || '#8c8c8c'"
-                @input="updateProp('inactiveColor', ($event.target as HTMLInputElement).value)"
-                class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
-              <input type="text" :value="componentProps.inactiveColor || '#8c8c8c'"
-                @input="updateProp('inactiveColor', ($event.target as HTMLInputElement).value)"
-                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 py-1 font-mono text-gray-600 dark:text-slate-300 focus:outline-none" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 阶段5-6：状态文本解耦——阀/数显/开关等有状态控件的开/关文案可配置，去除硬编码英/中文 -->
-        <div v-if="['valve', 'digital-val', 'switch', 'led', 'var-display'].includes(selectedComponent.type)"
-          class="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">开启状态文本</label>
-            <input type="text" :value="componentProps.onText ?? '开启'"
-              @input="updateProp('onText', ($event.target as HTMLInputElement).value)"
-              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
-              placeholder="默认: 开启" />
-          </div>
-          <div>
-            <label class="text-[10px] text-gray-500 dark:text-slate-400">关闭状态文本</label>
-            <input type="text" :value="componentProps.offText ?? '关闭'"
-              @input="updateProp('offText', ($event.target as HTMLInputElement).value)"
-              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none focus:border-[#1890ff] dark:focus:border-sky-500 mt-0.5 text-xs"
-              placeholder="默认: 关闭" />
-          </div>
-        </div>
-
-        <!-- Medium Fluid Filler style -->
-        <div v-if="['tank', 'boiler', 'conveyor'].includes(selectedComponent.type)">
-          <label class="text-[10px] text-gray-500 dark:text-slate-400">填充介质颜色 (Medium)</label>
-          <div class="flex items-center gap-1.5 mt-1">
-            <input type="color" :value="componentProps.fillColor || '#1890ff'"
-              @input="updateProp('fillColor', ($event.target as HTMLInputElement).value)"
-              class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
-            <input type="text" :value="componentProps.fillColor || '#1890ff'"
-              @input="updateProp('fillColor', ($event.target as HTMLInputElement).value)"
-              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded text-[10px] px-1 focus:outline-none text-gray-600 dark:text-slate-300" />
-          </div>
-        </div>
-
-        <!-- 量程设置：量程上限/下限/单位（百分比类与仪表类归一化基准） -->
-        <div
-          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'var-display', 'tank', 'boiler', 'trend-chart', 'pump', 'motor'].includes(selectedComponent.type)"
-          class="space-y-2">
-          <div class="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">量程下限 (Min)</label>
-              <input type="number" :value="componentProps.minValue ?? typeDefaults.minValue ?? 0"
-                @input="updateProp('minValue', numInput(($event.target as HTMLInputElement).value, 0))"
-                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none" />
-            </div>
-            <div>
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">量程上限 (Max)</label>
-              <input type="number" :value="componentProps.maxValue ?? typeDefaults.maxValue ?? 100"
-                @input="updateProp('maxValue', numInput(($event.target as HTMLInputElement).value, typeDefaults.maxValue ?? 100))"
-                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none" />
-            </div>
-            <div>
-              <label class="text-[10px] text-gray-500 dark:text-slate-400">单位 (Unit)</label>
-              <input type="text" :value="componentProps.unit ?? ''"
-                @input="updateProp('unit', ($event.target as HTMLInputElement).value)"
-                class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2.5 py-1 text-gray-800 dark:text-white focus:outline-none"
-                placeholder="e.g. L/s, MPa, ℃" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 高/低限报警阈值：覆盖所有消费 isHighAlert/alertColor 的器件 -->
-        <div
-          v-if="['gauge-dial', 'gauge-level', 'digital-val', 'var-display', 'boiler', 'pump', 'motor', 'trend-chart', 'led'].includes(selectedComponent.type)"
-          class="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <label class="text-[10px] text-red-500 dark:text-red-400">红色高限报警值</label>
-            <input type="number" :value="componentProps.thresholdMax ?? typeDefaults.thresholdMax ?? ''"
-              @input="updateProp('thresholdMax', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 90))"
-              placeholder="默认不设"
-              class="w-full bg-white dark:bg-slate-950 border border-red-300 dark:border-red-800 rounded px-2.5 py-1 text-red-600 dark:text-red-400 focus:outline-none focus:border-red-500" />
-          </div>
-          <div>
-            <label class="text-[10px] text-amber-600 dark:text-amber-400">黄色低限预警值</label>
-            <input type="number" :value="componentProps.thresholdMin ?? typeDefaults.thresholdMin ?? ''"
-              @input="updateProp('thresholdMin', ($event.target as HTMLInputElement).value === '' ? null : numInput(($event.target as HTMLInputElement).value, 10))"
-              placeholder="默认不设"
-              class="w-full bg-white dark:bg-slate-950 border border-amber-300 dark:border-amber-800 rounded px-2.5 py-1 text-amber-700 dark:text-amber-300 focus:outline-none focus:border-amber-500" />
-          </div>
-        </div>
+        <!-- P5：通用属性由 PropSchema 驱动渲染（颜色/量程/阈值/状态文案/外观显隐/字体等，按类型 schema 过滤） -->
+        <PropSchemaForm
+          v-if="schemaItems.length > 0"
+          :schema="schemaItems"
+          :props="componentProps"
+          :defaults="typeDefaults"
+          @update-prop="(key, value) => updateProp(key, value)"
+        />
 
         <!-- 趋势图多序列绑定（trend-chart）：支持多变量 + 逐线颜色/粗细自定义——已抽取为子组件 -->
         <TrendChartInspector v-if="selectedComponent.type === 'trend-chart'" :component="selectedComponent"

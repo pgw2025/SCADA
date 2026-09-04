@@ -6,6 +6,7 @@
  */
 import type { WidgetCategory, WidgetDef } from './widgetTemplates';
 import { getLucideIcon } from './lucideIcons';
+import { BUILTIN_SCHEMAS } from './propSchemas';
 import { HmiMenuItem } from './types';
 import {
   // nav-menu 内置图标集（Inspector 选择器与 HMIWidget 渲染共用此映射）
@@ -372,6 +373,11 @@ export const BUILTIN_SEEDS: WidgetDef[] = [
     }),
   },
 ];
+
+// P5：为本地兜底种子挂接属性 Schema（键 = templateKey；与 BUILTIN_SCHEMAS 一一对应）
+BUILTIN_SEEDS.forEach((d) => {
+  d.propSchema = BUILTIN_SCHEMAS[d.key] ?? [];
+});
 
 /**
  * nav-menu 内置图标集：Inspector 图标选择网格与 HMIWidget 渲染共用的单一映射。
