@@ -222,6 +222,12 @@ const buildConfigJson = (key: string): string => {
 
 const supportedProtocolKeys = ['S7', 'OPCUA', 'MODBUSTCP', 'MQTT', 'VIRTUAL'];
 
+// 用户主动切换协议时，重置为所选协议的默认结构化参数，避免残留上一协议的输入值。
+const onProtocolChange = () => {
+  cfgStructured.value = { ...structuredDefault };
+  cfgRaw.value = '{}';
+};
+
 const openCreate = () => {
   editingId.value = null;
   editingConn.value = null;
@@ -543,7 +549,7 @@ onMounted(async () => {
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">协议 <span class="text-rose-500">*</span></label>
             <div class="relative">
-              <select v-model="form.ProtocolId" :disabled="isEditingReferenced"
+              <select v-model="form.ProtocolId" @change="onProtocolChange" :disabled="isEditingReferenced"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] disabled:opacity-50 disabled:cursor-not-allowed">
                 <option :value="0" disabled>请选择协议</option>
                 <option v-for="p in protocols" :key="p.id" :value="p.id">{{ p.name }}（{{ p.key }}）</option>
@@ -724,12 +730,6 @@ onMounted(async () => {
               <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">重连周期(ms)</label>
               <input v-model.number="form.ReconnectIntervalMs" type="number" min="100" max="3600000"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
-            </div>
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">IO 超时(参考)</label>
-              <input :value="form.TimeoutMs" disabled
-                class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-400 disabled:opacity-60" />
-              <p class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">由配置派生，S7 对应 IoTimeoutMs</p>
             </div>
           </div>
 
