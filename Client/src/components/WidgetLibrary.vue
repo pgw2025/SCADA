@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { widgetList, WidgetDef } from '../widgetRegistry';
+import { sanitizeSvg } from '../utils/svgTemplate';
 import {
   Search,
   Package,
@@ -29,10 +30,11 @@ const onDragStart = (e: DragEvent, widget: WidgetDef) => {
 const searchTerm = ref('');
 const activeTab = ref<'all' | 'equipment' | 'sensors' | 'structures' | 'headers'>('all');
 
-// 阶段5-5：列表来自注册表，分类按注册项 category 过滤（不再硬编码类型数组）
+// 阶段5-5：列表来自运行时模板源（P2 动态化：widgetTemplates store ∪ 本地兜底种子），
+// 分类按注册项 category 过滤（不再硬编码类型数组）
 const filteredWidgets = computed(() => {
   const term = searchTerm.value.toLowerCase();
-  return widgetList.filter((w) => {
+  return widgetList.value.filter((w) => {
     const matchesSearch = w.name.toLowerCase().includes(term);
     if (!matchesSearch) return false;
     if (activeTab.value === 'all') return true;
@@ -115,18 +117,21 @@ const filteredWidgets = computed(() => {
       <div v-if="filteredWidgets.length === 0" class="text-center py-6 text-gray-400 dark:text-slate-500 text-xs">
         未找到相关组态器件
       </div>
-      <div v-else v-for="widget in filteredWidgets" :key="widget.name" draggable="true"
+      <div v-else v-for="widget in filteredWidgets" :key="widget.key" draggable="true"
         @dragstart="onDragStart($event, widget)"
         @click="emit('addWidget', widget.type, widget.defaultWidth, widget.defaultHeight, widget.name, undefined, undefined, widget.defaultProps())"
         class="group flex gap-3 p-2.5 bg-[#fafafa] dark:bg-slate-950/60 hover:bg-white dark:hover:bg-slate-800 border border-[#f0f0f0] dark:border-slate-800 hover:border-[#1890ff] dark:hover:border-sky-500 hover:shadow-sm rounded cursor-grab active:cursor-grabbing transition-all duration-200">
         <div
           class="w-10 h-10 rounded bg-white dark:bg-slate-900 border border-[#f0f0f0] dark:border-slate-800 flex items-center justify-center group-hover:scale-105 transition-all shadow-sm">
-          <!-- Render icons -->
+          <!-- Render icons（4 种形态：lucide / div / svg / emoji，审查 A6） -->
           <component v-if="widget.iconKind === 'lucide'" :is="widget.icon" class="w-5 h-5" :class="widget.iconColor" />
-          <div v-else-if="widget.icon === 'div-h'" class="w-7 h-2 bg-slate-600 dark:bg-slate-400 rounded-full" />
-          <div v-else-if="widget.icon === 'div-v'" class="w-2 h-7 bg-slate-600 dark:bg-slate-400 rounded-full" />
-          <div v-else-if="widget.icon === 'div-led'"
+          <div v-else-if="widget.iconKind === 'div' && widget.icon === 'div-h'" class="w-7 h-2 bg-slate-600 dark:bg-slate-400 rounded-full" />
+          <div v-else-if="widget.iconKind === 'div' && widget.icon === 'div-v'" class="w-2 h-7 bg-slate-600 dark:bg-slate-400 rounded-full" />
+          <div v-else-if="widget.iconKind === 'div' && widget.icon === 'div-led'"
             class="w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-600 animate-pulse" />
+          <span v-else-if="widget.iconKind === 'emoji'" class="text-lg leading-none" :class="widget.iconColor">{{ widget.icon }}</span>
+          <span v-else-if="widget.iconKind === 'svg'" class="svg-icon-preview w-5 h-5 flex items-center justify-center"
+            v-html="sanitizeSvg(widget.icon)" />
         </div>
         <div class="flex-1 min-w-0 text-left">
           <div class="flex justify-between items-start">

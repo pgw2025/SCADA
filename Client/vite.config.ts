@@ -37,5 +37,19 @@ export default defineConfig(() => {
         },
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // 组件模板源（widgetRegistry 转发层 + 实现模块）强制并入同一 chunk，
+          // 消除「re-export 跨 chunk 循环引用」的 Rollup warning（P2 验收要求 0 新增 warning）。
+          // 消费方（组件库/画布/属性面板）的 import 路径保持 widgetRegistry 不变（审查 A8）。
+          manualChunks(id: string) {
+            if (/src[\\/](widgetTemplates|builtinSeeds|builtinRenderers|widgetRegistry)\.ts/.test(id)) {
+              return 'widget-template';
+            }
+          },
+        },
+      },
+    },
   };
 });
