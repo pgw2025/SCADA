@@ -4,10 +4,10 @@
  * - 列表：图标（4 形态）/ TemplateKey / 名称 / 分类 / 渲染轨徽标 / 系统内置徽标 / 尺寸 / SortOrder
  * - CRUD：新建 / 编辑（编辑态 TemplateKey 锁定）/ 删除（IsSystem 禁用）
  * - 导入导出：文件解析（D11 兼容单对象 / templates[] / 裸数组）→ 预览 → 冲突策略（覆盖/重命名/跳过）
- * - SVG 轨：源码文本域 + 占位符速查表（实时预览 P4 提供）
+ * - SVG 轨：源码文本域 + 占位符速查表（点击插入光标处）+ 实时预览（P4，同画布 sanitize+bind 链路）+ 256KB 双拦截
  * 操作成功后同步刷新运行时模板 store（组件库即时更新）。
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import {
   Shapes,
   Plus,
@@ -38,7 +38,7 @@ import { extractApiError } from '../api/http';
 import { showToast } from '../services/toastService';
 import { widgetTemplates } from '../widgetTemplates';
 import { getLucideIcon } from '../builtinRenderers';
-import { sanitizeSvg } from '../utils/svgTemplate';
+import { sanitizeSvg, bindSvgTemplate, SvgBindingContext } from '../utils/svgTemplate';
 
 // ================= 列表 =================
 const list = ref<WidgetTemplateDto[]>([]);
@@ -193,6 +193,64 @@ const SVG_PLACEHOLDERS: Array<{ ph: string; desc: string }> = [
   { ph: '{qualityBad}', desc: '质量不良标记' },
 ];
 
+// ===== SVG 实时预览（P4）：与画布同链路 sanitize + bind，注入示例值 =====
+const SVG_MAX_LEN = 256 * 1024; // 与后端 SvgSanitizer / 前端 sanitizeSvg 限长一致
+const SVG_PREVIEW_CTX: SvgBindingContext = {
+  value: 42.5,
+  numValue: 42.5,
+  boolValue: true,
+  normalizedPercent: 55,
+  state: '开启',
+  unit: '℃',
+  label: '示例组件',
+  activeColor: '#10b981',
+  inactiveColor: '#94a3b8',
+  alertColor: '#ef4444',
+  thresholdMin: 10,
+  thresholdMax: 90,
+  fontSize: 12,
+  quality: 'Good',
+};
+const svgPreviewHtml = computed(() => {
+  const svg = form.value.svgTemplate;
+  if (!svg || !svg.trim()) return '';
+  return bindSvgTemplate(sanitizeSvg(svg), SVG_PREVIEW_CTX);
+});
+const svgTooLarge = computed(() => form.value.svgTemplate.length > SVG_MAX_LEN);
+
+// 「插入占位符」快捷按钮：在光标处插入，未聚焦则追加到末尾
+const svgEditorRef = ref<HTMLTextAreaElement | null>(null);
+const insertPlaceholder = (ph: string) => {
+  const ta = svgEditorRef.value;
+  if (!ta) { form.value.svgTemplate += ph; return; }
+  const start = ta.selectionStart ?? form.value.svgTemplate.length;
+  const end = ta.selectionEnd ?? form.value.svgTemplate.length;
+  form.value.svgTemplate = form.value.svgTemplate.slice(0, start) + ph + form.value.svgTemplate.slice(end);
+  const pos = start + ph.length;
+  requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
+};
+
+// 新建 SVG 模板时 DefaultProps 预填绑定上下文默认值（审查 B5）
+const DEFAULT_SVG_PROPS = {
+  activeColor: '#3b82f6',
+  inactiveColor: '#94a3b8',
+  minValue: 0,
+  maxValue: 100,
+  unit: '℃',
+  fontSize: 12,
+  thresholdMin: 10,
+  thresholdMax: 90,
+  onText: '开启',
+  offText: '关闭',
+};
+watch(() => form.value.renderKind, (kind) => {
+  if (kind !== 'svg') return;
+  const cur = form.value.defaultPropsJson.trim();
+  if (!cur || cur === '{}') {
+    form.value.defaultPropsJson = JSON.stringify(DEFAULT_SVG_PROPS, null, 2);
+  }
+});
+
 const save = async () => {
   formError.value = '';
   if (!form.value.templateKey.trim()) { formError.value = '模板键不能为空'; return; }
@@ -200,6 +258,7 @@ const save = async () => {
   if (!form.value.name.trim()) { formError.value = '模板名称不能为空'; return; }
   if (form.value.renderKind === 'svg') {
     if (!form.value.svgTemplate.trim()) { formError.value = 'SVG 渲染轨必须提供 SVG 模板源码'; return; }
+    if (form.value.svgTemplate.length > SVG_MAX_LEN) { formError.value = 'SVG 模板超过 256KB 上限，请精简源码'; return; }
     if (form.value.renderType.trim() !== form.value.templateKey.trim()) {
       formError.value = 'SVG 模板的渲染类型必须与模板键一致（D10 约束）'; return;
     }
@@ -717,27 +776,52 @@ onMounted(refreshList);
             />
           </div>
 
-          <!-- SVG 轨：源码编辑 + 占位符速查（P3-3.4；实时预览 P4 提供） -->
+          <!-- SVG 轨：源码编辑 + 实时预览 + 占位符速查（P4 全量启用） -->
           <div v-if="form.renderKind === 'svg'">
             <div class="flex items-center justify-between mb-1">
               <label class="text-slate-500 dark:text-slate-400 font-bold">SVG 模板源码 <span class="text-rose-500">*</span></label>
-              <span class="text-[10px] text-violet-500 dark:text-violet-400 inline-flex items-center gap-1">
-                <Eye class="w-3 h-3" /> 实时预览将在 P4 提供
+              <span class="text-[10px] inline-flex items-center gap-1.5"
+                :class="svgTooLarge ? 'text-rose-500 dark:text-rose-400 font-bold' : 'text-slate-400 dark:text-slate-500'">
+                <Eye class="w-3 h-3" />
+                {{ svgTooLarge ? `超过 256KB 上限（当前 ${form.svgTemplate.length} 字符）` : `${form.svgTemplate.length} 字符` }}
               </span>
             </div>
             <textarea
+              ref="svgEditorRef"
               v-model="form.svgTemplate"
               rows="8"
               spellcheck="false"
               placeholder="<svg width=&quot;100%&quot; height=&quot;100%&quot; viewBox=&quot;0 0 100 100&quot;><rect width=&quot;{normalizedPercent}&quot; height=&quot;20&quot; fill=&quot;{activeColor}&quot;/></svg>"
               class="w-full bg-slate-950 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-[10px] leading-relaxed text-emerald-300 focus:outline-none focus:border-violet-500 placeholder-slate-600"
             />
+            <p v-if="svgTooLarge" class="mt-1 text-[10px] text-rose-500 dark:text-rose-400">
+              超过 256KB 上限，保存将被拒绝（与后端清洗器限长一致）。
+            </p>
+
+            <!-- 实时预览：与画布同链路 sanitize + bind（注入示例值） -->
+            <div class="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2.5">
+              <div class="flex items-center justify-between mb-1.5">
+                <p class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+                  <Eye class="w-3 h-3" /> 实时预览（示例值：42.5 ℃ · 开启 · 55% · 运行色）
+                </p>
+                <span class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">sanitize + bind</span>
+              </div>
+              <div
+                class="h-36 rounded bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden p-2">
+                <div v-if="svgPreviewHtml" class="w-full h-full svg-icon-preview" v-html="svgPreviewHtml" />
+                <span v-else class="text-[10px] text-slate-400 dark:text-slate-500">输入 SVG 源码后此处实时预览</span>
+              </div>
+            </div>
+
             <div class="mt-2 rounded-lg border border-violet-200 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/20 p-2.5">
-              <p class="text-[10px] font-bold text-violet-600 dark:text-violet-400 mb-1.5">可用占位符（运行态按绑定值替换，未知占位符原样保留）</p>
-              <div class="flex flex-wrap gap-x-3 gap-y-1">
-                <span v-for="p in SVG_PLACEHOLDERS" :key="p.ph" class="text-[10px] text-slate-500 dark:text-slate-400">
-                  <code class="text-violet-500 dark:text-violet-400 font-mono">{{ p.ph }}</code> {{ p.desc }}
-                </span>
+              <p class="text-[10px] font-bold text-violet-600 dark:text-violet-400 mb-1.5">
+                可用占位符（运行态按绑定值替换，未知占位符原样保留；点击插入到光标处）
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="p in SVG_PLACEHOLDERS" :key="p.ph" type="button" @click="insertPlaceholder(p.ph)"
+                  class="text-[10px] text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 border border-violet-200 dark:border-violet-800 rounded px-1.5 py-0.5 hover:border-violet-400 dark:hover:border-violet-600 hover:text-violet-600 dark:hover:text-violet-300 cursor-pointer transition-colors">
+                  <code class="font-mono text-violet-500 dark:text-violet-400">{{ p.ph }}</code> {{ p.desc }}
+                </button>
               </div>
             </div>
           </div>

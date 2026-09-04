@@ -25,7 +25,7 @@ export interface SvgBindingContext {
 /** {key} 占位符替换；未知占位符原样保留（便于模板作者排查拼写） */
 export const bindSvgTemplate = (svg: string, ctx: SvgBindingContext): string =>
   svg.replace(/\{([a-zA-Z0-9_]+)\}/g, (m, k: string) => {
-    const v = (ctx as Record<string, unknown>)[k];
+    const v = (ctx as unknown as Record<string, unknown>)[k];
     return v === undefined || v === null ? m : String(v);
   });
 
