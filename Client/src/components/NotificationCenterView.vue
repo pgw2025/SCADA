@@ -1,6 +1,6 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { MessageSquare, Mail, Bell, ShieldCheck, Save, Send, RefreshCw, Plus, X } from 'lucide-vue-next';
+import { MessageSquare, Mail, Bell, ShieldCheck, Save, Send, RefreshCw, Plus, X, FileText } from 'lucide-vue-next';
 import { addLog } from '../store/index';
 import { showToast } from '../services/toastService';
 import {
@@ -8,7 +8,8 @@ import {
   saveNotificationConfig,
   testDingTalk,
   testEmail,
-  NotificationConfig
+  NotificationConfig,
+  NotificationTemplates
 } from '../api/notificationApi';
 
 const loading = ref(true);
@@ -16,6 +17,28 @@ const isSaving = ref(false);
 const testingDing = ref(false);
 const testingEmail = ref(false);
 const saveSuccess = ref(false);
+
+// 消息模板编辑：key 对应后端 Templates 的各个事件模板，附中文标签与占位符提示。
+const templateMeta: { key: keyof NotificationTemplates; label: string; placeholders: string[] }[] = [
+  { key: 'alarmTriggered', label: '报警触发', placeholders: ['deviceKey','deviceId','variableName','variableKey','ruleName','level','condition','threshold','actualValue','source','message','time'] },
+  { key: 'alarmRecovered', label: '报警恢复', placeholders: ['deviceKey','deviceId','variableName','variableKey','ruleName','level','condition','threshold','actualValue','source','message','time'] },
+  { key: 'deviceStatus', label: '设备状态', placeholders: ['status','deviceId','time'] },
+  { key: 'systemAlarm', label: '系统报警', placeholders: ['deviceId','variableName','variableKey','level','message','time'] },
+  { key: 'systemError', label: '系统异常', placeholders: ['level','source','time','content'] },
+  { key: 'scriptExecution', label: '脚本异常', placeholders: ['scriptId','scriptVersion','triggerSource','result','error','durationMs','time'] },
+];
+
+const emptyTemplate = () => ({ title: '', markdown: '', htmlBody: '' });
+// 把占位符数组格式化为「{a} {b}」提示串（避免模板字面量内出现 }} 干扰 Vue 插值解析）。
+const fmtPlaceholders = (placeholders: string[]) => placeholders.map(p => '{' + p + '}').join(' ');
+const defaultTemplates: NotificationTemplates = {
+  alarmTriggered: emptyTemplate(),
+  alarmRecovered: emptyTemplate(),
+  deviceStatus: emptyTemplate(),
+  systemAlarm: emptyTemplate(),
+  systemError: emptyTemplate(),
+  scriptExecution: emptyTemplate(),
+};
 
 const form = reactive<NotificationConfig>({
   dingTalk: { enabled: false, webhook: '', secret: '', hasSecret: false },
@@ -29,7 +52,8 @@ const form = reactive<NotificationConfig>({
     deviceStatusDebounceMinutes: 5, pushSystemAlarm: true, pushSystemError: true,
     pushScript: true, maxPerMinutePerChannel: 15, maxAttempts: 2,
     retryBaseDelayMs: 1000, queueCapacity: 2048
-  }
+  },
+  templates: defaultTemplates
 });
 
 const secretMask = '******';
@@ -41,6 +65,9 @@ onMounted(async () => {
     Object.assign(form.dingTalk, res.dingTalk);
     Object.assign(form.email, res.email);
     Object.assign(form.push, res.push);
+    if (res.templates) {
+      templateMeta.forEach(m => Object.assign((form.templates as any)[m.key], (res.templates as any)[m.key]));
+    }
   } catch {
     // 错误由 http 拦截器统一提示
   } finally {
@@ -287,6 +314,46 @@ const handleTestEmail = async () => {
             <span class="text-slate-700 dark:text-slate-300">{{ opt.label }}</span>
             <input type="checkbox" v-model="(form.push as any)[opt.key]" class="accent-slate-900 w-4.5 h-4.5 cursor-pointer" />
           </label>
+        </div>
+      </div>
+
+      <!-- 消息模板 -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4 transition-colors">
+        <h3 class="font-bold text-xs text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-2.5 flex items-center gap-2">
+          <FileText class="w-4 h-4 text-blue-500" /> 消息模板
+        </h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          自定义各类事件发送到钉钉/邮件的内容。<b class="text-slate-600 dark:text-slate-300">标题</b> 与
+          <b class="text-slate-600 dark:text-slate-300">正文(Markdown)</b> 用于钉钉群；
+          <b class="text-slate-600 dark:text-slate-300">邮件正文(HTML)</b> 用于邮箱。
+          用 <code class="font-mono text-blue-600 dark:text-blue-400">{占位符}</code> 引用动态值，留空表示沿用系统默认。
+        </p>
+
+        <div class="space-y-4">
+          <div v-for="tmpl in templateMeta" :key="tmpl.key"
+            class="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+            <div class="px-3 py-2 bg-slate-50 dark:bg-slate-950/60 flex items-center justify-between">
+              <span class="font-bold text-sm text-slate-700 dark:text-slate-200">{{ tmpl.label }}</span>
+              <span class="text-[10px] text-slate-400 font-mono">占位符: {{ fmtPlaceholders(tmpl.placeholders) }}</span>
+            </div>
+            <div class="p-3 space-y-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">标题</label>
+                <input v-model="(form.templates as any)[tmpl.key].title" type="text"
+                  class="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white text-xs font-mono outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">正文 (Markdown · 钉钉)</label>
+                <textarea v-model="(form.templates as any)[tmpl.key].markdown" rows="4"
+                  class="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white text-xs font-mono outline-none resize-y leading-relaxed"></textarea>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">邮件正文 (HTML)</label>
+                <textarea v-model="(form.templates as any)[tmpl.key].htmlBody" rows="4"
+                  class="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white text-xs font-mono outline-none resize-y leading-relaxed"></textarea>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

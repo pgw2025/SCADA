@@ -78,7 +78,8 @@ namespace ScadaServer.Infrastructure.Services
                     FromName = o.Email.FromName,
                     To = o.Email.To?.ToList() ?? new List<string>()
                 },
-                Push = o.Push
+                Push = o.Push,
+                Templates = o.Templates
             });
         }
 
@@ -116,7 +117,9 @@ namespace ScadaServer.Infrastructure.Services
                     To = dto.Email?.To?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToList() ?? new List<string>()
                 },
                 // 完整保留 Push 策略（前端回传整段对象，含未编辑的高级参数）
-                Push = dto.Push ?? current.Push
+                Push = dto.Push ?? current.Push,
+                // 模板：未传/空则沿用旧值，避免覆盖已保存的自定义模板
+                Templates = dto.Templates ?? current.Templates
             };
 
             if (merged.DingTalk.Enabled && string.IsNullOrWhiteSpace(merged.DingTalk.Webhook))
@@ -163,7 +166,8 @@ namespace ScadaServer.Infrastructure.Services
                         ["FromName"] = merged.Email.FromName,
                         ["To"] = merged.Email.To
                     },
-                    ["Push"] = SerializePush(merged.Push)
+                    ["Push"] = SerializePush(merged.Push),
+                    ["Templates"] = SerializeTemplates(merged.Templates)
                 }
             };
 
@@ -284,6 +288,10 @@ namespace ScadaServer.Infrastructure.Services
             ["RetryBaseDelayMs"] = p.RetryBaseDelayMs.ToString(),
             ["QueueCapacity"] = p.QueueCapacity.ToString()
         }.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
+
+        private static Dictionary<string, object> SerializeTemplates(NotificationTemplates t)
+            => JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(t))
+               ?? new Dictionary<string, object>();
 
         private async Task<Dictionary<string, object>> ReadOverrideRootAsync()
         {

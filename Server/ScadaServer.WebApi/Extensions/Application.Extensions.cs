@@ -97,6 +97,9 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IExternalMessageSender, DingTalkRobotClient>();
             services.AddSingleton<IExternalMessageSender, EmailSender>();
 
+            // 模板渲染引擎：无状态，跨通知服务共享单例。
+            services.AddSingleton<NotificationTemplateEngine>();
+
             // 外部消息后台推送服务：主队列扇出 -> 各渠道独立通道（互不阻塞）+ 限流 + 重试。
             services.AddSingleton<ExternalNotificationService>();
             services.AddSingleton<IExternalNotificationQueue>(sp => sp.GetRequiredService<ExternalNotificationService>());
@@ -109,6 +112,7 @@ namespace ScadaServer.WebApi.Extensions
                 sp.GetRequiredService<SignalRNotificationService>(),
                 sp.GetRequiredService<IExternalNotificationQueue>(),
                 sp.GetRequiredService<IOptions<NotificationOptions>>(),
+                sp.GetRequiredService<NotificationTemplateEngine>(),
                 sp.GetRequiredService<ILogger<ExternalNotificationDecorator>>()));
 
             // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）

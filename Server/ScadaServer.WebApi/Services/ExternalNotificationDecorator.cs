@@ -1,19 +1,20 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
-using System.Net;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.Options;
+using ScadaServer.Application.Services;
 using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.WebApi.Services
 {
     /// <summary>
     /// 外部消息通知装饰器：包裹原 SignalR 通知服务（前端/采集推送路径完全不变），
-    /// 按策略把可外发事件格式化后非阻塞入队（钉钉/邮件后台分发）。
+    /// 按策略把可外发事件用可配置模板格式化后非阻塞入队（钉钉/邮件后台分发）。
     /// <para>时间展示统一转本地时区（事件时间按项目约定为 UTC）；邮件 HTML 全量转义防注入。</para>
     /// </summary>
     public class ExternalNotificationDecorator : IScadaNotificationService
@@ -21,6 +22,8 @@ namespace ScadaServer.WebApi.Services
         private readonly IScadaNotificationService _inner;
         private readonly IExternalNotificationQueue _queue;
         private readonly ExternalPushPolicy _policy;
+        private readonly NotificationTemplates _templates;
+        private readonly NotificationTemplateEngine _engine;
         private readonly ILogger<ExternalNotificationDecorator> _logger;
         private readonly ConcurrentDictionary<int, DateTime> _lastDeviceStatusPushUtc = new();
 
@@ -28,11 +31,14 @@ namespace ScadaServer.WebApi.Services
             IScadaNotificationService inner,
             IExternalNotificationQueue queue,
             IOptions<NotificationOptions> options,
+            NotificationTemplateEngine engine,
             ILogger<ExternalNotificationDecorator> logger)
         {
             _inner = inner;
             _queue = queue;
             _policy = options.Value.Push;
+            _templates = options.Value.Templates;
+            _engine = engine;
             _logger = logger;
         }
 
@@ -70,14 +76,20 @@ namespace ScadaServer.WebApi.Services
                 _lastDeviceStatusPushUtc[deviceId] = now;
             }
 
+            var template = EventTemplate.Merge(_templates.DeviceStatus, EventTemplate.DeviceStatusDefault());
+            var tokens = new Dictionary<string, string?>
+            {
+                { "status", status.ToString() },
+                { "deviceId", deviceId.ToString() },
+                { "time", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") }
+            };
+
             _queue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.DeviceStatus,
-                Title = $"设备{status} [#{deviceId}]",
-                MarkdownText = $"## SCADA 设备状态变更\n"
-                    + $"- 设备ID：{deviceId}\n"
-                    + $"- 状态：**{status}**\n"
-                    + $"- 时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                Title = _engine.Render(template.Title, tokens),
+                MarkdownText = _engine.Render(template.Markdown, tokens),
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
             });
         }
 
@@ -88,19 +100,23 @@ namespace ScadaServer.WebApi.Services
 
             if (!_queue.HasEnabledChannels || !_policy.PushSystemAlarm) return;
 
+            var template = EventTemplate.Merge(_templates.SystemAlarm, EventTemplate.SystemAlarmDefault());
+            var tokens = new Dictionary<string, string?>
+            {
+                { "deviceId", deviceId.ToString() },
+                { "variableName", variableName },
+                { "variableKey", variableKey },
+                { "level", level },
+                { "message", message },
+                { "time", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") }
+            };
+
             _queue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.SystemAlarm,
-                Title = $"系统报警 [{variableName}]",
-                MarkdownText = $"## 系统报警\n"
-                    + $"- 设备ID：{deviceId}\n"
-                    + $"- 变量：{variableName}（{variableKey}）\n"
-                    + $"- 级别：**{level}**\n"
-                    + $"- 内容：{message}\n"
-                    + $"- 时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}",
-                HtmlBody = "<h3>系统报警</h3>"
-                    + $"<p>设备ID：{deviceId}<br/>变量：{WebUtility.HtmlEncode(variableName)}（{WebUtility.HtmlEncode(variableKey)}）<br/>"
-                    + $"级别：{WebUtility.HtmlEncode(level)}<br/>内容：{WebUtility.HtmlEncode(message)}</p>"
+                Title = _engine.Render(template.Title, tokens),
+                MarkdownText = _engine.Render(template.Markdown, tokens),
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
             });
         }
 
@@ -111,34 +127,32 @@ namespace ScadaServer.WebApi.Services
 
             if (!_queue.HasEnabledChannels || !_policy.PushAlarm) return;
 
-            var triggered = evt.EventType == AlarmEventType.Triggered;
-            var head = triggered ? "⚠️ 报警触发" : "✅ 报警恢复";
+            var template = evt.EventType == AlarmEventType.Triggered
+                ? EventTemplate.Merge(_templates.AlarmTriggered, EventTemplate.AlarmTriggeredDefault())
+                : EventTemplate.Merge(_templates.AlarmRecovered, EventTemplate.AlarmRecoveredDefault());
             var localTime = ToLocalDisplay(evt.TriggeredAt); // UTC -> 本地时区展示
+            var tokens = new Dictionary<string, string?>
+            {
+                { "deviceKey", evt.DeviceKey },
+                { "deviceId", evt.DeviceId.ToString() },
+                { "variableKey", evt.VariableKey },
+                { "variableName", evt.VariableName },
+                { "ruleName", evt.RuleName ?? "-" },
+                { "level", evt.Level.ToString() },
+                { "condition", evt.Condition?.ToString() ?? "-" },
+                { "threshold", evt.Threshold?.ToString() ?? "-" },
+                { "actualValue", evt.ActualValue ?? "-" },
+                { "source", evt.Source.ToString() },
+                { "message", evt.Message },
+                { "time", localTime.ToString("yyyy-MM-dd HH:mm:ss") }
+            };
 
             _queue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.Alarm,
-                Title = $"{head} [{evt.VariableName}]",
-                MarkdownText = $"## {head}\n"
-                    + $"- 设备：{evt.DeviceKey}（{evt.DeviceId}）\n"
-                    + $"- 变量：{evt.VariableName}（{evt.VariableKey}）\n"
-                    + $"- 规则：{evt.RuleName ?? "-"}\n"
-                    + $"- 级别：**{evt.Level}**\n"
-                    + $"- 条件：{evt.Condition}  阈值：{evt.Threshold}\n"
-                    + $"- 实际值：{evt.ActualValue}\n"
-                    + $"- 来源：{evt.Source}\n"
-                    + $"- 时间：{localTime:yyyy-MM-dd HH:mm:ss}",
-                HtmlBody = $"<h3>{head}</h3>"
-                    + "<table cellpadding='4' border='1'>"
-                    + "<tr><th>设备</th><th>变量</th><th>规则</th><th>级别</th><th>条件/阈值</th><th>实际值</th><th>时间</th></tr>"
-                    + $"<tr><td>{WebUtility.HtmlEncode(evt.DeviceKey)}(#{evt.DeviceId})</td>"
-                    + $"<td>{WebUtility.HtmlEncode(evt.VariableName)}</td>"
-                    + $"<td>{WebUtility.HtmlEncode(evt.RuleName ?? "-")}</td>"
-                    + $"<td>{WebUtility.HtmlEncode(evt.Level.ToString())}</td>"
-                    + $"<td>{WebUtility.HtmlEncode(evt.Condition?.ToString() ?? "-")} / {evt.Threshold}</td>"
-                    + $"<td>{WebUtility.HtmlEncode(evt.ActualValue ?? "-")}</td>"
-                    + $"<td>{localTime:yyyy-MM-dd HH:mm:ss}</td></tr></table>"
-                    + $"<p>{WebUtility.HtmlEncode(evt.Message)}</p>"
+                Title = _engine.Render(template.Title, tokens),
+                MarkdownText = _engine.Render(template.Markdown, tokens),
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
             });
         }
 
@@ -151,21 +165,24 @@ namespace ScadaServer.WebApi.Services
             if (!_queue.HasEnabledChannels || !_policy.PushScript || evt.Result == "Success") return;
 
             var localTime = ToLocalDisplay(evt.StartedAt); // UTC -> 本地时区展示
+            var template = EventTemplate.Merge(_templates.ScriptExecution, EventTemplate.ScriptExecutionDefault());
+            var tokens = new Dictionary<string, string?>
+            {
+                { "scriptId", evt.ScriptId.ToString() },
+                { "scriptVersion", evt.ScriptVersion.ToString() },
+                { "triggerSource", evt.TriggerSource },
+                { "result", evt.Result },
+                { "error", evt.Error ?? "-" },
+                { "durationMs", evt.DurationMs.ToString() },
+                { "time", localTime.ToString("yyyy-MM-dd HH:mm:ss") }
+            };
+
             _queue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.ScriptExecution,
-                Title = $"脚本执行异常 [#{evt.ScriptId} {evt.Result}]",
-                MarkdownText = $"## 脚本执行异常\n"
-                    + $"- 脚本ID：{evt.ScriptId}（v{evt.ScriptVersion}）\n"
-                    + $"- 触发：{evt.TriggerSource}\n"
-                    + $"- 结果：**{evt.Result}**\n"
-                    + $"- 错误：{evt.Error ?? "-"}\n"
-                    + $"- 耗时：{evt.DurationMs}ms\n"
-                    + $"- 时间：{localTime:yyyy-MM-dd HH:mm:ss}",
-                HtmlBody = "<h3>脚本执行异常</h3>"
-                    + $"<p>脚本ID：{evt.ScriptId}（v{evt.ScriptVersion}）　触发：{WebUtility.HtmlEncode(evt.TriggerSource)}"
-                    + $"　结果：<b>{WebUtility.HtmlEncode(evt.Result)}</b>　耗时：{evt.DurationMs}ms　时间：{localTime:yyyy-MM-dd HH:mm:ss}</p>"
-                    + $"<pre>{WebUtility.HtmlEncode(evt.Error ?? "-")}</pre>"
+                Title = _engine.Render(template.Title, tokens),
+                MarkdownText = _engine.Render(template.Markdown, tokens),
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
             });
         }
 

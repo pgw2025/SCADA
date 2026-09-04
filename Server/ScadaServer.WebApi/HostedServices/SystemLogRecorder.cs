@@ -6,8 +6,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Options;
+using ScadaServer.Application.Services;
 using Microsoft.Extensions.Options;
-using System.Net;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Persistence;
@@ -47,6 +47,8 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly IHubContext<SystemLogHub> _hubContext;
         private readonly IExternalNotificationQueue _externalQueue;
         private readonly ExternalPushPolicy _pushPolicy;
+        private readonly NotificationTemplates _templates;
+        private readonly NotificationTemplateEngine _engine;
         private readonly CancellationTokenSource _cts = new();
 
         private Task? _processTask;
@@ -58,7 +60,8 @@ namespace ScadaServer.WebApi.HostedServices
             DatabaseInitializationStatus dbReady,
             IHubContext<SystemLogHub> hubContext,
             IExternalNotificationQueue externalQueue,
-            IOptions<NotificationOptions> notificationOptions)
+            IOptions<NotificationOptions> notificationOptions,
+            NotificationTemplateEngine engine)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
@@ -66,6 +69,8 @@ namespace ScadaServer.WebApi.HostedServices
             _hubContext = hubContext;
             _externalQueue = externalQueue;
             _pushPolicy = notificationOptions.Value.Push;
+            _templates = notificationOptions.Value.Templates;
+            _engine = engine;
 
             // 运行日志：有界 + 丢弃（高频、可接受丢失）
             _runtimeChannel = Channel.CreateBounded<SystemLog>(new BoundedChannelOptions(ChannelCapacity)
@@ -297,16 +302,20 @@ namespace ScadaServer.WebApi.HostedServices
             if (log.Source.StartsWith(ExternalNotificationService.LoggerCategory, StringComparison.Ordinal)) return;
 
             var time = TimeZoneInfo.ConvertTimeFromUtc(log.Timestamp, TimeZoneInfo.Local);
+            var template = EventTemplate.Merge(_templates.SystemError, EventTemplate.SystemErrorDefault());
+            var tokens = new Dictionary<string, string?>
+            {
+                { "level", log.Level },
+                { "source", log.Source },
+                { "time", time.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "content", log.Content }
+            };
             _externalQueue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.SystemError,
-                Title = $"[{log.Level}] 系统异常 {log.Source}",
-                MarkdownText = $"## 系统异常（{log.Level}）\n"
-                    + $"- 来源：{log.Source}\n"
-                    + $"- 时间：{time:yyyy-MM-dd HH:mm:ss}\n\n{log.Content}",
-                HtmlBody = $"<h3>系统异常（{WebUtility.HtmlEncode(log.Level)}）</h3>"
-                    + $"<p>来源：{WebUtility.HtmlEncode(log.Source)}　时间：{time:yyyy-MM-dd HH:mm:ss}</p>"
-                    + $"<pre>{WebUtility.HtmlEncode(log.Content)}</pre>"
+                Title = _engine.Render(template.Title, tokens),
+                MarkdownText = _engine.Render(template.Markdown, tokens),
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
             });
         }
 

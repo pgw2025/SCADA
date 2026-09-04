@@ -1,4 +1,4 @@
-﻿import { http } from './http';
+import { http } from './http';
 import { systemConfig } from '../store/index';
 
 // 类型与后端 NotificationConfigService 保持对应（敏感字段回显为掩码）
@@ -36,10 +36,26 @@ export interface PushPolicy {
   queueCapacity: number;
 }
 
+export interface EventTemplate {
+  title: string;
+  markdown: string;
+  htmlBody: string;
+}
+
+export interface NotificationTemplates {
+  alarmTriggered: EventTemplate;
+  alarmRecovered: EventTemplate;
+  deviceStatus: EventTemplate;
+  systemAlarm: EventTemplate;
+  systemError: EventTemplate;
+  scriptExecution: EventTemplate;
+}
+
 export interface NotificationConfig {
   dingTalk: DingTalkConfig;
   email: EmailConfig;
   push: PushPolicy;
+  templates: NotificationTemplates;
 }
 
 export interface NotificationTestResult {

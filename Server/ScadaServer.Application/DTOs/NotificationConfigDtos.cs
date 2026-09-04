@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using ScadaServer.Application.Options;
 
 namespace ScadaServer.Application.DTOs
@@ -9,6 +9,7 @@ namespace ScadaServer.Application.DTOs
         public DingTalkConfigDto DingTalk { get; set; } = new();
         public EmailConfigDto Email { get; set; } = new();
         public ExternalPushPolicy Push { get; set; } = new();
+        public NotificationTemplates Templates { get; set; } = new();
     }
 
     /// <summary>钉钉群机器人配置片段。</summary>
