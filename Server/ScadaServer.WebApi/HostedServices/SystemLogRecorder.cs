@@ -5,6 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Application.Options;
+using Microsoft.Extensions.Options;
+using System.Net;
+using ScadaServer.Application.Interfaces;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Persistence;
 using ScadaServer.WebApi.Hubs;
@@ -41,6 +45,8 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly ILogger<SystemLogRecorder> _logger;
         private readonly DatabaseInitializationStatus _dbReady;
         private readonly IHubContext<SystemLogHub> _hubContext;
+        private readonly IExternalNotificationQueue _externalQueue;
+        private readonly ExternalPushPolicy _pushPolicy;
         private readonly CancellationTokenSource _cts = new();
 
         private Task? _processTask;
@@ -50,12 +56,16 @@ namespace ScadaServer.WebApi.HostedServices
             IServiceScopeFactory scopeFactory,
             ILogger<SystemLogRecorder> logger,
             DatabaseInitializationStatus dbReady,
-            IHubContext<SystemLogHub> hubContext)
+            IHubContext<SystemLogHub> hubContext,
+            IExternalNotificationQueue externalQueue,
+            IOptions<NotificationOptions> notificationOptions)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
             _dbReady = dbReady;
             _hubContext = hubContext;
+            _externalQueue = externalQueue;
+            _pushPolicy = notificationOptions.Value.Push;
 
             // 运行日志：有界 + 丢弃（高频、可接受丢失）
             _runtimeChannel = Channel.CreateBounded<SystemLog>(new BoundedChannelOptions(ChannelCapacity)
@@ -198,6 +208,7 @@ namespace ScadaServer.WebApi.HostedServices
                     {
                         batch.Add(r);
                         BroadcastRuntimeIfNeeded(r);
+                        PushExternalIfNeeded(r);
                     }
                     while (_operationChannel.Reader.TryRead(out var o))
                     {
@@ -228,6 +239,7 @@ namespace ScadaServer.WebApi.HostedServices
                 {
                     batch.Add(rest);
                     BroadcastRuntimeIfNeeded(rest);
+                    PushExternalIfNeeded(rest);
                 }
                 while (_operationChannel.Reader.TryRead(out var opRest))
                 {
@@ -268,6 +280,33 @@ namespace ScadaServer.WebApi.HostedServices
                 Level = log.Level,
                 Source = log.Source,
                 Content = log.Content
+            });
+        }
+        /// <summary>
+        /// 严重运行日志外发钉钉/邮件（Error/Critical）。
+        /// <para>
+        /// 防递归：排除外部通知服务自身日志（发送失败->LogError->再外发会成环）；
+        /// 仅 Runtime 分类外发——操作/安全日志含操作人/IP 等敏感字段，不做外部推送。
+        /// </para>
+        /// </summary>
+        private void PushExternalIfNeeded(SystemLog log)
+        {
+            if (!_pushPolicy.PushSystemError) return;
+            if (log.Category != "Runtime") return;
+            if (log.Level is not ("Error" or "Critical")) return;
+            if (log.Source.StartsWith(ExternalNotificationService.LoggerCategory, StringComparison.Ordinal)) return;
+
+            var time = TimeZoneInfo.ConvertTimeFromUtc(log.Timestamp, TimeZoneInfo.Local);
+            _externalQueue.Enqueue(new ExternalMessage
+            {
+                Category = ExternalMessageCategory.SystemError,
+                Title = $"[{log.Level}] 系统异常 {log.Source}",
+                MarkdownText = $"## 系统异常（{log.Level}）\n"
+                    + $"- 来源：{log.Source}\n"
+                    + $"- 时间：{time:yyyy-MM-dd HH:mm:ss}\n\n{log.Content}",
+                HtmlBody = $"<h3>系统异常（{WebUtility.HtmlEncode(log.Level)}）</h3>"
+                    + $"<p>来源：{WebUtility.HtmlEncode(log.Source)}　时间：{time:yyyy-MM-dd HH:mm:ss}</p>"
+                    + $"<pre>{WebUtility.HtmlEncode(log.Content)}</pre>"
             });
         }
 

@@ -35,6 +35,7 @@ import {
   Clock,
   UserCheck,
   Bell,
+  MessageSquare,
   Server,
   Calendar,
   FileCode,
@@ -625,6 +626,16 @@ const handleChangeMyPassword = async () => {
                   :class="isActive('/settings-center') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
                 <span v-if="!isSidebarCollapsed" class="truncate">系统配置</span>
               </button>
+              <button @click="navigate('/notification-center')" :class="[
+                isActive('/notification-center')
+                  ? 'bg-sky-50 dark:bg-slate-800/90 text-sky-600 dark:text-white font-bold border-l-[#1890ff]'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-l-transparent',
+                isSidebarCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'w-full gap-2.5 px-4 py-2.5 border-l-4'
+              ]" class="flex items-center rounded-lg text-xs transition-all text-left group cursor-pointer w-full">
+                <MessageSquare class="w-4 h-4 shrink-0 transition-colors"
+                  :class="isActive('/notification-center') ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'" />
+                <span v-if="!isSidebarCollapsed" class="truncate">消息通知</span>
+              </button>
             </nav>
           </div>
         </div>
@@ -818,6 +829,12 @@ const handleChangeMyPassword = async () => {
               class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
               <Settings class="w-4 h-4" />
               <span>系统配置</span>
+            </button>
+            <button @click="navigate('/notification-center'); isMobileSidebarOpen = false;"
+              :class="[isActive('/notification-center') ? 'bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-white font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-400']"
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all text-left">
+              <MessageSquare class="w-4 h-4" />
+              <span>消息通知</span>
             </button>
           </nav>
         </div>

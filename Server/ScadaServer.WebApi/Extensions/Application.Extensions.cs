@@ -4,8 +4,14 @@ using ScadaServer.Application.ImportExport;
 using ScadaServer.Application.Services;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Infrastructure.Persistence;
+using ScadaServer.Infrastructure.Services;
 using ScadaServer.WebApi.HostedServices;
 using ScadaServer.WebApi.Services;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ScadaServer.Application.Options;
+using ScadaServer.WebApi.Hubs;
 
 namespace ScadaServer.WebApi.Extensions
 {
@@ -26,6 +32,8 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IConfigLogAppService, ConfigLogAppService>();
             services.AddScoped<IControllerAppService, ControllerAppService>();
             services.AddScoped<IDatabaseConfigAppService, DatabaseConfigAppService>();
+            // 消息通知（钉钉/SMTP）配置管理：读写 override 文件 + 临时值测试发送。
+            services.AddScoped<INotificationConfigService, NotificationConfigService>();
             services.AddScoped<IDataConversionAppService, DataConversionAppService>();
             services.AddScoped<IDataModelAppService, DataModelAppService>();
             services.AddScoped<IDeviceAppService, DeviceAppService>();
@@ -83,7 +91,25 @@ namespace ScadaServer.WebApi.Extensions
 
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddHostedService<MqttReconnectHostedService>();
-            services.AddSingleton<IScadaNotificationService, SignalRNotificationService>();
+            // ========== 外部消息通知（钉钉机器人 / SMTP 邮件）==========
+            // 命名 HttpClient：钉钉 webhook 8s 超时（替代默认 100s，避免拖死后台发送循环）。
+            services.AddHttpClient(DingTalkRobotClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(8));
+            services.AddSingleton<IExternalMessageSender, DingTalkRobotClient>();
+            services.AddSingleton<IExternalMessageSender, EmailSender>();
+
+            // 外部消息后台推送服务：主队列扇出 -> 各渠道独立通道（互不阻塞）+ 限流 + 重试。
+            services.AddSingleton<ExternalNotificationService>();
+            services.AddSingleton<IExternalNotificationQueue>(sp => sp.GetRequiredService<ExternalNotificationService>());
+            services.AddHostedService(sp => sp.GetRequiredService<ExternalNotificationService>());
+
+            // 原 SignalR 通知实现注册为具体类型，由装饰器包裹后以接口暴露：
+            // 前端 SignalR/MQTT 推送路径不变，可外发事件额外进入钉钉/邮件队列。
+            services.AddSingleton<SignalRNotificationService>();
+            services.AddSingleton<IScadaNotificationService>(sp => new ExternalNotificationDecorator(
+                sp.GetRequiredService<SignalRNotificationService>(),
+                sp.GetRequiredService<IExternalNotificationQueue>(),
+                sp.GetRequiredService<IOptions<NotificationOptions>>(),
+                sp.GetRequiredService<ILogger<ExternalNotificationDecorator>>()));
 
             // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）
             services.AddScoped<IOperationAuditService, OperationAuditService>();

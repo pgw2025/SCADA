@@ -24,6 +24,9 @@ builder.Services.Configure<SystemLogOptions>(builder.Configuration.GetSection(Sy
 // 配置组态图片图库选项（存储目录 / 大小上限 / 扩展名白名单）
 builder.Services.Configure<HmiImageOptions>(builder.Configuration.GetSection(HmiImageOptions.SectionName));
 
+// 配置外部消息通知选项（钉钉群机器人 + SMTP 邮件）
+builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
+
 // 将 ILogger 运行日志写入数据库的 Provider：
 // 以单例注册（不经 builder.Logging.AddProvider），由 LoggerFactory 延迟解析，
 // 保证依赖链（SystemLogRecorder 单例）完整后再实例化，避免 Host 构建期提前创建导致解析失败。

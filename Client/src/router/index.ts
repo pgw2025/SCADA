@@ -30,6 +30,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/user-management', component: () => import('../components/UserManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/database-management', component: () => import('../components/DatabaseManagementView.vue'), meta: { roles: ADMIN_ROLES } },
   { path: '/settings-center', component: () => import('../components/SettingsCenterView.vue'), meta: { roles: ADMIN_ROLES } },
+  { path: '/notification-center', component: () => import('../components/NotificationCenterView.vue'), meta: { roles: ADMIN_ROLES } },
   // 阶段4/方案B：组态运行画面——所有已登录角色均可访问（Admin/Operator/Viewer）。
   // 一级：/scada-view 工程卡片列表；二级：/scada-view/:projectId 具体工程组态画布（纯播放器）。
   // standalone: App.vue 据此隐藏系统顶部菜单与侧边栏；ScadaPlayerView 自身无任何工具栏/按钮，
