@@ -73,6 +73,13 @@ namespace ScadaServer.Runtime
         /// </summary>
         private readonly ConcurrentDictionary<int, DeviceReconnectStats> _reconnectStats = new();
 
+        /// <summary>
+        /// 重连在途时被移除的占位运行时（P4 阶段修复：重连 connect 期间移除后不在册）。
+        /// 保留旧占位引用，使 TryGetRuntimeSnapshot 在重连窗口仍能返回该设备的断线诊断快照
+        /// （配合 D5-a 回退：不因"重连期间终止"而丢失观测面）。连接完成后随即清除。
+        /// </summary>
+        private readonly ConcurrentDictionary<int, Devices.DeviceRuntime> _reconnecting = new();
+
         /// <summary>单设备重连统计（进程级聚合）。</summary>
         private sealed class DeviceReconnectStats
         {
@@ -288,20 +295,33 @@ namespace ScadaServer.Runtime
                 return;
             }
 
-            // 重连计数（进程级）：仅统计实际发起的重连（门闸通过 = 本次重连成立）。
-            // 初始连接失败不计入——它由 ConnectionStateChangedAt + LastError + DeviceStatus=Fault
-            // 共同表达；避免「初始失败→占位→重连失败→再占位」链式重复计数。
-            var stats = _reconnectStats.GetOrAdd(deviceId, _ => new DeviceReconnectStats());
-            stats.Count++;
-            stats.LastReconnectAt = DateTime.UtcNow;
+            // 保留被移除的占位运行时引用：重连 connect 期间该设备不在 DeviceRuntimes，
+            // 快照端点据此回退返回占位（断线诊断态），避免重连窗口 404（P4 回归修复）。
+            _reconnecting[deviceId] = runtime;
 
-            _lastPushedStatus.TryRemove(deviceId, out _);
+            try
+            {
+                // 重连计数（进程级）：仅统计实际发起的重连（门闸通过 = 本次重连成立）。
+                // 初始连接失败不计入——它由 ConnectionStateChangedAt + LastError + DeviceStatus=Fault
+                // 共同表达；避免「初始失败→占位→重连失败→再占位」链式重复计数。
+                var stats = _reconnectStats.GetOrAdd(deviceId, _ => new DeviceReconnectStats());
+                stats.Count++;
+                stats.LastReconnectAt = DateTime.UtcNow;
 
-            // 停止残留 Worker 并释放旧驱动（占位运行时无 Worker/驱动，自然跳过）。
-            await StopWorkerAndDisposeDriverAsync(runtime);
+                _lastPushedStatus.TryRemove(deviceId, out _);
 
-            // 重新走完整注册流程（内部先幂等移除，再加载、连接、注册）。
-            await RegisterDeviceAsync(deviceId);
+                // 停止残留 Worker 并释放旧驱动（占位运行时无 Worker/驱动，自然跳过）。
+                await StopWorkerAndDisposeDriverAsync(runtime);
+
+                // 重新走完整注册流程（内部先幂等移除，再加载、连接、注册）。
+                await RegisterDeviceAsync(deviceId);
+            }
+            finally
+            {
+                // 连接（成功/失败）均会经 RegisterDeviceAsync 重新注册新运行时到 DeviceRuntimes，
+                // 此处清除重连占位，避免在册恢复后仍读取到旧占位数据。
+                _reconnecting.TryRemove(deviceId, out _);
+            }
         }
 
         /// <inheritdoc/>
@@ -625,8 +645,14 @@ namespace ScadaServer.Runtime
         {
             if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
             {
-                snapshot = null;
-                return false;
+                // P4 回归修复：重连 connect 期间设备被移出在册表以原子化重连、并避免旧 Worker 残留，
+                // 该短暂窗口内回退到被保留的占位运行时，保证断线诊断快照始终可查（D5-a 回退）。
+                // 未进入重连（禁用/从未注册）的设备仍返回 false → 404，语义不变。
+                if (!_reconnecting.TryGetValue(deviceId, out runtime))
+                {
+                    snapshot = null;
+                    return false;
+                }
             }
 
             _reconnectStats.TryGetValue(deviceId, out var stats);
