@@ -81,7 +81,7 @@ namespace ScadaServer.Infrastructure.Communication
         /// 最近一次成功解析的连接上下文（ConnectAsync 捕获），供读/写/释放日志定位 PLC。
         /// Driver 无常驻 DeviceId 字段，此为日志专用快照，不参与业务逻辑。
         /// </summary>
-        private string? _deviceKey;
+        private string? _connectionKey;
         private string? _lastIp;
         private int _lastRack;
         private int _lastSlot;
@@ -147,14 +147,14 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 连接管理
 
-        public async Task<bool> ConnectAsync(IRuntimeDevice device)
+        public async Task<bool> ConnectAsync(IRuntimeConnection connection)
         {
             if (Volatile.Read(ref _state) != StateActive)
                 return false;
 
-            var configJson = device.ConfigJson;
+            var configJson = connection.ConfigJson;
             if (string.IsNullOrWhiteSpace(configJson))
-                throw new ArgumentException("S7 协议配置不能为空", nameof(device));
+                throw new ArgumentException("S7 协议配置不能为空", nameof(connection));
 
             var config = JsonSerializer.Deserialize<S7Config>(configJson, ConfigJsonOptions);
             if (config == null)
@@ -188,13 +188,13 @@ namespace ScadaServer.Infrastructure.Communication
                 };
 
                 // 捕获连接上下文快照，供后续读/写/释放日志定位 PLC（不参与业务逻辑）
-                _deviceKey = device.Key;
+                _connectionKey = connection.Key;
                 _lastIp = config.IpAddress;
                 _lastRack = config.Rack;
                 _lastSlot = config.Slot;
 
-                _logger.LogDebug("S7 连接开始 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot} Cpu={CpuType}",
-                    device.Key, config.IpAddress, config.Port, config.Rack, config.Slot, cpuType);
+                _logger.LogDebug("S7 连接开始 Connection={ConnectionKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot} Cpu={CpuType}",
+                    connection.Key, config.IpAddress, config.Port, config.Rack, config.Slot, cpuType);
 
                 Plc? newPlc = null;
                 try
@@ -221,15 +221,15 @@ namespace ScadaServer.Infrastructure.Communication
                         _plc = newPlc;
                         _ioTimeoutMs = ioTimeoutMs;
                         _commFailureLogged = false; // 新连接：复位通信失败闸门
-                        _logger.LogInformation("S7 PLC 连接成功 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
-                            device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
+                        _logger.LogInformation("S7 PLC 连接成功 Connection={ConnectionKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                            connection.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                         return true;
                     }
 
                     // OpenAsync 未抛异常但连接未建立：清理并返回失败
                     ClosePlcInstance(newPlc);
-                    _logger.LogWarning("S7 PLC 连接未建立（OpenAsync 未抛异常但 IsConnected=false）Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
-                        device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
+                    _logger.LogWarning("S7 PLC 连接未建立（OpenAsync 未抛异常但 IsConnected=false）Connection={ConnectionKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                        connection.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                     return false;
                 }
                 catch (Exception ex)
@@ -237,8 +237,8 @@ namespace ScadaServer.Infrastructure.Communication
                     // 连接失败：自动清理 _plc，避免半开连接残留
                     ClosePlcInstance(newPlc);
                     _plc = null;
-                    _logger.LogWarning(ex, "S7 PLC 连接失败 Device={DeviceKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
-                        device.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
+                    _logger.LogWarning(ex, "S7 PLC 连接失败 Connection={ConnectionKey} Ip={Ip}:{Port} Rack={Rack} Slot={Slot}",
+                        connection.Key, config.IpAddress, config.Port, config.Rack, config.Slot);
                     return false;
                 }
             }
@@ -491,8 +491,8 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 // 整体兜底：任何意外异常均不抛出，避免采集宿主崩溃。
                 // 内层簇读取异常已被捕获，到达此处的大多是驱动自身缺陷（如分组/聚簇逻辑错误）→ Error。
-                _logger.LogError(ex, "S7 批量读取发生未预期异常 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
-                    _deviceKey, _lastIp, _lastRack, _lastSlot);
+                _logger.LogError(ex, "S7 批量读取发生未预期异常 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                    _connectionKey, _lastIp, _lastRack, _lastSlot);
                 foreach (var v in variables)
                 {
                     if (v != null && !string.IsNullOrWhiteSpace(v.Key) && !results.ContainsKey(v.Key))
@@ -505,8 +505,8 @@ namespace ScadaServer.Infrastructure.Communication
             }
 
             // 正常批量读取统计（单行 Debug，含失败计数；不含变量值，避免高频采集刷量）
-            _logger.LogDebug("S7 批量读取完成 Device={DeviceKey} Ip={Ip} Total={Total} Ok={Ok} ReadError={ReadError} InvalidAddress={InvalidAddress}",
-                _deviceKey, _lastIp, results.Count,
+            _logger.LogDebug("S7 批量读取完成 Connection={ConnectionKey} Ip={Ip} Total={Total} Ok={Ok} ReadError={ReadError} InvalidAddress={InvalidAddress}",
+                _connectionKey, _lastIp, results.Count,
                 results.Values.Count(x => x is not string),
                 results.Values.Count(x => ReferenceEquals(x, ReadError)),
                 results.Values.Count(x => ReferenceEquals(x, InvalidAddress)));
@@ -619,8 +619,8 @@ namespace ScadaServer.Infrastructure.Communication
 
                 if (_plc == null || !_plc.IsConnected)
                 {
-                    _logger.LogWarning("S7 写入失败：PLC 未连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
-                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
+                    _logger.LogWarning("S7 写入失败：PLC 未连接 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _connectionKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
                     throw new InvalidOperationException("PLC 未连接");
                 }
 
@@ -639,8 +639,8 @@ namespace ScadaServer.Infrastructure.Communication
                     var bitValue = ConvertToBit(value);
                     if (bitValue == null)
                     {
-                        _logger.LogWarning("S7 写入失败：值转换失败 Device={DeviceKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
-                            _deviceKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
+                        _logger.LogWarning("S7 写入失败：值转换失败 Connection={ConnectionKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
+                            _connectionKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
                         throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
                     }
 
@@ -655,14 +655,14 @@ namespace ScadaServer.Infrastructure.Communication
                     }
                     catch (OperationCanceledException)
                     {
-                        _logger.LogWarning("S7 位写入超时（>{TimeoutMs}ms）Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
-                            _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
+                        _logger.LogWarning("S7 位写入超时（>{TimeoutMs}ms）Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                            _connectionKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
                         throw new InvalidOperationException($"S7 写入超时（>{_ioTimeoutMs}ms），连接已中止，待重连恢复");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "S7 位写入通信失败 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
-                            _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
+                        _logger.LogWarning(ex, "S7 位写入通信失败 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                            _connectionKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
                         throw;
                     }
 
@@ -674,8 +674,8 @@ namespace ScadaServer.Infrastructure.Communication
                 var bytes = ConvertToS7Bytes(variable.DataType, value);
                 if (bytes == null)
                 {
-                    _logger.LogWarning("S7 写入失败：值转换失败 Device={DeviceKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
-                        _deviceKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
+                    _logger.LogWarning("S7 写入失败：值转换失败 Connection={ConnectionKey} Ip={Ip} Variable={VariableKey} Address={Address} DataType={DataType} Value={Value}",
+                        _connectionKey, _lastIp, variable.Key, variable.Address, variable.DataType, value);
                     throw new InvalidOperationException($"无法将值 [{value}] 转换为数据类型 {variable.DataType}");
                 }
 
@@ -689,14 +689,14 @@ namespace ScadaServer.Infrastructure.Communication
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("S7 写入超时（>{TimeoutMs}ms）Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
-                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
+                    _logger.LogWarning("S7 写入超时（>{TimeoutMs}ms）Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _connectionKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address, _ioTimeoutMs);
                     throw new InvalidOperationException($"S7 写入超时（>{_ioTimeoutMs}ms），连接已中止，待重连恢复");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "S7 写入通信失败 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
-                        _deviceKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
+                    _logger.LogWarning(ex, "S7 写入通信失败 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Variable={VariableKey} Address={Address}",
+                        _connectionKey, _lastIp, _lastRack, _lastSlot, variable.Key, variable.Address);
                     throw;
                 }
             }
@@ -786,8 +786,8 @@ namespace ScadaServer.Infrastructure.Communication
                 if (Volatile.Read(ref _state) != StateActive)
                     return;
 
-                _logger.LogDebug("S7 断开连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
-                    _deviceKey, _lastIp, _lastRack, _lastSlot);
+                _logger.LogDebug("S7 断开连接 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                    _connectionKey, _lastIp, _lastRack, _lastSlot);
                 await ClosePlcUnderLockAsync();
             }
             finally
@@ -823,8 +823,8 @@ namespace ScadaServer.Infrastructure.Communication
             {
                 // 关闭过程中的异常（如套接字已断开）不阻断释放流程，降为 Debug 记录
                 // （连接本就断开时 Close 抛异常属常态，Warning 会随每次断线刷屏）
-                _logger.LogDebug(ex, "S7 PLC 关闭时出现异常（已忽略，通常为套接字已断开）Device={DeviceKey} Ip={Ip}",
-                    _deviceKey, _lastIp);
+                _logger.LogDebug(ex, "S7 PLC 关闭时出现异常（已忽略，通常为套接字已断开）Connection={ConnectionKey} Ip={Ip}",
+                    _connectionKey, _lastIp);
             }
         }
 
@@ -851,8 +851,8 @@ namespace ScadaServer.Infrastructure.Communication
             if (Interlocked.Exchange(ref _state, StateClosed) != StateActive)
                 return;
 
-            _logger.LogInformation("S7 驱动释放 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
-                _deviceKey, _lastIp, _lastRack, _lastSlot);
+            _logger.LogInformation("S7 驱动释放 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                _connectionKey, _lastIp, _lastRack, _lastSlot);
 
             await _plcLock.WaitAsync();
             try
@@ -885,19 +885,19 @@ namespace ScadaServer.Infrastructure.Communication
                 _commFailureLogged = true;
                 if (ex == null)
                 {
-                    _logger.LogWarning("S7 通信失败：PLC 未连接 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
-                        _deviceKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
+                    _logger.LogWarning("S7 通信失败：PLC 未连接 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
+                        _connectionKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
                 }
                 else
                 {
-                    _logger.LogWarning(ex, "S7 通信异常 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
-                        _deviceKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
+                    _logger.LogWarning(ex, "S7 通信异常 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot} Operation={Operation} Address={Address}",
+                        _connectionKey, _lastIp, _lastRack, _lastSlot, operation, address ?? "-");
                 }
             }
             else
             {
-                _logger.LogDebug("S7 通信持续失败（详情见首条 Warning）Device={DeviceKey} Ip={Ip} Operation={Operation} Address={Address}",
-                    _deviceKey, _lastIp, operation, address ?? "-");
+                _logger.LogDebug("S7 通信持续失败（详情见首条 Warning）Connection={ConnectionKey} Ip={Ip} Operation={Operation} Address={Address}",
+                    _connectionKey, _lastIp, operation, address ?? "-");
             }
         }
 
@@ -911,8 +911,8 @@ namespace ScadaServer.Infrastructure.Communication
                 return;
 
             _commFailureLogged = false;
-            _logger.LogInformation("S7 通信恢复 Device={DeviceKey} Ip={Ip} Rack={Rack} Slot={Slot}",
-                _deviceKey, _lastIp, _lastRack, _lastSlot);
+            _logger.LogInformation("S7 通信恢复 Connection={ConnectionKey} Ip={Ip} Rack={Rack} Slot={Slot}",
+                _connectionKey, _lastIp, _lastRack, _lastSlot);
         }
 
         #endregion

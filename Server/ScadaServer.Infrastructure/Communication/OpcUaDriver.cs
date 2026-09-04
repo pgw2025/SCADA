@@ -102,7 +102,7 @@ namespace ScadaServer.Infrastructure.Communication
             _logger = logger;
         }
 
-        public async Task<bool> ConnectAsync(IRuntimeDevice device)
+        public async Task<bool> ConnectAsync(IRuntimeConnection connection)
         {
             if (_disposed) return false;
             await _lifecycleLock.WaitAsync();
@@ -117,8 +117,8 @@ namespace ScadaServer.Infrastructure.Communication
                 // 且清理本身持有 _lifecycleLock，与旧会话上的自动 Reconnect 互斥
                 await CleanupUnderExclusiveIoAsync();
 
-                // 从 JSON 反序列化配置（配置来自 RuntimeDevice.ConfigJson，驱动不感知 Device 实体）
-                var config = JsonSerializer.Deserialize<OpcUaConfig>(device.ConfigJson);
+                // 从 JSON 反序列化配置（配置来自 RuntimeConnection.ConfigJson，驱动不感知 Device 实体）
+                var config = JsonSerializer.Deserialize<OpcUaConfig>(connection.ConfigJson);
                 if (config == null)
                 {
                     throw new ArgumentException("无效的 OPC UA 协议配置");
@@ -131,8 +131,8 @@ namespace ScadaServer.Infrastructure.Communication
                 }
 
                 // 连接开始：Information（仅含端点 URL，不含用户名/密码等敏感配置）
-                _logger.LogInformation("OPC UA 开始连接设备 {DeviceKey}，端点 {EndpointUrl}。",
-                    device.Key, endpointUrl);
+                _logger.LogInformation("OPC UA 开始连接连接 {ConnectionKey}，端点 {EndpointUrl}。",
+                    connection.Key, endpointUrl);
 
                 var appConfig = new ApplicationConfiguration()
                 {

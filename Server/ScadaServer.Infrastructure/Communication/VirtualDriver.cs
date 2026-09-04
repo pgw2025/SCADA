@@ -34,9 +34,9 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>为写入值缓存生成带设备维度的复合键。</summary>
         private string KeyOf(string key) => _deviceId.HasValue ? $"{_deviceId}:{key}" : key;
 
-        public async Task<bool> ConnectAsync(IRuntimeDevice device)
+        public async Task<bool> ConnectAsync(IRuntimeConnection connection)
         {
-            var configJson = device.ConfigJson;
+            var configJson = connection.ConfigJson;
 
             // 虚拟设备不需要真实连接，但需真正解析 VirtualConfig，使前端表单字段被消费。
             if (!string.IsNullOrWhiteSpace(configJson))
@@ -61,8 +61,10 @@ namespace ScadaServer.Infrastructure.Communication
             // 区间合法性兜底，避免后续 GenerateValue 除零或负区间。
             if (_config.IntervalMs < 10) _config.IntervalMs = 10;
 
-            // 记录设备维度，用于写入值缓存的复合键（防御未来驱动单例化串值）。
-            _deviceId = device.Id;
+            // 记录连接维度 ID，用于写入值缓存的复合键（P1 起连接参数取自连接上下文；
+            // 共享前每设备独立连接实例，键天然设备隔离；共享后同连接设备为测试场景——
+            // 真实驱动（S7/OPC UA）不依赖该缓存，不受影响）。
+            _deviceId = connection.ConnectionId;
 
             _connected = true;
             await Task.Delay(10);

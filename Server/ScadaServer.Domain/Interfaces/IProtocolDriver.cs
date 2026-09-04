@@ -12,7 +12,8 @@ namespace ScadaServer.Domain.Interfaces
     /// </para>
     /// <para>
     /// <b>解耦约束（第九阶段）</b>：驱动不允许知道 <c>DataModel</c> / <c>DataPoint</c>，
-    /// 只接收 <see cref="IRuntimeDevice"/>（RuntimeDevice）与 <see cref="IRuntimeVariable"/>（RuntimeVariable）。
+    /// 只接收 <see cref="IRuntimeConnection"/>（RuntimeConnection，连接维度）与
+    /// <see cref="IRuntimeVariable"/>（RuntimeVariable，变量维度）。
     /// 地址、位偏移、轮询间隔、缩放等"设备实现"信息一律由运行时从 DataPointMapping 解析后经接口暴露；
     /// 驱动自身不得触碰模型模板实体。
     /// </para>
@@ -20,11 +21,11 @@ namespace ScadaServer.Domain.Interfaces
     public interface IProtocolDriver : IAsyncDisposable
     {
         /// <summary>
-        /// 连接到设备
+        /// 建立到设备所在连接配置的物理连接。
         /// </summary>
-        /// <param name="device">设备运行时（含连接配置 ConfigJson）</param>
+        /// <param name="connection">连接运行时（含连接配置 ConfigJson）。驱动不感知设备。</param>
         /// <returns>连接是否成功</returns>
-        Task<bool> ConnectAsync(IRuntimeDevice device);
+        Task<bool> ConnectAsync(IRuntimeConnection connection);
 
         /// <summary>
         /// 读取单个变量值

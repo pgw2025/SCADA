@@ -461,8 +461,10 @@ namespace ScadaServer.Runtime
                 }
                 var protocolLabel = driverKey;
 
-                // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeDevice 只读视图连接驱动。
-                // 第九阶段起：驱动只接收 RuntimeDevice / RuntimeVariable，不再感知 Device / DataModel / DataPoint。
+                // 先构建运行时对象（Driver 待连接成功后赋值），再以 IRuntimeConnection 只读视图连接驱动。
+                // 第九阶段起：驱动只接收 RuntimeConnection / RuntimeVariable，不再感知 Device / DataModel / DataPoint。
+                // P1：此处用轻量适配层 DeviceConnectionContext 传递"该设备所在连接"的只读视图，
+                //      行为与旧签名（device.Connection.ConfigJson）逐字节等价；P2 起由 ConnectionSession 取代本适配层。
                 var runtime = new Devices.DeviceRuntime(device)
                 {
                     Device = device,
@@ -478,7 +480,7 @@ namespace ScadaServer.Runtime
                 try
                 {
                     driver = _driverFactory.CreateDriver(driverKey);
-                    connected = await driver.ConnectAsync(runtime);
+                    connected = await driver.ConnectAsync(new DeviceConnectionContext(device.Connection!));
                 }
                 catch (Exception ex)
                 {
@@ -890,6 +892,25 @@ namespace ScadaServer.Runtime
                 DeviceConnectionState.Disconnected or DeviceConnectionState.Unknown => DeviceStatus.Offline,
                 _ => DeviceStatus.Offline
             };
+        }
+
+        /// <summary>
+        /// 由 DeviceConnection 实体构建的连接运行时只读适配层（P1 临时层）。
+        /// 用于驱动 ConnectAsync(IRuntimeConnection) 的过渡期接入：每设备独立驱动时，
+        /// 以"该设备所在连接"的只读视图喂给驱动，行为与旧签名逐字节等价。
+        /// P2 起由 <c>ConnectionSession</c> 本体取代本适配层（P6 清理删除）。
+        /// </summary>
+        private sealed class DeviceConnectionContext : IRuntimeConnection
+        {
+            private readonly DeviceConnection _connection;
+
+            public DeviceConnectionContext(DeviceConnection connection) => _connection = connection;
+
+            public int ConnectionId => _connection.Id;
+
+            public string Key => string.IsNullOrEmpty(_connection.Name) ? $"#{_connection.Id}" : _connection.Name;
+
+            public string ConfigJson => _connection.ConfigJson ?? "{}";
         }
     }
 }
