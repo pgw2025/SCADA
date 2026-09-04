@@ -13,14 +13,20 @@ namespace ScadaServer.Application.Services
     {
         /// <summary>协议仓储，提供持久化能力。</summary>
         private readonly IProtocolRepository _repository;
-        /// <summary>数据模型仓储，用于删除协议前校验是否有模型引用。</summary>
-        private readonly IDataModelRepository _dataModelRepository;
+        /// <summary>控制器仓储，用于删除协议前校验是否有控制器引用。</summary>
+        private readonly IControllerRepository _controllerRepository;
+        /// <summary>设备连接仓储，用于删除协议前校验是否有连接引用。</summary>
+        private readonly IDeviceConnectionRepository _connectionRepository;
 
-        /// <summary>构造函数：注入协议与数据模型仓储。</summary>
-        public ProtocolAppService(IProtocolRepository repository, IDataModelRepository dataModelRepository)
+        /// <summary>构造函数：注入协议、控制器与设备连接仓储。</summary>
+        public ProtocolAppService(
+            IProtocolRepository repository,
+            IControllerRepository controllerRepository,
+            IDeviceConnectionRepository connectionRepository)
         {
             _repository = repository;
-            _dataModelRepository = dataModelRepository;
+            _controllerRepository = controllerRepository;
+            _connectionRepository = connectionRepository;
         }
 
         /// <summary>按主键获取协议，不存在时返回 null。</summary>
@@ -51,7 +57,6 @@ namespace ScadaServer.Application.Services
             // 0. 规范化（[Required] 已在控制器校验非空，此处防御性兜底为空串）
             var key = dto.Key?.Trim() ?? string.Empty;
             var name = dto.Name?.Trim() ?? string.Empty;
-            var driverKey = dto.DriverKey?.Trim() ?? string.Empty;
 
             // 1. Key 唯一性校验
             if (await _repository.AnyAsync(p => p.Key == key))
@@ -63,7 +68,6 @@ namespace ScadaServer.Application.Services
             {
                 Key = key,
                 Name = name,
-                DriverKey = driverKey,
                 Description = dto.Description?.Trim(),
                 IsEnabled = dto.IsEnabled,
                 CreatedAt = DateTime.UtcNow,
@@ -85,7 +89,6 @@ namespace ScadaServer.Application.Services
             // 0. 规范化（防御性兜底为空串）
             var key = dto.Key?.Trim() ?? string.Empty;
             var name = dto.Name?.Trim() ?? string.Empty;
-            var driverKey = dto.DriverKey?.Trim() ?? string.Empty;
 
             // 1. Key 唯一性校验（排除自身）
             if (await _repository.AnyAsync(p => p.Key == key && p.Id != id))
@@ -95,7 +98,6 @@ namespace ScadaServer.Application.Services
 
             entity.Key = key;
             entity.Name = name;
-            entity.DriverKey = driverKey;
             entity.Description = dto.Description?.Trim();
             entity.IsEnabled = dto.IsEnabled;
             entity.UpdatedAt = DateTime.UtcNow;
@@ -104,17 +106,23 @@ namespace ScadaServer.Application.Services
             return MapToDto(entity);
         }
 
-        /// <summary>删除协议：先校验是否有数据模型引用，有则禁止删除；记录不存在时静默忽略。</summary>
+        /// <summary>删除协议：先校验是否有控制器/设备连接引用，有则禁止删除；记录不存在时静默忽略。</summary>
         public async Task DeleteAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return;
 
-            // 安全：若已有数据模型绑定该协议，禁止删除（数据库为 Restrict，这里给出友好提示）
-            var hasModels = await _dataModelRepository.AnyAsync(m => m.ProtocolId == id);
-            if (hasModels)
+            // 安全：协议由控制器或设备连接承载，若仍存在引用则禁止删除（数据库为 Restrict，这里给出友好提示）
+            var hasControllers = await _controllerRepository.AnyAsync(c => c.ProtocolId == id);
+            if (hasControllers)
             {
-                throw new BusinessException($"无法删除协议 '{entity.Name}'，因为已有数据模型绑定该协议。请先解除绑定。");
+                throw new BusinessException($"无法删除协议 '{entity.Name}'，因为已有控制器绑定该协议。请先解除绑定。");
+            }
+
+            var hasConnections = await _connectionRepository.AnyAsync(c => c.ProtocolId == id);
+            if (hasConnections)
+            {
+                throw new BusinessException($"无法删除协议 '{entity.Name}'，因为已有设备连接绑定该协议。请先解除绑定。");
             }
 
             await _repository.DeleteAsync(entity);
@@ -126,7 +134,6 @@ namespace ScadaServer.Application.Services
             Id = entity.Id,
             Key = entity.Key,
             Name = entity.Name,
-            DriverKey = entity.DriverKey,
             Description = entity.Description,
             IsEnabled = entity.IsEnabled,
             CreatedAt = entity.CreatedAt,

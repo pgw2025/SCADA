@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, fetchProtocols, createVariable, updateVariable, deleteVariable, exportVariables } from '../store/index';
-import { DataModel, DataPoint, DeviceType, DataTypeEnum, Protocol, protocolKeyToDeviceType } from '../types';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable, updateVariable, deleteVariable, exportVariables } from '../store/index';
+import { DataModel, DataPoint, DataTypeEnum } from '../types';
 import VariableImportDialog from './VariableImportDialog.vue';
 
 onMounted(() => {
   fetchDataModelsFromBackend();
-  fetchProtocols().then(list => { protocols.value = list; });
 });
-
-// 协议下拉数据源（协议/驱动解耦，来自 /api/Protocol，作为数据模型协议选择）
-const protocols = ref<Protocol[]>([]);
 
 import { 
   FileCode, 
@@ -40,25 +36,12 @@ const currentModel = computed(() => {
   return dataModels.value.find(m => m.id === selectedModelId.value) || dataModels.value[0];
 });
 
-// 当前模型的协议类型：协议真相源在 Protocol 实体（protocolKey），
-// 新建模型即使未绑定任何设备也有明确协议，不再臆造 Virtual。
-const currentModelProtocol = computed<DeviceType>(() => {
-  return protocolKeyToDeviceType(currentModel.value?.protocolKey);
-});
-
-// 列表项协议徽章：直接读模型自带的 protocolKey 派生协议类型
-const protocolOf = (model: { id: string; protocolKey?: string }) => {
-  const m = dataModels.value.find(x => x.id === model.id);
-  return protocolKeyToDeviceType(m?.protocolKey);
-};
-
 // Create model form state
 const showModelModal = ref<boolean>(false);
 const modelName = ref<string>('');
 // 阶段 4：模型编码（业务唯一键，后端 DataModel.Code 必填且唯一；存量回填自 Name）
 const modelCode = ref<string>('');
 const modelDesc = ref<string>('');
-const modelProtocolId = ref<number>(0);
 
 // Create variable form state Inside Model
 const showVarModal = ref<boolean>(false);
@@ -79,44 +62,16 @@ const varDesc = ref<string>('');
 // 由后端 DataTypeEnumJsonConverter 做别名容错，避免前后端命名不一致导致 400。
 const dataTypeOptions = computed(() => {
   if (!currentModel.value) return [];
-  const protocol = currentModelProtocol.value;
-  if (protocol === 'S7') {
-    return [
-      { label: 'BOOL (布尔点位)', value: 'BOOL', type: 'digital' },
-      { label: 'INT (16位带符号整型)', value: 'INT', type: 'analog' },
-      { label: 'DINT (32位带符号整型)', value: 'DINT', type: 'analog' },
-      { label: 'REAL (32位单精度浮点数)', value: 'REAL', type: 'analog' },
-      { label: 'BYTE (8位无符号字节)', value: 'BYTE', type: 'analog' },
-      { label: 'WORD (16位无符号字类型)', value: 'WORD', type: 'analog' },
-      { label: 'CHAR (单字符字段)', value: 'CHAR', type: 'analog' },
-      { label: 'STRING (变长字符串型)', value: 'STRING', type: 'analog' }
-    ];
-  } else if (protocol === 'OPCUA') {
-    return [
-      { label: 'BOOL (布尔触发类)', value: 'BOOL', type: 'digital' },
-      { label: 'INT (16位带符号整型)', value: 'INT', type: 'analog' },
-      { label: 'DINT (32位带符号整型)', value: 'DINT', type: 'analog' },
-      { label: 'UINT16 (16位无符号整型)', value: 'UINT16', type: 'analog' },
-      { label: 'UINT32 (32位无符号整型)', value: 'UINT32', type: 'analog' },
-      { label: 'FLOAT (单精度浮点数)', value: 'FLOAT', type: 'analog' },
-      { label: 'DOUBLE (双精度高精密浮点数)', value: 'DOUBLE', type: 'analog' },
-      { label: 'STRING (通信文本字符串)', value: 'STRING', type: 'analog' }
-    ];
-  } else if (protocol === 'MQTT') {
-    return [
-      { label: 'BOOL (消息布尔值)', value: 'BOOL', type: 'digital' },
-      { label: 'DINT (32位消息整型)', value: 'DINT', type: 'analog' },
-      { label: 'FLOAT (高精密消息浮点数)', value: 'FLOAT', type: 'analog' },
-      { label: 'STRING (常规JSON通信文本)', value: 'STRING', type: 'analog' }
-    ];
-  } else {
-    return [
-      { label: 'BOOL (虚拟布尔)', value: 'BOOL', type: 'digital' },
-      { label: 'INT (虚拟整型数)', value: 'INT', type: 'analog' },
-      { label: 'FLOAT (虚拟浮点数值)', value: 'FLOAT', type: 'analog' },
-      { label: 'STRING (虚拟文本字段)', value: 'STRING', type: 'analog' }
-    ];
-  }
+  // 数据模型不再绑定协议（协议真相源在设备连接 DeviceConnection 的 Protocol），
+  // 数据类型列表保持协议无关的通用默认集。
+  return [
+    { label: 'BOOL (布尔)', value: 'BOOL', type: 'digital' },
+    { label: 'INT (整型数)', value: 'INT', type: 'analog' },
+    { label: 'DINT (32位整型数)', value: 'DINT', type: 'analog' },
+    { label: 'REAL (单精度浮点数)', value: 'REAL', type: 'analog' },
+    { label: 'FLOAT (浮点数值)', value: 'FLOAT', type: 'analog' },
+    { label: 'STRING (文本字段)', value: 'STRING', type: 'analog' }
+  ];
 });
 
 // Watch showVarModal or currentModel changes to initialize matching dataType and type
@@ -185,12 +140,6 @@ const accessOfVar = (v: DataPoint): string =>
 const handleCreateModel = async () => {
   if (!modelName.value.trim()) return;
 
-  // 协议真相源在 Protocol 实体：创建模型必须选择协议（ProtocolId 必填）
-  if (!modelProtocolId.value) {
-    alert('请选择通信协议');
-    return;
-  }
-
   // 阶段 4：后端 CreateDataModelDto.Code [Required]，缺省会 400
   const code = modelCode.value.trim();
   if (!code) {
@@ -204,7 +153,6 @@ const handleCreateModel = async () => {
     version: '1.0',
     isPublished: true,
     description: modelDesc.value,
-    protocolId: modelProtocolId.value,
     variables: []
   });
 
@@ -216,7 +164,6 @@ const handleCreateModel = async () => {
     modelName.value = '';
     modelCode.value = '';
     modelDesc.value = '';
-    modelProtocolId.value = 0;
   }
 };
 
@@ -469,8 +416,6 @@ const handleImportDone = async () => {
               {{ currentModel?.name || '选择数据模型' }}
             </div>
             <div class="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
-              <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1 rounded font-mono font-bold">{{ currentModelProtocol }} 协议</span>
-              <span>•</span>
               <span>{{ totalVariableCount }} 个变量</span>
             </div>
           </div>
@@ -517,9 +462,8 @@ const handleImportDone = async () => {
         >
           <div class="flex items-center justify-between">
             <span class="text-[9px] font-mono font-bold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded uppercase">
-              {{ protocolOf(model) }} 协议
+              ID: {{ model.id }}
             </span>
-            <span class="text-[9px] font-mono text-slate-400 dark:text-slate-500">ID: {{ model.id }}</span>
           </div>
           <h4 class="font-bold text-xs text-slate-800 dark:text-slate-200 leading-tight block">
             {{ model.name }}
@@ -540,9 +484,6 @@ const handleImportDone = async () => {
             <h2 class="font-bold text-sm md:text-base text-slate-950 dark:text-white font-sans tracking-tight">
               {{ currentModel.name }}
             </h2>
-            <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-800 text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded leading-none">
-              {{ currentModelProtocol }} 架构
-            </span>
             <!-- 阶段 4：Code / Version / IsPublished 元数据展示（创建后由后端回填） -->
             <span v-if="currentModel.code" class="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded leading-none">
               {{ currentModel.code }}
@@ -652,35 +593,12 @@ const handleImportDone = async () => {
                   <td class="px-4 py-3.5 font-sans font-medium">
                     <span class="text-slate-800 dark:text-slate-200 font-bold block">{{ v.name }}</span>
                     <span class="block text-[10px] font-mono text-slate-400 dark:text-slate-500 font-normal leading-relaxed mt-0.5">{{ v.description }}</span>
-                    
-                    <!-- Protocol advanced variable badges -->
-                    <div v-if="currentModelProtocol === 'S7'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded" title="读写特权">特权: {{ v.extensionData?.accessLevel || 'RW' }}</span>
-                      <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1.5 py-0.5 rounded" title="放缩公式">放缩: {{ v.extensionData?.scaleExpr || 'x' }}</span>
-                      <span class="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800 px-1.5 py-0.5 rounded animate-pulse" title="时序库存储">
-                        {{ v.isStored !== false ? '写入TSDB' : '仅内存变量' }} · {{ v.storeMode === 'Change' ? '变动存' : '定时存' }}
-                      </span>
-                    </div>
-
-                    <div v-else-if="currentModelProtocol === 'OPCUA'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded">
-                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : '定时轮询' }}
-                      </span>
-                    </div>
-
-                    <div v-else-if="currentModelProtocol === 'MQTT'" class="flex flex-wrap gap-1 mt-1.5 select-none text-[9px] font-sans">
-                      <span class="bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-800 px-1.5 py-0.5 rounded">
-                        更新: {{ v.updateMode === 'subscription' ? '协议订阅' : '定时轮询' }}
-                      </span>
-                    </div>
                   </td>
                   <td class="px-4 py-3.5">
                     <span 
                       v-if="v.dataType"
                       class="px-2 py-0.5 rounded text-[10.5px] font-bold font-mono border shadow-3xs tracking-wider uppercase"
-                      :class="v.type === 'digital' ? 
-                        (currentModelProtocol === 'S7' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800') : 
-                        (currentModelProtocol === 'S7' ? 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800')"
+                      :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
                     >
                       {{ v.dataType }}
                     </span>
@@ -873,9 +791,6 @@ const handleImportDone = async () => {
                 <div class="font-bold text-xs text-slate-800 dark:text-white truncate">
                   {{ model.name }}
                 </div>
-                <span class="bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-800 px-1 rounded text-[10px] font-mono">
-                  {{ protocolOf(model) }}
-                </span>
               </div>
               <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                 ID: {{ model.id }} • {{ model.variables?.length || 0 }} 个变量
@@ -920,23 +835,6 @@ const handleImportDone = async () => {
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-violet-500"
             />
             <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">全局唯一（业务编码）。新建模型后不可重复，存量模型已按名称自动回填。</p>
-          </div>
-          <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">通信协议</label>
-            <select 
-              v-model="modelProtocolId"
-              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white font-bold focus:outline-none focus:border-violet-500"
-            >
-              <option :value="0" disabled>请选择协议</option>
-              <option
-                v-for="p in protocols.filter(x => x.isEnabled)"
-                :key="p.id"
-                :value="p.id"
-              >
-                {{ p.name }} ({{ p.key }})
-              </option>
-            </select>
-            <p v-if="protocols.length === 0" class="text-[9px] text-slate-400 dark:text-slate-500 mt-1">未获取到可用协议，请确认后端协议已启用</p>
           </div>
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">描述</label>
@@ -1050,91 +948,6 @@ const handleImportDone = async () => {
                 class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:outline-none font-mono text-slate-800 dark:text-white"
               />
             </div>
-          </div>
-
-          <!-- Siemens S7 Specific Variable Fields -->
-          <div v-if="currentModel && currentModelProtocol === 'S7'" class="p-3 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl space-y-3.5 border border-indigo-100/50 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200">
-            <div class="font-bold text-[10px] text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">S7 配置（寄存器地址在设备实例级配置）</div>
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">访问权限</label>
-                <select
-                  v-model="varAccessLevel"
-                  class="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded p-1.5 focus:outline-none text-xs font-sans font-bold text-slate-800 dark:text-white"
-                >
-                  <option value="RW">读写</option>
-                  <option value="RO">只读</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">
-                工程换算表达式
-              </label>
-              <input
-                v-model="varScaleExpression"
-                type="text"
-                placeholder="留空=原始值；例：x*0.1 或 (x-4000)/160"
-                class="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded p-1.5 focus:outline-none text-xs font-mono font-bold text-indigo-700 dark:text-indigo-400"
-              />
-              <p class="mt-0.5 text-[10px] text-slate-400">
-                用 <code class="font-mono text-indigo-600 dark:text-indigo-400">x</code> 表示原始值，支持
-                <code class="font-mono">+ - * / % ( )</code> 与 <code class="font-mono">Math.round/sqrt/pow</code> 等函数
-              </p>
-            </div>
-
-            <div class="flex items-center justify-between py-1 border-t border-indigo-100 dark:border-indigo-800 mt-2">
-              <label class="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 cursor-pointer text-xs">
-                <input type="checkbox" v-model="varIsStored" class="rounded text-indigo-600 focus:ring-0" />
-                历史存储
-              </label>
-              <select
-                v-if="varIsStored"
-                v-model="varStoreMode"
-                class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 focus:outline-none"
-              >
-                <option value="Change">变动存储</option>
-                <option value="Cycle">定时存储</option>
-              </select>
-            </div>
-            <div v-if="varIsStored" class="flex items-center justify-between py-1">
-              <label class="text-indigo-700 dark:text-indigo-300 font-bold text-xs">存储周期</label>
-              <input
-                v-model="varStoreIntervalMs"
-                type="number"
-                min="1000"
-                step="1000"
-                class="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 focus:outline-none w-24 text-right"
-              />
-              <span class="text-[9px] text-slate-500 dark:text-slate-400">ms</span>
-            </div>
-            <p v-if="varIsStored" class="text-[9px] text-slate-400 dark:text-slate-500">
-              {{ varStoreMode === 'Change' ? '值变化即存；长时间不变超过周期也存一条' : '按设定周期定时存储' }}
-            </p>
-          </div>
-
-          <!-- OPCUA Specific Variable Fields -->
-          <div v-if="currentModel && currentModelProtocol === 'OPCUA'" class="p-3 bg-sky-50/50 dark:bg-sky-950/40 rounded-xl space-y-3 border border-sky-100/50 dark:border-sky-800">
-            <div class="font-bold text-[10px] text-sky-700 dark:text-sky-400 uppercase tracking-wider">OPC UA 配置（节点地址在设备实例级配置）</div>
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">更新模式</label>
-                <select
-                  v-model="varUpdateMode"
-                  class="w-full bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-700 rounded p-1.5 focus:outline-none text-xs font-sans text-slate-800 dark:text-white font-medium"
-                >
-                  <option value="subscription">实时订阅</option>
-                  <option value="polling">定时轮询</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- MQTT 协议：模板变量不再承载主题地址/刷新周期（已下放设备实例级 DataPointMapping） -->
-          <div v-if="currentModel && currentModelProtocol === 'MQTT'" class="p-3 bg-teal-50/50 dark:bg-teal-950/40 rounded-xl border border-teal-100/50 dark:border-teal-800 text-teal-900 dark:text-teal-200">
-            <div class="font-bold text-[10px] text-teal-800 dark:text-teal-400 uppercase tracking-wider">MQTT 配置（主题地址在设备实例级配置）</div>
-            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">MQTT 主题地址与刷新周期已下放至设备实例级，此处仅维护变量定义。</p>
           </div>
 
           <!-- 历史存储配置 -->

@@ -97,7 +97,7 @@ public class DatabaseInitializer
     /// <summary>
     /// 初始化默认通信协议种子数据。
     /// <para>
-    /// 协议是"数据模型如何通信"的真相源（Protocol.DriverKey 决定运行期驱动派发）。
+    /// 协议是"数据模型如何通信"的真相源（Protocol.Key 决定运行期驱动派发）。
     /// 这里预置系统当前支持的协议：已实现驱动的（S7 / OPCUA / VIRTUAL）默认启用，可立即用于创建设备；
     /// 尚未实现驱动的（MODBUSTCP / MQTT）默认停用，仅在 <c>ProtocolDriverFactory</c> 实现对应驱动后启用。
     /// </summary>
@@ -105,11 +105,11 @@ public class DatabaseInitializer
     {
         var protocols = new[]
         {
-            new { Key = "S7",       Name = "Siemens S7",        DriverKey = "S7",       IsEnabled = true,  Description = "西门子 S7 系列 PLC（S7-1200/1500 等）" },
-            new { Key = "OPCUA",    Name = "OPC UA",            DriverKey = "OPCUA",    IsEnabled = true,  Description = "OPC UA 客户端连接" },
-            new { Key = "VIRTUAL",  Name = "虚拟设备",          DriverKey = "VIRTUAL",  IsEnabled = true,  Description = "内存虚拟设备（模拟 / 演示）" },
-            new { Key = "MODBUSTCP",Name = "Modbus TCP",        DriverKey = "MODBUSTCP",IsEnabled = false, Description = "Modbus TCP 从站（驱动待开发，暂停用）" },
-            new { Key = "MQTT",     Name = "MQTT 订阅",         DriverKey = "MQTT",     IsEnabled = false, Description = "MQTT 订阅源（驱动待开发，暂停用）" }
+            new { Key = "S7",       Name = "Siemens S7",        IsEnabled = true,  Description = "西门子 S7 系列 PLC（S7-1200/1500 等）" },
+            new { Key = "OPCUA",    Name = "OPC UA",            IsEnabled = true,  Description = "OPC UA 客户端连接" },
+            new { Key = "VIRTUAL",  Name = "虚拟设备",          IsEnabled = true,  Description = "内存虚拟设备（模拟 / 演示）" },
+            new { Key = "MODBUSTCP",Name = "Modbus TCP",        IsEnabled = false, Description = "Modbus TCP 从站（驱动待开发，暂停用）" },
+            new { Key = "MQTT",     Name = "MQTT 订阅",         IsEnabled = false, Description = "MQTT 订阅源（驱动待开发，暂停用）" }
         };
 
         var existingKeys = await _db.Set<Protocol>()
@@ -125,7 +125,6 @@ public class DatabaseInitializer
             {
                 Key = p.Key,
                 Name = p.Name,
-                DriverKey = p.DriverKey,
                 IsEnabled = p.IsEnabled,
                 Description = p.Description,
                 CreatedAt = DateTime.UtcNow,
@@ -179,9 +178,9 @@ public class DatabaseInitializer
     {
         try
         {
-            // 需解析的设备变量：延迟加载设备数据模型与协议，以拿到 DriverKey 判别协议。
+            // 需解析的设备变量：延迟加载设备连接，以拿到所附连接的协议键判别协议。
             var rows = await _db.Set<DataPointMapping>()
-                .Include(dv => dv.Device)!.ThenInclude(d => d!.Model).ThenInclude(m => m!.Protocol)
+                .Include(dv => dv.Device)!.ThenInclude(d => d!.Connection).ThenInclude(c => c!.Protocol)
                 .Where(dv => dv.AddressConfigJson == null && dv.Address != null && dv.Address != "")
                 .ToListAsync();
 
@@ -190,7 +189,7 @@ public class DatabaseInitializer
             var changed = 0;
             foreach (var dv in rows)
             {
-                var driverKey = dv.Device?.Model?.Protocol?.DriverKey;
+                var driverKey = dv.Device?.Connection?.Protocol?.Key;
                 var protocol = driverKey?.Trim().ToUpperInvariant() switch
                 {
                     "S7" or "S7DRIVER" => "S7",
@@ -221,116 +220,31 @@ public class DatabaseInitializer
     }
 
     /// <summary>
-    /// 一次性回填（阶段 3，自阶段 6 起仅作兜底）：对尚未建立默认连接（ConnectionId IS NULL）的设备，
-    /// 创建独占 <see cref="Controller"/>（Code = "PLC{Device.Id}"）+ <see cref="DeviceConnection"/>
-    /// （ConfigJson 置空 "{}"——原 Device.JsonConfig 历史列已于阶段 6.4 删除，存量值在阶段 3 已抽取完毕），
-    /// 并回填 <c>Device.ControllerId</c> / <c>Device.ConnectionId</c>。
-    /// <para>
-    /// 幂等：仅处理 <c>Device.ConnectionId IS NULL</c> 的设备，重复执行不产生重复行；
-    /// 若上次执行中断残留了同名 Controller（Code = PLC{Id}），自动复用而非重建。
-    /// </para>
-    /// <para>
-    /// 设计说明：本方法采用项目内已有的一次性回填先例（<see cref="BackfillDataPointMappingAddressConfigAsync"/>），
-    /// 而非 EF 迁移内注入 DbContext——回填与结构迁移分离、可独立重试，符合阶段 3 双读兼容期的低风险要求。
-    /// </para>
+    /// 连接不变量审计（自阶段 3）：
+    /// 数据模型不再绑定协议后，设备协议唯一真相源为所附连接，无法再按"模型协议"自动合成连接。
+    /// 此处仅检测 <c>Device.ConnectionId IS NULL</c> 的遗留设备并告警，提示需在高级模式下人工附加控制器 / 连接；
+    /// 不再自动创建。注意：DataModel 已无 <c>Protocol</c> 导航，故此处不再 Include 模型协议。
     /// </summary>
     private async Task BackfillControllerAndConnectionAsync()
     {
         try
         {
-            // 待回填设备：尚未建立默认连接（ConnectionId IS NULL）。阶段 6 起正常创建路径均已回填独占连接，
-            // 仅极端遗留场景（手工改库等）可能命中；此处补建空配置连接以保持"每设备必有连接"不变量。
             var devices = await _db.Set<Device>()
-                .Include(d => d.Model)!.ThenInclude(m => m!.Protocol)
                 .Where(d => d.ConnectionId == null)
                 .ToListAsync();
 
             if (devices.Count == 0) return;
 
-            var now = DateTime.UtcNow;
-            var successCount = 0;
-            var skippedCount = 0;
-
             foreach (var device in devices)
             {
-                try
-                {
-                    // 设备所绑模型的协议即设备协议（现状：DataModel.ProtocolId 必填）。
-                    var protocol = device.Model?.Protocol;
-                    if (protocol == null)
-                    {
-                        _logger.LogWarning("回填连接跳过设备 {Key}：缺少数据模型或协议。", device.Key);
-                        skippedCount++;
-                        continue;
-                    }
-
-                    // 1) 控制器：独占一个（Code = PLC{Device.Id} 保证唯一）；残留同名控制器则复用。
-                    var controllerCode = $"PLC{device.Id}";
-                    var controller = await _db.Set<Controller>()
-                        .FirstOrDefaultAsync(c => c.Code == controllerCode);
-
-                    if (controller == null)
-                    {
-                        controller = new Controller
-                        {
-                            Code = controllerCode,
-                            Name = DeviceConnectionProfile.Truncate($"{device.Name} 控制器", 100) ?? string.Empty,
-                            ProtocolId = protocol.Id,
-                            Manufacturer = DeviceConnectionProfile.Truncate(device.Model?.Vendor, 100),
-                            Model = DeviceConnectionProfile.Truncate(device.Model?.ModelName, 100),
-                            IsEnabled = true,
-                            CreatedAt = now,
-                            UpdatedAt = now
-                        };
-                        await _db.Set<Controller>().AddAsync(controller);
-                        await _db.SaveChangesAsync();   // 取得 controller.Id
-                    }
-
-                    // 2) 解析连接冗余列（Host/Port/超时）。仅用于管理/检索展示，ConfigJson 原文才是运行真相源。
-                    // 原 Device.JsonConfig 列已删（6.4），遗留无连接设备补建空配置连接。
-                    const string json = "{}";
-                    var parsed = DeviceConnectionProfile.ParseConnectionSummary(protocol.DriverKey, json);
-
-                    var connection = new DeviceConnection
-                    {
-                        ControllerId = controller.Id,
-                        Name = DeviceConnectionProfile.Truncate($"{device.Name} 连接", 100) ?? string.Empty,
-                        ProtocolId = protocol.Id,
-                        Host = parsed.Host,
-                        Port = parsed.Port,
-                        ConfigJson = json,
-                        TimeoutMs = parsed.TimeoutMs,
-                        ReconnectIntervalMs = 5000,
-                        IsEnabled = true,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    };
-                    await _db.Set<DeviceConnection>().AddAsync(connection);
-                    await _db.SaveChangesAsync();   // 取得 connection.Id
-
-                    // 3) 回填设备默认连接指向。
-                    device.ControllerId = controller.Id;
-                    device.ConnectionId = connection.Id;
-                    device.UpdatedAt = now;
-                    await _db.SaveChangesAsync();
-
-                    successCount++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "回填连接失败：设备 {Key}（已跳过，可重跑）。", device.Key);
-                    skippedCount++;
-                }
+                _logger.LogWarning(
+                    "遗留设备 {Key}(Id={BaseId}) 尚未附加连接，运行期无法派发驱动。请在设备管理的高级模式下手动关联控制器与连接。",
+                    device.Key, device.Id);
             }
-
-            _logger.LogInformation(
-                "连接回填完成：共处理 {Total} 台设备，成功 {Success}，跳过/失败 {Skipped}。",
-                devices.Count, successCount, skippedCount);
         }
         catch (Exception ex)
         {
-            // 回填属一次性迁移增强，失败不应阻断启动（遗留设备缺连接时由运行时/后续回填兜底）。
-            _logger.LogError(ex, "回填控制器/连接（BackfillControllerAndConnection）失败，已跳过；可重跑修复。");
+            _logger.LogError(ex, "连接不变量审计（BackfillControllerAndConnection）失败，已跳过；可重跑检测。");
         }
     }
 

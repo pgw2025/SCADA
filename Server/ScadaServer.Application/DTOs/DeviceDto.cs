@@ -33,9 +33,6 @@ namespace ScadaServer.Application.DTOs
         [Range(1, int.MaxValue, ErrorMessage = "请选择变量模型")]
         public int ModelId { get; set; }
 
-        /// <summary>绑定的数据模型名称（只读）</summary>
-        public string? ModelName { get; set; }
-
         /// <summary>
         /// 协议业务键（只读，来自所绑定数据模型的 <c>Protocol.Key</c>）。协议真相源。
         /// </summary>

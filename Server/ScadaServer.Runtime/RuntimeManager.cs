@@ -453,10 +453,10 @@ namespace ScadaServer.Runtime
                 // 协议真相源（阶段 6 起）：设备默认连接所绑协议。Connection 缺失（不应出现的异常场景）
                 // 视为无有效协议并跳过该设备——已删除对 DataModel.Protocol 的运行时回退（6.2）。
                 var effectiveProtocol = device.Connection?.Protocol;
-                var driverKey = effectiveProtocol?.DriverKey;
+                var driverKey = effectiveProtocol?.Key;
                 if (string.IsNullOrWhiteSpace(driverKey))
                 {
-                    _logger.LogWarning("设备 {Key} 未绑定有效协议（DriverKey 为空），已跳过。", device.Key);
+                    _logger.LogWarning("设备 {Key} 未绑定有效协议（Key 为空），已跳过。", device.Key);
                     return false;
                 }
                 var protocolLabel = driverKey;

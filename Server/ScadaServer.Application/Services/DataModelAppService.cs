@@ -8,7 +8,7 @@ namespace ScadaServer.Application.Services
 {
     /// <summary>
     /// 数据模型应用服务实现：负责变量模型（DataModel）的增删改查。
-    /// 模型必须绑定一个已启用的协议（作为驱动派发真相源），并可在模型下定义变量模板；
+    /// 模型可定义变量模板，不再绑定协议（协议由设备所附连接决定）；
     /// 删除模型前会校验是否被设备引用，已引用则禁止删除。
     /// </summary>
     public class DataModelAppService : IDataModelAppService
@@ -19,23 +19,19 @@ namespace ScadaServer.Application.Services
         private readonly IDataPointRepository _variableRepository;
         /// <summary>设备仓储，用于删除模型前校验引用。</summary>
         private readonly IDeviceRepository _deviceRepository;
-        /// <summary>协议仓储，用于校验模型绑定的协议是否存在且启用。</summary>
-        private readonly IProtocolRepository _protocolRepository;
         /// <summary>工作单元，用于删除模型及其变量伴随的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
-        /// <summary>构造函数：注入模型、变量、设备、协议仓储及工作单元。</summary>
+        /// <summary>构造函数：注入模型、变量、设备仓储及工作单元。</summary>
         public DataModelAppService(
             IDataModelRepository repository,
             IDataPointRepository variableRepository,
             IDeviceRepository deviceRepository,
-            IProtocolRepository protocolRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
             _variableRepository = variableRepository;
             _deviceRepository = deviceRepository;
-            _protocolRepository = protocolRepository;
             _uow = uow;
         }
 
@@ -86,7 +82,6 @@ namespace ScadaServer.Application.Services
         /// <summary>实体 → DTO（同步组装）。优先复用 <paramref name="mvByModel"/> 一次加载的变量，未命中时输出空列表。</summary>
         private static DataModelDto ToDto(DataModel entity, Dictionary<int, List<DataPointDto>>? mvByModel)
         {
-            // 协议字段来自 Include 加载的 Protocol 导航属性
             var dto = new DataModelDto
             {
                 Id = entity.Id,
@@ -96,11 +91,7 @@ namespace ScadaServer.Application.Services
                 IsPublished = entity.IsPublished,
                 Description = entity.Description,
                 Vendor = entity.Vendor,
-                ModelName = entity.ModelName,
                 VendorModel = entity.VendorModel,
-                ProtocolId = entity.ProtocolId,
-                ProtocolKey = entity.Protocol?.Key,
-                ProtocolName = entity.Protocol?.Name,
                 Variables = new List<DataPointDto>()
             };
 
@@ -110,23 +101,6 @@ namespace ScadaServer.Application.Services
             }
 
             return dto;
-        }
-
-        /// <summary>
-        /// 协议绑定校验：协议必须存在且已启用（模型必须绑定协议，作为驱动派发真相源）。
-        /// </summary>
-        private async Task<int> ResolveProtocolIdAsync(int protocolId)
-        {
-            var protocol = await _protocolRepository.GetByIdAsync(protocolId);
-            if (protocol == null)
-            {
-                throw new BusinessException($"ID 为 {protocolId} 的协议不存在");
-            }
-            if (!protocol.IsEnabled)
-            {
-                throw new BusinessException($"协议 '{protocol.Name}' 已被停用，无法关联到数据模型");
-            }
-            return protocolId;
         }
 
         /// <summary>新增数据模型：校验名称/编码唯一性并绑定协议，返回含变量模板的最新 DTO。</summary>
@@ -156,9 +130,6 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型编码 '{code}' 已存在");
             }
 
-            // 1.5 协议绑定校验
-            var protocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
-
             var entity = new DataModel
             {
                 Name = dto.Name,
@@ -167,9 +138,7 @@ namespace ScadaServer.Application.Services
                 IsPublished = dto.IsPublished,
                 Description = dto.Description?.Trim(),
                 Vendor = dto.Vendor?.Trim(),
-                ModelName = dto.ModelName?.Trim(),
                 VendorModel = dto.VendorModel?.Trim(),
-                ProtocolId = protocolId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -178,15 +147,14 @@ namespace ScadaServer.Application.Services
             return await MapToDtoAsync(entity, includeVariables: true);
         }
 
-        /// <summary>更新数据模型（全量替换语义）：校验存在性、名称/编码唯一性并重新绑定协议，返回最新 DTO。</summary>
+        /// <summary>更新数据模型（全量替换语义）：校验存在性、名称/编码唯一性，返回最新 DTO。</summary>
         public async Task<DataModelDto> UpdateAsync(DataModelDto dto)
         {
             // 0. 规范化：修剪空格
             dto.Name = dto.Name.Trim();
             var code = dto.Code?.Trim() ?? string.Empty;
 
-            // 更新专用加载（跟踪查询、不含导航）：避免随 Update(entity) 附加 Include 出的
-            // Protocol 导航图，与 ResolveProtocolIdAsync 中 FindAsync 已跟踪的 Protocol 同 key 冲突（Bug#1）。
+            // 更新专用加载（跟踪查询）：仅加载数据模型本体。
             var entity = await _repository.GetByIdForUpdateAsync(dto.Id);
             if (entity == null)
             {
@@ -213,21 +181,16 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"数据模型编码 '{code}' 已存在");
             }
 
-            // 1.5 协议绑定校验（PUT 为全量替换语义：ProtocolId 必填，未传/为 0 由 DTO [Range] 拦截或在此抛异常）
-            entity.ProtocolId = await ResolveProtocolIdAsync(dto.ProtocolId);
             entity.Name = dto.Name;
             entity.Code = code;
             entity.Version = NormalizeVersion(dto.Version);
             entity.IsPublished = dto.IsPublished;
             entity.Description = dto.Description?.Trim();
             entity.Vendor = dto.Vendor?.Trim();
-            entity.ModelName = dto.ModelName?.Trim();
             entity.VendorModel = dto.VendorModel?.Trim();
             entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
 
-            // 更新后重读返回（仿 DeviceConnectionAppService）：ForUpdate 实体不含 Protocol 导航，
-            // 直接 MapToDtoAsync 会丢 ProtocolKey/ProtocolName；重读可同时修正"改绑协议后响应仍是旧协议名"。
             return (await GetByIdAsync(dto.Id))!;
         }
 

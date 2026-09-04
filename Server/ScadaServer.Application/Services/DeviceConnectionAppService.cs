@@ -92,7 +92,7 @@ namespace ScadaServer.Application.Services
             EnsureConfigJsonParsable(configJson);
 
             var now = DateTime.UtcNow;
-            var summary = DeviceConnectionProfile.ParseConnectionSummary(protocol.DriverKey, configJson);
+            var summary = DeviceConnectionProfile.ParseConnectionSummary(protocol.Key, configJson);
             var entity = new DeviceConnection
             {
                 ControllerId = dto.ControllerId,
@@ -164,7 +164,7 @@ namespace ScadaServer.Application.Services
             if (!string.IsNullOrWhiteSpace(dto.ConfigJson))
             {
                 EnsureConfigJsonParsable(dto.ConfigJson!);
-                var summary = DeviceConnectionProfile.ParseConnectionSummary(protocol.DriverKey, dto.ConfigJson!);
+                var summary = DeviceConnectionProfile.ParseConnectionSummary(protocol.Key, dto.ConfigJson!);
                 entity.ConfigJson = dto.ConfigJson;
                 entity.Host = summary.Host;
                 entity.Port = summary.Port;

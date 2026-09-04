@@ -3140,10 +3140,6 @@
             "type": "integer",
             "format": "int32"
           },
-          "modelName": {
-            "type": "string",
-            "nullable": true
-          },
           "type": {
             "minLength": 1,
             "pattern": "^(S7|OPCUA|MQTT|Virtual)$",

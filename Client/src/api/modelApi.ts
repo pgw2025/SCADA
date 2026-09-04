@@ -22,10 +22,6 @@ export const createDataModelOnBackend = async (modelData: Omit<DataModel, 'id'>)
       version: createdModel.version ?? modelData.version ?? '1.0',
       isPublished: createdModel.isPublished ?? modelData.isPublished ?? true,
       description: createdModel.description || '',
-      // 协议真相源在 Protocol 实体：创建成功后回填 protocolId / protocolKey / protocolName
-      protocolId: createdModel.protocolId ?? modelData.protocolId,
-      protocolKey: createdModel.protocolKey ?? modelData.protocolKey,
-      protocolName: createdModel.protocolName ?? modelData.protocolName,
       variables: createdModel.variables || []
     });
 
@@ -53,11 +49,6 @@ export const fetchDataModelsFromBackend = async (): Promise<void> => {
         version: m.version ?? '1.0',
         isPublished: m.isPublished ?? true,
         description: m.description || '',
-        // 协议真相源在 Protocol 实体（对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName），
-        // 更新模型时须原样回传 protocolId
-        protocolId: m.protocolId ?? 0,
-        protocolKey: m.protocolKey ?? undefined,
-        protocolName: m.protocolName ?? undefined,
         variables: m.variables?.map((v: any) => ({
           id: v.id,
           modelId: v.modelId,
@@ -99,12 +90,8 @@ export const updateDataModelOnBackend = async (modelId: string, modelData: Parti
   if (systemConfig.value.isSimulationActive) return true;
 
   try {
-    // 后端 PUT /api/DataModel/{id} 为全量替换语义：未传 protocolId 会解绑协议。
-    // 这里在合并提交体时保留既有模型的协议绑定，避免误解绑。
-    const existing = dataModels.value.find(m => m.id === modelId);
     const payload: Record<string, any> = {
-      ...modelData,
-      protocolId: modelData.protocolId ?? existing?.protocolId ?? null
+      ...modelData
     };
 
     await http.put(`${systemConfig.value.backendApiUrl}/api/DataModel/${modelId}`, payload);

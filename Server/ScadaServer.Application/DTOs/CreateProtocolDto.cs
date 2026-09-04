@@ -17,11 +17,6 @@ namespace ScadaServer.Application.DTOs
         [StringLength(100, ErrorMessage = "协议名称不能超过100个字符")]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>驱动程序键，运行时 / 驱动工厂据此定位具体驱动实现。</summary>
-        [Required(ErrorMessage = "驱动键不能为空")]
-        [StringLength(50, ErrorMessage = "驱动键不能超过50个字符")]
-        public string DriverKey { get; set; } = string.Empty;
-
         /// <summary>协议描述信息。</summary>
         [StringLength(500, ErrorMessage = "描述不能超过500个字符")]
         public string? Description { get; set; }

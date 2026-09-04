@@ -411,14 +411,13 @@ export type DeviceType = 'OPCUA' | 'S7' | 'MQTT' | 'Virtual' | 'ModbusTcp' | 'BA
 
 /**
  * 通信协议（协议/驱动解耦真相源）。
- * 对应后端 ProtocolDto（Id / Key / Name / DriverKey / Description / IsEnabled）。
- * 创建数据模型时必须选择协议（ProtocolId 必填），运行期由 Protocol.DriverKey 派发驱动。
+ * 对应后端 ProtocolDto（Id / Key / Name / Description / IsEnabled）。
+ * 运行期由 Protocol.Key 定位驱动，创建数据模型时必须选择协议（ProtocolId 必填）。
  */
 export interface Protocol {
   id: number;
   key: string;         // 如 "S7" / "OPCUA" / "VIRTUAL" / "MQTT" / "MODBUSTCP"
   name: string;
-  driverKey: string;
   description?: string;
   isEnabled: boolean;
 }
@@ -725,13 +724,8 @@ export interface DataModel {
   /** 是否已发布（标识模型是否可被新建设备引用），默认 true */
   isPublished?: boolean;
   description: string;
-  // 协议绑定（协议真相源）：对应后端 DataModelDto.ProtocolId / ProtocolKey / ProtocolName。
-  // 协议真相源在独立的 Protocol 实体，不再有过渡字段 Type；
-  // 协议类型由 protocolKey 经 protocolKeyToDeviceType() 派生。
-  // ProtocolId 必填：创建模型时必须选择协议；更新时必须原样回传，避免后端 PUT 全量替换语义解绑协议。
-  protocolId: number;
-  protocolKey?: string;
-  protocolName?: string;
+  // 数据模型不再绑定协议（后端 DataModel 实体已彻底移除 ProtocolId / Protocol / ModelName），
+  // 协议的真相源在设备的设备连接（DeviceConnection.Protocol）。协议类型由设备连接派生，模型本身与协议无关。
   variables: DataPoint[];
 }
 
@@ -771,7 +765,6 @@ export interface Device {
   areaId: number;
   areaName?: string;
   modelId: number;
-  modelName?: string;
   // 阶段 5：该设备全部数据模型绑定（后端 DeviceDto.Models；含主模型行，与 device.modelId 一致）。
   // normalizeDevices 保留该数组，供设备变量视图顶栏展示主模型 Code/Version 等只读信息。
   models?: DeviceModelBinding[];
@@ -781,7 +774,7 @@ export interface Device {
   // 连接摘要（DeviceDto.Connection）：host/port/协议/控制器/启用等；null = 设备尚未关联连接。
   connection?: DeviceConnectionSummary | null;
   protocolKey?: string; // 后端 DeviceDto 直接携带的协议标识（S7/OPCUA/ModbusTcp...），归一化据此推导 type
-  type: DeviceType;   // 派生只读：由 modelId 反查 dataModels → protocolKey 得到，设备本身不再存储协议
+  type: DeviceType;   // 派生只读：由设备所附连接的协议（DeviceConnection）派生，设备本身不再存储协议
   /**
    * 以下连接参数均为后端派生只读字段：由 DeviceDto 从唯一真相源 `Connection.ConfigJson`
    * 按协议投影而来（阶段 6 起后端 Device 详情不再输出 configJson 原文；原文经连接 API 读取）。

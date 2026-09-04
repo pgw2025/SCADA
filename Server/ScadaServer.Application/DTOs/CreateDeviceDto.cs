@@ -27,16 +27,16 @@ namespace ScadaServer.Application.DTOs
         public int ModelId { get; set; }
 
         /// <summary>
-        /// 高级模式：显式附加的控制器 ID（阶段 3.6 新增，可空）。
+        /// 显式附加的控制器 ID（阶段 3.6 由"高级模式"提升为唯一模式）。
         /// <para>
-        /// 与 <see cref="ConnectionId"/> 成对出现：均提供 = 高级模式（附加到已有连接，可多设备共享，
-        /// 连接配置以 Connection.ConfigJson 为真相源）；均缺省 = 快速模式（后端自动维护专属
-        /// Controller + Connection，Payload.ConfigJson 为真相源，见 DeviceAppService）。
+        /// 与 <see cref="ConnectionId"/> 成对出现且均必填：设备协议由所附连接承载
+        /// （Connection.ConfigJson 为连接配置真相源，运行期按 <c>Protocol.Key</c> 派发驱动）。
+        /// 已不支持快速模式（后端不再自动维护专属 Controller + Connection）。
         /// </summary>
         public int? ControllerId { get; set; }
 
         /// <summary>
-        /// 高级模式：显式附加的设备连接 ID（阶段 3.6 新增，可空，语义见 <see cref="ControllerId"/>）。
+        /// 显式附加的设备连接 ID（阶段 3.6，必填，语义见 <see cref="ControllerId"/>）。
         /// </summary>
         public int? ConnectionId { get; set; }
 
@@ -57,8 +57,7 @@ namespace ScadaServer.Application.DTOs
         /// ModbusTcp: {"IpAddress":"192.168.1.20","Port":502,"UnitId":1}
         /// OpcUa: {"EndpointUrl":"opc.tcp://localhost:4840","SecurityPolicy":"None"}
         /// Mqtt: {"Broker":"tcp://localhost:1883","Topic":"scada/data"}
-        /// <para>快速模式必填（服务端校验）；高级模式（指定 <see cref="ControllerId"/>/<see cref="ConnectionId"/>）可省略，
-        /// 连接配置以所附 Connection.ConfigJson 为真相源并镜像写入。</para>
+        /// <para>仅高级模式：连接配置以所附 Connection.ConfigJson 为真相源，本字段创建设备时被忽略（保留兼容字段）。</para>
         /// </summary>
         public string ConfigJson { get; set; } = string.Empty;
     }

@@ -35,16 +35,6 @@ namespace ScadaServer.Domain.Entities
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
-        /// 驱动程序键，用于运行时 / 驱动工厂定位具体驱动实现（如 "S7" 对应 <c>S7Driver</c>）。
-        /// <para>
-        /// 语义独立于 <see cref="Key"/>：<see cref="Key"/> 是协议标识，<see cref="DriverKey"/> 是驱动标识；
-        /// 二者通常一致，但允许在未来出现一对多（一个协议键对应多种驱动实现）的演进空间。
-        /// </para>
-        /// </summary>
-        [MaxLength(50)]
-        public string DriverKey { get; set; } = string.Empty;
-
-        /// <summary>
         /// 协议描述信息，可用于备注厂商、适用场景等。
         /// </summary>
         [MaxLength(500)]

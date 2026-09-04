@@ -6,8 +6,8 @@ namespace ScadaServer.Domain.Entities
     /// <summary>
     /// 数据模型实体，描述一类设备"是什么型号"，与"如何通信"解耦。
     /// <para>
-    /// 协议真相源为独立的 <see cref="Protocol"/> 实体：本实体通过必填的 <see cref="ProtocolId"/> 关联协议，
-    /// 运行期 / 驱动统一按 <c>Protocol.DriverKey</c> 派发驱动，不再依赖 DeviceType 枚举过渡字段。
+    /// 协议由设备所附 <see cref="DeviceConnection"/> 决定（运行期 / 驱动统一按 <c>Protocol.Key</c> 派发驱动），
+    /// 本实体不再绑定协议，与驱动方式彻底解耦。
     /// </para>
     /// </summary>
     [Table("DataModels")]
@@ -46,20 +46,13 @@ namespace ScadaServer.Domain.Entities
 
         /// <summary>
         /// 设备厂商（如 "Siemens"、"Schneider"）。
-        /// 与 <see cref="ModelName"/> 组合可完整表示设备型号，例如 Vendor="Siemens" + ModelName="S7-1500" → "Siemens S7-1500"。
         /// </summary>
         [MaxLength(100)]
         public string? Vendor { get; set; }
 
         /// <summary>
-        /// 设备型号名称（如 "S7-1500"、"M340"）。
-        /// </summary>
-        [MaxLength(100)]
-        public string? ModelName { get; set; }
-
-        /// <summary>
         /// 厂商/型号描述（如 "Siemens S7-1500"、"Schneider M340"）。
-        /// 仅作描述性信息，可由 <see cref="Vendor"/> 与 <see cref="ModelName"/> 拼接得出，也可手动填写。
+        /// 仅作描述性信息，可由 <see cref="Vendor"/> 与模型名称拼接得出，也可手动填写。
         /// </summary>
         [MaxLength(100)]
         public string? VendorModel { get; set; }
@@ -69,18 +62,6 @@ namespace ScadaServer.Domain.Entities
         /// </summary>
         [MaxLength(500)]
         public string? Description { get; set; }
-
-        /// <summary>
-        /// 默认协议（新建设备时预选，P3-E）。协议真相源统一为 <see cref="Protocol"/>，
-        /// 一台设备通过本模型绑定的协议确定其驱动方式。
-        /// </summary>
-        public int ProtocolId { get; set; }
-
-        /// <summary>
-        /// 关联通信协议导航属性（对应 <see cref="ProtocolId"/>）。
-        /// </summary>
-        [ForeignKey(nameof(ProtocolId))]
-        public Protocol Protocol { get; set; } = null!;
 
         /// <summary>
         /// 创建时间（UTC 存储）

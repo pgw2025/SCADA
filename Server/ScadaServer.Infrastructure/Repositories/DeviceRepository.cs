@@ -12,10 +12,10 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <summary>
-        /// 显式加载导航属性：Area、Model→Protocol、Controller、Connection→Protocol。
+        /// 显式加载导航属性：Area、Model、Controller、Connection→Protocol。
         /// 基类默认不带 Include，若不加会导致 <see cref="Device.Model"/> 恒为 null，
-        /// 从而 DeviceDto.ModelType/ProtocolKey 等派生字段取不到正确值。
-        /// 协议配置（JsonConfig）已内联于 Device 行，无需再 Include。
+        /// 从而 DeviceDto.ProtocolKey 等派生字段取不到正确值。
+        /// 协议配置已交由连接承载，无需经 Device.Model 加载协议。
         /// Controller/Connection 为阶段 3 新增过渡导航（连接参数抽取），详情接口需展示控制器与连接信息。
         /// DeviceDataModels（阶段 5 多对多绑定）用于 DeviceDto.Models 摘要映射。
         /// </summary>
@@ -25,7 +25,6 @@ namespace ScadaServer.Infrastructure.Repositories
                 .AsNoTracking()
                 .Include(d => d.Area)
                 .Include(d => d.Model)
-                    .ThenInclude(m => m!.Protocol)
                 .Include(d => d.Controller)
                 .Include(d => d.Connection)
                     .ThenInclude(c => c!.Protocol)
@@ -56,7 +55,6 @@ namespace ScadaServer.Infrastructure.Repositories
                 .AsNoTracking()
                 .Include(d => d.Area)
                 .Include(d => d.Model)
-                    .ThenInclude(m => m!.Protocol)
                 .Include(d => d.Controller)
                 .Include(d => d.Connection)
                     .ThenInclude(c => c!.Protocol)

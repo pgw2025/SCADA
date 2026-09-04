@@ -98,7 +98,7 @@ namespace ScadaServer.Application.DTOs
         /// <summary>协议 ID。</summary>
         public int ProtocolId { get; set; }
 
-        /// <summary>协议业务键（驱动派发键，派生自 Protocol.DriverKey）。</summary>
+        /// <summary>协议业务键（驱动派发键，派生自 Protocol.Key）。</summary>
         public string? ProtocolKey { get; set; }
 
         /// <summary>协议显示名称（派生展示字段）。</summary>
