@@ -1,5 +1,6 @@
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Domain.Constants;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
@@ -19,36 +20,70 @@ namespace ScadaServer.Application.Services
         private readonly IHmiComponentRepository _componentRepository;
         /// <summary>设备仓储，用于导入导出时业务键与 Id 的映射。</summary>
         private readonly IDeviceRepository _deviceRepository;
+        /// <summary>组态工程授权仓储：工程 ↔ 用户授权关系的读写。</summary>
+        private readonly IScadaProjectAuthorizationRepository _authRepository;
+        /// <summary>当前请求用户：列表过滤与打开校验按用户身份执行。</summary>
+        private readonly ICurrentUser _currentUser;
+        /// <summary>用户仓储：授权查询时联查用户名、保存时校验与剔除 Admin。</summary>
+        private readonly ISystemUserRepository _userRepository;
         /// <summary>工作单元，用于删除工程及导入的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
-        /// <summary>构造函数：注入工程、页面、组件、设备仓储及工作单元。</summary>
+        /// <summary>构造函数：注入工程、页面、组件、设备、授权、用户仓储，当前用户及工作单元。</summary>
         public ScadaProjectAppService(
             IScadaProjectRepository repository,
             IScadaPageRepository pageRepository,
             IHmiComponentRepository componentRepository,
             IDeviceRepository deviceRepository,
+            IScadaProjectAuthorizationRepository authRepository,
+            ICurrentUser currentUser,
+            ISystemUserRepository userRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
             _pageRepository = pageRepository;
             _componentRepository = componentRepository;
             _deviceRepository = deviceRepository;
+            _authRepository = authRepository;
+            _currentUser = currentUser;
+            _userRepository = userRepository;
             _uow = uow;
         }
 
-        /// <summary>按主键获取工程，不存在时返回 null。</summary>
+        /// <summary>
+        /// 当前用户是否可访问指定工程：Admin 恒放行；否则查授权表。
+        /// 未授权与工程不存在统一由调用方映射为 404（不泄露工程存在性）。
+        /// </summary>
+        private Task<bool> CanAccessAsync(int projectId)
+            => _currentUser.IsAdmin
+                ? Task.FromResult(true)
+                : _authRepository.IsAuthorizedAsync(projectId, _currentUser.UserId);
+
+        /// <summary>按主键获取工程，不存在或当前用户未授权时返回 null。</summary>
         public async Task<ScadaProjectDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null) return null;
+            if (!await CanAccessAsync(id)) return null;
             return new ScadaProjectDto { Id = entity.Id, Name = entity.Name, Description = entity.Description, CreatedAt = entity.CreatedAt };
         }
 
-        /// <summary>获取全部工程列表。</summary>
+        /// <summary>获取工程列表：Admin 返回全部，其余用户仅返回被授权的工程。</summary>
         public async Task<List<ScadaProjectDto>> GetListAsync()
         {
-            var list = await _repository.GetListAsync();
+            List<ScadaProject> list;
+            if (_currentUser.IsAdmin)
+            {
+                list = await _repository.GetListAsync();
+            }
+            else
+            {
+                // 非 Admin：仅返回被授权工程（SQL 下推过滤）。空授权集合直接短路，避免生成恒 false 条件。
+                var authorizedIds = await _authRepository.GetProjectIdsByUserIdAsync(_currentUser.UserId);
+                if (authorizedIds.Count == 0) return new List<ScadaProjectDto>();
+                var idSet = authorizedIds.ToHashSet();
+                list = await _repository.GetListAsync(p => idSet.Contains(p.Id));
+            }
             return list.Select(entity => new ScadaProjectDto { Id = entity.Id, Name = entity.Name, Description = entity.Description, CreatedAt = entity.CreatedAt }).ToList();
         }
 
@@ -98,11 +133,12 @@ namespace ScadaServer.Application.Services
             });
         }
 
-        /// <summary>获取工程整树（工程 + 页面 + 各页面组件），工程不存在时返回 null。</summary>
+        /// <summary>获取工程整树（工程 + 页面 + 各页面组件），工程不存在或当前用户未授权时返回 null。</summary>
         public async Task<ScadaProjectFullDto?> GetTreeAsync(int id)
         {
             var project = await _repository.GetByIdAsync(id);
             if (project == null) return null;
+            if (!await CanAccessAsync(id)) return null;
 
             var pages = await _pageRepository.GetListAsync(p => p.ProjectId == id);
             var pageIds = pages.Select(p => p.Id).ToList();
@@ -166,6 +202,72 @@ namespace ScadaServer.Application.Services
 
             return result;
         }
+
+        #region 工程授权
+
+        /// <summary>获取工程已授权用户列表（联查用户名）；工程不存在返回 null。</summary>
+        public async Task<List<ScadaProjectAuthorizedUserDto>?> GetAuthorizedUsersAsync(int projectId)
+        {
+            var project = await _repository.GetByIdAsync(projectId);
+            if (project == null) return null;
+
+            var grants = await _authRepository.GetByProjectIdAsync(projectId);
+            if (grants.Count == 0) return new List<ScadaProjectAuthorizedUserDto>();
+
+            var userIds = grants.Select(g => g.UserId).ToList();
+            var users = await _userRepository.GetListAsync(u => userIds.Contains(u.Id));
+            var userMap = users.ToDictionary(u => u.Id);
+
+            return grants
+                .OrderBy(g => g.GrantedAt)
+                .Select(g => userMap.TryGetValue(g.UserId, out var user)
+                    ? new ScadaProjectAuthorizedUserDto
+                    {
+                        UserId = user.Id,
+                        Username = user.Username,
+                        Role = user.Role,
+                        Status = user.Status,
+                        GrantedAt = g.GrantedAt
+                    }
+                    : null)
+                .Where(d => d != null)
+                .ToList()!;
+        }
+
+        /// <summary>
+        /// 全量覆盖工程授权用户集合；工程不存在返回 false，含不存在用户抛 ArgumentException。
+        /// Admin 角色用户由后端自动剔除（其默认可见全部工程，无需授权记录）。
+        /// </summary>
+        public async Task<bool> SaveAuthorizationsAsync(int projectId, List<int> userIds)
+        {
+            var project = await _repository.GetByIdAsync(projectId);
+            if (project == null) return false;
+
+            // 入参规范化：去重 + 剔除 Admin（与前端过滤双保险）
+            var distinctIds = userIds.Distinct().ToList();
+            var users = distinctIds.Count == 0
+                ? new List<SystemUser>()
+                : await _userRepository.GetListAsync(u => distinctIds.Contains(u.Id));
+
+            var foundIds = users.Select(u => u.Id).ToHashSet();
+            var invalid = distinctIds.Where(id => !foundIds.Contains(id)).ToList();
+            if (invalid.Count > 0)
+                throw new ArgumentException($"授权用户不存在（userId={string.Join(",", invalid)}）");
+
+            var finalIds = users
+                .Where(u => !string.Equals(u.Role, SystemRoles.Admin, StringComparison.Ordinal))
+                .Select(u => u.Id)
+                .ToList();
+
+            await _uow.ExecuteInTransactionAsync(async _ =>
+            {
+                await _authRepository.ReplaceForProjectAsync(projectId, finalIds);
+                return true;
+            });
+            return true;
+        }
+
+        #endregion
 
         #region 导入导出
 

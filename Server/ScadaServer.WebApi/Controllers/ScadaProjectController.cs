@@ -52,6 +52,56 @@ namespace ScadaServer.WebApi.Controllers
             return Ok(tree);
         }
 
+        /// <summary>
+        /// 获取工程已授权用户列表（工程维度授权管理）。
+        /// 授权语义：未授权的用户看不到该工程；Admin 恒可见全部工程，无需授权记录。
+        /// </summary>
+        [HttpGet("{id}/authorizations")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> GetAuthorizations(int id)
+        {
+            var users = await _appService.GetAuthorizedUsersAsync(id);
+            if (users == null) return NotFound();
+            return Ok(users);
+        }
+
+        /// <summary>
+        /// 全量覆盖工程的授权用户集合（body: { userIds: [] }，空数组=清空授权）。
+        /// 仅 Admin 可管理；授权变更写入操作审计（含新增/取消明细）。
+        /// </summary>
+        [HttpPut("{id}/authorizations")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> SaveAuthorizations(int id, [FromBody] SaveScadaProjectAuthorizationDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            // 保存前取旧授权集合做 diff，生成「+新增 / -取消」审计明细
+            var before = await _appService.GetAuthorizedUsersAsync(id);
+            if (before == null) return NotFound();
+
+            var oldIds = before.Select(u => u.UserId).ToHashSet();
+            var newIds = (dto.UserIds ?? new List<int>()).ToHashSet();
+            var added = newIds.Except(oldIds).ToList();
+            var removed = oldIds.Except(newIds).ToList();
+
+            try
+            {
+                var updated = await _appService.SaveAuthorizationsAsync(id, dto.UserIds);
+                if (!updated) return NotFound();
+
+                var detail = added.Count == 0 && removed.Count == 0
+                    ? "授权无变化"
+                    : $"授权变更：+新增用户[{string.Join(",", added)}]；-取消用户[{string.Join(",", removed)}]";
+                await AuditAsync("AUTHORIZE", id.ToString(), $"修改组态工程授权 [id={id}]（{detail}）");
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "保存组态工程授权参数错误，ProjectId={ProjectId}", id);
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Create([FromBody] ScadaProjectDto dto)
@@ -86,8 +136,10 @@ namespace ScadaServer.WebApi.Controllers
         /// <summary>
         /// 导出工程为可迁移 JSON 文件（工程 + 全部画面 + 组件；变量绑定携带设备业务键）。
         /// 文件名 RFC 5987 编码支持中文；前端亦可自行用工程名命名下载。
+        /// 导出=可迁移副本，仅 Admin 专属（与导入端点对称；被授权用户仅可查看/打开，不可导出）。
         /// </summary>
         [HttpGet("{id}/export")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Export(int id)
         {
             var package = await _appService.ExportAsync(id);

@@ -180,6 +180,34 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IScadaProjectRepository : IRepository<ScadaProject, int> { }
 
     /// <summary>
+    /// 组态工程授权仓储接口：管理 ScadaProjectAuthorizations 中间表。
+    /// 复合主键实体，不继承 IRepository&lt;TEntity, TKey&gt;（无单列主键）。
+    /// </summary>
+    public interface IScadaProjectAuthorizationRepository
+    {
+        /// <summary>
+        /// 查询用户被授权的全部工程 Id 集合（组态运行列表按用户过滤的主数据源）。
+        /// </summary>
+        Task<List<int>> GetProjectIdsByUserIdAsync(int userId);
+
+        /// <summary>
+        /// 判断用户是否被授权访问指定工程。
+        /// </summary>
+        Task<bool> IsAuthorizedAsync(int projectId, int userId);
+
+        /// <summary>
+        /// 查询工程当前授权记录（含授权时间；用户名由应用服务联查补全）。
+        /// </summary>
+        Task<List<ScadaProjectAuthorization>> GetByProjectIdAsync(int projectId);
+
+        /// <summary>
+        /// 全量替换工程的授权用户集合（调用方负责包在事务中）：先删后插。
+        /// 仅做 RemoveRange + AddRange，不调用 SaveChanges，由工作单元统一提交。
+        /// </summary>
+        Task ReplaceForProjectAsync(int projectId, IEnumerable<int> userIds);
+    }
+
+    /// <summary>
     /// 定时任务仓储接口
     /// </summary>
     public interface IScheduledTaskRepository : IRepository<ScheduledTask, int> { }

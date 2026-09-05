@@ -58,6 +58,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<MqttVariableConfig> MqttVariableConfigs => Set<MqttVariableConfig>();
         public DbSet<ScadaPage> ScadaPages => Set<ScadaPage>();
         public DbSet<ScadaProject> ScadaProjects => Set<ScadaProject>();
+        public DbSet<ScadaProjectAuthorization> ScadaProjectAuthorizations => Set<ScadaProjectAuthorization>();
         public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
         public DbSet<Sensor> Sensors => Set<Sensor>();
         public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
@@ -338,6 +339,28 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasIndex(u => u.Username)
                 .IsUnique()
                 .HasDatabaseName("ix_systemusers_username");
+
+            // 组态工程授权中间表（工程 ↔ 用户 多对多）：复合主键防重复授权；
+            // 双外键均 Cascade——删除工程/用户时授权记录由数据库级联清理，无孤儿数据。
+            modelBuilder.Entity<ScadaProjectAuthorization>(b =>
+            {
+                b.ToTable("ScadaProjectAuthorizations");
+                b.HasKey(x => new { x.ProjectId, x.UserId });
+                b.HasOne<ScadaProject>()
+                    .WithMany()
+                    .HasForeignKey(x => x.ProjectId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ScadaProjectAuthorizations_ScadaProjects_ProjectId");
+                b.HasOne<SystemUser>()
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ScadaProjectAuthorizations_SystemUsers_UserId");
+                // 反查「用户被授权了哪些工程」：支撑组态运行列表按用户过滤的主查询。
+                b.HasIndex(x => x.UserId)
+                    .HasDatabaseName("ix_scadaprojectauthorizations_userid");
+            });
+
 
             // 变量历史数据表：按 变量键 + 时间 建复合索引，支撑历史趋势查询。
             // 历史数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能。

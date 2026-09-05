@@ -16,10 +16,14 @@ namespace ScadaServer.WebApi.Controllers
             _appService = appService;
         }
 
+        // 组态组件读取为编辑器专用数据面（播放器仅经 /ScadaProject/{id}/full 整树获取），
+        // 与工程授权配套收紧为 Admin 专属，防止 Operator 经组件/页面端点旁路枚举工程数据。
         [HttpGet]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> GetAll() => Ok(await _appService.GetListAsync());
 
         [HttpGet("{id}")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> GetById(int id)
         {
             var dto = await _appService.GetByIdAsync(id);

@@ -29,6 +29,8 @@ namespace ScadaServer.Application.Services
         private readonly IDeviceConnectionRepository _connectionRepository;
         /// <summary>控制器仓储（阶段 3：删除设备时清理其独占控制器）。</summary>
         private readonly IControllerRepository _controllerRepository;
+        /// <summary>数据转换仓储，用于删除前的依赖检查（设备变量是否被数据转换规则绑定）。</summary>
+        private readonly IDataConversionRepository _dataConversionRepository;
         /// <summary>工作单元，提供事务能力。</summary>
         private readonly IUnitOfWork _uow;
 
@@ -42,6 +44,7 @@ namespace ScadaServer.Application.Services
             ISystemScriptRepository systemScriptRepository,
             IDeviceConnectionRepository connectionRepository,
             IControllerRepository controllerRepository,
+            IDataConversionRepository dataConversionRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
@@ -52,6 +55,7 @@ namespace ScadaServer.Application.Services
             _systemScriptRepository = systemScriptRepository;
             _connectionRepository = connectionRepository;
             _controllerRepository = controllerRepository;
+            _dataConversionRepository = dataConversionRepository;
             _uow = uow;
         }
 
@@ -69,6 +73,16 @@ namespace ScadaServer.Application.Services
             if (interfaces.Any())
             {
                 throw new BusinessException($"无法删除设备 '{entity.Name}'，因为它已被配置到 {interfaces.Count} 个对外数据接口中。请先解除绑定。");
+            }
+
+            // 2. 依赖检查：设备变量是否被数据转换规则绑定（源或目标）。
+            // 数据转换表对 Device 无外键级联删除，直接删设备会留下悬挂引用，故必须前置拦截。
+            var conversions = await _dataConversionRepository.GetListAsync(dc =>
+                dc.SourceDeviceId == deviceId || dc.TargetDeviceId == deviceId);
+            if (conversions.Any())
+            {
+                throw new BusinessException(
+                    $"无法删除设备 '{entity.Name}'，因为它的变量被 {conversions.Count} 条数据转换规则（源/目标）绑定。请先删除这些绑定该设备变量的数据转换规则后再删除设备。");
             }
 
             await _uow.ExecuteInTransactionAsync(async transaction =>

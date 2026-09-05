@@ -38,6 +38,12 @@ namespace ScadaServer.Application.Interfaces
 
         /// <summary>导入画面迁移包到指定工程；工程不存在/格式非法抛 ArgumentException</summary>
         Task<ScadaImportResultDto> ImportPageAsync(int projectId, ScadaTransferPackageDto package);
+
+        /// <summary>获取工程已授权用户列表（联查用户名）；工程不存在返回 null。</summary>
+        Task<List<ScadaProjectAuthorizedUserDto>?> GetAuthorizedUsersAsync(int projectId);
+
+        /// <summary>全量覆盖工程授权用户集合；工程不存在返回 false，含不存在用户抛 ArgumentException。</summary>
+        Task<bool> SaveAuthorizationsAsync(int projectId, List<int> userIds);
     }
 }
 

@@ -35,11 +35,15 @@ namespace ScadaServer.WebApi.Controllers
         private Task AuditAsync(string operation, string? relatedId, string description)
             => _auditService.RecordAsync("组态页面", operation, relatedId, description);
 
+        // 组态页面读取/画面导出为编辑器专用数据面（播放器仅经 /ScadaProject/{id}/full 整树获取），
+        // 与工程授权配套收紧为 Admin 专属，防止 Operator 旁路枚举页面数据或导出任意画面 JSON。
         [HttpGet]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> GetAll([FromQuery] int? projectId, [FromQuery] string? platform)
             => Ok(await _appService.GetByProjectAsync(projectId, platform));
 
         [HttpGet("{id}")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> GetById(int id)
         {
             var dto = await _appService.GetByIdAsync(id);
@@ -80,6 +84,7 @@ namespace ScadaServer.WebApi.Controllers
 
         /// <summary>导出单个画面为可迁移 JSON 文件（含全部组件，绑定携带设备业务键）。</summary>
         [HttpGet("{id}/export")]
+        [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Export(int id)
         {
             var package = await _projectAppService.ExportPageAsync(id);

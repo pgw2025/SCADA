@@ -62,6 +62,8 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IMqttVariableConfigAppService, MqttVariableConfigAppService>();
             services.AddScoped<IScadaPageAppService, ScadaPageAppService>();
             services.AddScoped<IScadaProjectAppService, ScadaProjectAppService>();
+            // 当前请求用户抽象：从 JWT claims 解析，供工程授权等资源级校验使用（WebApi 层实现）。
+            services.AddScoped<ICurrentUser, CurrentUser>();
             services.AddScoped<IScheduledTaskAppService, ScheduledTaskAppService>();
             services.AddScoped<ISensorAppService, SensorAppService>();
             services.AddScoped<ISystemConfigAppService, SystemConfigAppService>();
