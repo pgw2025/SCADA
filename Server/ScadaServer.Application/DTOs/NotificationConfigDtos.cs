@@ -46,4 +46,38 @@ namespace ScadaServer.Application.DTOs
         public string Message { get; set; } = string.Empty;
         public long? LatencyMs { get; set; }
     }
+
+    /// <summary>
+    /// 投递记录条目（GET /logs 与重试接口返回，与前端 NotificationLogItem 字段一一对应，
+    /// JSON camelCase 序列化自动对齐）。
+    /// </summary>
+    public class NotificationLogDto
+    {
+        public long Id { get; set; }
+
+        /// <summary>投递完成时间（本地时区 ISO 字符串，前端直接展示）。</summary>
+        public string Timestamp { get; set; } = string.Empty;
+
+        /// <summary>渠道标识：dingTalk | email | webPush</summary>
+        public string Channel { get; set; } = string.Empty;
+
+        /// <summary>事件类型：alarmTriggered | alarmRecovered | deviceStatus | systemAlarm | systemError | scriptExecution | test</summary>
+        public string EventType { get; set; } = string.Empty;
+
+        public string Title { get; set; } = string.Empty;
+
+        /// <summary>收件方摘要</summary>
+        public string Recipient { get; set; } = string.Empty;
+
+        /// <summary>Success | Failed | Retrying</summary>
+        public string Status { get; set; } = string.Empty;
+
+        /// <summary>投递耗时（毫秒，含重试退避的总耗时，即端到端完成时间）</summary>
+        public long LatencyMs { get; set; }
+
+        public string? Error { get; set; }
+
+        /// <summary>正文预览（MarkdownText 截断）</summary>
+        public string? PayloadPreview { get; set; }
+    }
 }

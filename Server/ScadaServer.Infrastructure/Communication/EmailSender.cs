@@ -31,6 +31,9 @@ namespace ScadaServer.Infrastructure.Communication
 
         public string Name => "Email";
 
+        /// <summary>收件方摘要（收件人邮箱列表，投递记录展示用）。</summary>
+        public string RecipientSummary => string.Join(", ", _options.To);
+
         public bool Enabled => _options.Enabled
             && !string.IsNullOrWhiteSpace(_options.SmtpHost)
             && !string.IsNullOrWhiteSpace(_options.Username)

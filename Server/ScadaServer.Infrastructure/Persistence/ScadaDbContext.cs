@@ -67,6 +67,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<ScriptExecutionRecord> ScriptExecutionRecords => Set<ScriptExecutionRecord>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
         public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+        public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
         public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
         public DbSet<VariableRealtime> VariableRealtimes => Set<VariableRealtime>();
 
@@ -104,6 +105,12 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasIndex(s => s.RenewalToken)
                 .IsUnique()
                 .HasDatabaseName("ix_pushsubscriptions_renewaltoken");
+
+            // 外部消息投递记录表（消息通知中心 → 投递记录）：时间索引支撑「最新 N 条」查询（Id 倒序为主，时间为辅助）。
+            modelBuilder.Entity<NotificationLog>().ToTable("NotificationLogs");
+            modelBuilder.Entity<NotificationLog>()
+                .HasIndex(l => l.TimestampUtc)
+                .HasDatabaseName("ix_notificationlogs_timestamputc");
 
             // 报警记录表：索引支撑「列表/确认/清理/按设备」查询。
             // 数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能（同 VariableHistory 设计）。

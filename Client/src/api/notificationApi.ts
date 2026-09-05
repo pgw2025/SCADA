@@ -67,7 +67,7 @@ export interface NotificationTestResult {
 export interface NotificationLogItem {
   id: number | string;
   timestamp: string;
-  channel: 'dingTalk' | 'email';
+  channel: 'dingTalk' | 'email' | 'webPush';
   eventType: 'alarmTriggered' | 'alarmRecovered' | 'deviceStatus' | 'systemAlarm' | 'systemError' | 'scriptExecution' | 'test';
   title: string;
   recipient: string;

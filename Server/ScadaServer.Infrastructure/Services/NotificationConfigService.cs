@@ -36,6 +36,7 @@ namespace ScadaServer.Infrastructure.Services
         private readonly IHostEnvironment _env;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILoggerFactory _loggerFactory;
+        private readonly INotificationLogRecorder _logRecorder;
         private readonly ILogger<NotificationConfigService> _logger;
 
         public NotificationConfigService(
@@ -43,12 +44,14 @@ namespace ScadaServer.Infrastructure.Services
             IHostEnvironment env,
             IHttpClientFactory httpClientFactory,
             ILoggerFactory loggerFactory,
+            INotificationLogRecorder logRecorder,
             ILogger<NotificationConfigService> logger)
         {
             _current = current;
             _env = env;
             _httpClientFactory = httpClientFactory;
             _loggerFactory = loggerFactory;
+            _logRecorder = logRecorder;
             _logger = logger;
         }
 
@@ -256,12 +259,42 @@ namespace ScadaServer.Infrastructure.Services
             {
                 await send(sender);
                 sw.Stop();
+                RecordTestOutcome(channel, sender, "Success", sw.ElapsedMilliseconds, null);
                 return new NotificationTestResult { Success = true, LatencyMs = sw.ElapsedMilliseconds, Message = $"{channel} 测试发送成功。" };
             }
             catch (Exception ex)
             {
                 sw.Stop();
+                RecordTestOutcome(channel, sender, "Failed", sw.ElapsedMilliseconds, ex.Message);
                 return new NotificationTestResult { Success = false, LatencyMs = sw.ElapsedMilliseconds, Message = $"{channel} 测试发送失败：{ex.Message}" };
+            }
+        }
+
+        /// <summary>测试发送落投递记录（EventType=test；用临时配置发送，PayloadJson 为空、不可重试）。</summary>
+        private void RecordTestOutcome(string channel, IExternalMessageSender sender, string status, long latencyMs, string? error)
+        {
+            try
+            {
+                _logRecorder.Record(new NotificationLogEntry(
+                    Channel: channel switch
+                    {
+                        "钉钉" => "dingTalk",
+                        "邮件" => "email",
+                        _ => channel.ToLowerInvariant()
+                    },
+                    EventType: "test",
+                    Title: "SCADA 通知测试",
+                    Recipient: sender.RecipientSummary,
+                    Status: status,
+                    LatencyMs: latencyMs,
+                    Error: error,
+                    PayloadPreview: "## SCADA 通知测试\n- 来源：通知中心测试发送",
+                    PayloadJson: null,
+                    SourceLogId: null));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "测试发送投递记录埋点异常（不影响测试流程）。");
             }
         }
 

@@ -121,6 +121,14 @@ namespace ScadaServer.WebApi.Extensions
                 sp.GetRequiredService<NotificationTemplateEngine>(),
                 sp.GetRequiredService<ILogger<ExternalNotificationDecorator>>()));
 
+            // ========== 投递记录（钉钉/邮件/Web Push 投递终态落库 + 查询/重试）==========
+            // 三件套（与 ExternalNotificationService 注册模式一致）：缺 AddHostedService
+            // 则后台消费循环不启动、待写队列塞满后所有记录静默丢弃。
+            services.AddSingleton<NotificationLogRecorder>();
+            services.AddSingleton<INotificationLogRecorder>(sp => sp.GetRequiredService<NotificationLogRecorder>());
+            services.AddHostedService(sp => sp.GetRequiredService<NotificationLogRecorder>());
+            services.AddScoped<INotificationLogService, NotificationLogService>();
+
             // 操作日志审计服务（注入 SystemLogRecorder + HttpContext，按请求解析）
             services.AddScoped<IOperationAuditService, OperationAuditService>();
 

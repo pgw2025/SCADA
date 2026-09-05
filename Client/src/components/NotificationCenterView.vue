@@ -66,7 +66,7 @@ const newRecipientInput = ref('');
 // Delivery Logs state
 const logs = ref<NotificationLogItem[]>([]);
 const logsLoading = ref(false);
-const logFilterChannel = ref<'all' | 'dingTalk' | 'email'>('all');
+const logFilterChannel = ref<'all' | 'dingTalk' | 'email' | 'webPush'>('all');
 const logFilterStatus = ref<'all' | 'Success' | 'Failed' | 'Retrying'>('all');
 const logSearchQuery = ref('');
 const selectedLogDetail = ref<NotificationLogItem | null>(null);
@@ -477,7 +477,7 @@ const handleSave = async () => {
     await saveNotificationConfig(payload);
     saveSuccess.value = true;
     addLog('系统设置', '消息通知中心全局策略与模板配置已保存。', 'normal');
-    showToast('消息通知配置保存成功，系统已即时应用', 'success');
+    showToast('消息通知配置已保存，重启后端服务后生效', 'success');
     setTimeout(() => { saveSuccess.value = false; }, 3000);
   } catch (err: any) {
     showToast('配置保存失败: ' + (err?.message || '网络连接异常'), 'error');
@@ -1609,6 +1609,7 @@ const metrics = computed(() => {
               <option value="all">全部推送渠道</option>
               <option value="dingTalk">钉钉群机器人</option>
               <option value="email">SMTP 邮件</option>
+              <option value="webPush">Web 推送</option>
             </select>
 
             <!-- Status Filter -->
@@ -1619,6 +1620,7 @@ const metrics = computed(() => {
               <option value="all">全部状态</option>
               <option value="Success">投递成功 (Success)</option>
               <option value="Failed">异常失败 (Failed)</option>
+              <option value="Retrying">重试中 (Retrying)</option>
             </select>
 
             <!-- Keyword Search -->
@@ -1688,11 +1690,16 @@ const metrics = computed(() => {
                   <td class="py-3 px-3 whitespace-nowrap">
                     <span
                       class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold"
-                      :class="item.channel === 'dingTalk' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900'"
+                      :class="{
+                        'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900': item.channel === 'dingTalk',
+                        'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900': item.channel === 'email',
+                        'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400 border border-violet-200/60 dark:border-violet-900': item.channel === 'webPush'
+                      }"
                     >
                       <MessageSquare v-if="item.channel === 'dingTalk'" class="w-3 h-3" />
-                      <Mail v-else class="w-3 h-3" />
-                      {{ item.channel === 'dingTalk' ? '钉钉群' : 'SMTP邮件' }}
+                      <Mail v-else-if="item.channel === 'email'" class="w-3 h-3" />
+                      <Smartphone v-else class="w-3 h-3" />
+                      {{ item.channel === 'dingTalk' ? '钉钉群' : (item.channel === 'email' ? 'SMTP邮件' : 'Web推送') }}
                     </span>
                   </td>
                   <td class="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono whitespace-nowrap">
@@ -1711,11 +1718,16 @@ const metrics = computed(() => {
                   <td class="py-3 px-3 text-center whitespace-nowrap">
                     <span
                       class="px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1"
-                      :class="item.status === 'Success' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'"
+                      :class="{
+                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400': item.status === 'Success',
+                        'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400': item.status === 'Retrying',
+                        'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400': item.status !== 'Success' && item.status !== 'Retrying'
+                      }"
                     >
                       <CheckCircle2 v-if="item.status === 'Success'" class="w-3 h-3" />
+                      <RotateCw v-else-if="item.status === 'Retrying'" class="w-3 h-3 animate-spin" />
                       <AlertCircle v-else class="w-3 h-3" />
-                      {{ item.status === 'Success' ? '投递成功' : '投递失败' }}
+                      {{ item.status === 'Success' ? '投递成功' : (item.status === 'Retrying' ? '重试中' : '投递失败') }}
                     </span>
                   </td>
                   <td class="py-3 px-4 text-center whitespace-nowrap space-x-2">
@@ -1778,7 +1790,7 @@ const metrics = computed(() => {
           <div class="grid grid-cols-2 gap-3 py-2 border-y border-slate-100 dark:border-slate-800">
             <div>
               <span class="text-slate-400">分发渠道：</span>
-              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedLogDetail.channel === 'dingTalk' ? '钉钉群机器人' : 'SMTP 邮件服务' }}</span>
+              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedLogDetail.channel === 'dingTalk' ? '钉钉群机器人' : (selectedLogDetail.channel === 'email' ? 'SMTP 邮件服务' : 'Web Push 推送') }}</span>
             </div>
             <div>
               <span class="text-slate-400">投递状态：</span>

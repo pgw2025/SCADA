@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -42,6 +44,7 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly List<SenderState> _states;
         private readonly ExternalPushPolicy _policy;
         private readonly ILogger<ExternalNotificationService> _logger;
+        private readonly INotificationLogRecorder _logRecorder;
         private readonly Channel<ExternalMessage> _mainChannel;
         private readonly CancellationTokenSource _cts = new();
 
@@ -52,10 +55,12 @@ namespace ScadaServer.WebApi.HostedServices
         public ExternalNotificationService(
             IEnumerable<IExternalMessageSender> senders,
             IOptions<NotificationOptions> options,
+            INotificationLogRecorder logRecorder,
             ILogger<ExternalNotificationService> logger)
         {
             _policy = options.Value.Push;
             _logger = logger;
+            _logRecorder = logRecorder;
 
             _mainChannel = Channel.CreateBounded<ExternalMessage>(new BoundedChannelOptions(Math.Max(64, _policy.QueueCapacity))
             {
@@ -83,16 +88,23 @@ namespace ScadaServer.WebApi.HostedServices
         public bool HasEnabledChannels => _states.Count > 0;
 
         /// <inheritdoc/>
-        public void Enqueue(ExternalMessage message)
+        public bool Enqueue(ExternalMessage message)
         {
             // 无启用渠道直接短路：避免装饰器/日志挂钩白白格式化后积压至队列满。
-            if (_states.Count == 0) return;
+            // 返回 false 供重试路径回写失败行（普通事件消息调用方忽略返回值）。
+            if (_states.Count == 0) return false;
 
             if (!_mainChannel.Writer.TryWrite(message))
             {
                 Interlocked.Increment(ref _enqueueDroppedCount);
+                return false;
             }
+            return true;
         }
+
+        /// <inheritdoc/>
+        public bool IsChannelEnabled(string senderName) =>
+            _states.Any(s => string.Equals(s.Sender.Name, senderName, StringComparison.OrdinalIgnoreCase));
 
         /// <inheritdoc/>
         public Task StartAsync(CancellationToken cancellationToken)
@@ -173,7 +185,8 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        /// <summary>扇出：主队列 -> 各启用渠道独立通道（某渠道满则该渠道丢弃并计数，不影响其他渠道）。</summary>
+        /// <summary>扇出：主队列 -> 各启用渠道独立通道（某渠道满则该渠道丢弃并计数，不影响其他渠道）。
+        /// TargetChannel 非空（重试路径）时只投递到指定渠道；定向消息被丢弃时回写失败行，避免行永久停留 Retrying。</summary>
         private async Task FanoutAsync(CancellationToken token)
         {
             try
@@ -182,9 +195,20 @@ namespace ScadaServer.WebApi.HostedServices
                 {
                     foreach (var state in _states)
                     {
+                        // 重试路径：只投递到目标渠道
+                        if (msg.TargetChannel is not null &&
+                            !string.Equals(state.Sender.Name, msg.TargetChannel, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
                         if (!state.Channel.Writer.TryWrite(msg))
                         {
                             Interlocked.Increment(ref _fanoutDroppedCount);
+                            if (msg.SourceLogId is not null)
+                            {
+                                RecordOutcome(state.Sender, msg, "Failed", 0, "渠道队列满载，重试消息被丢弃");
+                            }
                         }
                     }
                 }
@@ -238,15 +262,19 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        /// <summary>重试发送（指数退避）。最终失败仅记日志（本服务日志被系统日志挂钩排除，不会递归外发）。</summary>
+        /// <summary>重试发送（指数退避）。最终成功/失败均经投递记录埋点落库（终态）；失败仅记日志
+        /// （本服务日志被系统日志挂钩排除，不会递归外发）。</summary>
         private async Task SendWithRetryAsync(IExternalMessageSender sender, ExternalMessage msg, CancellationToken token)
         {
+            var sw = Stopwatch.StartNew();
             var delay = _policy.RetryBaseDelayMs;
             for (var attempt = 1; ; attempt++)
             {
                 try
                 {
                     await sender.SendAsync(msg, token);
+                    sw.Stop();
+                    RecordOutcome(sender, msg, "Success", sw.ElapsedMilliseconds, null);
                     return;
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -259,6 +287,8 @@ namespace ScadaServer.WebApi.HostedServices
                     {
                         _logger.LogError(ex, "渠道 {Channel} 发送失败（共尝试 {Attempts} 次），消息丢弃：{Title}",
                             sender.Name, attempt, msg.Title);
+                        sw.Stop();
+                        RecordOutcome(sender, msg, "Failed", sw.ElapsedMilliseconds, ex.Message);
                         return;
                     }
 
@@ -276,6 +306,57 @@ namespace ScadaServer.WebApi.HostedServices
                 }
             }
         }
+
+        /// <summary>投递终态埋点：每条消息每渠道完成（成功或重试耗尽）调用一次，写投递记录。
+        /// Record 本身不抛出，包裹仅为兜底（埋点异常绝不影响发送主流程）。</summary>
+        private void RecordOutcome(IExternalMessageSender sender, ExternalMessage msg, string status, long latencyMs, string? error)
+        {
+            try
+            {
+                _logRecorder.Record(new NotificationLogEntry(
+                    Channel: MapChannel(sender.Name),
+                    EventType: MapEventType(msg),
+                    Title: msg.Title,
+                    Recipient: sender.RecipientSummary,
+                    Status: status,
+                    LatencyMs: latencyMs,
+                    Error: error,
+                    PayloadPreview: Truncate(msg.MarkdownText, 500),
+                    PayloadJson: JsonSerializer.Serialize(msg),
+                    SourceLogId: msg.SourceLogId));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "投递记录埋点异常（不影响发送主流程）。");
+            }
+        }
+
+        /// <summary>Sender.Name → 前端渠道标识（已核实：DingTalk/Email/WebPush）。</summary>
+        private static string MapChannel(string senderName) => senderName.ToUpperInvariant() switch
+        {
+            "DINGTALK" => "dingTalk",
+            "EMAIL" => "email",
+            "WEBPUSH" => "webPush",
+            _ => senderName.ToLowerInvariant()
+        };
+
+        /// <summary>消息类别 → 前端事件类型（Alarm 依 Tokens["eventType"] 细分触发/恢复，与前端联合类型对齐）。</summary>
+        private static string MapEventType(ExternalMessage msg) => msg.Category switch
+        {
+            ExternalMessageCategory.Alarm =>
+                msg.Tokens is not null && msg.Tokens.TryGetValue("eventType", out var t) && t == "Recovered"
+                    ? "alarmRecovered"
+                    : "alarmTriggered",
+            ExternalMessageCategory.DeviceStatus => "deviceStatus",
+            ExternalMessageCategory.SystemAlarm => "systemAlarm",
+            ExternalMessageCategory.SystemError => "systemError",
+            ExternalMessageCategory.ScriptExecution => "scriptExecution",
+            _ => "unknown"
+        };
+
+        /// <summary>截断文本（PayloadPreview 用）。</summary>
+        private static string Truncate(string value, int max) =>
+            value.Length <= max ? value : value[..max];
 
         /// <summary>克隆消息并附加限流合并说明（HtmlBody 为空保持为空，保留兜底 markdown 转义路径）。
         /// Web Push 扩展字段（Severity/Tokens，D8）一并携带，保证渠道过滤/payload 构造在合并消息上仍可用。</summary>

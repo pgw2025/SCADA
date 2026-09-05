@@ -56,6 +56,9 @@ namespace ScadaServer.Infrastructure.Communication
 
         public string Name => "WebPush";
 
+        /// <summary>收件方摘要（订阅明细属敏感端点信息，投递记录不展开）。</summary>
+        public string RecipientSummary => "Web Push 订阅设备";
+
         /// <summary>Enabled 且 VAPID 密钥完整（缺密钥启动时渠道禁用，管线不扇出——与既有渠道语义一致）。</summary>
         public bool Enabled => _options.Enabled
             && !string.IsNullOrWhiteSpace(_options.Vapid.Subject)

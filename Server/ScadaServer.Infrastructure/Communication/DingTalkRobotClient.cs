@@ -40,6 +40,9 @@ namespace ScadaServer.Infrastructure.Communication
 
         public bool Enabled => _options.Enabled && !string.IsNullOrWhiteSpace(_options.Webhook);
 
+        /// <summary>收件方摘要（webhook 含 access_token，不回显明文）。</summary>
+        public string RecipientSummary => "钉钉群机器人";
+
         public async Task SendAsync(ExternalMessage message, CancellationToken cancellationToken)
         {
             var url = _options.Webhook;
