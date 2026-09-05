@@ -1,4 +1,7 @@
 import { addLog } from '../services/logService';
+import { clearLastUserId, clearUserData, getLastUserId, setLastUserId } from '../services/pwaSecurity';
+import { rebindIfNeeded } from '../services/pushService';
+import { start as startSnapshotWriter, stop as stopSnapshotWriter } from '../services/snapshotWriter';
 import { systemConfig } from '../store/configStore';
 import { isAuthenticated, loginUser, systemUsers, authInitialized } from '../store/userStore';
 import { resetScadaStore } from '../store/scadaStore';
@@ -85,6 +88,21 @@ export const performLogin = async (username: string, passwordString: string): Pr
       const token = response.data.token;
       localStorage.setItem(TOKEN_KEY, token);
 
+      // 跨账号安全（D5 防线二）：换号登录（本次账号 ≠ 上次会话账号）时，
+      // 清空上一账号的 SW 运行时缓存与 IndexedDB 快照，避免业务数据跨账号泄漏。
+      // 同账号重新登录不触发，避免正常重新登录把缓存清光。
+      const prevUid = getLastUserId();
+      if (prevUid && prevUid !== userName) {
+        void clearUserData();
+      }
+      setLastUserId(userName);
+
+      // 推送换绑（D3）：本地若存在浏览器订阅，静默重 POST 换绑到当前用户（fire-and-forget）
+      void rebindIfNeeded();
+
+      // 离线快照写入器（阶段六 D9）：登录成功启动会话节流落盘
+      startSnapshotWriter(userName);
+
       // 清除上一账号的组态工程缓存（防 SPA 无刷新场景下复用上个账号的工程列表/整树）
       resetScadaStore();
 
@@ -110,11 +128,17 @@ export const performLogin = async (username: string, passwordString: string): Pr
 
 export const performLogout = () => {
   addLog('安全认证', `用户 [${loginUser.value?.username || 'admin'}] 注销系统登录`, 'normal');
+  // 离线快照（阶段六）：先停写入器再清库（clearUserData 内部也兜底 stop）
+  stopSnapshotWriter();
   // 清空组态工程缓存（防下一账号复用上一账号的工程列表/整树绕过工程授权）
   resetScadaStore();
   isAuthenticated.value = false;
   loginUser.value = null;
   localStorage.removeItem(TOKEN_KEY);
+  // 跨账号安全（D5 防线二）：登出即清空 SW 运行时缓存 + IndexedDB 快照，
+  // 并清除 lastUserId（后续登录视为「换号」起点）。
+  clearLastUserId();
+  void clearUserData();
 };
 
 export const fetchSystemUsers = async (): Promise<SystemUser[]> => {

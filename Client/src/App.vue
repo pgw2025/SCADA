@@ -22,6 +22,44 @@ import { syncDevices } from './services/deviceService';
 import { startBackendPolling, stopBackendPolling } from './services/pollService';
 import { isScadaFullscreen } from './store/scadaStore';
 import ToastContainer from './components/ToastContainer.vue';
+import PwaReloadPrompt from './components/PwaReloadPrompt.vue';
+import PwaInstallPrompt from './components/PwaInstallPrompt.vue';
+import OfflineBanner from './components/OfflineBanner.vue';
+import { isOnline, onRecover } from './services/onlineStatus';
+import { readSnapshot } from './services/snapshotDB';
+import { activeAlarms, recentEvents, refreshActiveAlarms } from './store/alarmStore';
+import { devices as deviceList, setDevices } from './store/deviceStore';
+
+// ---- 离线快照恢复（doc/pwa 阶段六 · 步骤 28，D10） ----
+// 离线启动（或刷新）时：API 拿不到新数据，用 IndexedDB 快照灌入设备/报警 store 作初值，
+// 横幅显示「数据截至」时间戳（OfflineBanner 读取快照 meta）。读失败/无快照 → 正常离线空态，不崩溃。
+const restoreSnapshotIntoStores = async (): Promise<void> => {
+  try {
+    const uid = loginUser.value?.username;
+    if (!uid) return;
+    const snap = await readSnapshot(uid);
+    if (!snap) return;
+    if (Array.isArray(snap.devices) && snap.devices.length > 0 && deviceList.value.length === 0) {
+      setDevices(snap.devices);
+    }
+    if (Array.isArray(snap.alarms) && snap.alarms.length > 0 && activeAlarms.value.length === 0) {
+      // 触发中（未恢复）的进「当前报警」；全部进「最近事件」（环形最近 50 条）
+      activeAlarms.value = snap.alarms.filter((a: any) => !a?.recoveredAt);
+      recentEvents.value = snap.alarms.slice(0, 50);
+    }
+  } catch (e) {
+    console.warn('[PWA] 离线快照恢复失败（进入离线空态）', e);
+  }
+};
+
+// ---- 网络恢复闭环（阶段六 · 步骤 29） ----
+// online 事件（onlineStatus 内 3s 去抖）后：复用既有加载函数做一轮全量刷新，
+// 不新造全量拉取接口；快照写入器恢复常规节流（自动）。
+onRecover(() => {
+  if (!isAuthenticated.value) return;
+  void syncDevices({ realtime: true, silent: true });
+  void refreshActiveAlarms();
+});
 
 import {
   LayoutDashboard,
@@ -119,6 +157,11 @@ watch(
     // 登录成功后轮询兜底对所有角色生效（SignalR 断连时 HTTP 降级刷新设备列表）
     startBackendPolling();
 
+    // 离线启动（阶段六）：断网进入已登录壳时，先用快照灌入设备/报警初值（不阻塞在线路径）
+    if (!isOnline.value) {
+      void restoreSnapshotIntoStores();
+    }
+
     // 登录后重建/补连 SignalR：登录页阶段 onMounted 的首次 start 因无 token 401 失败，
     // 自动重连不处理首次 start 失败，须在持有 JWT 后重新初始化（内部会重建 Disconnected 连接）。
     initializeRealtimeSignals();
@@ -215,6 +258,9 @@ const handleChangeMyPassword = async () => {
 
 <template>
   <ToastContainer />
+  <OfflineBanner />
+  <PwaReloadPrompt />
+  <PwaInstallPrompt />
   <div v-if="!isAuthenticated" :class="currentTheme === 'dark' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'"
     class="h-screen w-screen flex items-center justify-center p-4 relative overflow-hidden font-sans select-none transition-colors duration-200">
     <!-- Top Right Theme Switcher on Login Page -->

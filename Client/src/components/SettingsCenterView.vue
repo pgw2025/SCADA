@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { systemConfig, addLog, currentTheme, setTheme } from '../store/index';
 import { initializeRealtimeSignals } from '../services/signalRService';
 import { startBackendPolling } from '../services/pollService';
+import {
+  ensurePermission,
+  subscribe,
+  unsubscribe,
+  getSubscriptionState,
+  getMyDevices,
+  sendTestPush
+} from '../services/pushService';
 import { 
   Settings, 
   Save, 
@@ -17,11 +25,91 @@ import {
   Code,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  Bell
 } from 'lucide-vue-next';
 
 const isSaving = ref(false);
 const saveSuccess = ref(false);
+
+// ---- PWA 推送设置（阶段四 · 步骤 17） ----
+const pushSupported = ref(true);
+const pushPermission = ref<NotificationPermission | 'unsupported'>('default');
+const pushSubscribed = ref(false);
+const pushLoading = ref(false);
+const pushMsg = ref('');
+const pushMsgType = ref<'info' | 'error' | 'success'>('info');
+const myDevices = ref<any[]>([]);
+
+const setPushMsg = (type: 'info' | 'error' | 'success', msg: string) => {
+  pushMsgType.value = type;
+  pushMsg.value = msg;
+};
+
+const refreshPushState = async () => {
+  try {
+    const st = await getSubscriptionState();
+    pushSupported.value = st.supported;
+    pushPermission.value = st.permission;
+    pushSubscribed.value = st.subscribed && st.serverBound;
+    myDevices.value = pushSubscribed.value ? await getMyDevices() : [];
+  } catch (e: any) {
+    setPushMsg('error', '读取推送状态失败：' + (e?.message || '未知错误'));
+  }
+};
+
+const togglePush = async (on: boolean) => {
+  pushLoading.value = true;
+  try {
+    if (!on) {
+      await unsubscribe();
+      setPushMsg('success', '已关闭推送通知');
+    } else {
+      const perm = await ensurePermission();
+      if (perm !== 'granted') {
+        setPushMsg('error', '浏览器通知权限被拒绝，请在浏览器设置中开启通知权限后重试');
+        pushLoading.value = false;
+        await refreshPushState();
+        return;
+      }
+      await subscribe();
+      setPushMsg('success', '推送通知已开启，报警将推送到本设备');
+    }
+  } catch (e: any) {
+    setPushMsg('error', '操作失败：' + (e?.message || '未知错误'));
+  } finally {
+    pushLoading.value = false;
+    await refreshPushState();
+  }
+};
+
+const testPush = async () => {
+  pushLoading.value = true;
+  try {
+    await sendTestPush();
+    setPushMsg('info', '测试通知已发送，请留意系统通知');
+  } catch (e: any) {
+    setPushMsg('error', '发送测试通知失败：' + (e?.message || '未知错误'));
+  } finally {
+    pushLoading.value = false;
+  }
+};
+
+// 单设备模型下，移除即退订当前浏览器订阅
+const removeDevice = async (_endpoint: string) => {
+  pushLoading.value = true;
+  try {
+    await unsubscribe();
+    setPushMsg('success', '已移除本设备订阅');
+  } catch (e: any) {
+    setPushMsg('error', '移除失败：' + (e?.message || '未知错误'));
+  } finally {
+    pushLoading.value = false;
+    await refreshPushState();
+  }
+};
+
+onMounted(refreshPushState);
 
 const handleSaveSettings = () => {
   isSaving.value = true;
@@ -273,6 +361,70 @@ const handleSaveSettings = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- MODULE: 推送通知 (Web Push, 阶段四 · 步骤 17) -->
+        <div class="md:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4 transition-colors">
+          <h3 class="font-bold text-xs text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-2.5 flex items-center gap-2">
+            <Bell class="w-4 h-4 text-[#1890ff]" />
+            推送通知 (Web Push)
+          </h3>
+
+          <div v-if="!pushSupported" class="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 rounded-lg p-3 leading-relaxed">
+            当前浏览器不支持 Web Push，或尚未安装为 PWA（iOS 需先「安装到主屏幕」）。推送能力暂不可用。
+          </div>
+
+          <template v-else>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-950 rounded-lg">
+              <div>
+                <b class="text-slate-800 dark:text-slate-200 font-bold block">启用推送通知</b>
+                <span class="text-[10px] text-slate-400 block font-normal mt-0.5">
+                  {{ pushPermission === 'denied' ? '浏览器已拒绝通知，请在浏览器设置中开启' : (pushSubscribed ? '已开启，报警将推送到本设备' : '开启后报警将推送到本设备') }}
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                :checked="pushSubscribed"
+                :disabled="pushLoading || pushPermission === 'denied'"
+                @change="togglePush(($event.target as HTMLInputElement).checked)"
+                class="accent-slate-900 w-5 h-5 cursor-pointer disabled:opacity-50"
+              />
+            </div>
+
+            <div v-if="pushSubscribed && myDevices.length" class="space-y-2">
+              <label class="font-bold text-slate-500 dark:text-slate-400 text-[11px]">我的设备</label>
+              <div v-for="d in myDevices" :key="d.endpoint"
+                class="flex items-center justify-between bg-slate-50 dark:bg-slate-950 rounded-lg p-2.5 text-[11px]">
+                <div class="min-w-0">
+                  <div class="font-bold text-slate-700 dark:text-slate-200 truncate">{{ d.userAgent || '本设备' }}</div>
+                  <div class="text-slate-400 font-mono truncate">
+                    {{ d.lastPushAtUtc ? '最近推送：' + d.lastPushAtUtc : '尚未推送' }}
+                  </div>
+                </div>
+                <button @click="removeDevice(d.endpoint)" :disabled="pushLoading"
+                  class="text-rose-500 hover:text-rose-600 text-[11px] font-bold px-2 py-1 rounded cursor-pointer disabled:opacity-50">
+                  移除
+                </button>
+              </div>
+            </div>
+
+            <div v-if="pushSubscribed" class="flex items-center gap-2">
+              <button @click="testPush" :disabled="pushLoading"
+                class="text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50 transition-all">
+                发送测试通知
+              </button>
+            </div>
+
+            <div v-if="pushMsg"
+              class="text-[11px] font-bold p-2.5 rounded-lg"
+              :class="pushMsgType === 'error'
+                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300'
+                : pushMsgType === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'">
+              {{ pushMsg }}
+            </div>
+          </template>
         </div>
 
         <!-- MODULE 3: 物联网数据中继与 OPC 通讯 -->

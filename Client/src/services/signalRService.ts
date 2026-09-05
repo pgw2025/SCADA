@@ -8,6 +8,7 @@ import { pushAlarmEvent, refreshActiveAlarms } from '../store/alarmStore';
 import { pushScriptExecutionEvent } from '../store/scriptStore';
 import { AlarmEventPayload, ScriptExecutionEvent } from '../types';
 import { TOKEN_KEY } from '../api/http';
+import { markAlarmEvent, markDevicesDirty } from './snapshotWriter';
 
 // ===== 设备级订阅管理（引用计数） =====
 // 后端变量更新仅推送至订阅该设备的分组（ScadaHub.SubscribeDevice/UnsubscribeDevice），
@@ -148,6 +149,9 @@ export const initializeRealtimeSignals = () => {
                     dev.variableMeta[variableKey] = { key: variableKey, quality } as any;
                 }
             }
+
+            // 离线快照（阶段六 D9）：仅标脏，节流写入器 10s 一拍批量落盘
+            markDevicesDirty();
         });
 
         connection.on("ReceiveSystemAlarm", (message: string) => {
@@ -164,11 +168,15 @@ export const initializeRealtimeSignals = () => {
                 dev.status = next;
                 addLog('SignalR 接收', `设备#${deviceId} 状态变更: ${status}`, 'info');
             }
+            // 离线快照（阶段六 D9）：设备状态变更标脏
+            markDevicesDirty();
         });
 
         // 结构化报警事件实时推送：归一化后进入报警 Store（当前报警 / 未确认角标 / 最近事件）。
         connection.on("ReceiveAlarm", (payload: AlarmEventPayload) => {
             pushAlarmEvent(payload ?? ({} as AlarmEventPayload));
+            // 离线快照（阶段六 D9）：报警事件缓冲，随节流写入器落盘
+            markAlarmEvent(payload);
         });
 
         // 脚本执行事件实时推送（手动 / 周期 / Cron / OnChange / 试运行）：进入脚本事件缓冲供控制台实时刷新。

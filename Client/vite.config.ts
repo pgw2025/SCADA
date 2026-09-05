@@ -2,10 +2,59 @@ import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import {defineConfig} from 'vite';
+import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
-    plugins: [vue(), tailwindcss()],
+    plugins: [
+      vue(),
+      tailwindcss(),
+      VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        registerType: 'prompt',
+        injectRegister: false,
+        includeAssets: [
+          'favicon.ico',
+          'apple-touch-icon.png',
+          'pwa/icon-192.png',
+          'pwa/icon-512.png',
+          'pwa/icon-maskable-512.png'
+        ],
+        manifest: {
+          name: '晋鑫设备管理系统',
+          short_name: '晋鑫设备',
+          description: '工业控制与数据采集平台（PWA）',
+          id: '/',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          orientation: 'any',
+          background_color: '#f1f5f9',
+          theme_color: '#0ea5e9',
+          lang: 'zh-CN',
+          dir: 'ltr',
+          icons: [
+            { src: 'pwa/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'pwa/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: 'pwa/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+          ],
+          shortcuts: [
+            { name: '组态运行', url: '/scada-view', description: '打开组态运行画面' },
+            { name: '报警管理', url: '/alarm-management', description: '查看报警管理' }
+          ]
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+          cleanupOutdatedCaches: true,
+          navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/open\//, /^\/hubs\//],
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024
+        },
+        devOptions: { enabled: true, type: 'module' }
+      })
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

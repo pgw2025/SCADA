@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 import { initializeAuth } from './api/authApi';
+import { registerPwa } from './services/pwaRegister';
 import './index.css';
 
 // boot 函数而非顶层 await：Vite 默认 build target（≈es2020）不支持 Top-level await，
@@ -14,5 +15,7 @@ async function boot(): Promise<void> {
   // 不会先闪现后台菜单/标题；挂载前由 index.html 内置的启动动画占位。
   await router.isReady();
   app.mount('#root');
+  // PWA：首屏挂载后再注册 SW，避开与 initializeAuth/路由守卫的启动竞态（doc/pwa 阶段二·步骤5）
+  registerPwa();
 }
 boot();

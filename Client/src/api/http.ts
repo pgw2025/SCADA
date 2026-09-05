@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { addLog } from '../services/logService';
+import { clearLastUserId, clearUserData } from '../services/pwaSecurity';
 import { showToast } from '../services/toastService';
 import { isAuthenticated, loginUser } from '../store/userStore';
 
@@ -85,6 +86,10 @@ http.interceptors.response.use(
       localStorage.removeItem(TOKEN_KEY);
       isAuthenticated.value = false;
       loginUser.value = null;
+      // 跨账号安全（D5 防线二）：401 强登出同样清空 SW 运行时缓存 + IndexedDB 快照，
+      // 但「不退订」（与用户主动登出一致，D3：订阅与登录会话解耦）。
+      clearLastUserId();
+      void clearUserData();
       addLog('安全认证', '登录状态已失效，请重新登录', 'warning');
       showToast('登录状态已失效，请重新登录', 'warning');
     } else if (!isAuthFlowRequest && !((error.config as any)?.silent && error.response?.status === 404)) {

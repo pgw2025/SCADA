@@ -5,6 +5,7 @@ import { Device } from '../types';
 import { parseApiError, ErrorResult } from '../utils/errorHandler';
 import { normalizeDevices } from '../utils/deviceStatus';
 import { extractApiError } from '../api/http';
+import { markDevicesDirty } from './snapshotWriter';
 
 export interface DeviceOperationResult<T = any> {
   success: boolean;
@@ -29,6 +30,8 @@ export const syncDevices = async (options?: { realtime?: boolean; silent?: boole
     const { data } = await api.fetchDevicesFromBackend();
     const normalized = normalizeDevices(data, store.devices.value);
     store.setDevices(normalized);
+    // 离线快照（阶段六 D9）：设备列表加载成功也标脏（页面数据源不只来自 SignalR）
+    markDevicesDirty();
     if (!options?.silent) {
       addLog('设备管理', `已从后端同步 ${normalized.length} 个设备`, 'normal');
     }
