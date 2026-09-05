@@ -150,7 +150,8 @@ const editingCfg = ref<AddressConfig | null>(null); // 结构化地址（权威�
 const openEditModal = (v: DataPointMapping) => {
   // 浅拷贝到可编辑副本；覆盖字段保留 null（null 表示"用模板值"，见下方提示文案）
   // accessModeOverride 归一化：undefined → null，保证下拉"继承"项能正确选中。
-  editingForm.value = { ...v, accessModeOverride: v.accessModeOverride ?? null };
+  // updateMode 归一化：undefined → 'Polling'（与后端 DTO 默认值对齐，保证下拉有确定选中项）。
+  editingForm.value = { ...v, accessModeOverride: v.accessModeOverride ?? null, updateMode: v.updateMode ?? 'Polling' };
   // 结构化地址（JSON 权威）：优先解析已有 JSON，否则按当前设备协议给默认骨架。
   editingCfg.value = parseAddressConfig(v.addressConfigJson) ?? newAddressConfig(selectedDevice.value?.type || 'Virtual');
   showEditModal.value = true;
@@ -184,7 +185,7 @@ const visibleAddressFields = computed(() => {
   return (fieldConfig.value.addressFields || []).filter(f =>
     !(isS7 && (f.key === 'bitOffset') && (editingCfg.value as any)?.width !== 'BIT'));
 });
-const tableColspan = computed(() => 7 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
+const tableColspan = computed(() => 8 + (needsAddress.value ? 1 : 0) + (needsBitOffset.value ? 1 : 0));
 
 // 编辑弹窗内地址展示串预览（仅预览，最终展示串由后端权威生成）
 const displayPreview = computed(() =>
@@ -308,6 +309,20 @@ const accessBadgeClass = (v: DataPointMapping): string => {
       ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
       : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
 };
+
+// ---- 阶段六：更新方式（Polling / Subscription）----
+/** 实例更新方式（缺省 undefined 视为 Polling，与后端 DTO 默认值对齐） */
+const updateModeOf = (v: DataPointMapping): 'Polling' | 'Subscription' => v.updateMode ?? 'Polling';
+const updateModeLabel = (v: DataPointMapping): string => updateModeOf(v) === 'Subscription' ? '订阅' : '轮询';
+/** 列表徽章样式：Polling 蓝 / Subscription 紫 */
+const updateModeBadgeClass = (v: DataPointMapping): string =>
+  updateModeOf(v) === 'Subscription'
+    ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+    : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+/** 设备协议是否支持订阅推送（当前仅 OPC UA；与后端 ValidateSubscriptionCapabilityAsync 同源判定，用于下拉禁用兜底） */
+const supportsSubscription = computed(() => (selectedDevice.value?.type ?? '').toUpperCase() === 'OPCUA');
+/** 列表存在订阅变量 → 列头显示"间隔(ms)"（订阅语义=服务端采样/发布间隔），否则"轮询(ms)" */
+const hasSubscriptionVariables = computed(() => dataPointMappings.value.some(v => updateModeOf(v) === 'Subscription'));
 
 // ---------- 初始化 ----------
 onMounted(async () => {
@@ -469,7 +484,8 @@ onMounted(async () => {
                   <th class="px-4 py-3.5">读写</th>
                   <th v-if="needsAddress" class="px-4 py-3.5">{{ fieldConfig.addressLabel }}</th>
                   <th v-if="needsBitOffset" class="px-4 py-3.5">位偏移</th>
-                  <th class="px-4 py-3.5">轮询(ms)</th>
+                  <th class="px-4 py-3.5">{{ hasSubscriptionVariables ? '间隔(ms)' : '轮询(ms)' }}</th>
+                  <th class="px-4 py-3.5">更新方式</th>
                   <th class="px-4 py-3.5">启用</th>
                   <th class="px-4 py-3.5 text-right">操作</th>
                 </tr>
@@ -510,6 +526,13 @@ onMounted(async () => {
                     isBitType(v.dataType) ? (v.bitOffset ?? '—') : '—' }}</td>
                   <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ v.pollingIntervalMs ?? 1000
                     }}</td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
+                      :class="updateModeBadgeClass(v)"
+                      :title="updateModeOf(v) === 'Subscription' ? '订阅推送：值变化由服务器即时推送，间隔=采样/发布' : '自主轮询：按间隔主动读取'">
+                      {{ updateModeLabel(v) }}
+                    </span>
+                  </td>
                   <td class="px-4 py-3.5">
                     <button @click="toggleEnabled(v)"
                       class="relative w-9 h-5 rounded-full transition-colors cursor-pointer"
@@ -567,7 +590,10 @@ onMounted(async () => {
               </div>
               <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono">
                 <span class="flex items-center gap-1.5">
-                  <span>{{ v.dataType }} · 轮询 {{ v.pollingIntervalMs ?? 1000 }}ms</span>
+                  <span>{{ v.dataType }} · {{ updateModeOf(v) === 'Subscription' ? '采样' : '轮询' }} {{
+                    v.pollingIntervalMs ?? 1000 }}ms</span>
+                  <span class="inline-block px-1 py-px rounded border font-bold"
+                    :class="updateModeBadgeClass(v)">{{ updateModeLabel(v) }}</span>
                   <span class="inline-block px-1 py-px rounded border font-bold"
                     :class="accessBadgeClass(v)">{{ accessLabel(effectiveAccessOf(v))
                     }}{{ v.accessModeOverride != null ? '·覆盖' : '' }}</span>
@@ -759,6 +785,17 @@ onMounted(async () => {
             <input v-model="editingForm.address" type="text" :placeholder="fieldConfig.addressPlaceholder"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
           </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">更新方式</label>
+            <select v-model="editingForm.updateMode" :disabled="!supportsSubscription"
+              class="w-full disabled:opacity-40 disabled:cursor-not-allowed bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+              <option value="Polling">自主轮询（按间隔主动读取）</option>
+              <option value="Subscription">订阅推送（值变化即时推送）</option>
+            </select>
+            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed"
+              v-if="!supportsSubscription">当前协议驱动不支持订阅更新（仅 OPC UA 支持）。</p>
+            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed" v-else>订阅模式由服务器在值变化时推送；下方间隔语义变为服务端采样/发布间隔。</p>
+          </div>
           <div class="grid grid-cols-2 gap-3">
             <div v-if="needsBitOffset && !structuredHasBit">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">位偏移（BOOL/BIT）</label>
@@ -767,7 +804,8 @@ onMounted(async () => {
                 class="w-full disabled:opacity-40 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
             <div :class="needsBitOffset && !structuredHasBit ? '' : 'col-span-2'">
-              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">轮询间隔（ms）</label>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{
+                editingForm.updateMode === 'Subscription' ? '采样间隔（ms）' : '轮询间隔（ms）' }}</label>
               <input v-model.number="editingForm.pollingIntervalMs" type="number" min="100"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>

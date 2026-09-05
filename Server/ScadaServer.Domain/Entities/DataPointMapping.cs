@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Entities
 {
@@ -136,6 +137,13 @@ namespace ScadaServer.Domain.Entities
         /// </summary>
         [MaxLength(32)]
         public string? RawDataType { get; set; }
+
+        /// <summary>
+        /// 变量更新方式（Polling=自主轮询 / Subscription=订阅推送）。
+        /// <para>Subscription 模式要求设备所属连接的协议驱动支持订阅（当前仅 OPC UA）；
+        /// PollingIntervalMs 在 Subscription 模式下语义为服务端采样/发布间隔。</para>
+        /// </summary>
+        public UpdateModeEnum UpdateMode { get; set; } = UpdateModeEnum.Polling;
 
         /// <summary>
         /// 扩展数据（JSON 格式，设备实例级附加信息，如设备厂商私有参数等）

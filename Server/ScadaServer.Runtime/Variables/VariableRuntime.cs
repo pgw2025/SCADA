@@ -83,6 +83,17 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>是否只读（禁止外部写入）。仅当有效读写模式为 Read（只读）时为 true。</summary>
     public bool IsReadOnly => EffectiveAccessMode == "Read";
 
+    /// <summary>
+    /// 设备变量实例 ID（DataPointMapping.Id），跨设备全局唯一，订阅项身份标识。
+    /// 实例缺失（理论不应发生）时为 0。
+    /// </summary>
+    public int InstanceId => Instance?.Id ?? 0;
+
+    /// <summary>
+    /// 变量更新方式（Polling=自主轮询 / Subscription=订阅推送）。实例缺失时回退 Polling。
+    /// </summary>
+    public UpdateModeEnum UpdateMode => Instance?.UpdateMode ?? UpdateModeEnum.Polling;
+
     /// <summary>历史存储模式（来自 DataPoint 模板）。</summary>
     public StoreModeEnum StoreMode => Definition.StoreMode;
 

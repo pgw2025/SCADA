@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ScadaServer.Application.DTOs;
+using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -71,8 +72,15 @@ namespace ScadaServer.Infrastructure.Communication
 
         private volatile Session? _session;   // 仅在持有 _lifecycleLock 时写入；volatile 保证 KeepAlive 线程读到最新引用
         private readonly ISessionFactory _sessionFactory = new DefaultSessionFactory(DefaultTelemetry.Create(configure: _ => { }));
-        private readonly Dictionary<int, Subscription> _subscriptions = new();  // 仅在持有 _lifecycleLock 时读写
-        private readonly List<MonitoredItem> _monitoredItems = new();           // 仅在持有 _lifecycleLock 时读写
+        private readonly Dictionary<int, Subscription> _subscriptions = new();  // 仅在持有 _lifecycleLock 时读写；Key = 发布间隔(ms)
+        private readonly Dictionary<int, MonitoredItem> _monitoredItems = new(); // 仅在持有 _lifecycleLock 时读写；Key = InstanceId（DataPointMapping.Id，全局唯一）
+
+        /// <summary>
+        /// 订阅质量门控（instanceId → 最近一次回调质量）。仅用于日志降噪（Good→Bad 跃迁记 Warning，
+        /// 持续 Bad 记 Debug），与既有通讯失败门控约定一致。
+        /// 回调运行在协议栈线程，故使用无锁集合；不保证严格一次（日志降噪允许近似）。
+        /// </summary>
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, VariableQuality> _qualityGate = new();
 
         private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
         private readonly SemaphoreSlim _ioStateLock = new(1, 1);
@@ -418,9 +426,19 @@ namespace ScadaServer.Infrastructure.Communication
             return Task.FromResult(alive);
         }
 
-        public async Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
+        /// <summary>
+        /// 订阅变量值变化。驱动在值到达时回调 onValue（(instanceId, value, quality)）。
+        /// <para>身份约定：监视项身份一律使用 <see cref="IRuntimeVariable.InstanceId"/>（DataPointMapping.Id，
+        /// 全局唯一），DisplayName 记为 "#&lt;instanceId&gt;" 供回调端解析与日志定位；禁止使用变量 Key
+        /// （同名变量跨设备重复，会导致去重误判与回调路由串台）。</para>
+        /// <para>回调运行在协议栈线程：禁止阻塞、禁止抛异常；回调不持有订阅时传入的运行时对象引用。</para>
+        /// <para>失败语义：服务器确认失败（异常或 BadStatus）时回滚本次新增的本地状态后上抛原始异常，
+        /// 不回退轮询、不重试（重试节奏由上层协调器负责）。</para>
+        /// </summary>
+        public async Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<int, object?, VariableQuality> onValue)
         {
             if (_disposed) return;
+            if (onValue == null) throw new ArgumentNullException(nameof(onValue));
             await _lifecycleLock.WaitAsync();
             try
             {
@@ -431,7 +449,7 @@ namespace ScadaServer.Infrastructure.Communication
                 var session = _session;
                 if (session == null || !session.Connected) return;
 
-                // Group variables by PollingIntervalMs to optimize subscriptions
+                // 按 PollingIntervalMs（订阅模式下语义 = 服务端采样/发布间隔）分组建 Subscription
                 var groups = variables.GroupBy(v => v.PollingIntervalMs);
 
                 foreach (var group in groups)
@@ -451,8 +469,11 @@ namespace ScadaServer.Infrastructure.Communication
                         }
                         catch (Exception ex)
                         {
-                            // 服务器端创建失败：Warning 记录后原样重抛（不吞异常，保持既有传播语义）
-                            _logger.LogWarning(ex, "OPC UA 创建 Subscription 失败（发布间隔 {Interval}ms）。", interval);
+                            // 服务器端创建失败：回滚本地状态（从 session 移除并释放），再原样上抛
+                            // （协调器负责失败标记与退避重试，驱动不吞异常）
+                            session.RemoveSubscription(sub);
+                            sub.Dispose();
+                            _logger.LogWarning(ex, "OPC UA 创建 Subscription 失败（发布间隔 {Interval}ms），已回滚。", interval);
                             throw;
                         }
                         _subscriptions[interval] = sub;
@@ -460,38 +481,35 @@ namespace ScadaServer.Infrastructure.Communication
                         _logger.LogInformation("OPC UA Subscription 已创建（发布间隔 {Interval}ms）。", interval);
                     }
 
-                    var newItems = new List<MonitoredItem>();
+                    var newItems = new List<(int InstanceId, MonitoredItem Item)>();
                     foreach (var variable in group)
                     {
-                        // 已订阅的变量直接跳过，避免重复创建 MonitoredItem 导致回调重复触发
-                        if (_monitoredItems.Any(i => i.DisplayName == variable.Key)) continue;
+                        // 已订阅的变量直接跳过（按 InstanceId 字典查重，O(1)），避免重复创建 MonitoredItem 导致回调重复触发
+                        if (_monitoredItems.ContainsKey(variable.InstanceId)) continue;
 
                         var item = new MonitoredItem(sub.DefaultItem)
                         {
-                            DisplayName = variable.Key,
+                            DisplayName = $"#{variable.InstanceId}",
                             StartNodeId = variable.Address,
                             SamplingInterval = interval
                         };
 
-                        item.Notification += (m, e) =>
-                        {
-                            var notification = e.NotificationValue as MonitoredItemNotification;
-                            if (notification != null)
-                            {
-                                onValueChanged(variable.Key, notification.Value.Value);
-                            }
-                        };
+                        // 回调不持有 IRuntimeVariable 引用（决策 D1）：统一委托给 HandleMonitoredItemNotification，
+                        // 由 MonitoredItem.DisplayName（"#<instanceId>"）解析身份，上层按 InstanceId 路由；
+                        // SDK 自动重连转移后 DisplayName 保留，仍可解析身份。
+                        var instanceId = variable.InstanceId;
+                        item.Notification += (m, e) => HandleMonitoredItemNotification(m, e, onValue);
 
                         sub.AddItem(item);
-                        _monitoredItems.Add(item);
-                        newItems.Add(item);
+                        _monitoredItems[instanceId] = item;
+                        newItems.Add((instanceId, item));
                     }
 
-                    // MonitoredItem 细节：Debug（变量键 + NodeId，便于点表核对）
-                    foreach (var item in newItems)
+                    // MonitoredItem 细节：Debug（InstanceId + NodeId，便于点表核对）
+                    foreach (var (id, item) in newItems)
                     {
-                        _logger.LogDebug("OPC UA MonitoredItem 已加入订阅 {Subscription}：{VariableKey} → NodeId {NodeId}（采样间隔 {Interval}ms）。",
-                            sub.DisplayName, item.DisplayName, item.StartNodeId, interval);
+                        _logger.LogDebug("OPC UA MonitoredItem 已加入订阅 {Subscription}：InstanceId #{InstanceId} → NodeId {NodeId}（采样间隔 {Interval}ms）。",
+                            sub.DisplayName, id, item.StartNodeId, interval);
                     }
 
                     try
@@ -500,9 +518,15 @@ namespace ScadaServer.Infrastructure.Communication
                     }
                     catch (Exception ex)
                     {
-                        // 服务器确认失败：Warning 记录后原样重抛
+                        // 服务器确认失败：回滚本次新增的 item（本地字典 + 订阅），再原样上抛
+                        //（协调器退避重试；本地不留残留 item，避免下次重试命中"已订阅"误判）
+                        foreach (var (id, item) in newItems)
+                        {
+                            _monitoredItems.Remove(id);
+                            sub.RemoveItem(item);
+                        }
                         _logger.LogWarning(ex,
-                            "OPC UA ApplyChanges 失败（订阅 {Subscription}，本次新增 {ItemCount} 个 MonitoredItem）。",
+                            "OPC UA ApplyChanges 失败（订阅 {Subscription}，本次新增 {ItemCount} 个 MonitoredItem），已回滚。",
                             sub.DisplayName, newItems.Count);
                         throw;
                     }
@@ -514,11 +538,87 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
+        /// <summary>
+        /// MonitoredItem 通知回调（运行在协议栈线程）。
+        /// <para>纪律：全程异常兜底（禁止向协议栈线程抛异常）；解析 InstanceId（DisplayName "#&lt;id&gt;"），
+        /// 回调值 + 质量（由 StatusCode 映射）；质量跃迁日志按门控降噪。</para>
+        /// </summary>
+        private void HandleMonitoredItemNotification(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs e, Action<int, object?, VariableQuality> onValue)
+        {
+            try
+            {
+                var instanceId = TryParseInstanceIdFromDisplayName(monitoredItem.DisplayName);
+                if (instanceId == null) return;
+
+                var notification = e.NotificationValue as MonitoredItemNotification;
+                if (notification == null) return;
+
+                var dataValue = notification.Value;
+                var quality = ResolveQuality(dataValue);
+
+                // 质量跃迁日志门控（与既有通讯失败门控约定一致）：
+                // Good → 非 Good 跃迁记一次 Warning（含 NodeId/StatusCode 上下文）；持续非 Good 只记 Debug。
+                var statusCode = dataValue?.StatusCode.Code ?? 0u;
+                var lastQuality = _qualityGate.GetOrAdd(instanceId.Value, quality);
+                if (lastQuality == VariableQuality.Good && quality != VariableQuality.Good)
+                {
+                    _logger.LogWarning(
+                        "OPC UA 订阅变量 InstanceId #{InstanceId}（NodeId {NodeId}）质量降级：StatusCode=0x{StatusCode:X8}，质量={Quality}。",
+                        instanceId.Value, monitoredItem.StartNodeId, statusCode, quality);
+                }
+                else if (quality != VariableQuality.Good)
+                {
+                    _logger.LogDebug(
+                        "OPC UA 订阅变量 InstanceId #{InstanceId}（NodeId {NodeId}）持续非 Good：StatusCode=0x{StatusCode:X8}，质量={Quality}。",
+                        instanceId.Value, monitoredItem.StartNodeId, statusCode, quality);
+                }
+                _qualityGate[instanceId.Value] = quality;
+
+                onValue(instanceId.Value, dataValue?.Value, quality);
+            }
+            catch (Exception ex)
+            {
+                // 协议栈线程禁止抛异常：任何意外异常在此吸收并记录（不向上传播）
+                _logger.LogError(ex, "OPC UA MonitoredItem 通知回调出现未预期异常（DisplayName：{DisplayName}）。",
+                    monitoredItem.DisplayName);
+            }
+        }
+
+        /// <summary>从 DisplayName（"#&lt;instanceId&gt;"）解析实例 ID；格式不符返回 null。</summary>
+        private static int? TryParseInstanceIdFromDisplayName(string? displayName) =>
+            !string.IsNullOrEmpty(displayName)
+                && displayName!.Length > 1
+                && displayName![0] == '#'
+                && int.TryParse(displayName.AsSpan(1), out var id)
+                    ? id
+                    : null;
+
+        /// <summary>
+        /// 将 OPC UA StatusCode 映射为系统质量枚举：Good→Good；Uncertain→Uncertain；其余（Bad）→Bad。
+        /// 值为 null（无 DataValue）视为 Bad（无有效数据）。
+        /// </summary>
+        private static VariableQuality ResolveQuality(DataValue? dataValue)
+        {
+            if (dataValue == null) return VariableQuality.Bad;
+            var code = dataValue.StatusCode.Code;
+            if (ServiceResult.IsGood(code)) return VariableQuality.Good;
+            if (ServiceResult.IsUncertain(code)) return VariableQuality.Uncertain;
+            return VariableQuality.Bad;
+        }
+
+        /// <summary>
+        /// 退订指定变量（按 InstanceId 匹配，O(1)）。
+        /// <para>三态处理：已连接（服务器退订 + 本地清理）；未连接但对象存活（本地清理，不提交服务器）；
+        /// 已释放（顶部 _disposed 守卫直接返回，不抛）。退订不存在的 InstanceId 静默忽略（幂等）。</para>
+        /// </summary>
         public async Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables)
         {
+            if (_disposed) return;   // 已释放：直接返回不抛
             await _lifecycleLock.WaitAsync();
             try
             {
+                if (_disposed) return;
+
                 // 快照当前会话，判断能否向服务器提交删除
                 var session = _session;
                 var serverReachable = session != null && session.Connected;
@@ -528,15 +628,15 @@ namespace ScadaServer.Infrastructure.Communication
 
                 foreach (var variable in variables)
                 {
-                    // 全量移除同名 item，防止历史重复订阅残留
-                    var items = _monitoredItems.Where(i => i.DisplayName == variable.Key).ToList();
-                    foreach (var item in items)
-                    {
-                        var sub = item.Subscription;
-                        sub?.RemoveItem(item);          // 本地移除 + 标记待服务器删除
-                        _monitoredItems.Remove(item);
-                        if (sub != null) affectedSubscriptions.Add(sub);
-                    }
+                    // 按 InstanceId 精确匹配（O(1)）；不存在（已退订/从未订阅）静默忽略，幂等
+                    if (!_monitoredItems.Remove(variable.InstanceId, out var item)) continue;
+
+                    // 清理质量门控，避免残留状态影响下一次订阅的跃迁判定
+                    _qualityGate.TryRemove(variable.InstanceId, out _);
+
+                    var sub = item.Subscription;
+                    sub?.RemoveItem(item);          // 本地移除 + 标记待服务器删除
+                    if (sub != null) affectedSubscriptions.Add(sub);
                 }
 
                 foreach (var sub in affectedSubscriptions)
@@ -682,6 +782,7 @@ namespace ScadaServer.Infrastructure.Communication
             // Clear 不会与集合读写并发执行导致状态损坏
             _subscriptions.Clear();
             _monitoredItems.Clear();
+            _qualityGate.Clear();
 
             // 状态回落：若驱动已 Dispose 则保持终态 Disposed
             if (_state != DriverState.Disposed) _state = DriverState.Disconnected;
@@ -886,6 +987,13 @@ namespace ScadaServer.Infrastructure.Communication
         /// _subscriptions / _monitoredItems 引用保持有效。
         /// 与 Disconnect/Connect 通过 _lifecycleLock 互斥；ReconnectAsync 可被取消且带超时，
         /// 不会无限占住锁。
+        /// <para><b>两条恢复路径的分工（契约）</b>：
+        /// 1) <b>驱动内自动重连</b>（本方法）：SDK 在会话上重建通道并转移订阅/监视项，驱动本地集合
+        ///    保持不变、回调身份（DisplayName "#&lt;instanceId&gt;"）解析仍有效——无需上层协调器介入；
+        /// 2) <b>会话级整体重建</b>（运行时层）：旧驱动 Dispose（CleanupConnectionAsync 清空本地订阅集合）→
+        ///    新驱动空订阅建连 → 上层协调器负责全量重订（见 ConnectionSession 重订路径）。
+        /// 本方法连续失败达到上限后 CleanupConnectionAsync → Disconnected 态，订阅集合已清空、
+        /// IsAliveAsync 返回 false——由上层看门狗触发会话重建兜底。</para>
         /// </summary>
         private async Task TryReconnectAsync(Session expectedSession, CancellationToken ct)
         {

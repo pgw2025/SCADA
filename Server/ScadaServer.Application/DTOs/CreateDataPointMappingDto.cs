@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.DTOs
 {
@@ -19,5 +21,12 @@ namespace ScadaServer.Application.DTOs
 
         /// <summary>是否启用该设备实例变量，默认 true。</summary>
         public bool IsEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 变量更新方式（Polling=自主轮询 / Subscription=订阅推送）。Subscription 仅限支持订阅的协议（OPC UA）。
+        /// <para>字符串序列化（"Polling"/"Subscription"）；前端不传该字段创建变量默认轮询。</para>
+        /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public UpdateModeEnum UpdateMode { get; set; } = UpdateModeEnum.Polling;
     }
 }

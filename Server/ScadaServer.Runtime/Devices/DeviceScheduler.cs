@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Runtime.Alarms;
 using ScadaServer.Runtime.Events;
+using ScadaServer.Runtime.Processing;
 
 namespace ScadaServer.Runtime.Devices
 {
@@ -32,12 +33,7 @@ namespace ScadaServer.Runtime.Devices
         private readonly RuntimeManager _runtimeManager;
         private readonly ILogger<DeviceScheduler> _logger;
         private readonly ILogger<DeviceWorker> _workerLogger;
-        private readonly IScadaNotificationService _notificationService;
-        private readonly IHistoryRecorder _historyRecorder;
-        private readonly IVariableChangeBus _changeBus;
-        private readonly IAlarmRuleEngine _alarmRuleEngine;
-        private readonly IAlarmRecorder _alarmRecorder;
-        private readonly IRealtimeSnapshotService _realtimeSnapshot;
+        private readonly IVariableValueProcessor _valueProcessor;
 
         // 调度器自身的取消源：由 StopAsync 触发，独立于宿主的 stoppingToken，
         // 确保在应用退出时调度循环与已派发的 worker 都能干净退出。
@@ -66,29 +62,17 @@ namespace ScadaServer.Runtime.Devices
         /// <param name="runtimeManager">运行时管理器，提供设备运行时列表</param>
         /// <param name="logger">调度器日志</param>
         /// <param name="workerLogger">Worker 日志</param>
-        /// <param name="notificationService">设备/变量更新通知服务</param>
-        /// <param name="historyRecorder">历史数据记录服务</param>
-        /// <param name="realtimeSnapshot">实时快照服务（MySQL 实时库）</param>
+        /// <param name="valueProcessor">变量值处理管线（Worker 构造传入，轮询与订阅共用）</param>
         public DeviceScheduler(
             RuntimeManager runtimeManager,
             ILogger<DeviceScheduler> logger,
             ILogger<DeviceWorker> workerLogger,
-            IScadaNotificationService notificationService,
-            IHistoryRecorder historyRecorder,
-            IVariableChangeBus changeBus,
-            IAlarmRuleEngine alarmRuleEngine,
-            IAlarmRecorder alarmRecorder,
-            IRealtimeSnapshotService realtimeSnapshot)
+            IVariableValueProcessor valueProcessor)
         {
             _runtimeManager = runtimeManager;
             _logger = logger;
             _workerLogger = workerLogger;
-            _notificationService = notificationService;
-            _historyRecorder = historyRecorder;
-            _changeBus = changeBus;
-            _alarmRuleEngine = alarmRuleEngine;
-            _alarmRecorder = alarmRecorder;
-            _realtimeSnapshot = realtimeSnapshot;
+            _valueProcessor = valueProcessor;
         }
 
         /// <summary>
@@ -243,8 +227,7 @@ namespace ScadaServer.Runtime.Devices
         {
             try
             {
-                var worker = new DeviceWorker(
-                    runtime, _workerLogger, _notificationService, _historyRecorder, _changeBus, _alarmRuleEngine, _alarmRecorder, _realtimeSnapshot);
+                var worker = new DeviceWorker(runtime, _workerLogger, _valueProcessor);
                 await worker.WorkerAsync(workerCts.Token);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

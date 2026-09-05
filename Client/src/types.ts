@@ -405,6 +405,8 @@ export interface DataPointMapping {
   templateAccessMode?: AccessMode;
   /** 回显：有效访问模式 = 实例覆盖 ?? 模板（只出不进，==='Read' 即只读，用于可写门控） */
   effectiveAccessMode?: AccessMode;
+  /** 变量更新方式：Polling=自主轮询 / Subscription=订阅推送（缺省 undefined 视为 Polling；Subscription 仅 OPC UA） */
+  updateMode?: 'Polling' | 'Subscription';
   quality?: string;                     // 运行期实时值质量（Good/Bad/Uncertain/CommunicationError/…），组态运行端分级显示
 }
 

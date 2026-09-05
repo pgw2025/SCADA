@@ -22,6 +22,7 @@ using ScadaServer.Runtime.Events;
 using ScadaServer.Runtime.Alarms;
 using ScadaServer.Runtime.DataConversion;
 using ScadaServer.Runtime.Interface;
+using ScadaServer.Runtime.Processing;
 
 namespace ScadaServer.Runtime
 {
@@ -55,6 +56,7 @@ namespace ScadaServer.Runtime
         private readonly IAlarmRecorder _alarmRecorder;
         private readonly IRealtimeSnapshotService _realtimeSnapshot;
         private readonly IVariableWriteAuditRecorder _variableWriteAudit;
+        private readonly IVariableValueProcessor _valueProcessor;
         private DeviceScheduler? _scheduler;
 
         /// <summary>
@@ -117,6 +119,7 @@ namespace ScadaServer.Runtime
             IAlarmRecorder alarmRecorder,
             IRealtimeSnapshotService realtimeSnapshot,
             IVariableWriteAuditRecorder variableWriteAudit,
+            IVariableValueProcessor valueProcessor,
             IConfiguration? configuration)
         {
             _logger = logger;
@@ -132,6 +135,7 @@ namespace ScadaServer.Runtime
             _alarmRecorder = alarmRecorder;
             _realtimeSnapshot = realtimeSnapshot;
             _variableWriteAudit = variableWriteAudit;
+            _valueProcessor = valueProcessor;
 
             _deviceWriteTimeoutMs = ParseConfigTimeout(configuration?["Devices:WriteTimeoutMs"], 5000);
         }
@@ -419,7 +423,11 @@ namespace ScadaServer.Runtime
             // 1) 停止 Worker 并卸载设备（末位离场才销毁会话/驱动）。先收尾再释放，串行化驱动访问。
             await StopWorkerAndUnmountDeviceAsync(runtime);
 
-            // 2) 推送 Offline，使界面即时反映设备已移除/被禁用。
+            // 2) 停通知泵（Step 3.2/4.3）：完成该设备通知通道并等待消费任务退出（超时 3s 放弃），
+            //    防止已卸载设备的通知通道泄漏（设备变量已删除，不再有任何入队源）。
+            _valueProcessor.StopDevice(deviceId);
+
+            // 3) 推送 Offline，使界面即时反映设备已移除/被禁用。
             StatusChanged?.Invoke(this, new DeviceStatusChangedEventArgs
             {
                 DeviceId = deviceId,
@@ -475,6 +483,10 @@ namespace ScadaServer.Runtime
         /// <summary>
         /// 从所属会话卸载设备；末位离场时销毁会话（Dispose 会话持有的唯一驱动实例）。
         /// 无会话（占位运行时）为 no-op。
+        /// <para>
+        /// 卸载后触发订阅差量同步（Step 4.3）：被卸载设备的订阅变量落入 toRemove → 锁外退订（P2-7）。
+        /// 去抖窗口内（≤100ms）到达的旧回调由会话回调路由检查丢弃（_mounted 已无该设备）。
+        /// </para>
         /// </summary>
         private async Task UnmountFromSessionAsync(Devices.DeviceRuntime runtime)
         {
@@ -482,6 +494,7 @@ namespace ScadaServer.Runtime
             if (session == null) return;
 
             var isEmpty = await session.UnmountAsync(runtime.Device.Id);
+            session.ScheduleSync();
             if (isEmpty)
             {
                 await DisposeSessionAsync(session);
@@ -630,6 +643,11 @@ namespace ScadaServer.Runtime
 
                 RegisterDevice(runtime);
 
+                // 挂载接线（Step 4.4）：此时 Variables 已填充完毕（挂载发生在变量填充之前，
+                // 过早触发会订到空集），触发订阅差量同步。启动批量注册场景由 100ms 去抖窗口合并
+                // 为少量几次同步（P2-8）；InitializeAsync 与 ReloadDeviceAsync 共用本入口，无需各自接线。
+                runtime.Session?.ScheduleSync();
+
                 _deviceRegistry.UpdateDevice(device,
                     (device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
                         .Select(dv => dv.DataPoint)
@@ -665,7 +683,7 @@ namespace ScadaServer.Runtime
                 return existing;
             }
 
-            var session = new ConnectionSession(connection, protocolKey, _driverFactory,
+            var session = new ConnectionSession(connection, protocolKey, _driverFactory, _valueProcessor,
                 _loggerFactory.CreateLogger<ConnectionSession>());
 
             bool connected;
@@ -702,12 +720,7 @@ namespace ScadaServer.Runtime
                 this,
                 _loggerFactory.CreateLogger<DeviceScheduler>(),
                 _loggerFactory.CreateLogger<DeviceWorker>(),
-                _notificationService,
-                _historyRecorder,
-                _changeBus,
-                _alarmRuleEngine,
-                _alarmRecorder,
-                _realtimeSnapshot);
+                _valueProcessor);
 
             await _scheduler.StartAsync(token);
 
@@ -743,6 +756,13 @@ namespace ScadaServer.Runtime
                 }
             }
             ConnectionSessions.Clear();
+
+            // 逐设备停通知泵（Step 3.2 收尾）：停止后不再有任何变量入队，完成通道并等待消费任务排空退出。
+            foreach (var runtime in DeviceRuntimes.Values)
+            {
+                _valueProcessor.StopDevice(runtime.Device.Id);
+            }
+            DeviceRuntimes.Clear();
 
             // 清空变量绑定索引，避免停止后残留映射在重启前被误触发。
             _bindingEngine.Clear();

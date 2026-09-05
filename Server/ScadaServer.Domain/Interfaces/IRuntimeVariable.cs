@@ -64,5 +64,15 @@ namespace ScadaServer.Domain.Interfaces
 
         /// <summary>是否只读（禁止外部写入）。仅当有效读写模式为 Read（只读）时为 true。</summary>
         bool IsReadOnly { get; }
+
+        /// <summary>
+        /// 设备变量实例 ID（DataPointMapping.Id），跨设备全局唯一，订阅项身份标识。
+        /// <para>驱动订阅回调一律以本 ID 路由到目标设备运行时，禁止使用 <see cref="Key"/>
+        /// （同名变量在不同设备上 Key 相同，会导致回调路由串台）。</para>
+        /// </summary>
+        int InstanceId { get; }
+
+        /// <summary>变量更新方式（Polling=自主轮询 / Subscription=订阅推送）。</summary>
+        UpdateModeEnum UpdateMode { get; }
     }
 }

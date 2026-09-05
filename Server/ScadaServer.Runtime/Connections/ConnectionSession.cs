@@ -6,6 +6,7 @@ using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
 using ScadaServer.Infrastructure.Communication;
 using ScadaServer.Runtime.Devices;
+using ScadaServer.Runtime.Processing;
 
 namespace ScadaServer.Runtime.Connections
 {
@@ -27,6 +28,7 @@ namespace ScadaServer.Runtime.Connections
         private DeviceConnection _connection;   // 配置实体（ConfigJson 真相源）；热更新时经 UpdateConnectionConfig 整体替换
         private readonly string _protocolKey;
         private readonly IProtocolDriverFactory _driverFactory;
+        private readonly IVariableValueProcessor _processor;
         private readonly ILogger _logger;
 
         /// <summary>驱动实例：仅在会话生命周期方法内（Connect/Reconnect/Dispose）替换，读写路径经 volatile 快照。</summary>
@@ -34,6 +36,34 @@ namespace ScadaServer.Runtime.Connections
 
         /// <summary>挂载设备表：key = deviceId。挂载/卸载与会话销毁由 _lifecycleLock 串行化。</summary>
         private readonly ConcurrentDictionary<int, DeviceRuntime> _mounted = new();
+
+        /// <summary>
+        /// 订阅路由表：key = instanceId（DataPointMapping.Id，跨设备全局唯一），value = 归属设备 + 变量运行时快照。
+        /// <para>
+        /// 快照中的 Vr 引用仅用于构造驱动订阅调用与退订匹配；回调路由（<see cref="OnSubscriptionValue"/>）
+        /// 先查路由表命中后，再经 _mounted + runtime.Variables 实时解析目标运行时——不依赖快照引用（决策 D1，
+        /// 避免重载窗口内快照引用指向已被替换的运行时）。
+        /// </para>
+        /// <para>与 SyncSubscriptionsAsync 差量同步维护；会话重建时整体清空（新驱动订阅为空，必须全量重订）。</para>
+        /// </summary>
+        private readonly ConcurrentDictionary<int, (int DeviceId, VariableRuntime Vr)> _subscriptionRoutes = new();
+
+        /// <summary>订阅同步去抖调度状态：_syncRunning=同步循环在跑，_syncDirty=执行期间又有新请求（Interlocked）。</summary>
+        private int _syncRunning;
+        private int _syncDirty;
+
+        /// <summary>订阅同步去抖合并窗口（毫秒）：挂载/卸载/热更集中发生时合并为一次同步，避免抖动（P2-8）。</summary>
+        private const int SyncMergeWindowMs = 100;
+
+        /// <summary>订阅失败重试退避：初始 30s，失败翻倍，上限 5min（决策 D4，不回退轮询）。</summary>
+        private const int InitialSubscriptionRetryMs = 30_000;
+        private const int MaxSubscriptionRetryMs = 300_000;
+
+        /// <summary>下次允许执行订阅同步的时刻（UTC）：退避窗口内仅退订、不做新增订阅。仅在同步循环内读写。</summary>
+        private DateTime _subscriptionBackoffUntil = DateTime.MinValue;
+
+        /// <summary>当前退避步长（毫秒）：成功后复位为初始值，失败翻倍至上限。仅在同步循环内读写。</summary>
+        private int _subscriptionBackoffMs = InitialSubscriptionRetryMs;
 
         /// <summary>生命周期锁：串行化挂载/卸载/建连/销毁/重建。按项目约定永不 Dispose。</summary>
         private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
@@ -95,16 +125,19 @@ namespace ScadaServer.Runtime.Connections
         /// <param name="connection">连接配置实体（ConfigJson 真相源）。</param>
         /// <param name="protocolKey">协议驱动键（Protocol.Key，用于工厂创建驱动）。</param>
         /// <param name="driverFactory">驱动工厂。</param>
+        /// <param name="valueProcessor">变量值处理管线（订阅回调经此统一入管线，与轮询路径共用下游处理）。</param>
         /// <param name="logger">日志组件。</param>
         public ConnectionSession(
             DeviceConnection connection,
             string protocolKey,
             IProtocolDriverFactory driverFactory,
+            IVariableValueProcessor valueProcessor,
             ILogger logger)
         {
             _connection = connection;
             _protocolKey = protocolKey;
             _driverFactory = driverFactory;
+            _processor = valueProcessor ?? throw new ArgumentNullException(nameof(valueProcessor));
             _logger = logger;
         }
 
@@ -184,6 +217,247 @@ namespace ScadaServer.Runtime.Connections
             {
                 _lifecycleLock.Release();
             }
+        }
+
+        // ===================== 订阅协调器（阶段四，Step 4.1） =====================
+
+        /// <summary>
+        /// 触发一次去抖的订阅差量同步（fire-and-forget）。
+        /// <para>
+        /// 调用方（挂载/卸载/重连/配置热更）只负责"声明变更"；本方法去抖合并（100ms 窗口）后执行
+        /// <see cref="SyncSubscriptionsAsync"/>。调用方<b>绝不在会话锁内 await 同步结果</b>——
+        /// 同步内部会做驱动 IO（订阅/退订），必须在锁外执行（P2-7 纪律）。
+        /// </para>
+        /// </summary>
+        public void ScheduleSync()
+        {
+            if (_disposed) return;
+            Interlocked.Exchange(ref _syncDirty, 1);
+            if (Interlocked.CompareExchange(ref _syncRunning, 1, 0) != 0)
+            {
+                return; // 同步循环已在跑：新请求已置 dirty，循环结束后会再跑一轮收敛。
+            }
+            _ = Task.Run(RunSyncLoopAsync);
+        }
+
+        /// <summary>
+        /// 订阅同步循环：dirty 置位则执行一轮（去抖 → 差量同步），执行期间新请求置 dirty → 循环继续；
+        /// 循环退出瞬间的竞争由 finally 重新入队兜底。
+        /// </summary>
+        private async Task RunSyncLoopAsync()
+        {
+            try
+            {
+                while (Volatile.Read(ref _syncDirty) != 0)
+                {
+                    Interlocked.Exchange(ref _syncDirty, 0);
+                    await Task.Delay(SyncMergeWindowMs);
+                    if (_disposed) return;
+                    await SyncSubscriptionsAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "连接 {ConnKey}(#{ConnId}) 订阅同步循环异常（已忽略，后续变更会重新触发）。", Key, ConnectionId);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _syncRunning, 0);
+                // 终态竞争：循环刚检查完 dirty 又收到新请求（dirty=1 但循环已退出）→ 重新入队。
+                if (Volatile.Read(ref _syncDirty) != 0
+                    && Interlocked.CompareExchange(ref _syncRunning, 1, 0) == 0)
+                {
+                    _ = Task.Run(RunSyncLoopAsync);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 订阅差量同步（全程<b>不持会话 _lifecycleLock</b>，驱动 IO 在锁外，P2-7 纪律）：
+        /// 期望集 = 全部挂载设备的「启用 + Subscription 模式」变量；差量计算 toAdd / toRemove 后
+        /// 先退订再订阅；成功更新路由表；快照竞争（同步期间挂载/卸载变化）由下一次去抖同步收敛。
+        /// </summary>
+        private async Task SyncSubscriptionsAsync()
+        {
+            var driver = _driver;
+            if (driver == null) return;
+
+            // 期望集快照（弱一致遍历，够用——差量由下一次同步收敛）。
+            var expected = new Dictionary<int, (int DeviceId, VariableRuntime Vr)>();
+            foreach (var rt in _mounted.Values)
+            {
+                foreach (var vr in rt.Variables.Values)
+                {
+                    if (vr.IsEnabled && vr.UpdateMode == UpdateModeEnum.Subscription)
+                    {
+                        expected[vr.InstanceId] = (rt.Device.Id, vr);
+                    }
+                }
+            }
+
+            // toRemove = 路由 - 期望：设备卸载/变量删除/切回轮询后退订。
+            var toRemove = new List<VariableRuntime>();
+            foreach (var pair in _subscriptionRoutes)
+            {
+                if (!expected.ContainsKey(pair.Key))
+                {
+                    toRemove.Add(pair.Value.Vr);
+                }
+            }
+            if (toRemove.Count > 0)
+            {
+                try
+                {
+                    await driver.UnsubscribeAsync(toRemove);
+                }
+                catch (Exception ex)
+                {
+                    // 退订失败不影响本轮其它处理：路由表照常移除（本地语义收敛），下次同步不会重试退订。
+                    _logger.LogWarning(ex, "连接 {ConnKey}(#{ConnId}) 退订 {Count} 个变量失败（本地路由已移除）。",
+                        Key, ConnectionId, toRemove.Count);
+                }
+                foreach (var vr in toRemove)
+                {
+                    _subscriptionRoutes.TryRemove(vr.InstanceId, out _);
+                }
+            }
+
+            // 退避窗口检查：退订始终执行；新增订阅在退避窗口内跳过（避免失败风暴），由退避调度重试。
+            if (DateTime.UtcNow < _subscriptionBackoffUntil)
+            {
+                _logger.LogDebug("连接 {ConnKey}(#{ConnId}) 订阅新增处于退避窗口内，跳过本轮（{Ms}ms 后重试）。",
+                    Key, ConnectionId, (int)(_subscriptionBackoffUntil - DateTime.UtcNow).TotalMilliseconds);
+                return;
+            }
+
+            // toAdd = 期望 - 路由：新增/恢复订阅。
+            var toAdd = new List<VariableRuntime>();
+            foreach (var pair in expected)
+            {
+                if (!_subscriptionRoutes.ContainsKey(pair.Key))
+                {
+                    toAdd.Add(pair.Value.Vr);
+                }
+            }
+            if (toAdd.Count == 0)
+            {
+                // 无新增：退避步长复位（订阅全部稳定的信号）。
+                _subscriptionBackoffMs = InitialSubscriptionRetryMs;
+                return;
+            }
+
+            try
+            {
+                await driver.SubscribeAsync(toAdd, OnSubscriptionValue);
+                foreach (var vr in toAdd)
+                {
+                    _subscriptionRoutes[vr.InstanceId] = expected[vr.InstanceId];
+                }
+                _subscriptionBackoffMs = InitialSubscriptionRetryMs;
+                _logger.LogInformation("连接 {ConnKey}(#{ConnId}) 订阅 {Count} 个变量成功。", Key, ConnectionId, toAdd.Count);
+            }
+            catch (Exception ex)
+            {
+                // 订阅失败（决策 D4）：toAdd 变量置 CommunicationError（锁内写值，与采集锁串行化），
+                // 记 Warning + 退避调度下一次同步。不回退轮询——订阅失败不代表连接死亡。
+                _logger.LogWarning(ex, "连接 {ConnKey}(#{ConnId}) 订阅 {Count} 个变量失败，进入退避重试。",
+                    Key, ConnectionId, toAdd.Count);
+                foreach (var vr in toAdd)
+                {
+                    if (!_mounted.TryGetValue(expected[vr.InstanceId].DeviceId, out var rt))
+                    {
+                        continue;
+                    }
+                    try
+                    {
+                        await rt.Lock.WaitAsync();
+                        try
+                        {
+                            vr.Quality = VariableQuality.CommunicationError;
+                        }
+                        finally
+                        {
+                            rt.Lock.Release();
+                        }
+                    }
+                    catch (Exception innerEx)
+                    {
+                        _logger.LogDebug(innerEx, "连接 {ConnKey}(#{ConnId}) 订阅失败置位变量质量异常（已忽略）。",
+                            Key, ConnectionId);
+                    }
+                }
+                ScheduleBackoffRetry();
+            }
+        }
+
+        /// <summary>
+        /// 订阅回调（驱动协议栈线程，P2-9 纪律）：全程 try-catch，禁止阻塞、禁止抛异常。
+        /// 路由先查表命中，再实时解析目标运行时（决策 D1）；打点为内存写、处理为 fire-and-forget 入口。
+        /// </summary>
+        private void OnSubscriptionValue(int instanceId, object? value, VariableQuality quality)
+        {
+            try
+            {
+                if (_disposed) return;
+                if (!_subscriptionRoutes.TryGetValue(instanceId, out var route)) return; // 已退订
+                if (!_mounted.TryGetValue(route.DeviceId, out var runtime)) return;       // 已卸载
+                if (!runtime.Variables.TryGetValue(instanceId, out var vr)) return;       // 重载窗口/变量已删
+
+                // 通讯打点（P1-2）：订阅回调即通讯成功的硬证据——清零连续失败、刷新通讯时间；
+                // Error 态自愈为 Connected（连接共享架构下真实连接死亡时订阅同样静默，由看门狗兜底）。
+                var now = DateTime.UtcNow;
+                runtime.LastCommunicationTime = now;
+                runtime.ConsecutiveFailureCount = 0;
+                if (runtime.ConnectionState != DeviceConnectionState.Connected)
+                {
+                    runtime.ConnectionState = DeviceConnectionState.Connected;
+                }
+
+                // 处理（fire-and-forget）：处理器内部全链路异常兜底，不阻塞协议栈线程。
+                _ = SafeApplySubscribedAsync(runtime, vr, value, quality, now);
+            }
+            catch (Exception ex)
+            {
+                // 回调不得抛出：任何意外仅记 Error（含 instanceId 上下文）后吞掉。
+                _logger.LogError(ex, "连接 {ConnKey}(#{ConnId}) 订阅回调处理异常（instanceId={InstanceId}）。",
+                    Key, ConnectionId, instanceId);
+            }
+        }
+
+        /// <summary>订阅值处理入口（fire-and-forget 包裹）：处理器未兜住的意外异常就地记录，杜绝未观察异常。</summary>
+        private async Task SafeApplySubscribedAsync(
+            DeviceRuntime runtime, VariableRuntime vr, object? value, VariableQuality quality, DateTime now)
+        {
+            try
+            {
+                await _processor.ApplySubscribedAsync(runtime, vr, value, quality, now);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "订阅值处理失败（instanceId={InstanceId}，变量 {VariableKey}）。",
+                    vr.InstanceId, vr.Key);
+            }
+        }
+
+        /// <summary>订阅失败退避调度：步长翻倍（上限 5min），到点后重新触发一次差量同步。</summary>
+        private void ScheduleBackoffRetry()
+        {
+            var delayMs = _subscriptionBackoffMs;
+            _subscriptionBackoffMs = Math.Min(_subscriptionBackoffMs * 2, MaxSubscriptionRetryMs);
+            _subscriptionBackoffUntil = DateTime.UtcNow.AddMilliseconds(delayMs);
+            _logger.LogWarning("连接 {ConnKey}(#{ConnId}) 订阅失败退避 {Ms}ms 后重试。", Key, ConnectionId, delayMs);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delayMs);
+                    ScheduleSync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "连接 {ConnKey}(#{ConnId}) 订阅退避重试调度异常（已忽略）。", Key, ConnectionId);
+                }
+            });
         }
 
         // ===================== P3 会话级重连归口 =====================
@@ -322,6 +596,12 @@ namespace ScadaServer.Runtime.Connections
                     rt.NeedsReconnect = false;
                 }
                 State = DeviceConnectionState.Connected;
+
+                // 订阅全量重订（Step 4.2）：新驱动订阅为空——必须清空路由表，否则差量同步会
+                // 误判"已订阅"而漏订（P1 类隐蔽缺陷）。ScheduleSync 为 fire-and-forget 去抖入口，
+                // 实际同步在锁外执行（重订在锁外，P2-7 纪律）；同步失败走 4.1 退避重试路径。
+                _subscriptionRoutes.Clear();
+                ScheduleSync();
                 return true;
             }
             finally
@@ -339,6 +619,9 @@ namespace ScadaServer.Runtime.Connections
                 if (_disposed) return;
                 _disposed = true;
                 State = DeviceConnectionState.Disconnected;
+                // 路由表整体清空：驱动 Dispose 已清空订阅集合；清空路由使后续 ScheduleSync guard 生效（no-op），
+                // 且避免残留路由在下次差量同步时误判"已订阅"（会话已销毁，正常不会有下次）。
+                _subscriptionRoutes.Clear();
                 var driver = _driver;
                 _driver = null;
                 await SafeDisposeDriverAsync(driver);

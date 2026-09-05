@@ -84,6 +84,14 @@ public class DataPointMappingDto
     [StringLength(32, ErrorMessage = "原始数据类型不能超过32个字符")]
     public string? RawDataType { get; set; }
 
+    /// <summary>
+    /// 变量更新方式（Polling=自主轮询 / Subscription=订阅推送）。Subscription 仅限支持订阅的协议（OPC UA）。
+    /// <para>字符串序列化（"Polling"/"Subscription"）便于前端直接消费；缺失字段默认 Polling
+    /// （前后端同版本部署假设）。</para>
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public UpdateModeEnum UpdateMode { get; set; } = UpdateModeEnum.Polling;
+
     // ===== 回显字段（来自 DataPoint 模板，只出不进）=====
 
     /// <summary>模板定义的读写模式（只出不进，用于前端展示"继承"时的模板当前值）。</summary>

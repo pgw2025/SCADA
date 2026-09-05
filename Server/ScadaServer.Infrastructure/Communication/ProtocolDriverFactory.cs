@@ -4,34 +4,14 @@ using ScadaServer.Domain.Interfaces;
 namespace ScadaServer.Infrastructure.Communication
 {
     /// <summary>
-    /// 协议驱动工厂接口。
-    /// </summary>
-    /// <remarks>
-    /// 工厂以 <see cref="CreateDriver(string)"/> 为主入口：按
-    /// <c>Protocol.Key</c>（如 "S7"、"OPCUA"、"VIRTUAL"）创建驱动，
-    /// 实现"协议（Protocol）与驱动（Driver）解耦"。协议与驱动的绑定关系
-    /// 完全由数据库中的 Protocol.Key 决定，运行时不再感知具体驱动类型。
-    /// </remarks>
-    public interface IProtocolDriverFactory
-    {
-        /// <summary>
-        /// 根据协议键（Key）创建驱动实例。
-        /// <para>协议键来自 <c>Protocol.Key</c>，大小写不敏感；匹配既支持协议键（如 "S7"）也兼容驱动类名写法。</para>
-        /// </summary>
-        /// <param name="driverKey">驱动键（如 "S7"、"OPCUA"、"VIRTUAL"）</param>
-        /// <returns>协议驱动实例</returns>
-        IProtocolDriver CreateDriver(string driverKey);
-    }
-
-    /// <summary>
     /// 协议驱动工厂实现。根据 <c>Protocol.Key</c> 创建 S7 / OPC UA / 虚拟驱动实例。
     /// </summary>
     /// <remarks>
     /// 驱动注册表：
     /// <list type="bullet">
-    /// <item>"S7" → <see cref="S7Driver"/></item>
-    /// <item>"OPCUA" → <see cref="OpcUaDriver"/></item>
-    /// <item>"VIRTUAL" → <see cref="VirtualDriver"/></item>
+    /// <item>"S7" → <see cref="S7Driver"/>（不支持订阅）</item>
+    /// <item>"OPCUA" → <see cref="OpcUaDriver"/>（支持订阅推送）</item>
+    /// <item>"VIRTUAL" → <see cref="VirtualDriver"/>（不支持订阅）</item>
     /// <item>"MODBUSTCP" → 尚未实现（抛 NotSupportedException）</item>
     /// <item>"MQTT" → 尚未实现（抛 NotSupportedException）</item>
     /// </list>
@@ -63,6 +43,17 @@ namespace ScadaServer.Infrastructure.Communication
                 "MODBUSTCPDRIVER" or "MODBUSTCP" => throw new NotSupportedException($"驱动 {driverKey} 尚未实现（ModbusTcp 驱动待开发）"),
                 "MQTTDRIVER" or "MQTT" => throw new NotSupportedException($"驱动 {driverKey} 尚未实现（MQTT 驱动待开发）"),
                 _ => throw new NotSupportedException($"不支持的驱动键: {driverKey}")
+            };
+        }
+
+        /// <inheritdoc/>
+        public bool SupportsSubscription(string driverKey)
+        {
+            // 与 CreateDriver 的注册表保持同构；未知键返回 false（不抛异常，调用方以此做表单禁用）。
+            return driverKey?.Trim().ToUpperInvariant() switch
+            {
+                "OPCUADRIVER" or "OPCUA" => true,
+                _ => false
             };
         }
     }

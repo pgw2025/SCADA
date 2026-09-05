@@ -5,6 +5,7 @@ using ScadaServer.Domain.Addresses;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Exceptions;
+using ScadaServer.Domain.Interfaces;
 using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.Application.Services;
@@ -27,10 +28,12 @@ public class DataPointMappingAppService : IDataPointMappingAppService
     private readonly ISystemScriptRepository _systemScriptRepository;
     /// <summary>运行时设备管理器，用于增删改后热加载设备采集。</summary>
     private readonly IRuntimeDeviceManager _runtimeDeviceManager;
+    /// <summary>协议驱动工厂，用于校验订阅更新能力（Subscription 仅限支持订阅的协议）。</summary>
+    private readonly IProtocolDriverFactory _driverFactory;
     /// <summary>工作单元，用于将"脚本联动清理 + 删除变量"包进同一事务，保证原子性。</summary>
     private readonly IUnitOfWork _uow;
 
-    /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储、运行时设备管理器及工作单元。</summary>
+    /// <summary>构造函数：注入设备变量、模型变量、设备、系统脚本仓储、运行时设备管理器、驱动工厂及工作单元。</summary>
     public DataPointMappingAppService(
         IDataPointMappingRepository repository,
         IDataPointRepository dataPointRepository,
@@ -38,6 +41,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         IDeviceDataModelRepository deviceDataModelRepository,
         ISystemScriptRepository systemScriptRepository,
         IRuntimeDeviceManager runtimeDeviceManager,
+        IProtocolDriverFactory driverFactory,
         IUnitOfWork uow)
     {
         _repository = repository;
@@ -46,6 +50,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         _deviceDataModelRepository = deviceDataModelRepository;
         _systemScriptRepository = systemScriptRepository;
         _runtimeDeviceManager = runtimeDeviceManager;
+        _driverFactory = driverFactory;
         _uow = uow;
     }
 
@@ -80,6 +85,12 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             throw new BusinessException($"ID 为 {dto.DeviceId} 的设备不存在");
         }
 
+        // 1.1 订阅能力校验（Step 5.2）：Subscription 仅限设备所属连接协议支持订阅（当前仅 OPC UA）。
+        if (dto.UpdateMode == UpdateModeEnum.Subscription)
+        {
+            await ValidateSubscriptionCapabilityAsync(device);
+        }
+
         // 2. 模板存在性，且必须隶属于该设备所绑定的数据模型（主模型 ∪ 附加绑定模型）
         var mv = await _dataPointRepository.GetByIdAsync(dto.DataPointId);
         if (mv == null)
@@ -104,6 +115,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             DeviceId = dto.DeviceId,
             DataPointId = dto.DataPointId,
             IsEnabled = dto.IsEnabled,
+            // 更新方式透传（Step 5.2）：默认 Polling，Subscription 已在上方完成协议能力校验。
+            UpdateMode = dto.UpdateMode,
             // 记录性字段：新建实例即按模板类型快照（与迁移回填语义一致，驱动仍以 DataTypeEnum 解释）
             RawDataType = mv.DataType.ToString(),
             ExtensionData = null
@@ -150,7 +163,18 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             throw new BusinessException($"ID 为 {dto.Id} 的设备变量不存在");
         }
 
-        // 仅更新设备实例级配置：地址（JSON 权威）+ 展示串、位偏移、轮询间隔、启用状态、缩放/死区覆盖。
+        // 订阅能力校验（Step 5.2）：切换为 Subscription 前先确认设备所属连接协议支持订阅（当前仅 OPC UA）。
+        if (dto.UpdateMode == UpdateModeEnum.Subscription)
+        {
+            var device = await _deviceRepository.GetByIdAsync(entity.DeviceId);
+            if (device == null)
+            {
+                throw new BusinessException($"ID 为 {entity.DeviceId} 的设备不存在");
+            }
+            await ValidateSubscriptionCapabilityAsync(device);
+        }
+
+        // 仅更新设备实例级配置：地址（JSON 权威）+ 展示串、位偏移、轮询间隔、启用状态、缩放/死区覆盖、更新方式。
         if (!string.IsNullOrWhiteSpace(dto.AddressConfigJson))
         {
             entity.AddressConfigJson = NormalizeAddressConfig(dto.AddressConfigJson, out var display);
@@ -180,6 +204,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         // 阶段 4 新增列透传：变量级连接覆盖 + 原始类型字符串（空串归一化为 null，保持"未配置"语义）
         entity.ConnectionId = dto.ConnectionId;
         entity.RawDataType = string.IsNullOrWhiteSpace(dto.RawDataType) ? null : dto.RawDataType.Trim();
+        // 更新方式透传（Step 5.2）：已在上方完成订阅能力校验；保存后经 ReloadDeviceAsync 热切换生效（Step 4.9）。
+        entity.UpdateMode = dto.UpdateMode;
 
         await _repository.UpdateAsync(entity);
 
@@ -188,6 +214,27 @@ public class DataPointMappingAppService : IDataPointMappingAppService
 
         var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
         return MapToDto(entity, mv);
+    }
+
+    /// <summary>
+    /// 校验变量更新方式与设备协议的兼容性（Step 5.2）：
+    /// Subscription 仅允许设备所属连接的协议驱动支持订阅（当前仅 OPC UA）。
+    /// <para>
+    /// 校验按<b>设备默认连接</b>的协议进行——变量级 <see cref="DataPointMapping.ConnectionId"/>
+    /// 覆盖列运行时不消费（P3-15 假设，记录于此：订阅协调器按设备挂载的会话路由，变量级连接覆盖
+    /// 在会话挂载维度不生效），故校验与运行时行为保持一致。
+    /// </para>
+    /// </summary>
+    /// <param name="device">设备（含 Connection→Protocol 导航，GetByIdAsync 已加载）。</param>
+    /// <exception cref="BusinessException">设备协议不支持订阅更新时抛出。</exception>
+    private async Task ValidateSubscriptionCapabilityAsync(Device device)
+    {
+        var protocolKey = device.Connection?.Protocol?.Key;
+        if (!string.IsNullOrWhiteSpace(protocolKey) && _driverFactory.SupportsSubscription(protocolKey))
+        {
+            return;
+        }
+        throw new BusinessException("当前协议驱动不支持订阅更新（仅 OPC UA 支持订阅推送）");
     }
 
     /// <summary>
@@ -246,6 +293,7 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             AccessModeOverride = dv.AccessModeOverride,
             ConnectionId = dv.ConnectionId,
             RawDataType = dv.RawDataType,
+            UpdateMode = dv.UpdateMode,
             TemplateAccessMode = templateAccessMode,
             EffectiveAccessMode = effectiveAccessMode
         };

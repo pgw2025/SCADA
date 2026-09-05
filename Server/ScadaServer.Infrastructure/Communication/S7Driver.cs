@@ -777,7 +777,7 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 订阅（S7 不支持原生订阅，由外部轮询驱动）
 
-        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
+        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<int, object?, VariableQuality> onValue)
         {
             // S7 不支持原生订阅，采集由 Worker 轮询 ReadBatchAsync 实现。
             return Task.CompletedTask;

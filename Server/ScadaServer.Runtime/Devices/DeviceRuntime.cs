@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Interfaces;
@@ -197,6 +198,38 @@ public class DeviceRuntime : IRuntimeDevice
     {
         _runState = state;
         StateChangedAt = changedAt;
+    }
+
+    // ===================== 报警求值状态（由 VariableValueProcessor 消费，阶段三迁移自 DeviceWorker） =====================
+
+    /// <summary>
+    /// 报警状态专用同步对象：串行化 <see cref="AlarmStates"/> 与 <see cref="RuleStates"/> 的字典读写及规则求值。
+    /// 与采集锁 <see cref="Lock"/> 相互独立：报警求值为纯内存操作，不阻塞值更新主链路。
+    /// 临界区内仅内存操作（通知与落库均为 fire-and-forget），严禁网络 IO。
+    /// </summary>
+    internal object AlarmSync { get; } = new();
+
+    /// <summary>
+    /// 变量越界报警去重状态：key = 变量Key，值 = (是否超上限, 是否低于限)。
+    /// 仅在进入越界时推送一次，恢复在限内后复位，避免持续越界刷屏报警。
+    /// </summary>
+    internal Dictionary<string, (bool High, bool Low)> AlarmStates { get; } = new();
+
+    /// <summary>
+    /// 规则报警去重/防抖状态：key = "$variableKey#$ruleId"（或 "$variableKey#" 表示兜底）。
+    /// </summary>
+    internal Dictionary<string, AlarmRuleState> RuleStates { get; } = new();
+
+    /// <summary>
+    /// 单条规则的报警状态机（内存态，不持久化）。
+    /// 生命周期与 DeviceRuntime 一致：设备重载/重连重建 runtime 时清零（与 Worker 重启清零行为一致，无回归）。
+    /// </summary>
+    internal sealed class AlarmRuleState
+    {
+        public long RuleId { get; init; }
+        public bool IsActive { get; set; }
+        public bool DebouncePending { get; set; }
+        public DateTime TriggerTime { get; set; }
     }
 
     // 运行时锁

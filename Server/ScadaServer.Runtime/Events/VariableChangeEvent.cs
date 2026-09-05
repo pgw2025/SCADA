@@ -10,6 +10,9 @@ public enum VariableChangeSource
     /// <summary>设备轮询采集引起的变化。</summary>
     Polling,
 
+    /// <summary>订阅推送引起的变化（驱动在值变化时回调推送，当前仅 OPC UA）。</summary>
+    Subscription,
+
     /// <summary>前端/API 用户写入引起的变化。</summary>
     UserWrite,
 

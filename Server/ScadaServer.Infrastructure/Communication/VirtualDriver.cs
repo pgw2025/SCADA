@@ -116,7 +116,7 @@ namespace ScadaServer.Infrastructure.Communication
         /// </summary>
         public Task<bool> IsAliveAsync() => Task.FromResult(_connected);
 
-        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged)
+        public Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<int, object?, VariableQuality> onValue)
         {
             // 虚拟设备采用轮询模式，订阅为空实现
             return Task.CompletedTask;

@@ -1,4 +1,5 @@
 using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Domain.Interfaces
 {
@@ -64,14 +65,18 @@ namespace ScadaServer.Domain.Interfaces
         Task WriteAsync(IRuntimeVariable variable, object value);
 
         /// <summary>
-        /// 订阅变量值变化
+        /// 订阅变量值变化。驱动在值到达时回调 onValue。
+        /// <para>回调参数为 (instanceId, value, quality)：
+        /// instanceId = <see cref="IRuntimeVariable.InstanceId"/>（DataPointMapping.Id，全局唯一），
+        /// 调用方据此路由到目标设备运行时；驱动不得在回调中持有 IRuntimeVariable 引用。</para>
+        /// <para>回调在协议栈线程执行：禁止阻塞、禁止抛出异常。</para>
         /// </summary>
-        /// <param name="variables">要订阅的变量运行时列表</param>
-        /// <param name="onValueChanged">值变化回调函数</param>
-        Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<string, object> onValueChanged);
+        /// <param name="variables">要订阅的变量运行时列表（仅含支持订阅协议的变量）</param>
+        /// <param name="onValue">值变化回调：(instanceId, value, quality)</param>
+        Task SubscribeAsync(IEnumerable<IRuntimeVariable> variables, Action<int, object?, VariableQuality> onValue);
 
         /// <summary>
-        /// 取消订阅变量
+        /// 退订指定变量（按 InstanceId 匹配）。离线时执行本地清理。
         /// </summary>
         /// <param name="variables">要取消订阅的变量运行时列表</param>
         Task UnsubscribeAsync(IEnumerable<IRuntimeVariable> variables);
