@@ -13,7 +13,10 @@ import {
   Filter,
   Link2,
   Lock,
-  Code2
+  Code2,
+  ArrowLeft,
+  ArrowRight,
+  Info
 } from 'lucide-vue-next';
 import { systemConfig, addLog } from '../store/index';
 import { fetchControllerOptions } from '../api/controllerApi';
@@ -313,6 +316,10 @@ const remove = async (c: DeviceConnection) => {
       await deleteDeviceConnection(c.id);
       addLog('连接管理', `删除了连接 [${c.name}]`, 'warning');
       showToast('已删除', 'success');
+      if (selectedId.value === c.id) {
+        selectedId.value = null;
+        mobileView.value = 'list';
+      }
       if (paged.value.length === 1 && pageIndex.value > 1) pageIndex.value -= 1;
       loadList();
     } catch (e: any) {
@@ -334,6 +341,9 @@ const fmtTime = (ts?: string | null) => {
 
 // ================= 左列表选中 + 右栏关联设备 =================
 const selectedId = ref<number | null>(null);
+// 手机端原生分步视图流转：list（列表/搜索/分页） ↔ detail（详情/关联设备）
+const mobileView = ref<'list' | 'detail'>('list');
+
 const selectedItem = computed<DeviceConnection | null>(() =>
   selectedId.value != null ? all.value.find(x => x.id === selectedId.value) ?? null : null
 );
@@ -344,6 +354,11 @@ const connectionDeviceCount = (connectionId: number): number =>
 
 const selectItem = (c: DeviceConnection) => {
   selectedId.value = c.id;
+  mobileView.value = 'detail';
+};
+
+const backToList = () => {
+  mobileView.value = 'list';
 };
 
 const refreshAll = () => {
@@ -359,123 +374,355 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto p-4 sm:p-6 bg-slate-50/50 dark:bg-transparent text-[#1e293b] dark:text-slate-100 select-none">
+  <div
+    class="h-full overflow-y-auto p-3 sm:p-6 bg-slate-50/50 dark:bg-transparent text-[#1e293b] dark:text-slate-100 select-none">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4 text-left">
+    <div
+      class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 sm:pb-5 gap-3 sm:gap-4 text-left">
       <div>
-        <h1 class="text-xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">连接管理</h1>
+        <h1 class="text-lg sm:text-xl font-bold font-sans text-slate-900 dark:text-white tracking-tight">连接管理</h1>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
           登记设备连接资产台账；被设备引用的连接请在「设备管理」页维护
         </p>
       </div>
-      <button
-        @click="openCreate"
-        class="bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 shadow-sm"
-      >
+      <button @click="openCreate"
+        class="bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white px-3.5 py-2 sm:py-1.5 rounded-lg inline-flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-y-0.5 shadow-sm">
         <Plus class="w-4 h-4" />
         添加连接
       </button>
     </div>
 
-    <!-- 左列表 + 右关联设备：左右分栏 -->
-    <div class="mt-5 flex flex-col md:flex-row gap-4">
-      <!-- 左栏：连接列表（桌面端常显） -->
-      <aside class="hidden md:flex flex-col w-80 shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-left">
+    <!-- ================= 移动端视图 (Master-Detail 方案 A) ================= -->
+    <div class="block md:hidden mt-4">
+      <!-- 移动端 1：列表视图（卡片流 + 搜索筛选 + 分页） -->
+      <div v-if="mobileView === 'list'" class="space-y-3 text-left">
+        <!-- 搜索与筛选卡片 -->
+        <div
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-xs space-y-2.5">
+          <div class="flex items-center gap-2">
+            <select v-model="filterControllerId" @change="applyFilter"
+              class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+              <option :value="null">全部控制器</option>
+              <option v-for="c in controllerOptions" :key="c.id" :value="c.id">{{ c.code }} · {{ c.name }}</option>
+            </select>
+            <button @click="refreshAll"
+              class="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 inline-flex items-center gap-1 shrink-0 cursor-pointer">
+              <RefreshCw class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''" />
+              刷新
+            </button>
+          </div>
+
+          <div class="relative">
+            <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input v-model="keyword" type="text" placeholder="搜索名称 / 地址 / 端口 / 控制器" @keyup.enter="applyFilter"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]" />
+            <button v-if="keyword" @click="keyword = ''; applyFilter()"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between pt-0.5">
+            <span class="text-[11px] text-slate-400">
+              共 <span class="font-bold text-slate-700 dark:text-slate-200">{{ filtered.length }}</span> 条连接
+            </span>
+            <div class="flex items-center gap-2">
+              <button v-if="filterControllerId != null || keyword" @click="resetFilter"
+                class="text-rose-500 hover:text-rose-600 font-bold text-xs cursor-pointer px-2 py-1 rounded">
+                重置筛选
+              </button>
+              <button @click="applyFilter"
+                class="px-3 py-1 rounded-lg bg-slate-900 dark:bg-sky-600 text-white font-bold text-xs cursor-pointer">
+                查询
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 连接卡片流 -->
+        <div class="space-y-2.5">
+          <div v-for="c in paged" :key="c.id" @click="selectItem(c)"
+            class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs hover:border-[#1890ff]/50 active:bg-slate-50 dark:active:bg-slate-800/60 transition-all cursor-pointer space-y-2.5">
+            <!-- 头部：名称、状态、是否已关联 -->
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-950/60 flex items-center justify-center shrink-0">
+                  <Link2 class="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                </div>
+                <div class="min-w-0">
+                  <h3 class="font-bold text-slate-900 dark:text-white text-xs truncate">{{ c.name }}</h3>
+                  <p class="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                    {{ c.controllerName || `#${c.controllerId}` }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span v-if="c.inUseByDevice"
+                  class="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                  <Link2 class="w-2.5 h-2.5" />
+                  已关联
+                </span>
+                <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                  :class="c.isEnabled
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
+                  <Power class="w-2.5 h-2.5" />
+                  {{ c.isEnabled ? '启用' : '停用' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 参数指标 -->
+            <div class="grid grid-cols-2 gap-2 text-[11px] pt-0.5">
+              <div
+                class="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60">
+                <span class="text-[10px] text-slate-400 dark:text-slate-500 block">协议类型</span>
+                <span class="font-bold text-sky-600 dark:text-sky-400 truncate block mt-0.5">
+                  {{ c.protocolName || `#${c.protocolId}` }}
+                </span>
+              </div>
+              <div
+                class="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60">
+                <span class="text-[10px] text-slate-400 dark:text-slate-500 block">网络端点</span>
+                <span class="font-mono text-slate-700 dark:text-slate-300 truncate block mt-0.5">
+                  {{ endpointLabel(c) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 底部行：关联设备数与详情引导 -->
+            <div class="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/60">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="connectionDeviceCount(c.id) > 0
+                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
+                {{ connectionDeviceCount(c.id) }} 台设备关联
+              </span>
+              <span class="text-[11px] font-bold text-[#1890ff] dark:text-sky-400 inline-flex items-center gap-1">
+                查看详情与关联设备
+                <ArrowRight class="w-3 h-3" />
+              </span>
+            </div>
+          </div>
+
+          <!-- 空态 -->
+          <div v-if="paged.length === 0 && !loading"
+            class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
+            <Link2 class="w-8 h-8 mx-auto mb-2 opacity-20" />
+            <span>暂无匹配的连接记录</span>
+          </div>
+        </div>
+
+        <!-- 移动端分页栏 -->
+        <div
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs text-slate-500">
+          <button @click="changePage(-1)" :disabled="pageIndex <= 1"
+            class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1 font-bold">
+            <ChevronLeft class="w-3.5 h-3.5" />
+            上一页
+          </button>
+          <span class="text-[11px]">第 {{ pageIndex }} / {{ totalPages }} 页</span>
+          <button @click="changePage(1)" :disabled="pageIndex >= totalPages"
+            class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1 font-bold">
+            下一页
+            <ChevronRight class="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <!-- 移动端 2：详情视图（原生流转进入） -->
+      <div v-else-if="mobileView === 'detail' && selectedItem" class="space-y-4 text-left">
+        <!-- 顶部返回导航 -->
+        <div
+          class="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-xs">
+          <button @click="backToList"
+            class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 font-bold text-xs inline-flex items-center gap-1 cursor-pointer">
+            <ArrowLeft class="w-4 h-4" />
+            返回连接列表
+          </button>
+          <div class="flex items-center gap-1.5">
+            <span v-if="selectedItem.inUseByDevice"
+              class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+              <Link2 class="w-2.5 h-2.5" />
+              已关联设备
+            </span>
+            <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="selectedItem.isEnabled
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
+              <Power class="w-2.5 h-2.5" />
+              {{ selectedItem.isEnabled ? '已启用' : '已停用' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 连接详情主卡片 -->
+        <div
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs space-y-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 flex items-center justify-center shrink-0">
+              <Link2 class="w-5 h-5 text-sky-600 dark:text-sky-400" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-sm font-bold text-slate-900 dark:text-white truncate">{{ selectedItem.name }}</h2>
+              <div class="flex items-center gap-2 mt-1">
+                <span
+                  class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800">
+                  {{ selectedItem.protocolName || `#${selectedItem.protocolId}` }}
+                </span>
+                <span class="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {{ selectedItem.controllerName || `#${selectedItem.controllerId}` }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 结构化属性网格 -->
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div
+              class="p-2.5 bg-slate-50 dark:bg-slate-950/60 rounded-lg border border-slate-100 dark:border-slate-800/60">
+              <span class="text-[10px] text-slate-400 dark:text-slate-500 block">通信端点 (IP/Host)</span>
+              <span class="font-mono font-bold text-slate-800 dark:text-slate-200 block mt-0.5 truncate">
+                {{ endpointLabel(selectedItem) }}
+              </span>
+            </div>
+            <div
+              class="p-2.5 bg-slate-50 dark:bg-slate-950/60 rounded-lg border border-slate-100 dark:border-slate-800/60">
+              <span class="text-[10px] text-slate-400 dark:text-slate-500 block">重连与超时</span>
+              <span class="text-slate-800 dark:text-slate-200 block mt-0.5 font-mono text-[11px]">
+                重连 {{ selectedItem.reconnectIntervalMs }}ms / IO {{ selectedItem.timeoutMs ?? '—' }}ms
+              </span>
+            </div>
+            <div
+              class="col-span-2 p-2.5 bg-slate-50 dark:bg-slate-950/60 rounded-lg border border-slate-100 dark:border-slate-800/60">
+              <span class="text-[10px] text-slate-400 dark:text-slate-500 block">所属控制器</span>
+              <span class="font-bold text-slate-700 dark:text-slate-300 block mt-0.5">
+                {{ selectedItem.controllerName || '—' }}
+                <span v-if="selectedItem.controllerCode" class="font-mono text-[10px] text-[#1890ff] ml-1">({{
+                  selectedItem.controllerCode }})</span>
+              </span>
+            </div>
+            <div
+              class="col-span-2 p-2.5 bg-slate-50 dark:bg-slate-950/60 rounded-lg border border-slate-100 dark:border-slate-800/60">
+              <span class="text-[10px] text-slate-400 dark:text-slate-500 block">更新时间</span>
+              <span class="font-mono text-slate-600 dark:text-slate-400 block mt-0.5 text-[11px]">
+                {{ fmtTime(selectedItem.updatedAt) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 操作按钮组 -->
+          <div class="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button @click="openEdit(selectedItem)"
+              class="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 font-bold text-xs text-slate-700 dark:text-slate-200 inline-flex items-center justify-center gap-1.5 cursor-pointer">
+              <Edit3 class="w-3.5 h-3.5 text-[#1890ff]" />
+              编辑连接
+            </button>
+            <button @click="remove(selectedItem)" :disabled="selectedItem.inUseByDevice"
+              class="py-2 px-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-bold text-xs inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+              <Trash2 class="w-3.5 h-3.5" />
+              删除
+            </button>
+          </div>
+          <p v-if="selectedItem.inUseByDevice"
+            class="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+            <Info class="w-3 h-3 shrink-0" />
+            该连接正被设备引用，不可删除；如需解除绑定请前往「设备管理」页
+          </p>
+        </div>
+
+        <!-- 关联设备面板 -->
+        <RefDevicesPanel owner-type="connection" :owner-id="selectedId" />
+      </div>
+
+      <!-- 容错回退 -->
+      <div v-else
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-xs text-slate-400 space-y-3">
+        <Link2 class="w-8 h-8 mx-auto opacity-20" />
+        <p>未选中连接或连接已被删除</p>
+        <button @click="backToList"
+          class="px-3 py-1.5 rounded-lg bg-[#1890ff] text-white font-bold text-xs cursor-pointer">
+          返回列表
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= 桌面端视图 (左右经典分栏) ================= -->
+    <div class="hidden md:flex mt-5 flex-row gap-4">
+      <!-- 左栏：连接列表 -->
+      <aside
+        class="flex flex-col w-80 shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-left shadow-xs">
         <div class="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
-          <select
-            v-model="filterControllerId"
-            @change="applyFilter"
-            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
-          >
+          <select v-model="filterControllerId" @change="applyFilter"
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
             <option :value="null">全部控制器</option>
             <option v-for="c in controllerOptions" :key="c.id" :value="c.id">{{ c.code }} · {{ c.name }}</option>
           </select>
           <div class="relative">
             <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              v-model="keyword"
-              type="text"
-              placeholder="名称 / 地址 / 端口 / 控制器"
-              @keyup.enter="applyFilter"
-              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
-            />
+            <input v-model="keyword" type="text" placeholder="名称 / 地址 / 端口 / 控制器" @keyup.enter="applyFilter"
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]" />
           </div>
           <div class="flex items-center justify-between gap-2">
-            <button
-              v-if="filterControllerId != null || keyword"
-              @click="resetFilter"
-              class="text-rose-500 hover:text-rose-700 font-bold cursor-pointer text-xs"
-            >
+            <button v-if="filterControllerId != null || keyword" @click="resetFilter"
+              class="text-rose-500 hover:text-rose-700 font-bold cursor-pointer text-xs">
               清除筛选
             </button>
-            <button
-              @click="refreshAll"
-              class="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer inline-flex items-center gap-1"
-            >
+            <button @click="refreshAll"
+              class="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer inline-flex items-center gap-1">
               <RefreshCw class="w-3 h-3" :class="loading ? 'animate-spin' : ''" />
               刷新
             </button>
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-          <div
-            v-for="c in paged"
-            :key="c.id"
-            role="button"
-            @click="selectItem(c)"
-            :class="[
-              'px-3 py-2.5 cursor-pointer border-l-4 transition-all text-left',
-              selectedId === c.id
-                ? 'bg-sky-50 dark:bg-slate-800/80 border-l-[#1890ff]'
-                : 'border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-            ]"
-          >
+        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[580px]">
+          <div v-for="c in paged" :key="c.id" role="button" @click="selectItem(c)" :class="[
+            'px-3 py-2.5 cursor-pointer border-l-4 transition-all text-left',
+            selectedId === c.id
+              ? 'bg-sky-50 dark:bg-slate-800/80 border-l-[#1890ff]'
+              : 'border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
+          ]">
             <div class="flex items-center justify-between gap-2">
-              <span class="font-sans font-bold text-slate-800 dark:text-white text-xs inline-flex items-center gap-1.5 min-w-0">
+              <span
+                class="font-sans font-bold text-slate-800 dark:text-white text-xs inline-flex items-center gap-1.5 min-w-0">
                 <Link2 class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span class="truncate">{{ c.name }}</span>
               </span>
-              <span
-                class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
-                :class="connectionDeviceCount(c.id) > 0
-                  ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
-              >
+              <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full border" :class="connectionDeviceCount(c.id) > 0
+                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
                 {{ connectionDeviceCount(c.id) }} 台设备
               </span>
             </div>
             <div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
-              <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-1.5 py-0.5 rounded-full">{{ c.protocolName || `#${c.protocolId}` }}</span>
+              <span
+                class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-1.5 py-0.5 rounded-full">{{
+                  c.protocolName || `#${c.protocolId}` }}</span>
               <span class="truncate">{{ c.controllerName || `#${c.controllerId}` }}</span>
             </div>
             <div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
               <span class="font-mono">{{ endpointLabel(c) }}</span>
-              <span v-if="c.inUseByDevice" class="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-bold">
+              <span v-if="c.inUseByDevice"
+                class="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-bold">
                 <Link2 class="w-3 h-3" />已关联
               </span>
             </div>
           </div>
-          <div v-if="paged.length === 0 && !loading" class="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
+          <div v-if="paged.length === 0 && !loading"
+            class="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
             暂无连接
           </div>
         </div>
 
         <!-- 左栏分页 -->
-        <div class="px-3 py-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
-          <button
-            @click="changePage(-1)"
-            :disabled="pageIndex <= 1"
-            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          >
+        <div
+          class="px-3 py-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+          <button @click="changePage(-1)" :disabled="pageIndex <= 1"
+            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
             <ChevronLeft class="w-3.5 h-3.5" />
           </button>
           <span>第 {{ pageIndex }} / {{ totalPages }} 页（每页 {{ pageSize }}）</span>
-          <button
-            @click="changePage(1)"
-            :disabled="pageIndex >= totalPages"
-            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          >
+          <button @click="changePage(1)" :disabled="pageIndex >= totalPages"
+            class="p-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
             <ChevronRight class="w-3.5 h-3.5" />
           </button>
         </div>
@@ -483,25 +730,16 @@ onMounted(async () => {
 
       <!-- 右栏：选中连接 → 摘要 + 关联设备 -->
       <main class="flex-1 min-w-0 flex flex-col gap-4">
-        <!-- 移动端选择器 -->
-        <div class="md:hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2">
-          <select
-            v-model="selectedId"
-            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none"
-          >
-            <option :value="null" disabled>选择连接</option>
-            <option v-for="c in paged" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-        </div>
-
-        <div v-if="!selectedItem" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
-          <Link2 class="w-8 h-8 mx-auto mb-2 opacity-20" />
+        <div v-if="!selectedItem"
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-16 text-center text-slate-400 dark:text-slate-500 text-xs shadow-xs">
+          <Link2 class="w-10 h-10 mx-auto mb-2 opacity-20" />
           <span>请从左侧选择一条连接，查看其被哪些设备关联</span>
         </div>
 
         <template v-else>
           <!-- 选中连接摘要 + 操作 -->
-          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-left">
+          <div
+            class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-left shadow-xs">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="flex items-start gap-3">
                 <div class="w-9 h-9 rounded-lg bg-sky-50 dark:bg-sky-950/60 flex items-center justify-center shrink-0">
@@ -510,10 +748,8 @@ onMounted(async () => {
                 <div>
                   <h3 class="text-sm font-bold text-slate-900 dark:text-white inline-flex items-center gap-2 flex-wrap">
                     {{ selectedItem.name }}
-                    <span
-                      v-if="selectedItem.inUseByDevice"
-                      class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
-                    >
+                    <span v-if="selectedItem.inUseByDevice"
+                      class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
                       <Link2 class="w-3 h-3" />
                       已关联设备
                     </span>
@@ -521,7 +757,9 @@ onMounted(async () => {
                   <p class="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
                     控制器 {{ selectedItem.controllerName || `#${selectedItem.controllerId}` }}
                     <span class="text-slate-300 dark:text-slate-600"> · </span>
-                    <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-1.5 py-0.5 rounded-full">{{ selectedItem.protocolName || `#${selectedItem.protocolId}` }}</span>
+                    <span
+                      class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-1.5 py-0.5 rounded-full">{{
+                        selectedItem.protocolName || `#${selectedItem.protocolId}` }}</span>
                     <span class="text-slate-300 dark:text-slate-600"> · 地址 </span>
                     <span class="font-mono">{{ endpointLabel(selectedItem) }}</span>
                   </p>
@@ -535,27 +773,20 @@ onMounted(async () => {
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                <span
-                  class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
                   :class="selectedItem.isEnabled
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
-                >
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
                   <Power class="w-3 h-3" />
                   {{ selectedItem.isEnabled ? '启用' : '停用' }}
                 </span>
-                <button
-                  @click="openEdit(selectedItem)"
-                  class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5"
-                >
+                <button @click="openEdit(selectedItem)"
+                  class="text-[#1890ff] dark:text-sky-400 hover:text-sky-600 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5">
                   <Edit3 class="w-3.5 h-3.5" />
                   编辑
                 </button>
-                <button
-                  @click="remove(selectedItem)"
-                  :disabled="selectedItem.inUseByDevice"
-                  class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
+                <button @click="remove(selectedItem)" :disabled="selectedItem.inUseByDevice"
+                  class="text-rose-500 hover:text-rose-700 cursor-pointer font-sans font-bold inline-flex items-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed">
                   <Trash2 class="w-3.5 h-3.5" />
                   删除
                 </button>
@@ -569,52 +800,64 @@ onMounted(async () => {
     </div>
 
     <!-- MODAL: ADD / EDIT -->
-    <div v-if="showModal" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
-      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
-        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
+    <div v-if="showModal"
+      class="fixed inset-0 bg-slate-900/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div
+        class="bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        <div
+          class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <Link2 class="w-4 h-4 text-[#1890ff]" />
             <span>{{ editingId != null ? '编辑连接' : '添加连接' }}</span>
           </div>
-          <button @click="showModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+          <button @click="showModal = false" class="text-slate-400 hover:text-white cursor-pointer">
+            <X class="w-4 h-4" />
+          </button>
         </div>
 
-        <div class="p-5 space-y-4 text-xs overflow-y-auto max-h-[420px]">
-          <div v-if="formError" class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3 text-rose-600 dark:text-rose-400 whitespace-pre-line">
+        <div class="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1">
+          <div v-if="formError"
+            class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3 text-rose-600 dark:text-rose-400 whitespace-pre-line">
             {{ formError }}
           </div>
 
-          <div v-if="isEditingReferenced" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-amber-700 dark:text-amber-400 text-[10px]">
+          <div v-if="isEditingReferenced"
+            class="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-amber-700 dark:text-amber-400 text-[10px]">
             该连接已被设备使用，可编辑以下所有参数；所属控制器/协议属设备归属绑定，不可在此变更。
           </div>
 
           <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">所属控制器 <span class="text-rose-500">*</span></label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">所属控制器 <span
+                class="text-rose-500">*</span></label>
             <div class="relative">
               <select v-model="form.ControllerId" :disabled="isEditingReferenced"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] disabled:opacity-50 disabled:cursor-not-allowed">
                 <option :value="0" disabled>请选择控制器</option>
                 <option v-for="c in controllerOptions" :key="c.id" :value="c.id">{{ c.code }} · {{ c.name }}</option>
               </select>
-              <Lock v-if="isEditingReferenced" class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500" />
+              <Lock v-if="isEditingReferenced"
+                class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500" />
             </div>
           </div>
 
           <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">连接名称 <span class="text-rose-500">*</span></label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">连接名称 <span
+                class="text-rose-500">*</span></label>
             <input v-model="form.Name" type="text" placeholder="例如: 1# 车间 S7 主连接"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
           </div>
 
           <div>
-            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">协议 <span class="text-rose-500">*</span></label>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">协议 <span
+                class="text-rose-500">*</span></label>
             <div class="relative">
               <select v-model="form.ProtocolId" @change="onProtocolChange" :disabled="isEditingReferenced"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] disabled:opacity-50 disabled:cursor-not-allowed">
                 <option :value="0" disabled>请选择协议</option>
                 <option v-for="p in protocols" :key="p.id" :value="p.id">{{ p.name }}（{{ p.key }}）</option>
               </select>
-              <Lock v-if="isEditingReferenced" class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500" />
+              <Lock v-if="isEditingReferenced"
+                class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500" />
             </div>
           </div>
 
@@ -631,7 +874,10 @@ onMounted(async () => {
             <!-- 原始 JSON 编辑 -->
             <textarea v-if="configMode === 'raw'" v-model="cfgRaw" rows="5"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-[10px] focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff] leading-relaxed" />
-            <p v-if="configMode === 'raw'" class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">驱动配置原文；字段名与后端 *Config DTO 一致（S7=IpAddress/Port/Rack/Slot/CpuType/IoTimeoutMs/ConnectTimeoutMs；OPC UA=EndpointUrl/SecurityPolicy/Username/Password）。</p>
+            <p v-if="configMode === 'raw'" class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">驱动配置原文；字段名与后端
+              *Config
+              DTO 一致（S7=IpAddress/Port/Rack/Slot/CpuType/IoTimeoutMs/ConnectTimeoutMs；OPC
+              UA=EndpointUrl/SecurityPolicy/Username/Password）。</p>
 
             <!-- S7 -->
             <div v-else-if="selectedProtocolKey === 'S7'" class="space-y-3">
@@ -680,7 +926,8 @@ onMounted(async () => {
             <div v-else-if="selectedProtocolKey === 'OPCUA'" class="space-y-3">
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">端点 Endpoint URL</label>
-                <input v-model="cfgStructured.endpointUrl" type="text" placeholder="opc.tcp://host:4840/MyServer/Instance"
+                <input v-model="cfgStructured.endpointUrl" type="text"
+                  placeholder="opc.tcp://host:4840/MyServer/Instance"
                   class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-[11px] focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
                 <p class="text-slate-400 dark:text-slate-500 text-[10px] mt-1">支持完整路径；仅改主机/端口时路径会原样保留。</p>
               </div>
@@ -756,9 +1003,9 @@ onMounted(async () => {
                 </div>
               </div>
               <div>
-                  <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">密码</label>
-                  <input v-model="cfgStructured.mqttPassword" type="password" autocomplete="new-password"
-                    class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
+                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">密码</label>
+                <input v-model="cfgStructured.mqttPassword" type="password" autocomplete="new-password"
+                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
               </div>
             </div>
 
@@ -771,7 +1018,8 @@ onMounted(async () => {
                     class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#1890ff]" />
                 </div>
               </div>
-              <label class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+              <label
+                class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
                 <input type="checkbox" v-model="cfgStructured.randomValues" class="text-[#1890ff] focus:ring-0" />
                 随机产生数值
               </label>
@@ -793,24 +1041,21 @@ onMounted(async () => {
             </div>
           </div>
 
-          <label class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+          <label
+            class="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
             <input type="checkbox" v-model="form.IsEnabled" class="text-[#1890ff] focus:ring-0" />
             启用该连接
           </label>
         </div>
 
-        <div class="bg-slate-50 dark:bg-slate-950 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
-          <button
-            @click="showModal = false"
-            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
-          >
+        <div
+          class="bg-slate-50 dark:bg-slate-950 p-3 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
+          <button @click="showModal = false"
+            class="px-4 py-2 sm:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
             取消
           </button>
-          <button
-            @click="save"
-            :disabled="saving"
-            class="px-4 py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button @click="save" :disabled="saving"
+            class="px-5 py-2 sm:py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs">
             {{ saving ? '保存中...' : '保存' }}
           </button>
         </div>

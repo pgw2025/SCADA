@@ -21,6 +21,9 @@ import {
   AlertTriangle,
   Package,
   Eye,
+  LayoutList,
+  AlignJustify,
+  ChevronRight,
 } from 'lucide-vue-next';
 import {
   loadWidgetTemplates,
@@ -82,6 +85,24 @@ const allChecked = computed(() =>
   filteredList.value.length > 0 && filteredList.value.every((t) => isSelected(t.id)));
 const toggleAll = () => {
   selectedIds.value = allChecked.value ? [] : filteredList.value.map((t) => t.id);
+};
+
+// ================= 移动端视图模式与详情抽屉 =================
+// 'card': 方案一自适应流式卡片；'compact': 方案二高密摘要行+底部抽屉
+const mobileViewMode = ref<'card' | 'compact'>(
+  (localStorage.getItem('scada_widget_template_mobile_view') as 'card' | 'compact') || 'card'
+);
+const setMobileViewMode = (mode: 'card' | 'compact') => {
+  mobileViewMode.value = mode;
+  localStorage.setItem('scada_widget_template_mobile_view', mode);
+};
+
+const selectedTemplateDetail = ref<WidgetTemplateDto | null>(null);
+const openTemplateDetail = (t: WidgetTemplateDto) => {
+  selectedTemplateDetail.value = t;
+};
+const closeTemplateDetail = () => {
+  selectedTemplateDetail.value = null;
 };
 
 // ================= 分类 / 渲染轨 / 系统徽标文案 =================
@@ -494,13 +515,13 @@ onMounted(refreshList);
 
     <!-- Toolbar -->
     <div class="mt-4 flex flex-wrap items-center gap-2 text-left">
-      <div class="relative">
+      <div class="relative flex-1 sm:flex-none">
         <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           v-model="keyword"
           type="text"
           placeholder="名称 / 模板键 / 渲染类型"
-          class="w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
+          class="w-full sm:w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]"
         />
       </div>
       <select
@@ -513,6 +534,31 @@ onMounted(refreshList);
         <option value="structures">结构</option>
         <option value="headers">标题背景</option>
       </select>
+
+      <!-- 移动端双模切换开关 (方案一卡片 / 方案二紧凑) -->
+      <div class="flex md:hidden items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+        <button
+          @click="setMobileViewMode('card')"
+          class="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer"
+          :class="mobileViewMode === 'card'
+            ? 'bg-white dark:bg-slate-700 text-[#1890ff] dark:text-sky-400 shadow-xs'
+            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+        >
+          <LayoutList class="w-3.5 h-3.5" />
+          卡片
+        </button>
+        <button
+          @click="setMobileViewMode('compact')"
+          class="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer"
+          :class="mobileViewMode === 'compact'
+            ? 'bg-white dark:bg-slate-700 text-[#1890ff] dark:text-sky-400 shadow-xs'
+            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+        >
+          <AlignJustify class="w-3.5 h-3.5" />
+          紧凑
+        </button>
+      </div>
+
       <button
         @click="refreshList"
         class="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-all cursor-pointer inline-flex items-center gap-1"
@@ -522,9 +568,10 @@ onMounted(refreshList);
       </button>
     </div>
 
-    <!-- Table -->
+    <!-- Table & Mobile Dual View -->
     <div class="mt-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-left">
-      <div class="overflow-x-auto">
+      <!-- 桌面端表格 (宽屏显示) -->
+      <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-xs">
           <thead>
             <tr class="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider">
@@ -611,6 +658,164 @@ onMounted(refreshList);
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 移动端专有视图 (手机端显示) -->
+      <div class="block md:hidden">
+        <!-- 全选与批量状态栏 (移动端) -->
+        <div class="px-3 py-2 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+          <label class="flex items-center gap-2 cursor-pointer font-bold text-slate-700 dark:text-slate-300">
+            <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded text-[#1890ff] focus:ring-0 cursor-pointer" />
+            <span>全选 (已选 {{ selectedIds.length }})</span>
+          </label>
+          <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{{ filteredList.length }} 个模板</span>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="filteredList.length === 0 && !loading" class="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
+          <Shapes class="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-700" />
+          暂无模板
+        </div>
+
+        <!-- 方案一：自适应流式卡片 (Card Feed) -->
+        <div v-else-if="mobileViewMode === 'card'" class="p-3 space-y-3">
+          <div
+            v-for="t in filteredList"
+            :key="'card-' + t.id"
+            class="bg-slate-50/70 dark:bg-slate-800/50 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5 transition-colors"
+            :class="isSelected(t.id) ? 'ring-2 ring-[#1890ff]/60 bg-sky-50/40 dark:bg-sky-950/30' : ''"
+          >
+            <!-- 卡片头部: 选择框 + 图标 + 名称 + 模板键 + 内置徽标 -->
+            <div class="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                :checked="isSelected(t.id)"
+                @change="toggleSelect(t.id)"
+                class="mt-1 text-[#1890ff] rounded focus:ring-0 cursor-pointer shrink-0"
+              />
+              <div class="w-9 h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 shadow-xs">
+                <component v-if="t.iconKind === 'lucide'" :is="iconComp(t)" class="w-5 h-5" :class="t.iconColor || 'text-slate-500'" />
+                <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-h'" class="w-6 h-1.5 bg-slate-600 dark:bg-slate-400 rounded-full" />
+                <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-v'" class="w-1.5 h-6 bg-slate-600 dark:bg-slate-400 rounded-full" />
+                <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-led'" class="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-600 animate-pulse" />
+                <span v-else-if="t.iconKind === 'emoji'" class="text-base leading-none" :class="t.iconColor || ''">{{ t.iconKey }}</span>
+                <span v-else-if="t.iconKind === 'svg'" class="w-5 h-5 flex items-center justify-center" v-html="sanitizeSvg(t.iconKey)" />
+                <Package v-else class="w-5 h-5 text-slate-400" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-1.5">
+                  <h3 class="font-bold text-xs text-slate-900 dark:text-white truncate">{{ t.name }}</h3>
+                  <span v-if="t.isSystem" class="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0">
+                    内置
+                  </span>
+                </div>
+                <p class="font-mono text-[11px] text-[#1890ff] dark:text-sky-400 truncate mt-0.5">{{ t.templateKey }}</p>
+              </div>
+            </div>
+
+            <!-- 属性标签网格 -->
+            <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span class="font-bold px-1.5 py-0.5 rounded-full border" :class="CATEGORY_COLOR[t.category] || CATEGORY_COLOR.equipment">
+                {{ CATEGORY_LABEL[t.category] || t.category }}
+              </span>
+              <span class="font-bold px-1.5 py-0.5 rounded border"
+                :class="t.renderKind === 'svg'
+                  ? 'bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+                {{ t.renderKind === 'svg' ? 'SVG 轨' : '内置' }}
+              </span>
+              <span class="px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-mono text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900">
+                尺寸: {{ t.defaultWidth }}x{{ t.defaultHeight }}
+              </span>
+              <span class="px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-mono text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900">
+                排序: {{ t.sortOrder }}
+              </span>
+            </div>
+
+            <!-- 描述文字（如果有） -->
+            <p v-if="t.description" class="text-[11px] text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900/60 rounded-lg p-2 border border-slate-100 dark:border-slate-800 break-words leading-relaxed">
+              {{ t.description }}
+            </p>
+
+            <!-- 卡片底栏操作按钮 -->
+            <div class="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-xs">
+              <button
+                @click="openTemplateDetail(t)"
+                class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-[#1890ff] cursor-pointer"
+              >
+                <Eye class="w-3.5 h-3.5" />
+                详情
+              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  @click="exportOne(t)"
+                  class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 font-bold text-[11px] text-slate-600 dark:text-slate-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Download class="w-3 h-3" />
+                  导出
+                </button>
+                <button
+                  @click="openEdit(t)"
+                  class="px-2.5 py-1 rounded-lg border border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 font-bold text-[11px] text-[#1890ff] dark:text-sky-400 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 class="w-3 h-3" />
+                  编辑
+                </button>
+                <button
+                  @click="remove(t)"
+                  :disabled="t.isSystem"
+                  class="px-2 py-1 rounded-lg border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-950/50 font-bold text-[11px] text-rose-600 dark:text-rose-400 inline-flex items-center gap-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Trash2 class="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 方案二：高密度摘要行 (Compact Mode) -->
+        <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
+          <div
+            v-for="t in filteredList"
+            :key="'compact-' + t.id"
+            @click="openTemplateDetail(t)"
+            class="px-3 py-2.5 flex items-center gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800 transition-colors cursor-pointer"
+            :class="isSelected(t.id) ? 'bg-sky-50/50 dark:bg-sky-950/30' : ''"
+          >
+            <input
+              type="checkbox"
+              :checked="isSelected(t.id)"
+              @click.stop
+              @change="toggleSelect(t.id)"
+              class="text-[#1890ff] rounded focus:ring-0 cursor-pointer shrink-0"
+            />
+            <div class="w-7 h-7 rounded bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+              <component v-if="t.iconKind === 'lucide'" :is="iconComp(t)" class="w-3.5 h-3.5" :class="t.iconColor || 'text-slate-500'" />
+              <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-h'" class="w-5 h-1 bg-slate-600 dark:bg-slate-400 rounded-full" />
+              <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-v'" class="w-1 h-5 bg-slate-600 dark:bg-slate-400 rounded-full" />
+              <div v-else-if="t.iconKind === 'div' && t.iconKey === 'div-led'" class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-600" />
+              <span v-else-if="t.iconKind === 'emoji'" class="text-xs leading-none" :class="t.iconColor || ''">{{ t.iconKey }}</span>
+              <span v-else-if="t.iconKind === 'svg'" class="w-3.5 h-3.5 flex items-center justify-center" v-html="sanitizeSvg(t.iconKey)" />
+              <Package v-else class="w-3.5 h-3.5 text-slate-400" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold text-xs text-slate-800 dark:text-white truncate">{{ t.name }}</span>
+                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full border shrink-0" :class="CATEGORY_COLOR[t.category] || CATEGORY_COLOR.equipment">
+                  {{ CATEGORY_LABEL[t.category] || t.category }}
+                </span>
+                <span v-if="t.isSystem" class="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0">
+                  内置
+                </span>
+              </div>
+              <p class="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{{ t.templateKey }}</p>
+            </div>
+            <div class="text-right shrink-0 flex items-center gap-1">
+              <span class="font-mono text-[10px] text-slate-400">{{ t.defaultWidth }}x{{ t.defaultHeight }}</span>
+              <ChevronRight class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+            </div>
+          </div>
+        </div>
       </div>
       <div class="px-4 py-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
         <span>共 {{ list.length }} 条模板，当前显示 {{ filteredList.length }} 条</span>
@@ -944,6 +1149,120 @@ onMounted(refreshList);
             class="px-4 py-1.5 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white cursor-pointer disabled:opacity-50"
           >
             {{ importing ? '导入中...' : '确认导入' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动端详情抽屉 (Bottom Sheet) -->
+    <div
+      v-if="selectedTemplateDetail"
+      class="fixed inset-0 z-50 flex flex-col justify-end bg-black/50 backdrop-blur-xs md:hidden"
+      @click.self="closeTemplateDetail"
+    >
+      <div class="bg-white dark:bg-slate-900 rounded-t-2xl max-h-[85vh] flex flex-col shadow-2xl border-t border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom duration-200 text-left">
+        <!-- 顶部拖拽把手 -->
+        <div class="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-2.5 shrink-0" />
+
+        <!-- 抽屉头部 -->
+        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+              <component v-if="selectedTemplateDetail.iconKind === 'lucide'" :is="iconComp(selectedTemplateDetail)" class="w-4 h-4" :class="selectedTemplateDetail.iconColor || 'text-slate-500'" />
+              <Package v-else class="w-4 h-4 text-slate-400" />
+            </div>
+            <div class="min-w-0">
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white truncate">{{ selectedTemplateDetail.name }}</h3>
+              <p class="font-mono text-[10px] text-[#1890ff] dark:text-sky-400 truncate">{{ selectedTemplateDetail.templateKey }}</p>
+            </div>
+          </div>
+          <button @click="closeTemplateDetail" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- 抽屉内容 -->
+        <div class="p-4 overflow-y-auto space-y-4 text-xs">
+          <!-- 基础元数据网格 -->
+          <div class="grid grid-cols-2 gap-2.5 bg-slate-50 dark:bg-slate-950/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">所属分类</span>
+              <span class="font-bold text-slate-800 dark:text-slate-200">
+                {{ CATEGORY_LABEL[selectedTemplateDetail.category] || selectedTemplateDetail.category }}
+              </span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">渲染轨道</span>
+              <span class="font-bold text-slate-800 dark:text-slate-200">
+                {{ selectedTemplateDetail.renderKind === 'svg' ? 'SVG 矢量图形' : '内置代码组件' }}
+              </span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">默认画幅尺寸</span>
+              <span class="font-mono font-bold text-slate-800 dark:text-slate-200">
+                {{ selectedTemplateDetail.defaultWidth }} × {{ selectedTemplateDetail.defaultHeight }} px
+              </span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">库内排序权重</span>
+              <span class="font-mono font-bold text-slate-800 dark:text-slate-200">
+                {{ selectedTemplateDetail.sortOrder }}
+              </span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">系统内置状态</span>
+              <span class="font-bold" :class="selectedTemplateDetail.isSystem ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'">
+                {{ selectedTemplateDetail.isSystem ? '内置组件 (只读保护)' : '自定义组件' }}
+              </span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">渲染类型</span>
+              <span class="font-mono text-slate-700 dark:text-slate-300 truncate block">
+                {{ selectedTemplateDetail.renderType }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 描述说明 -->
+          <div v-if="selectedTemplateDetail.description">
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">模板说明</span>
+            <div class="bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 leading-relaxed text-xs">
+              {{ selectedTemplateDetail.description }}
+            </div>
+          </div>
+
+          <!-- SVG 实时预览 -->
+          <div v-if="selectedTemplateDetail.renderKind === 'svg' && selectedTemplateDetail.svgTemplate">
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">SVG 矢量预览</span>
+            <div class="h-32 bg-slate-950 rounded-lg p-2 border border-slate-800 flex items-center justify-center overflow-hidden">
+              <div class="w-full h-full flex items-center justify-center" v-html="sanitizeSvg(selectedTemplateDetail.svgTemplate)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作条 -->
+        <div class="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 flex items-center gap-2">
+          <button
+            @click="exportOne(selectedTemplateDetail)"
+            class="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-xs text-slate-700 dark:text-slate-200 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Download class="w-3.5 h-3.5" />
+            导出
+          </button>
+          <button
+            @click="openEdit(selectedTemplateDetail); closeTemplateDetail()"
+            class="flex-1 py-2 rounded-lg bg-[#1890ff] hover:bg-sky-600 font-bold text-xs text-white inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Edit3 class="w-3.5 h-3.5" />
+            编辑
+          </button>
+          <button
+            v-if="!selectedTemplateDetail.isSystem"
+            @click="remove(selectedTemplateDetail); closeTemplateDetail()"
+            class="py-2 px-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 font-bold text-xs text-rose-600 dark:text-rose-400 inline-flex items-center justify-center gap-1 cursor-pointer"
+            title="删除模板"
+          >
+            <Trash2 class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
