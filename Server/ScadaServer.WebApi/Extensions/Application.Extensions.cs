@@ -94,11 +94,14 @@ namespace ScadaServer.WebApi.Extensions
 
             services.AddSingleton<IMqttManager, MqttManager>();
             services.AddHostedService<MqttReconnectHostedService>();
-            // ========== 外部消息通知（钉钉机器人 / SMTP 邮件）==========
+            // ========== 外部消息通知（钉钉机器人 / SMTP 邮件 / Web Push）==========
             // 命名 HttpClient：钉钉 webhook 8s 超时（替代默认 100s，避免拖死后台发送循环）。
             services.AddHttpClient(DingTalkRobotClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(8));
             services.AddSingleton<IExternalMessageSender, DingTalkRobotClient>();
             services.AddSingleton<IExternalMessageSender, EmailSender>();
+            // Web Push 渠道（doc/pwa 阶段五，D7）：Enabled=false 或 VAPID 密钥缺失时自动禁用（管线不扇出）；
+            // 内部经 IServiceScopeFactory 取 DbContext 查订阅，避免单例持有 DbContext。
+            services.AddSingleton<IExternalMessageSender, WebPushSender>();
 
             // 模板渲染引擎：无状态，跨通知服务共享单例。
             services.AddSingleton<NotificationTemplateEngine>();

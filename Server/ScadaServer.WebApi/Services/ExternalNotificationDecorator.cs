@@ -89,7 +89,10 @@ namespace ScadaServer.WebApi.Services
                 Category = ExternalMessageCategory.DeviceStatus,
                 Title = _engine.Render(template.Title, tokens),
                 MarkdownText = _engine.Render(template.Markdown, tokens),
-                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true),
+                // Web Push 扩展（D8）：设备状态外发固定 Warning 级（Offline/Fault），其余渠道不读不受影响
+                Severity = "Warning",
+                Tokens = tokens
             });
         }
 
@@ -116,7 +119,10 @@ namespace ScadaServer.WebApi.Services
                 Category = ExternalMessageCategory.SystemAlarm,
                 Title = _engine.Render(template.Title, tokens),
                 MarkdownText = _engine.Render(template.Markdown, tokens),
-                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true),
+                // Web Push 扩展（D8）：系统报警级别随事件 level
+                Severity = level,
+                Tokens = tokens
             });
         }
 
@@ -147,12 +153,17 @@ namespace ScadaServer.WebApi.Services
                 { "time", localTime.ToString("yyyy-MM-dd HH:mm:ss") }
             };
 
+            // Web Push 扩展（D8）：事件类型进 tokens（触发/恢复），供渠道层做恢复通知过滤（PushRecover）
+            tokens["eventType"] = evt.EventType == AlarmEventType.Triggered ? "Triggered" : "Recovered";
+
             _queue.Enqueue(new ExternalMessage
             {
                 Category = ExternalMessageCategory.Alarm,
                 Title = _engine.Render(template.Title, tokens),
                 MarkdownText = _engine.Render(template.Markdown, tokens),
-                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true),
+                Severity = evt.Level.ToString(),
+                Tokens = tokens
             });
         }
 
@@ -182,7 +193,10 @@ namespace ScadaServer.WebApi.Services
                 Category = ExternalMessageCategory.ScriptExecution,
                 Title = _engine.Render(template.Title, tokens),
                 MarkdownText = _engine.Render(template.Markdown, tokens),
-                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true)
+                HtmlBody = _engine.Render(template.HtmlBody, tokens, htmlEncode: true),
+                // Web Push 扩展（D8）：脚本执行异常固定 Warning 级
+                Severity = "Warning",
+                Tokens = tokens
             });
         }
 

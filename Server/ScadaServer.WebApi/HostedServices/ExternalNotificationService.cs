@@ -277,7 +277,8 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        /// <summary>克隆消息并附加限流合并说明（HtmlBody 为空保持为空，保留兜底 markdown 转义路径）。</summary>
+        /// <summary>克隆消息并附加限流合并说明（HtmlBody 为空保持为空，保留兜底 markdown 转义路径）。
+        /// Web Push 扩展字段（Severity/Tokens，D8）一并携带，保证渠道过滤/payload 构造在合并消息上仍可用。</summary>
         private static ExternalMessage WithSuppressedNote(ExternalMessage msg, int suppressed)
         {
             var note = $"另有 {suppressed} 条消息因限流未单独推送";
@@ -287,7 +288,9 @@ namespace ScadaServer.WebApi.HostedServices
                 Title = msg.Title,
                 MarkdownText = msg.MarkdownText + $"\n\n（{note}）",
                 HtmlBody = msg.HtmlBody is null ? null : msg.HtmlBody + $"<p><b>（{note}）</b></p>",
-                CreatedAtUtc = msg.CreatedAtUtc
+                CreatedAtUtc = msg.CreatedAtUtc,
+                Severity = msg.Severity,
+                Tokens = msg.Tokens
             };
         }
 

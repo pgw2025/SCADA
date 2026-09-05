@@ -66,6 +66,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<SystemScript> SystemScripts => Set<SystemScript>();
         public DbSet<ScriptExecutionRecord> ScriptExecutionRecords => Set<ScriptExecutionRecord>();
         public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
+        public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
         public DbSet<VariableHistory> VariableHistories => Set<VariableHistory>();
         public DbSet<VariableRealtime> VariableRealtimes => Set<VariableRealtime>();
 
@@ -75,6 +76,34 @@ namespace ScadaServer.Infrastructure.Persistence
         {
             // 表名（与现有库一致，显式声明避免 EF 复数约定差异）
             modelBuilder.Entity<AlarmRule>().ToTable("AlarmRules");
+
+            // Web Push 订阅表（doc/pwa 阶段五）：Endpoint 唯一（换绑 upsert 键）+ UserId 查询索引。
+            // 索引列显式限长（Pomelo 对无长度 string 默认 longtext 无法建索引）。
+            modelBuilder.Entity<PushSubscription>().ToTable("PushSubscriptions");
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.Endpoint).HasMaxLength(512);
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.P256DH).HasMaxLength(256);
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.Auth).HasMaxLength(256);
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.RenewalToken).HasMaxLength(128);
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.UserAgent).HasMaxLength(256);
+            modelBuilder.Entity<PushSubscription>()
+                .Property(s => s.LastErrorCode).HasMaxLength(64);
+            modelBuilder.Entity<PushSubscription>()
+                .HasIndex(s => s.Endpoint)
+                .IsUnique()
+                .HasDatabaseName("ix_pushsubscriptions_endpoint");
+            modelBuilder.Entity<PushSubscription>()
+                .HasIndex(s => s.UserId)
+                .HasDatabaseName("ix_pushsubscriptions_userid");
+            // 续订令牌查找索引（renew 端点凭令牌定位订阅）
+            modelBuilder.Entity<PushSubscription>()
+                .HasIndex(s => s.RenewalToken)
+                .IsUnique()
+                .HasDatabaseName("ix_pushsubscriptions_renewaltoken");
 
             // 报警记录表：索引支撑「列表/确认/清理/按设备」查询。
             // 数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能（同 VariableHistory 设计）。

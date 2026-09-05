@@ -22,6 +22,8 @@
     <PackageReference Include="S7netplus" Version="0.20.0" />
     <!-- SMTP 邮件发送（免费开源，Linux 部署支持良好；MimeKit 为传递依赖） -->
     <PackageReference Include="MailKit" Version="4.17.0" />
+    <!-- Web Push 推送渠道（doc/pwa 阶段五）：VAPID JWT 签名 + RFC 8291 aes128gcm 载荷加密 -->
+    <PackageReference Include="WebPush" Version="1.0.12" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.17" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.17" />

@@ -16,5 +16,14 @@
         public string MarkdownText { get; set; } = string.Empty;
         public string? HtmlBody { get; set; }
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+        // ---- Web Push 渠道专用可选字段（doc/pwa 阶段五 D8，向后兼容：钉钉/邮件不读不写）----
+
+        /// <summary>事件级别（Alarm=报警级别；SystemError=Critical…），Web Push 级别过滤用</summary>
+        public string? Severity { get; set; }
+
+        /// <summary>模板占位符上下文（deviceKey/variableName/level/actualValue/time/eventType…），
+        /// Web Push 据此构造结构化 payload（正文摘要/tag 折叠/恢复过滤）</summary>
+        public Dictionary<string, string?>? Tokens { get; set; }
     }
 }

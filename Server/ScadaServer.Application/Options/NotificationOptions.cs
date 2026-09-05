@@ -6,8 +6,38 @@ namespace ScadaServer.Application.Options
 
         public DingTalkOptions DingTalk { get; set; } = new();
         public EmailOptions Email { get; set; } = new();
+        public WebPushOptions WebPush { get; set; } = new();
         public ExternalPushPolicy Push { get; set; } = new();
         public NotificationTemplates Templates { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Web Push 渠道选项（doc/pwa 阶段五 · 步骤 21，§5.5/§7.3，D14）。
+    /// VAPID 密钥经 appsettings/环境变量注入，不启动时自动生成；私钥轮换 = 全部订阅失效（运维红线）。
+    /// </summary>
+    public class WebPushOptions
+    {
+        /// <summary>渠道总开关（Enabled=true 但密钥不完整时渠道仍视为禁用，与既有渠道语义一致）</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>最低推送级别（Info/Low、Warning/Medium、Error/High、Critical，低于不推），默认 Error</summary>
+        public string MinSeverity { get; set; } = "Error";
+
+        /// <summary>是否推送报警恢复通知（默认关，防噪音）</summary>
+        public bool PushRecover { get; set; }
+
+        /// <summary>单条消息内并发推送上限（SemaphoreSlim）</summary>
+        public int MaxConcurrentSends { get; set; } = 8;
+
+        public VapidOptions Vapid { get; set; } = new();
+    }
+
+    /// <summary>VAPID 密钥对与身份（Subject 为 mailto:/https: 联系方式；私钥不入库不入前端）</summary>
+    public class VapidOptions
+    {
+        public string Subject { get; set; } = string.Empty;
+        public string PublicKey { get; set; } = string.Empty;
+        public string PrivateKey { get; set; } = string.Empty;
     }
 
     /// <summary>可配置的外部消息模板（标记/钉钉/邮件各租一套占位符文案），未覆盖时用默认值。</summary>
