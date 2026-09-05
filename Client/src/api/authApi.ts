@@ -1,6 +1,7 @@
 import { addLog } from '../services/logService';
 import { systemConfig } from '../store/configStore';
 import { isAuthenticated, loginUser, systemUsers, authInitialized } from '../store/userStore';
+import { resetScadaStore } from '../store/scadaStore';
 import { SystemUser, CreateUserDto, UpdateUserDto } from '../types';
 import { http, TOKEN_KEY } from './http';
 
@@ -84,6 +85,9 @@ export const performLogin = async (username: string, passwordString: string): Pr
       const token = response.data.token;
       localStorage.setItem(TOKEN_KEY, token);
 
+      // 清除上一账号的组态工程缓存（防 SPA 无刷新场景下复用上个账号的工程列表/整树）
+      resetScadaStore();
+
       isAuthenticated.value = true;
       loginUser.value = {
         username: userName,
@@ -106,6 +110,8 @@ export const performLogin = async (username: string, passwordString: string): Pr
 
 export const performLogout = () => {
   addLog('安全认证', `用户 [${loginUser.value?.username || 'admin'}] 注销系统登录`, 'normal');
+  // 清空组态工程缓存（防下一账号复用上一账号的工程列表/整树绕过工程授权）
+  resetScadaStore();
   isAuthenticated.value = false;
   loginUser.value = null;
   localStorage.removeItem(TOKEN_KEY);

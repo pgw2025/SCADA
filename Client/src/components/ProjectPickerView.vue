@@ -5,8 +5,10 @@ import { projectSummaries, initializeProjectSummaries, upsertProjectSummary } fr
 import { loginUser } from '../store/userStore';
 import { isAuthenticated, performLogout } from '../store';
 import { ROLE_ADMIN } from '../constants/roles';
-import { exportProjectFile, parseTransferFile, importProject } from '../api/scadaApi';
-import { MonitorPlay, LogOut, ArrowRight, Pencil, LayoutGrid, Download, Upload } from 'lucide-vue-next';
+import { exportProjectFile, parseTransferFile, importProject, loadProjectAuthorizations, saveProjectAuthorizations } from '../api/scadaApi';
+import { fetchSystemUsers } from '../api/authApi';
+import { SystemUser } from '../types';
+import { MonitorPlay, LogOut, ArrowRight, Pencil, LayoutGrid, Download, Upload, UserCheck, X } from 'lucide-vue-next';
 
 const router = useRouter();
 
@@ -80,6 +82,69 @@ const handleExport = async (p: { id: number; name: string }) => {
     importMessage.value = { type: 'error', text: '导出失败，请稍后重试' };
   }
 };
+
+// ===== 工程授权管理（管理员专属：工程维度勾选用户，全量覆盖保存） =====
+const authModal = ref<{
+  visible: boolean;
+  project: { id: number; name: string } | null;
+  users: SystemUser[];
+  checkedIds: Set<number>;
+  loading: boolean;
+  saving: boolean;
+}>({
+  visible: false,
+  project: null,
+  users: [],
+  checkedIds: new Set(),
+  loading: false,
+  saving: false
+});
+
+const openAuthModal = async (p: { id: number; name: string }) => {
+  authModal.value = { visible: true, project: p, users: [], checkedIds: new Set(), loading: true, saving: false };
+  importMessage.value = null;
+  try {
+    const [users, grants] = await Promise.all([
+      fetchSystemUsers(),
+      loadProjectAuthorizations(p.id)
+    ]);
+    // 剔除 Admin：其默认可见全部工程，无需授权记录（与后端保存时剔除双保险）
+    authModal.value.users = users.filter(u => u.role !== ROLE_ADMIN);
+    authModal.value.checkedIds = new Set(grants.map(g => g.userId));
+  } catch (err: any) {
+    importMessage.value = { type: 'error', text: err?.response?.data?.message || err?.message || '加载授权信息失败' };
+  } finally {
+    authModal.value.loading = false;
+  }
+};
+
+const closeAuthModal = () => {
+  if (authModal.value.saving) return;
+  authModal.value.visible = false;
+};
+
+const toggleAuthUser = (userId: number) => {
+  const set = authModal.value.checkedIds;
+  if (set.has(userId)) set.delete(userId);
+  else set.add(userId);
+};
+
+const saveAuthModal = async () => {
+  const proj = authModal.value.project;
+  if (!proj) return;
+  authModal.value.saving = true;
+  importMessage.value = null;
+  try {
+    const count = authModal.value.checkedIds.size;
+    await saveProjectAuthorizations(proj.id, [...authModal.value.checkedIds]);
+    importMessage.value = { type: 'success', text: `已保存工程「${proj.name}」的授权（${count} 个用户）` };
+    authModal.value.visible = false;
+  } catch (err: any) {
+    importMessage.value = { type: 'error', text: err?.response?.data?.message || err?.message || '保存授权失败' };
+  } finally {
+    authModal.value.saving = false;
+  }
+};
 </script>
 
 <template>
@@ -150,7 +215,7 @@ const handleExport = async (p: { id: number; name: string }) => {
         <div>
           <MonitorPlay class="w-12 h-12 mx-auto mb-3 opacity-40" />
           <p class="text-sm">暂无工程</p>
-          <p class="text-[11px] mt-1">请先在组态设计中创建并发布工程。</p>
+          <p class="text-[11px] mt-1">{{ isAdmin ? '请先在组态设计中创建并发布工程。' : '暂无可访问的工程，请联系管理员授权。' }}</p>
           <button
             v-if="isAdmin"
             @click="goEditor"
@@ -172,6 +237,9 @@ const handleExport = async (p: { id: number; name: string }) => {
               <button v-if="isAdmin" @click.stop="handleExport(p)"
                 class="absolute top-2 left-2 w-7 h-7 rounded-full bg-white/15 backdrop-blur flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
                 title="导出工程（.scada-project.json）"><Download class="w-4 h-4" /></button>
+              <button v-if="isAdmin" @click.stop="openAuthModal(p)"
+                class="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/15 backdrop-blur flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
+                title="管理授权（仅授权用户可见此工程）"><UserCheck class="w-4 h-4" /></button>
               <div class="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-white/15 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <ArrowRight class="w-4 h-4 text-white" />
               </div>
@@ -191,5 +259,71 @@ const handleExport = async (p: { id: number; name: string }) => {
         </div>
       </div>
     </main>
+
+    <!-- 工程授权管理弹窗（管理员专属） -->
+    <div v-if="authModal.visible" class="fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden text-left animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
+          <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest text-sky-400">
+            <UserCheck class="w-4 h-4" />
+            <span>管理工程授权</span>
+          </div>
+          <button @click="closeAuthModal" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+        </div>
+
+        <div class="p-5 space-y-4 text-xs">
+          <div class="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+            <p class="font-bold text-slate-700 dark:text-slate-200 truncate">工程：{{ authModal.project?.name }}</p>
+            <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              仅被勾选的用户能在「组态运行」中看到并打开该工程；管理员默认可见全部工程，无需授权。
+            </p>
+          </div>
+
+          <div>
+            <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1.5">选择可访问的用户</label>
+            <div v-if="authModal.loading" class="py-6 text-center text-slate-400 dark:text-slate-500">
+              <LayoutGrid class="w-6 h-6 mx-auto mb-2 animate-pulse opacity-40" />
+              <p>正在加载用户列表…</p>
+            </div>
+            <div v-else-if="authModal.users.length === 0"
+              class="py-6 text-center text-slate-400 dark:text-slate-500">暂无其他用户（管理员无需授权）</div>
+            <div v-else class="max-h-60 overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-100 dark:divide-slate-800">
+              <label v-for="u in authModal.users" :key="u.id"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                <input type="checkbox"
+                  :checked="authModal.checkedIds.has(u.id)"
+                  @change="toggleAuthUser(u.id)"
+                  class="accent-sky-500 focus:ring-0 cursor-pointer" />
+                <span class="flex-1 min-w-0">
+                  <span class="block font-bold text-slate-700 dark:text-slate-200 truncate">{{ u.username }}</span>
+                  <span class="block text-[10px] text-slate-400 dark:text-slate-500">
+                    {{ u.role === 'Operator' ? '操作员' : '观察员' }}
+                  </span>
+                </span>
+                <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  :class="u.status === 'Active'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'">
+                  {{ u.status === 'Active' ? '启用' : '停用' }}
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
+          <button
+            @click="closeAuthModal"
+            :disabled="authModal.saving"
+            class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer disabled:opacity-50"
+          >取消</button>
+          <button
+            @click="saveAuthModal"
+            :disabled="authModal.loading || authModal.saving"
+            class="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 font-bold text-xs text-white cursor-pointer disabled:opacity-50"
+          >{{ authModal.saving ? '保存中…' : '保存授权' }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

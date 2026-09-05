@@ -1,6 +1,8 @@
 import { computed, ref, watch } from 'vue';
 import { ScadaScreenProject, ScadaPage } from '../types';
 import * as api from '../api/scadaApi';
+import { loginUser } from './userStore';
+import { ROLE_ADMIN } from '../constants/roles';
 
 /**
  * 组态编辑器数据源（D1=方案B「消除」：不再内置模板示例工程）。
@@ -137,12 +139,13 @@ const findProject = (rawId: string | number) =>
 
 /**
  * 选中具体工程（组态画布页）：
- *  - 已有完整树 → 直接使用；
- *  - 否则按后端 id 懒加载完整树并 upsert 到本地工程列表；
+ *  - Admin：命中本地缓存直接使用（编辑器频繁切换工程的性能优化）；
+ *  - 非 Admin（Operator/Viewer）：跳过缓存强制回源，由后端工程授权校验兜底——
+ *    未授权/授权被撤销 → 后端 404 → catch → null → 页面空态（防止缓存副本绕过授权）。
  *  - 非法 id 或请求失败 → 返回 null，由页面决定空态。
  */
 export const selectProject = async (rawId: string | number): Promise<ScadaScreenProject | null> => {
-  const existing = findProject(rawId);
+  const existing = loginUser.value?.role === ROLE_ADMIN ? findProject(rawId) : undefined;
   if (existing) {
     selectedProjectId.value = existing.id;
     return existing;
@@ -176,4 +179,19 @@ export const upsertProjectSummary = (s: { id: number; name: string; description:
   const i = projectSummaries.value.findIndex(p => p.id === s.id);
   if (i >= 0) projectSummaries.value.splice(i, 1, s);
   else projectSummaries.value.push(s);
+};
+
+/**
+ * 清空组态工程缓存并复位初始化标志。
+ * 登出/切换账号时必须调用：SPA 无整页刷新，若不清理，
+ * 下一账号会复用上一账号（可能含未授权工程）的内存缓存，绕过后端工程授权。
+ */
+export const resetScadaStore = () => {
+  scadaProjects.value = [];
+  projectSummaries.value = [];
+  selectedProjectId.value = '';
+  selectedPageId.value = '';
+  scadaLoading.value = false;
+  _scadaInitialized = false;
+  _summariesInitialized = false;
 };

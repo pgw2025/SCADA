@@ -80,6 +80,27 @@ export const loadProjectFull = async (id: number): Promise<ProjectFullDto> => {
   return r.data;
 };
 
+// ---- 工程授权（管理员专属）----
+
+/** 与后端 ScadaProjectAuthorizedUserDto 对齐（camelCase 线格式） */
+export interface ProjectAuthorizedUserDto {
+  userId: number;
+  username: string;
+  role: string;
+  status: string;
+  grantedAt: string;
+}
+
+export const loadProjectAuthorizations = async (projectId: number): Promise<ProjectAuthorizedUserDto[]> => {
+  const r = await http.get<ProjectAuthorizedUserDto[]>(`${API()}/ScadaProject/${projectId}/authorizations`);
+  return r.data || [];
+};
+
+/** 全量覆盖工程授权用户集合（空数组=清空授权）。 */
+export const saveProjectAuthorizations = async (projectId: number, userIds: number[]): Promise<void> => {
+  await http.put(`${API()}/ScadaProject/${projectId}/authorizations`, { userIds });
+};
+
 // ---- 工程 ----
 export const createProject = async (dto: Partial<ProjectSummaryDto>): Promise<number> => {
   const r = await http.post<ProjectSummaryDto>(`${API()}/ScadaProject`, dto);
