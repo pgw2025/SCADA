@@ -59,54 +59,105 @@ const fmtTime = (ts?: string | null) => {
       <span class="text-[10px] text-slate-400 dark:text-slate-500">{{ refereeDevices.length > 0 ? '共享连接/控制器可被多台设备引用' : '无设备引用' }}</span>
     </div>
 
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="bg-slate-50 dark:bg-slate-950/60 ring-1 ring-slate-100 dark:ring-slate-800 uppercase text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider">
-          <th class="px-4 py-3 text-left">名称</th>
-          <th class="px-4 py-3 text-left">Key</th>
-          <th class="px-4 py-3 text-left">区域</th>
-          <th class="px-4 py-3 text-left">类型</th>
-          <th class="px-4 py-3 text-left">地址</th>
-          <th class="px-4 py-3 text-left">启用</th>
-          <th class="px-4 py-3 text-left">状态</th>
-          <th class="px-4 py-3 text-right">更新时间</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        <tr v-for="d in refereeDevices" :key="d.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
-          <td class="px-4 py-3 font-sans font-bold text-slate-800 dark:text-white inline-flex items-center gap-1.5">
-            <MonitorDot class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            {{ d.name }}
-          </td>
-          <td class="px-4 py-3 font-mono text-slate-400 dark:text-slate-500">{{ d.key }}</td>
-          <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ d.areaName || '—' }}</td>
-          <td class="px-4 py-3">
-            <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
-              {{ typeLabel(d) }}
-            </span>
-          </td>
-          <td class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{{ deviceAddress(d) }}</td>
-          <td class="px-4 py-3">
-            <span
-              class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+    <!-- Desktop Table View -->
+    <div class="hidden sm:block overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="bg-slate-50 dark:bg-slate-950/60 ring-1 ring-slate-100 dark:ring-slate-800 uppercase text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider">
+            <th class="px-4 py-3 text-left">名称</th>
+            <th class="px-4 py-3 text-left">Key</th>
+            <th class="px-4 py-3 text-left">区域</th>
+            <th class="px-4 py-3 text-left">类型</th>
+            <th class="px-4 py-3 text-left">地址</th>
+            <th class="px-4 py-3 text-left">启用</th>
+            <th class="px-4 py-3 text-left">状态</th>
+            <th class="px-4 py-3 text-right">更新时间</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          <tr v-for="d in refereeDevices" :key="d.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all">
+            <td class="px-4 py-3 font-sans font-bold text-slate-800 dark:text-white inline-flex items-center gap-1.5">
+              <MonitorDot class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              {{ d.name }}
+            </td>
+            <td class="px-4 py-3 font-mono text-slate-400 dark:text-slate-500">{{ d.key }}</td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ d.areaName || '—' }}</td>
+            <td class="px-4 py-3">
+              <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                {{ typeLabel(d) }}
+              </span>
+            </td>
+            <td class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{{ deviceAddress(d) }}</td>
+            <td class="px-4 py-3">
+              <span
+                class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                :class="d.isEnabled
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
+              >
+                <Power class="w-3 h-3" />
+                {{ d.isEnabled ? '启用' : '停用' }}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center gap-1.5 font-bold">
+                <i class="w-2 h-2 rounded-full shrink-0" :class="statusInfo(d).dot" />
+                <span :class="statusInfo(d).cls">{{ statusInfo(d).text }}</span>
+              </span>
+            </td>
+            <td class="px-4 py-3 font-mono text-slate-400 dark:text-slate-500 text-right">{{ fmtTime(d.lastUpdated) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile Card View -->
+    <div class="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+      <div v-for="d in refereeDevices" :key="d.id" class="p-3.5 space-y-2 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex items-center gap-2">
+            <MonitorDot class="w-4 h-4 text-slate-400 shrink-0" />
+            <div class="min-w-0">
+              <h4 class="font-bold text-xs text-slate-800 dark:text-white truncate">{{ d.name }}</h4>
+              <p class="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate">{{ d.key }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
               :class="d.isEnabled
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'"
-            >
-              <Power class="w-3 h-3" />
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'">
+              <Power class="w-2.5 h-2.5" />
               {{ d.isEnabled ? '启用' : '停用' }}
             </span>
-          </td>
-          <td class="px-4 py-3">
-            <span class="inline-flex items-center gap-1.5 font-bold">
-              <i class="w-2 h-2 rounded-full shrink-0" :class="statusInfo(d).dot" />
+            <span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <i class="w-1.5 h-1.5 rounded-full" :class="statusInfo(d).dot" />
               <span :class="statusInfo(d).cls">{{ statusInfo(d).text }}</span>
             </span>
-          </td>
-          <td class="px-4 py-3 font-mono text-slate-400 dark:text-slate-500 text-right">{{ fmtTime(d.lastUpdated) }}</td>
-        </tr>
-      </tbody>
-    </table>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-[11px] pt-1">
+          <div class="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60">
+            <span class="text-[10px] text-slate-400 dark:text-slate-500 block">协议 / 区域</span>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span class="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold px-1.5 py-0.2 text-[9px] rounded-full">
+                {{ typeLabel(d) }}
+              </span>
+              <span class="text-slate-600 dark:text-slate-300 truncate">{{ d.areaName || '未分配区域' }}</span>
+            </div>
+          </div>
+          <div class="bg-slate-50 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60">
+            <span class="text-[10px] text-slate-400 dark:text-slate-500 block">端点地址</span>
+            <span class="font-mono text-slate-700 dark:text-slate-300 truncate block mt-0.5 text-[10px]">{{ deviceAddress(d) }}</span>
+          </div>
+        </div>
+
+        <div class="text-[10px] text-slate-400 dark:text-slate-500 text-right pt-0.5">
+          更新时间: {{ fmtTime(d.lastUpdated) }}
+        </div>
+      </div>
+    </div>
 
     <div v-if="refereeDevices.length === 0" class="py-10 text-center text-slate-400 dark:text-slate-500 text-xs">
       <Power class="w-8 h-8 mx-auto mb-2 opacity-20" />
