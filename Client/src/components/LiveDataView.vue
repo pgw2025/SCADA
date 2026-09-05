@@ -26,8 +26,47 @@ import {
   ChevronLeft,
   ChevronRight,
   Radio,
-  Cpu
+  Cpu,
+  LayoutList,
+  AlignJustify,
+  Eye,
+  Copy
 } from 'lucide-vue-next';
+
+// 移动端变量列表双模状态 (方案一: 卡片 / 方案二: 紧凑)
+const mobileVarViewMode = ref<'card' | 'compact'>(
+  (localStorage.getItem('scada_live_var_mobile_view') as 'card' | 'compact') || 'card'
+);
+const setMobileVarViewMode = (mode: 'card' | 'compact') => {
+  mobileVarViewMode.value = mode;
+  localStorage.setItem('scada_live_var_mobile_view', mode);
+};
+
+// 移动端变量详情抽屉状态
+const selectedVarDetail = ref<any | null>(null);
+const openVarDetail = (v: any) => {
+  selectedVarDetail.value = v;
+};
+const closeVarDetail = () => {
+  selectedVarDetail.value = null;
+};
+const copyVarDetail = (v: any) => {
+  if (!v) return;
+  const text = `【变量信息】
+变量标识: ${v.key}
+变量名称: ${v.name}
+所属设备: ${selectedDevice.value?.name || '未知设备'}
+寄存器地址: ${v.address || '无'}
+数据类型: ${v.dataType || v.type}
+当前数值: ${v.type === 'digital' ? (v.value ? 'ON / 闭合' : 'OFF / 断开') : v.value + ' ' + (v.unit || '')}
+工程单位: ${v.unit || '无'}
+量程范围: ${v.min} ~ ${v.max}
+读写权限: ${v.isReadOnly ? '只读 (Read)' : '可读写 (Read/Write)'}
+通讯质量: ${qualityLabel(v.quality) || '正常 (Good)'}
+更新时间: ${v.updatedAt}`;
+  navigator.clipboard?.writeText?.(text);
+  addLog('实时监控', `已复制点位 [${v.key}] 的完整参数`, 'normal');
+};
 
 // 面板与抽屉开闭状态
 const isMobileDeviceDrawerOpen = ref<boolean>(false);
@@ -472,8 +511,36 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div class="text-[10px] sm:text-xs text-slate-400 font-sans ml-auto flex items-center gap-2">
-            <span>找到 <b>{{ filteredRenderedVariables.length }}</b> / {{ renderedVariables.length }} 个变量</span>
+          <div class="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-3 sm:ml-auto">
+            <!-- 移动端双模切换开关 (方案一卡片 / 方案二紧凑) -->
+            <div class="flex md:hidden items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shrink-0">
+              <button
+                @click="setMobileVarViewMode('card')"
+                class="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer"
+                :class="mobileVarViewMode === 'card'
+                  ? 'bg-white dark:bg-slate-700 text-[#1890ff] dark:text-sky-400 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                title="方案一：卡片模式"
+              >
+                <LayoutList class="w-3.5 h-3.5" />
+                卡片
+              </button>
+              <button
+                @click="setMobileVarViewMode('compact')"
+                class="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer"
+                :class="mobileVarViewMode === 'compact'
+                  ? 'bg-white dark:bg-slate-700 text-[#1890ff] dark:text-sky-400 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+                title="方案二：紧凑列表模式"
+              >
+                <AlignJustify class="w-3.5 h-3.5" />
+                紧凑
+              </button>
+            </div>
+
+            <div class="text-[10px] sm:text-xs text-slate-400 font-sans flex items-center gap-2">
+              <span>找到 <b>{{ filteredRenderedVariables.length }}</b> / {{ renderedVariables.length }} 个变量</span>
+            </div>
           </div>
         </div>
 
@@ -587,94 +654,154 @@ onUnmounted(() => {
             </table>
           </div>
 
-          <!-- Mobile responsive variables card list -->
-          <div class="block md:hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
-            <div v-for="v in filteredRenderedVariables" :key="v.key + '_mob'"
-              class="p-4 space-y-3 text-left bg-white dark:bg-slate-900">
-              <!-- Top row: key name & status -->
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0 space-y-1">
-                  <div
-                    class="flex items-center gap-1 text-slate-900 dark:text-white font-bold font-mono text-xs truncate flex-wrap">
-                    <Binary class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span
-                      class="truncate select-all bg-slate-50 dark:bg-slate-950 px-1 rounded border border-slate-100 dark:border-slate-800 max-w-[130px] inline-block">{{
-                      v.key }}</span>
-                    <span
-                      class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase tracking-wider scale-90 origin-left ml-1"
-                      :class="v.type === 'digital' ?
-                        (selectedDevice?.type === 'S7' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800') :
-                        (selectedDevice?.type === 'S7' ? 'bg-indigo-50/70 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800')">
-                      {{ v.dataType || (v.type === 'digital' ? (selectedDevice?.type === 'S7' ? 'BOOL' : 'Boolean') :
-                        (selectedDevice?.type === 'S7' ? 'REAL' : 'Float')) }}
-                    </span>
+          <!-- Mobile responsive variables dual-mode list (方案一卡片 / 方案二紧凑) -->
+          <div class="block md:hidden">
+            <div v-if="filteredRenderedVariables.length === 0" class="p-8 text-center text-xs text-slate-400 font-sans">
+              未找到匹配的变量
+            </div>
+
+            <!-- 方案一：完整卡片视图 (Card Mode) -->
+            <div v-else-if="mobileVarViewMode === 'card'" class="p-3 space-y-3">
+              <div v-for="v in filteredRenderedVariables" :key="v.key + '_mob_card'"
+                class="bg-slate-50/70 dark:bg-slate-800/50 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5 transition-colors shadow-xs text-left">
+                <!-- Top row: key name & status/value -->
+                <div class="flex items-start justify-between gap-2.5">
+                  <div class="min-w-0 flex-1 space-y-1">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <Binary class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span class="font-bold font-mono text-xs text-slate-800 dark:text-white truncate">{{ v.key }}</span>
+                      <span
+                        class="inline-block px-1.5 py-0.2 text-[9px] font-bold rounded border uppercase tracking-wider scale-95 origin-left"
+                        :class="v.type === 'digital' ?
+                          (selectedDevice?.type === 'S7' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800') :
+                          (selectedDevice?.type === 'S7' ? 'bg-indigo-50/70 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800')">
+                        {{ v.dataType || (v.type === 'digital' ? (selectedDevice?.type === 'S7' ? 'BOOL' : 'Boolean') :
+                          (selectedDevice?.type === 'S7' ? 'REAL' : 'Float')) }}
+                      </span>
+                    </div>
+                    <div class="text-[11px] font-bold text-slate-850 dark:text-slate-100 font-sans">{{ v.name }}</div>
                   </div>
-                  <div>
-                    <span
-                      class="inline-block text-[9px] bg-slate-100 dark:bg-slate-800 font-bold px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">
-                      {{ v.address }}
+
+                  <!-- Active Value -->
+                  <div class="shrink-0 text-right">
+                    <!-- 质量徽标 -->
+                    <span v-if="v.quality && v.quality !== 'Good'"
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 mb-1 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                      <AlertTriangle class="w-2.5 h-2.5" />
+                      {{ qualityLabel(v.quality) }}
                     </span>
+                    <div v-if="v.type === 'digital'">
+                      <span
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
+                        :class="v.value ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400 border border-rose-200 dark:border-rose-800'">
+                        <span class="w-1.5 h-1.5 rounded-full"
+                          :class="v.value ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'" />
+                        {{ v.value ? 'ON / 闭合' : 'OFF / 断开' }}
+                      </span>
+                    </div>
+                    <div v-else>
+                      <span class="text-xs font-bold font-mono text-slate-900 dark:text-white bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1 shadow-2xs">
+                        {{ v.value }} <span class="text-[9px] font-sans font-normal text-slate-500 dark:text-slate-400">{{ v.unit }}</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Active Value -->
-                <div class="shrink-0">
-                  <!-- 质量徽标：读取失败时值为最近一次有效"僵尸值"，显式标记避免误读 -->
-                  <span v-if="v.quality && v.quality !== 'Good'"
-                    class="inline-flex items-center gap-1 px-1.5 py-0.5 mb-1 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                    <AlertTriangle class="w-2.5 h-2.5" />
-                    {{ qualityLabel(v.quality) }}
+                <!-- Address & Meta badges -->
+                <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400 dark:text-slate-500 flex-wrap">
+                  <span v-if="v.address" class="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                    地址: {{ v.address }}
                   </span>
-                  <span v-if="v.type === 'digital'"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
-                    :class="v.value ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400 border border-rose-100/30'">
-                    <span class="w-1.5 h-1.5 rounded-full"
-                      :class="v.value ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'" />
-                    {{ v.value ? 'ON / 闭合' : 'OFF / 断开' }}
+                  <span class="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                    {{ v.isReadOnly ? '只读' : '可读写' }}
                   </span>
-                  <span v-else
-                    class="text-xs font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/50 dark:border-slate-700 inline-flex items-center gap-1 font-mono">
-                    {{ v.value }} <span class="text-[9px] font-sans font-normal text-slate-500 dark:text-slate-400">{{
-                      v.unit }}</span>
+                  <span class="truncate ml-auto text-[10px] text-slate-400 flex items-center gap-1">
+                    <Clock class="w-3 h-3" />
+                    {{ v.updatedAt ? v.updatedAt.slice(-8) : '--' }}
                   </span>
                 </div>
-              </div>
 
-              <!-- Variable Name & Description -->
-              <div
-                class="bg-slate-50/70 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-100/80 dark:border-slate-800/80 space-y-1">
-                <div class="text-xs font-bold text-slate-850 dark:text-slate-200 font-sans break-words">{{ v.name }}
+                <!-- Description if exists -->
+                <div v-if="v.description" class="text-[10px] text-slate-500 dark:text-slate-400 font-sans leading-relaxed line-clamp-1">
+                  {{ v.description }}
                 </div>
-                <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed break-words">{{
-                  v.description }}</div>
-              </div>
 
-              <!-- Variable custom timestamp indicator -->
-              <div
-                class="flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                <span class="font-sans">更新时间:</span>
-                <span class="font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                  <Clock class="w-3 h-3 text-slate-400 shrink-0" />
-                  {{ v.updatedAt }}
-                </span>
-              </div>
-
-              <!-- Overrides control -->
-              <div class="flex items-center justify-between pt-2">
-                <span class="text-[10px] text-slate-400 dark:text-slate-500 font-sans">数值写入</span>
-
-                <div class="shrink-0 font-sans">
-                  <!-- Open write modal button -->
-                  <button v-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
-                    @click="startOverride(v)"
-                    class="text-[10px] font-sans font-bold text-[#1890ff] border border-slate-200 dark:border-slate-700 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 shadow-2xs transition-all cursor-pointer">
-                    <Settings class="w-3 h-3" />
-                    写入
+                <!-- Bottom action bar -->
+                <div class="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                  <button
+                    @click="openVarDetail(v)"
+                    class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-[#1890ff] cursor-pointer"
+                  >
+                    <Eye class="w-3.5 h-3.5" />
+                    查看详情
                   </button>
-                  <span v-else class="text-slate-300 dark:text-slate-600 text-[10px] font-sans">已锁定</span>
+
+                  <div class="flex items-center gap-2">
+                    <button
+                      v-if="(selectedDevice.status === 1 || selectedDevice.status === 'online') && !v.isReadOnly"
+                      @click="startOverride(v)"
+                      class="px-2.5 py-1 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 text-[#1890ff] dark:text-sky-400 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-2xs hover:bg-sky-100"
+                    >
+                      <Settings class="w-3 h-3" />
+                      写入
+                    </button>
+                    <span v-else class="text-slate-300 dark:text-slate-600 text-[10px] font-sans px-2 py-0.5">
+                      {{ v.isReadOnly ? '只读点位' : '设备离线' }}
+                    </span>
+                  </div>
                 </div>
               </div>
+            </div>
 
+            <!-- 方案二：高密度紧凑列表 (Compact Mode) -->
+            <div v-else-if="mobileVarViewMode === 'compact'" class="divide-y divide-slate-100 dark:divide-slate-800">
+              <div
+                v-for="v in filteredRenderedVariables"
+                :key="v.key + '_mob_compact'"
+                @click="openVarDetail(v)"
+                class="px-3 py-2.5 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800 transition-colors cursor-pointer text-left"
+              >
+                <!-- 变量类型小标 -->
+                <span
+                  class="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono shrink-0"
+                  :class="v.type === 'digital'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                    : 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800'"
+                >
+                  {{ v.type === 'digital' ? 'DI' : 'AI' }}
+                </span>
+
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-xs text-slate-800 dark:text-white truncate font-sans">{{ v.name }}</span>
+                    <span class="font-mono text-[10px] text-slate-400 truncate">{{ v.key }}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                    <span v-if="v.address">Addr: {{ v.address }} · </span>
+                    <span>{{ v.isReadOnly ? '只读' : '可写' }}</span>
+                  </div>
+                </div>
+
+                <!-- 当前数值展示 -->
+                <div class="shrink-0 flex items-center gap-1.5">
+                  <div v-if="v.type === 'digital'">
+                    <span
+                      class="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono inline-flex items-center gap-1"
+                      :class="v.value ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-950/60 text-rose-500 dark:text-rose-400'"
+                    >
+                      <span class="w-1.5 h-1.5 rounded-full" :class="v.value ? 'bg-emerald-500' : 'bg-rose-500'" />
+                      {{ v.value ? 'ON' : 'OFF' }}
+                    </span>
+                  </div>
+                  <div v-else class="text-right">
+                    <span class="text-xs font-bold font-mono text-slate-900 dark:text-white">
+                      {{ v.value }}
+                    </span>
+                    <span class="text-[9px] font-sans text-slate-400 ml-0.5">{{ v.unit }}</span>
+                  </div>
+                  <ChevronRight class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -822,6 +949,164 @@ onUnmounted(() => {
           class="px-3 py-1.5 text-xs font-bold bg-[#1890ff] text-white rounded-lg hover:bg-sky-600 disabled:opacity-40 cursor-pointer inline-flex items-center gap-1">
           <Check v-if="!isSubmitting" class="w-3.5 h-3.5" />
           {{ isSubmitting ? '写入中...' : '确认写入' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 移动端变量详情抽屉 (Bottom Sheet) -->
+  <div v-if="selectedVarDetail" class="fixed inset-0 z-50 overflow-hidden md:hidden">
+    <!-- 背景遮罩 -->
+    <div
+      class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+      @click="closeVarDetail"
+    />
+
+    <!-- 底部滑出抽屉卡片 -->
+    <div class="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl border-t border-slate-200 dark:border-slate-800 flex flex-col animate-in slide-in-from-bottom duration-250">
+      <!-- 顶部拖拽手柄条 -->
+      <div class="pt-3 pb-1 flex justify-center shrink-0">
+        <div class="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full" />
+      </div>
+
+      <!-- 抽屉头部 -->
+      <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-[#1890ff] flex items-center justify-center shrink-0">
+            <Binary class="w-4 h-4" />
+          </div>
+          <div class="min-w-0">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white truncate leading-tight">
+              {{ selectedVarDetail.name }}
+            </h3>
+            <p class="text-[11px] font-mono text-slate-400 truncate">
+              {{ selectedVarDetail.key }}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          @click="closeVarDetail"
+          class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+        >
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+
+      <!-- 抽屉内容滚动区域 -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-4 text-xs text-left">
+        <!-- 实时数值高亮看板 -->
+        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between">
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-bold">当前实时数值</div>
+            <div class="mt-1 flex items-baseline gap-1.5">
+              <span v-if="selectedVarDetail.type === 'digital'"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold font-mono"
+                :class="selectedVarDetail.value ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'"
+              >
+                <span class="w-2 h-2 rounded-full" :class="selectedVarDetail.value ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'" />
+                {{ selectedVarDetail.value ? 'ON / 闭合导通' : 'OFF / 断开截止' }}
+              </span>
+              <span v-else class="text-xl font-bold font-mono text-slate-900 dark:text-white">
+                {{ selectedVarDetail.value }}
+                <span class="text-xs font-normal text-slate-500 dark:text-slate-400 ml-1">{{ selectedVarDetail.unit }}</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- 通信质量 -->
+          <div class="text-right">
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-bold">通信质量</div>
+            <div class="mt-1">
+              <span
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
+                :class="selectedVarDetail.quality && selectedVarDetail.quality !== 'Good'
+                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="selectedVarDetail.quality && selectedVarDetail.quality !== 'Good' ? 'bg-amber-500' : 'bg-emerald-500'" />
+                {{ qualityLabel(selectedVarDetail.quality) || '正常 (Good)' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 详细信息网格 -->
+        <div class="space-y-2">
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">点位参数规格</div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">所属设备</span>
+              <span class="font-bold text-slate-800 dark:text-slate-200 truncate block">{{ selectedDevice?.name || '--' }}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">寄存器地址</span>
+              <span class="font-mono font-bold text-slate-800 dark:text-slate-200 truncate block">{{ selectedVarDetail.address || '无' }}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">数据类型</span>
+              <span class="font-mono font-bold text-sky-600 dark:text-sky-400 uppercase block">{{ selectedVarDetail.dataType || selectedVarDetail.type }}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">读写权限</span>
+              <span class="font-bold text-slate-700 dark:text-slate-300 block">{{ selectedVarDetail.isReadOnly ? '只读 (Read Only)' : '可读写 (Read/Write)' }}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">取值量程</span>
+              <span class="font-mono text-slate-700 dark:text-slate-300 block">
+                {{ selectedVarDetail.min !== undefined && selectedVarDetail.max !== undefined ? `${selectedVarDetail.min} ~ ${selectedVarDetail.max}` : '不限' }}
+              </span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[10px] text-slate-400 block mb-0.5">工程单位</span>
+              <span class="font-bold text-slate-700 dark:text-slate-300 block">{{ selectedVarDetail.unit || '无单位' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 描述与说明 -->
+        <div v-if="selectedVarDetail.description" class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+          <span class="text-[10px] text-slate-400 block mb-1 font-bold">变量说明描述</span>
+          <p class="text-slate-700 dark:text-slate-300 leading-relaxed text-xs">{{ selectedVarDetail.description }}</p>
+        </div>
+
+        <!-- 最后采集更新时间 -->
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 px-1">
+          <span class="flex items-center gap-1.5">
+            <Clock class="w-3.5 h-3.5" />
+            最近采集时间
+          </span>
+          <span class="text-slate-600 dark:text-slate-300 font-bold">{{ selectedVarDetail.updatedAt || '--' }}</span>
+        </div>
+      </div>
+
+      <!-- 抽屉底部操作栏 -->
+      <div class="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 flex items-center gap-2.5 shrink-0">
+        <button
+          type="button"
+          @click="copyVarDetail(selectedVarDetail)"
+          class="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+        >
+          <Copy class="w-3.5 h-3.5 text-slate-400" />
+          复制参数
+        </button>
+
+        <button
+          v-if="(selectedDevice?.status === 1 || selectedDevice?.status === 'online') && !selectedVarDetail.isReadOnly"
+          type="button"
+          @click="closeVarDetail(); startOverride(selectedVarDetail)"
+          class="flex-1 py-2.5 px-3 rounded-xl bg-[#1890ff] hover:bg-sky-600 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+        >
+          <Settings class="w-3.5 h-3.5" />
+          写入数值
+        </button>
+
+        <button
+          type="button"
+          @click="closeVarDetail"
+          class="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 font-bold text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          关闭
         </button>
       </div>
     </div>

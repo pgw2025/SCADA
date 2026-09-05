@@ -13,7 +13,12 @@ import {
   Braces,
   X,
   ChevronDown,
-  Check
+  Check,
+  ArrowUpDown,
+  LayoutGrid,
+  List,
+  Sliders,
+  Filter
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
@@ -324,6 +329,78 @@ const supportsSubscription = computed(() => (selectedDevice.value?.type ?? '').t
 /** 列表存在订阅变量 → 列头显示"间隔(ms)"（订阅语义=服务端采样/发布间隔），否则"轮询(ms)" */
 const hasSubscriptionVariables = computed(() => dataPointMappings.value.some(v => updateModeOf(v) === 'Subscription'));
 
+// ---------- 变量搜索、分类过滤与排序（方案一 双行紧凑流） ----------
+const varSearchQuery = ref<string>('');
+const varCategoryFilter = ref<string>('ALL');
+const varSortBy = ref<'default' | 'key' | 'name' | 'address' | 'interval'>('default');
+const varSortMenuOpen = ref<boolean>(false);
+const varViewMode = ref<'card' | 'list'>('card');
+
+const varSortOptions = [
+  { value: 'default', label: '默认顺序', mobileLabel: '默认' },
+  { value: 'key', label: '标识 (A-Z)', mobileLabel: '标识' },
+  { value: 'name', label: '名称 (A-Z)', mobileLabel: '名称' },
+  { value: 'address', label: '地址排序', mobileLabel: '地址' },
+  { value: 'interval', label: '采集间隔', mobileLabel: '间隔' },
+] as const;
+
+const varSortMobileLabel = computed(() => {
+  const found = varSortOptions.find(o => o.value === varSortBy.value);
+  return found ? found.mobileLabel : '排序';
+});
+
+// 分类胶囊与计数
+const varCategories = computed(() => {
+  const list = dataPointMappings.value;
+  return [
+    { id: 'ALL', name: '全部', count: list.length },
+    { id: 'ANALOG', name: '模拟量', count: list.filter(v => !isBitType(v.dataType)).length },
+    { id: 'BOOL', name: '开关量', count: list.filter(v => isBitType(v.dataType)).length },
+    { id: 'SUBSCRIPTION', name: '订阅', count: list.filter(v => updateModeOf(v) === 'Subscription').length },
+    { id: 'ENABLED', name: '已启用', count: list.filter(v => v.isEnabled).length },
+    { id: 'UNCONFIGURED', name: '待配地址', count: list.filter(v => needsAddress.value && !v.address).length }
+  ];
+});
+
+// 过滤和排序后的变量列表
+const filteredDataPointMappings = computed(() => {
+  let list = dataPointMappings.value;
+  const q = varSearchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter(v =>
+      v.key.toLowerCase().includes(q) ||
+      (v.name && v.name.toLowerCase().includes(q)) ||
+      (v.address && v.address.toLowerCase().includes(q))
+    );
+  }
+
+  // 分类过滤
+  if (varCategoryFilter.value === 'ANALOG') {
+    list = list.filter(v => !isBitType(v.dataType));
+  } else if (varCategoryFilter.value === 'BOOL') {
+    list = list.filter(v => isBitType(v.dataType));
+  } else if (varCategoryFilter.value === 'SUBSCRIPTION') {
+    list = list.filter(v => updateModeOf(v) === 'Subscription');
+  } else if (varCategoryFilter.value === 'ENABLED') {
+    list = list.filter(v => v.isEnabled);
+  } else if (varCategoryFilter.value === 'UNCONFIGURED') {
+    list = list.filter(v => needsAddress.value && !v.address);
+  }
+
+  // 排序
+  if (varSortBy.value === 'key') {
+    list = [...list].sort((a, b) => a.key.localeCompare(b.key));
+  } else if (varSortBy.value === 'name') {
+    list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } else if (varSortBy.value === 'address') {
+    list = [...list].sort((a, b) => (a.address || '').localeCompare(b.address || ''));
+  } else if (varSortBy.value === 'interval') {
+    list = [...list].sort((a, b) => (a.pollingIntervalMs ?? 1000) - (b.pollingIntervalMs ?? 1000));
+  }
+
+  return list;
+});
+
 // ---------- 初始化 ----------
 onMounted(async () => {
   if (systemConfig.value.isSimulationActive) return;
@@ -342,9 +419,9 @@ onMounted(async () => {
 
     <!-- Mobile Device Switcher Header (移动端紧凑切换条) -->
     <div
-      class="md:hidden bg-sky-50/80 dark:bg-slate-900 border-b border-sky-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2 shrink-0">
+      class="md:hidden bg-sky-50/80 dark:bg-slate-900 border-b border-sky-100 dark:border-slate-800 px-3.5 py-2 flex items-center justify-between gap-2 shrink-0">
       <button id="btn-open-device-drawer" @click="isMobileDeviceDrawerOpen = true"
-        class="flex-1 flex items-center justify-between bg-white dark:bg-slate-800 border border-sky-200/70 dark:border-slate-700 rounded-lg px-3 py-2 text-left shadow-2xs active:scale-[0.99] transition-transform">
+        class="flex-1 flex items-center justify-between bg-white dark:bg-slate-800 border border-sky-200/70 dark:border-slate-700 rounded-lg px-3 py-1.5 text-left shadow-2xs active:scale-[0.99] transition-transform cursor-pointer">
         <div class="flex items-center gap-2 min-w-0">
           <Database class="w-4 h-4 text-[#1890ff] shrink-0" />
           <div class="min-w-0">
@@ -363,11 +440,19 @@ onMounted(async () => {
           <ChevronDown class="w-4 h-4 text-[#1890ff]" />
         </div>
       </button>
-      <button id="btn-mobile-add-inst" @click="openAddModal" :disabled="uninstancedTemplates.length === 0"
-        class="bg-[#1890ff] hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2.5 rounded-lg flex items-center justify-center shrink-0 shadow-2xs cursor-pointer"
-        title="添加变量实例">
-        <Plus class="w-4 h-4" />
-      </button>
+
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button id="btn-mobile-refresh" @click="refreshAll"
+          class="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-lg shadow-2xs cursor-pointer active:scale-95"
+          title="刷新变量">
+          <RefreshCw class="w-3.5 h-3.5" :class="isLoading ? 'animate-spin' : ''" />
+        </button>
+        <button id="btn-mobile-add-inst" @click="openAddModal" :disabled="uninstancedTemplates.length === 0"
+          class="bg-[#1890ff] hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 rounded-lg flex items-center justify-center shadow-2xs cursor-pointer active:scale-95"
+          title="添加变量实例">
+          <Plus class="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
 
     <!-- LEFT PANEL: Desktop Devices list (md 以上屏幕显示) -->
@@ -417,10 +502,10 @@ onMounted(async () => {
     <!-- RIGHT PANEL: Variable instances -->
     <div class="flex-1 flex flex-col min-w-0 bg-slate-50/50 dark:bg-transparent overflow-hidden">
 
-      <!-- Header -->
+      <!-- Desktop Header (md 及以上展示完整设备与模型信息) -->
       <div v-if="selectedDevice"
-        class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 font-sans transition-colors">
-        <div class="space-y-1.5 text-left">
+        class="hidden md:flex bg-white dark:bg-slate-900 p-4 lg:p-5 border-b border-slate-200 dark:border-slate-800 shadow-2xs flex-row items-center justify-between gap-4 shrink-0 font-sans transition-colors">
+        <div class="space-y-1 text-left">
           <div class="flex items-center gap-2">
             <span
               class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700 rounded-full font-mono uppercase text-slate-500 dark:text-slate-400">{{
@@ -434,29 +519,137 @@ onMounted(async () => {
           </div>
           <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight">{{ selectedDevice.name }}</h2>
         </div>
-        <div class="flex items-center gap-2 shrink-0 self-start sm:self-center">
+        <div class="flex items-center gap-2 shrink-0">
           <span
-            class="text-xs font-mono text-slate-400 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 px-2 py-1 rounded border border-slate-200/40 dark:border-slate-800">
+            class="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 px-2.5 py-1 rounded border border-slate-200/60 dark:border-slate-800">
             已配置 <b class="text-emerald-600 dark:text-emerald-400">{{ dataPointMappings.length }}</b> /
             {{ modelTemplates.length }} 个模板变量
           </span>
         </div>
       </div>
 
-      <!-- Toolbar -->
-      <div v-if="selectedDevice" class="flex flex-wrap items-center gap-2 p-3 sm:px-6 shrink-0">
-        <button @click="openAddModal" :disabled="uninstancedTemplates.length === 0"
-          class="inline-flex items-center gap-1 text-xs font-bold bg-[#1890ff] text-white hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg cursor-pointer">
-          <Plus class="w-3.5 h-3.5" /> 添加实例
-        </button>
-        <button @click="addAllMissing" :disabled="uninstancedTemplates.length === 0"
-          class="inline-flex items-center gap-1 text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg cursor-pointer">
-          <Braces class="w-3.5 h-3.5" /> 一键补齐 ({{ uninstancedTemplates.length }})
-        </button>
-        <button @click="refreshAll"
-          class="inline-flex items-center gap-1 text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg cursor-pointer">
-          <RefreshCw class="w-3.5 h-3.5" :class="isLoading ? 'animate-spin' : ''" /> 刷新
-        </button>
+      <!-- 检索与分类控制栏 (Workbench Toolbar - 方案一 双行紧凑流) -->
+      <div v-if="selectedDevice" class="bg-white dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 px-3.5 sm:px-6 py-2 sm:py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3 shrink-0 transition-colors shadow-2xs">
+        <!-- 第 1 行：分类过滤横向滑动轨 -->
+        <div class="relative w-full md:w-auto min-w-0">
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full -mx-3.5 px-3.5 md:mx-0 md:px-0">
+            <button
+              v-for="cat in varCategories"
+              :key="cat.id"
+              @click="varCategoryFilter = cat.id"
+              class="inline-flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-[11px] md:text-xs font-medium transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0"
+              :class="varCategoryFilter === cat.id
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800/90 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80'"
+            >
+              <span>{{ cat.name }}</span>
+              <span class="text-[10px] font-mono px-1 py-0.2 rounded-full"
+                :class="varCategoryFilter === cat.id ? 'bg-white/20 text-white' : 'bg-slate-200/70 text-slate-500 dark:bg-slate-700 dark:text-slate-400'">
+                {{ cat.count }}
+              </span>
+            </button>
+            <button
+              v-if="uninstancedTemplates.length > 0"
+              @click="addAllMissing"
+              class="inline-flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-[11px] md:text-xs font-bold border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0"
+            >
+              <Braces class="w-3 h-3" />
+              <span>补齐待配 ({{ uninstancedTemplates.length }})</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 第 2 行（移动端）/ 右侧控制组（桌面端）：搜索 + 排序 + 视图切换 + 桌面操作 -->
+        <div class="flex items-center gap-2 w-full md:w-auto md:ml-auto">
+          <!-- 搜索输入框：移动端 flex-1 自适应伸缩 -->
+          <div class="relative flex-1 md:w-48 lg:w-56 min-w-0">
+            <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+            <input
+              v-model="varSearchQuery"
+              placeholder="搜索标识、名称或地址..."
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+            />
+            <button
+              v-if="varSearchQuery"
+              @click="varSearchQuery = ''"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <!-- 紧凑排序按钮及弹层 -->
+          <div class="relative shrink-0">
+            <button
+              type="button"
+              @click="varSortMenuOpen = !varSortMenuOpen"
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer shadow-2xs active:scale-95"
+              title="选择排序方式"
+            >
+              <ArrowUpDown class="w-3 h-3 text-sky-600 dark:text-sky-400" />
+              <span class="text-[11px]">{{ varSortMobileLabel }}</span>
+            </button>
+
+            <!-- 排序遮罩与浮层 -->
+            <div
+              v-if="varSortMenuOpen"
+              class="fixed inset-0 z-40"
+              @click="varSortMenuOpen = false"
+            />
+            <div
+              v-if="varSortMenuOpen"
+              class="absolute right-0 top-full mt-1.5 z-50 min-w-[130px] py-1 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in zoom-in-95 duration-150"
+            >
+              <button
+                v-for="opt in varSortOptions"
+                :key="opt.value"
+                type="button"
+                @click="varSortBy = opt.value; varSortMenuOpen = false"
+                class="w-full text-left px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-between cursor-pointer"
+                :class="varSortBy === opt.value ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'"
+              >
+                <span>{{ opt.label }}</span>
+                <Check v-if="varSortBy === opt.value" class="w-3 h-3 text-sky-600 dark:text-sky-400" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 移动端视图模式切换（卡片 / 列表） -->
+          <div class="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              @click="varViewMode = 'card'"
+              class="p-1 rounded-md transition-all cursor-pointer"
+              :class="varViewMode === 'card' ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-2xs' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'"
+              title="卡片视图"
+            >
+              <LayoutGrid class="w-3.5 h-3.5" />
+            </button>
+            <button
+              @click="varViewMode = 'list'"
+              class="p-1 rounded-md transition-all cursor-pointer"
+              :class="varViewMode === 'list' ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-2xs' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'"
+              title="紧凑列表"
+            >
+              <List class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <!-- 桌面端专属操作按钮 -->
+          <div class="hidden md:flex items-center gap-1.5 shrink-0 pl-1 border-l border-slate-200 dark:border-slate-800">
+            <button @click="openAddModal" :disabled="uninstancedTemplates.length === 0"
+              class="inline-flex items-center gap-1 text-xs font-bold bg-[#1890ff] text-white hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors shadow-2xs">
+              <Plus class="w-3.5 h-3.5" /> 添加
+            </button>
+            <button @click="addAllMissing" :disabled="uninstancedTemplates.length === 0"
+              class="inline-flex items-center gap-1 text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors">
+              <Braces class="w-3.5 h-3.5" /> 一键补齐 ({{ uninstancedTemplates.length }})
+            </button>
+            <button @click="refreshAll"
+              class="inline-flex items-center gap-1 text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1.5 rounded-lg cursor-pointer transition-colors">
+              <RefreshCw class="w-3.5 h-3.5" :class="isLoading ? 'animate-spin' : ''" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Simulation notice -->
@@ -469,148 +662,258 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Table -->
-      <div v-if="selectedDevice" class="flex-1 p-3 sm:px-6 overflow-y-auto">
-        <div
-          class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-          <div class="overflow-x-auto hidden md:block">
-            <table class="w-full text-left text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
-              <thead>
-                <tr
-                  class="bg-slate-50/50 dark:bg-slate-950/60 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
-                  <th class="px-4 py-3.5">变量标识</th>
-                  <th class="px-4 py-3.5">名称 / 单位</th>
-                  <th class="px-4 py-3.5">类型</th>
-                  <th class="px-4 py-3.5">读写</th>
-                  <th v-if="needsAddress" class="px-4 py-3.5">{{ fieldConfig.addressLabel }}</th>
-                  <th v-if="needsBitOffset" class="px-4 py-3.5">位偏移</th>
-                  <th class="px-4 py-3.5">{{ hasSubscriptionVariables ? '间隔(ms)' : '轮询(ms)' }}</th>
-                  <th class="px-4 py-3.5">更新方式</th>
-                  <th class="px-4 py-3.5">启用</th>
-                  <th class="px-4 py-3.5 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                <tr v-for="v in dataPointMappings" :key="v.id"
-                  class="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-all font-mono">
-                  <td class="px-4 py-3.5">
-                    <span class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300">
-                      <Binary class="w-3 h-3 text-slate-400" /> {{ v.key }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3.5 text-slate-800 dark:text-slate-200 font-sans font-medium">
-                    {{ v.name }}<span v-if="v.unit" class="text-[10px] text-slate-400 ml-1 font-mono">{{ v.unit
-                      }}</span>
-                  </td>
-                  <td class="px-4 py-3.5">
-                    <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase"
-                      :class="isBitType(v.dataType) ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'">{{
-                      v.dataType }}</span>
-                  </td>
-                  <td class="px-4 py-3.5">
-                    <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
-                      :class="accessBadgeClass(v)" :title="v.accessModeOverride != null
-                        ? '该设备实例覆盖模板 → ' + accessLabel(effectiveAccessOf(v))
-                        : '继承模板：' + accessLabel(templateAccessOf(v))">
-                      {{ accessLabel(effectiveAccessOf(v)) }}<span v-if="v.accessModeOverride != null"
-                        class="ml-0.5 opacity-70">·覆盖</span>
-                    </span>
-                  </td>
-                  <td v-if="needsAddress" class="px-4 py-3.5 text-[11px]">
-                    <span v-if="v.address"
-                      class="bg-slate-100 dark:bg-slate-800 font-bold px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{{
-                      v.address }}</span>
-                    <span v-else class="text-rose-500 dark:text-rose-400 font-bold text-[10px]">未配置地址</span>
-                  </td>
-                  <td v-if="needsBitOffset" class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{
-                    isBitType(v.dataType) ? (v.bitOffset ?? '—') : '—' }}</td>
-                  <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ v.pollingIntervalMs ?? 1000
-                    }}</td>
-                  <td class="px-4 py-3.5">
-                    <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
-                      :class="updateModeBadgeClass(v)"
-                      :title="updateModeOf(v) === 'Subscription' ? '订阅推送：值变化由服务器即时推送，间隔=采样/发布' : '自主轮询：按间隔主动读取'">
-                      {{ updateModeLabel(v) }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3.5">
-                    <button @click="toggleEnabled(v)"
-                      class="relative w-9 h-5 rounded-full transition-colors cursor-pointer"
-                      :class="v.isEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'">
-                      <span class="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all"
-                        :class="v.isEnabled ? 'left-[18px]' : 'left-0.5'" />
-                    </button>
-                  </td>
-                  <td class="px-4 py-3.5 text-right">
-                    <div class="flex items-center justify-end gap-2">
-                      <button @click="openEditModal(v)"
-                        class="text-[11px] font-sans font-bold text-[#1890ff] hover:text-sky-600 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer">
-                        <Settings class="w-3 h-3" /> 编辑
+      <!-- Table & Mobile List Container -->
+      <div v-if="selectedDevice" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <!-- Desktop Table Container (md 及以上) -->
+        <div class="hidden md:block flex-1 p-3 sm:px-6 overflow-y-auto">
+          <div
+            class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
+                <thead>
+                  <tr
+                    class="bg-slate-50/50 dark:bg-slate-950/60 text-slate-400 font-bold text-[10px] uppercase tracking-wider">
+                    <th class="px-4 py-3.5">变量标识</th>
+                    <th class="px-4 py-3.5">名称 / 单位</th>
+                    <th class="px-4 py-3.5">类型</th>
+                    <th class="px-4 py-3.5">读写</th>
+                    <th v-if="needsAddress" class="px-4 py-3.5">{{ fieldConfig.addressLabel }}</th>
+                    <th v-if="needsBitOffset" class="px-4 py-3.5">位偏移</th>
+                    <th class="px-4 py-3.5">{{ hasSubscriptionVariables ? '间隔(ms)' : '轮询(ms)' }}</th>
+                    <th class="px-4 py-3.5">更新方式</th>
+                    <th class="px-4 py-3.5">启用</th>
+                    <th class="px-4 py-3.5 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                  <tr v-for="v in filteredDataPointMappings" :key="v.id"
+                    class="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-all font-mono">
+                    <td class="px-4 py-3.5">
+                      <span class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-300">
+                        <Binary class="w-3 h-3 text-slate-400" /> {{ v.key }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5 text-slate-800 dark:text-slate-200 font-sans font-medium">
+                      {{ v.name }}<span v-if="v.unit" class="text-[10px] text-slate-400 ml-1 font-mono">{{ v.unit
+                        }}</span>
+                    </td>
+                    <td class="px-4 py-3.5">
+                      <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase"
+                        :class="isBitType(v.dataType) ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'">{{
+                        v.dataType }}</span>
+                    </td>
+                    <td class="px-4 py-3.5">
+                      <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
+                        :class="accessBadgeClass(v)" :title="v.accessModeOverride != null
+                          ? '该设备实例覆盖模板 → ' + accessLabel(effectiveAccessOf(v))
+                          : '继承模板：' + accessLabel(templateAccessOf(v))">
+                        {{ accessLabel(effectiveAccessOf(v)) }}<span v-if="v.accessModeOverride != null"
+                          class="ml-0.5 opacity-70">·覆盖</span>
+                      </span>
+                    </td>
+                    <td v-if="needsAddress" class="px-4 py-3.5 text-[11px]">
+                      <span v-if="v.address"
+                        class="bg-slate-100 dark:bg-slate-800 font-bold px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{{
+                        v.address }}</span>
+                      <span v-else class="text-rose-500 dark:text-rose-400 font-bold text-[10px]">未配置地址</span>
+                    </td>
+                    <td v-if="needsBitOffset" class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{
+                      isBitType(v.dataType) ? (v.bitOffset ?? '—') : '—' }}</td>
+                    <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px]">{{ v.pollingIntervalMs ?? 1000
+                      }}</td>
+                    <td class="px-4 py-3.5">
+                      <span class="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded border"
+                        :class="updateModeBadgeClass(v)"
+                        :title="updateModeOf(v) === 'Subscription' ? '订阅推送：值变化由服务器即时推送，间隔=采样/发布' : '自主轮询：按间隔主动读取'">
+                        {{ updateModeLabel(v) }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5">
+                      <button @click="toggleEnabled(v)"
+                        class="relative w-9 h-5 rounded-full transition-colors cursor-pointer"
+                        :class="v.isEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'">
+                        <span class="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all"
+                          :class="v.isEnabled ? 'left-[18px]' : 'left-0.5'" />
                       </button>
-                      <button @click="confirmDelete(v)"
-                        class="text-[11px] font-sans font-bold text-rose-500 hover:text-rose-700 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer">
-                        <Trash2 class="w-3 h-3" /> 删除
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="!isLoading && dataPointMappings.length === 0">
-                  <td :colspan="tableColspan"
-                    class="p-10 text-center text-slate-400 dark:text-slate-500 text-xs font-sans">
-                    <Database class="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    该设备尚未配置变量实例，请点击“添加实例”或“一键补齐”。
-                    <template v-if="modelTemplates.length > 0">（模型共有 {{ modelTemplates.length }} 个模板变量）</template>
-                  </td>
-                </tr>
-                <tr v-if="loadError">
-                  <td :colspan="tableColspan" class="p-6 text-center text-rose-500 text-xs font-sans">加载失败: {{ loadError
-                    }}</td>
-                </tr>
-              </tbody>
-            </table>
+                    </td>
+                    <td class="px-4 py-3.5 text-right">
+                      <div class="flex items-center justify-end gap-2">
+                        <button @click="openEditModal(v)"
+                          class="text-[11px] font-sans font-bold text-[#1890ff] hover:text-sky-600 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer">
+                          <Settings class="w-3 h-3" /> 编辑
+                        </button>
+                        <button @click="confirmDelete(v)"
+                          class="text-[11px] font-sans font-bold text-rose-500 hover:text-rose-700 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-1 transition-all cursor-pointer">
+                          <Trash2 class="w-3 h-3" /> 删除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="!isLoading && filteredDataPointMappings.length === 0">
+                    <td :colspan="tableColspan"
+                      class="p-10 text-center text-slate-400 dark:text-slate-500 text-xs font-sans">
+                      <Database class="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      {{ varSearchQuery || varCategoryFilter !== 'ALL' ? '未找到匹配的变量实例' : '该设备尚未配置变量实例，请点击“添加实例”或“一键补齐”。' }}
+                      <template v-if="modelTemplates.length > 0 && !varSearchQuery && varCategoryFilter === 'ALL'">（模型共有 {{ modelTemplates.length }} 个模板变量）</template>
+                    </td>
+                  </tr>
+                  <tr v-if="loadError">
+                    <td :colspan="tableColspan" class="p-6 text-center text-rose-500 text-xs font-sans">加载失败: {{ loadError
+                      }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
 
-          <!-- Mobile list -->
-          <div class="block md:hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
-            <div v-for="v in dataPointMappings" :key="v.id" class="p-4 space-y-2 text-left">
+        <!-- Mobile list & cards (方案一 移动端卡片/紧凑列表切换) -->
+        <div class="block md:hidden flex-1 overflow-y-auto p-3 sm:p-4">
+          <!-- 卡片视图模式 (Card Mode) -->
+          <div v-if="varViewMode === 'card'" class="space-y-2.5">
+            <div
+              v-for="v in filteredDataPointMappings"
+              :key="v.id"
+              class="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs text-left transition-all"
+            >
+              <!-- 顶部：标识、名称与启用切换 -->
               <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-1 font-bold font-mono text-xs">
-                    <Binary class="w-3 h-3 text-slate-400" />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 font-bold font-mono text-xs text-slate-900 dark:text-white">
+                    <Binary class="w-3.5 h-3.5 text-sky-500 shrink-0" />
                     <span class="truncate">{{ v.key }}</span>
                   </div>
-                  <div class="text-[10px] text-slate-500 mt-0.5 font-sans">{{ v.name }}{{ v.unit ? ' (' + v.unit + ')' :
-                    '' }}
+                  <div class="text-[11px] text-slate-600 dark:text-slate-300 mt-1 font-sans font-medium truncate">
+                    {{ v.name }}<span v-if="v.unit" class="text-[10px] text-slate-400 font-mono ml-1">({{ v.unit }})</span>
                   </div>
                 </div>
-                <span v-if="needsAddress && v.address"
-                  class="text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">{{
-                  v.address }}</span>
-                <span v-else-if="needsAddress" class="text-[9px] text-rose-500 font-bold">未配置地址</span>
+                <!-- 启用开关 -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="text-[10px] font-mono" :class="v.isEnabled ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'">
+                    {{ v.isEnabled ? '启用' : '停用' }}
+                  </span>
+                  <button
+                    @click="toggleEnabled(v)"
+                    class="relative w-8 h-4.5 rounded-full transition-colors cursor-pointer"
+                    :class="v.isEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
+                  >
+                    <span
+                      class="absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow-xs transition-all"
+                      :class="v.isEnabled ? 'left-[16px]' : 'left-0.5'"
+                    />
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                <span class="flex items-center gap-1.5">
-                  <span>{{ v.dataType }} · {{ updateModeOf(v) === 'Subscription' ? '采样' : '轮询' }} {{
-                    v.pollingIntervalMs ?? 1000 }}ms</span>
-                  <span class="inline-block px-1 py-px rounded border font-bold"
-                    :class="updateModeBadgeClass(v)">{{ updateModeLabel(v) }}</span>
-                  <span class="inline-block px-1 py-px rounded border font-bold"
-                    :class="accessBadgeClass(v)">{{ accessLabel(effectiveAccessOf(v))
-                    }}{{ v.accessModeOverride != null ? '·覆盖' : '' }}</span>
+
+              <!-- 中部参数徽章：类型、读写、更新方式、采样周期、协议地址 -->
+              <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                <span
+                  class="px-1.5 py-0.5 rounded border font-bold uppercase"
+                  :class="isBitType(v.dataType) ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
+                >
+                  {{ v.dataType }}
                 </span>
-                <button @click="toggleEnabled(v)" class="text-[10px] font-bold"
-                  :class="v.isEnabled ? 'text-emerald-500' : 'text-slate-400'">{{ v.isEnabled ? '启用' : '停用' }}</button>
+                <span class="px-1.5 py-0.5 rounded border font-bold" :class="accessBadgeClass(v)">
+                  {{ accessLabel(effectiveAccessOf(v)) }}
+                </span>
+                <span class="px-1.5 py-0.5 rounded border font-bold" :class="updateModeBadgeClass(v)">
+                  {{ updateModeLabel(v) }} · {{ v.pollingIntervalMs ?? 1000 }}ms
+                </span>
+                <span
+                  v-if="needsAddress && v.address"
+                  class="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700 font-bold ml-auto"
+                >
+                  {{ v.address }}
+                </span>
+                <span
+                  v-else-if="needsAddress"
+                  class="bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 px-1.5 py-0.5 rounded font-bold ml-auto"
+                >
+                  未配置地址
+                </span>
               </div>
-              <div class="flex gap-2">
-                <button @click="openEditModal(v)"
-                  class="flex-1 text-[10px] font-bold text-[#1890ff] border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-center cursor-pointer">编辑</button>
-                <button @click="confirmDelete(v)"
-                  class="flex-1 text-[10px] font-bold text-rose-500 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-center cursor-pointer">删除</button>
+
+              <!-- 底部操作按钮 -->
+              <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
+                <button
+                  @click="openEditModal(v)"
+                  class="flex-1 py-1.5 bg-slate-50 dark:bg-slate-800/80 hover:bg-sky-50 dark:hover:bg-sky-950/40 text-[#1890ff] text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1 cursor-pointer transition-colors active:scale-[0.98]"
+                >
+                  <Settings class="w-3.5 h-3.5" />
+                  <span>配置参数</span>
+                </button>
+                <button
+                  @click="confirmDelete(v)"
+                  class="py-1.5 px-3 bg-rose-50/60 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-medium rounded-lg border border-rose-200 dark:border-rose-900 flex items-center justify-center gap-1 cursor-pointer transition-colors active:scale-[0.98]"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span>删除</span>
+                </button>
               </div>
             </div>
-            <div v-if="!isLoading && dataPointMappings.length === 0" class="p-8 text-center text-slate-400 text-xs">
-              该设备尚未配置变量实例
+          </div>
+
+          <!-- 紧凑列表模式 (Compact List Mode) -->
+          <div v-else class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs">
+            <div
+              v-for="v in filteredDataPointMappings"
+              :key="v.id"
+              class="p-2.5 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="v.isEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'" />
+                  <span class="font-bold font-mono text-xs text-slate-800 dark:text-slate-200 truncate">{{ v.key }}</span>
+                  <span class="text-[10px] text-slate-400 dark:text-slate-500 truncate">{{ v.name }}</span>
+                </div>
+                <div class="flex items-center gap-1.5 mt-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                  <span class="px-1 rounded bg-slate-100 dark:bg-slate-800 font-bold uppercase">{{ v.dataType }}</span>
+                  <span v-if="needsAddress" class="truncate font-bold" :class="v.address ? 'text-slate-600 dark:text-slate-300' : 'text-rose-500'">
+                    {{ v.address || '无地址' }}
+                  </span>
+                  <span>· {{ updateModeLabel(v) }}</span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button
+                  @click="toggleEnabled(v)"
+                  class="p-1 rounded text-[10px] font-bold border transition-colors cursor-pointer"
+                  :class="v.isEnabled ? 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/60 dark:border-emerald-800' : 'text-slate-400 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700'"
+                >
+                  {{ v.isEnabled ? '启用' : '停用' }}
+                </button>
+                <button
+                  @click="openEditModal(v)"
+                  class="p-1 text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="配置"
+                >
+                  <Settings class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  @click="confirmDelete(v)"
+                  class="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="删除"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="!isLoading && filteredDataPointMappings.length === 0" class="py-12 px-4 text-center text-slate-400 dark:text-slate-500">
+            <Database class="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p class="text-xs">
+              {{ varSearchQuery || varCategoryFilter !== 'ALL' ? '未找到匹配的变量实例' : '该设备尚未配置变量实例' }}
+            </p>
+            <button
+              v-if="varSearchQuery || varCategoryFilter !== 'ALL'"
+              @click="varSearchQuery = ''; varCategoryFilter = 'ALL'"
+              class="mt-2 text-[11px] text-sky-600 dark:text-sky-400 underline cursor-pointer"
+            >
+              重置过滤条件
+            </button>
           </div>
         </div>
       </div>

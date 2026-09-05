@@ -29,7 +29,10 @@ import {
   CheckCircle2,
   RefreshCw,
   Sun,
-  Moon
+  Moon,
+  ArrowUpDown,
+  Check,
+  ChevronDown
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -57,6 +60,22 @@ const searchQuery = ref('');
 const selectedCategory = ref<string>('ALL');
 const sortBy = ref<'default' | 'name' | 'variable'>('default');
 const viewMode = ref<'grid' | 'list'>('grid');
+
+// 移动端紧凑排序弹层
+const sortMenuOpen = ref(false);
+const sortOptions = [
+  { value: 'default', label: '默认排序', mobileLabel: '默认' },
+  { value: 'name', label: '工程名称 (A-Z)', mobileLabel: '名称' },
+  { value: 'variable', label: '测点规模 (从大到小)', mobileLabel: '测点' }
+] as const;
+
+const sortMobileLabel = computed(() => {
+  const found = sortOptions.find(o => o.value === sortBy.value);
+  return found ? found.mobileLabel : '排序';
+});
+
+// 移动端用户与快捷操作抽屉/菜单
+const mobileUserMenuOpen = ref(false);
 
 // 工程卡片加载
 onMounted(async () => {
@@ -338,7 +357,7 @@ const saveAuthModal = async () => {
               组态运行控制台
             </h1>
             <span
-              class="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:border-emerald-500/30 dark:text-emerald-400">
+              class="hidden sm:inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:border-emerald-500/30 dark:text-emerald-400">
               <span
                 class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping inline-block"></span>
               SCADA RUNTIME
@@ -355,7 +374,7 @@ const saveAuthModal = async () => {
       <div class="flex items-center gap-2 sm:gap-3 text-xs">
         <!-- 主题切换按钮 (即时深浅色切换) -->
         <button id="btn-scada-theme-toggle" type="button" @click="toggleTheme"
-          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none active:scale-95 shadow-xs text-xs font-semibold"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer select-none active:scale-95 shadow-xs text-xs font-semibold shrink-0"
           :class="currentTheme === 'dark'
             ? 'bg-slate-900 border-slate-700 text-amber-400 hover:bg-slate-800'
             : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200/80 hover:text-slate-900'"
@@ -365,16 +384,81 @@ const saveAuthModal = async () => {
           <span class="hidden md:inline">{{ currentTheme === 'dark' ? '深色模式' : '浅色模式' }}</span>
         </button>
 
-        <!-- 实时系统时钟 -->
+        <!-- 移动端专属：用户与快捷操作集成面板 (md:hidden) -->
+        <div class="relative flex md:hidden items-center shrink-0">
+          <button id="btn-mobile-user-menu" type="button" @click="mobileUserMenuOpen = !mobileUserMenuOpen"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-medium text-xs cursor-pointer active:scale-95 shadow-2xs select-none"
+            title="用户与快捷操作">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+            <span class="font-bold truncate max-w-[65px] text-slate-800 dark:text-slate-200">{{ loginUser?.username ||
+              'user' }}</span>
+            <ChevronDown class="w-3 h-3 text-slate-400 transition-transform duration-200"
+              :class="mobileUserMenuOpen ? 'rotate-180' : ''" />
+          </button>
+
+          <!-- 移动端遮罩背景 -->
+          <div v-if="mobileUserMenuOpen" class="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]"
+            @click="mobileUserMenuOpen = false" />
+
+          <!-- 移动端快捷操作下拉菜单 -->
+          <div v-if="mobileUserMenuOpen"
+            class="absolute right-0 top-full mt-2 z-50 w-56 p-1.5 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in zoom-in-95 duration-150 text-left">
+            <!-- 用户身份信息小卡片 -->
+            <div
+              class="px-3 py-2.5 mb-1 bg-slate-50 dark:bg-slate-900/80 rounded-lg border border-slate-100 dark:border-slate-800/80">
+              <div class="flex items-center justify-between gap-1.5">
+                <span class="font-bold text-xs text-slate-900 dark:text-white truncate">{{ loginUser?.username || 'user'
+                  }}</span>
+                <span
+                  class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-slate-700">
+                  {{ isAdmin ? '管理员' : isOperator ? '操作员' : '观察员' }}
+                </span>
+              </div>
+              <div
+                class="flex items-center gap-1.5 mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>工业在线就绪</span>
+              </div>
+            </div>
+
+            <!-- 操作选项列表 -->
+            <div class="space-y-0.5">
+              <!-- 组态设计跳转（管理员） -->
+              <button v-if="isAdmin" type="button" @click="goEditor(); mobileUserMenuOpen = false"
+                class="w-full text-left px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium flex items-center gap-2.5 cursor-pointer transition-colors">
+                <Pencil class="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                <span>组态设计编辑器</span>
+              </button>
+
+              <!-- 导入工程（管理员） -->
+              <button v-if="isAdmin" type="button" @click="triggerImport(); mobileUserMenuOpen = false"
+                class="w-full text-left px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium flex items-center gap-2.5 cursor-pointer transition-colors">
+                <Upload class="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                <span>导入工程 (.json)</span>
+              </button>
+
+              <!-- 退出登录 -->
+              <div class="pt-1 mt-1 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" @click="onLogout(); mobileUserMenuOpen = false"
+                  class="w-full text-left px-3 py-2 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-medium flex items-center gap-2.5 cursor-pointer transition-colors">
+                  <LogOut class="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>退出当前系统</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 桌面端实时系统时钟 (hidden lg:flex) -->
         <div
           class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
           <Clock class="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
           <span>{{ currentTime || '2026-09-05 12:00:00' }}</span>
         </div>
 
-        <!-- 当前用户身份徽章 -->
+        <!-- 桌面端当前用户身份徽章 (hidden md:inline-flex) -->
         <div
-          class="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-lg text-slate-700 dark:text-slate-200">
+          class="hidden md:inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-lg text-slate-700 dark:text-slate-200">
           <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
           <span class="font-medium truncate max-w-[80px] sm:max-w-none">{{ loginUser?.username || 'user' }}</span>
           <span
@@ -383,25 +467,25 @@ const saveAuthModal = async () => {
           </span>
         </div>
 
-        <!-- 导入工程按钮（管理员） -->
+        <!-- 桌面端导入工程按钮 (hidden md:inline-flex) -->
         <button v-if="isAdmin" id="btn-import-project" @click="triggerImport"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-xs transition-colors cursor-pointer active:scale-95"
+          class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-xs transition-colors cursor-pointer active:scale-95"
           title="从 .scada-project.json 文件导入工程">
           <Upload class="w-3.5 h-3.5" />
           <span class="hidden sm:inline">导入工程</span>
         </button>
 
-        <!-- 组态设计跳转（管理员） -->
+        <!-- 桌面端组态设计跳转 (hidden md:inline-flex) -->
         <button v-if="isAdmin" id="btn-go-editor" @click="() => goEditor()"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-slate-200 transition-colors cursor-pointer active:scale-95"
+          class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-slate-200 transition-colors cursor-pointer active:scale-95"
           title="跳转到组态编辑器">
           <Pencil class="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
           <span class="hidden md:inline">组态设计</span>
         </button>
 
-        <!-- 退出登录按钮 -->
+        <!-- 桌面端退出登录按钮 (hidden md:flex) -->
         <button id="btn-logout" @click="onLogout"
-          class="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20 transition-all cursor-pointer"
+          class="hidden md:flex p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20 transition-all cursor-pointer"
           title="退出登录">
           <LogOut class="w-4 h-4" />
         </button>
@@ -410,39 +494,66 @@ const saveAuthModal = async () => {
 
     <!-- 检索与分类控制栏 (Workbench Toolbar) -->
     <div
-      class="bg-slate-50 dark:bg-[#0c1322] border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 transition-colors">
-      <!-- 分类标签过滤器 -->
-      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
-        <button v-for="cat in categories" :key="cat.id" :id="`tab-cat-${cat.id}`" @click="selectedCategory = cat.id"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer active:scale-95"
-          :class="selectedCategory === cat.id
-            ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
-            : 'bg-white dark:bg-slate-900/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800'">
-          <component :is="cat.icon || Layers" class="w-3.5 h-3.5" />
-          <span>{{ cat.name }}</span>
-          <span class="text-[10px] font-mono px-1.5 py-0.2 rounded-full"
-            :class="selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500'">
-            {{ getCategoryCount(cat.id) }}
-          </span>
-        </button>
+      class="bg-slate-50 dark:bg-[#0c1322] border-b border-slate-200 dark:border-slate-800 px-3.5 sm:px-6 py-2 sm:py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 md:gap-3 shrink-0 transition-colors">
+      <!-- 第一行（移动端）：分类标签过滤器横向惯性滚动 -->
+      <div class="relative w-full md:w-auto min-w-0">
+        <div
+          class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full -mx-3.5 px-3.5 md:mx-0 md:px-0">
+          <button v-for="cat in categories" :key="cat.id" :id="`tab-cat-${cat.id}`" @click="selectedCategory = cat.id"
+            class="inline-flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-[11px] md:text-xs font-medium transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0"
+            :class="selectedCategory === cat.id
+              ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
+              : 'bg-white dark:bg-slate-900/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800'">
+            <component :is="cat.icon || Layers" class="w-3.5 h-3.5" />
+            <span>{{ cat.name }}</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded-full"
+              :class="selectedCategory === cat.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500'">
+              {{ getCategoryCount(cat.id) }}
+            </span>
+          </button>
+        </div>
       </div>
 
-      <!-- 右侧控制组：即时检索、排序、视图切换 -->
-      <div class="flex items-center gap-2.5 ml-auto">
-        <!-- 搜索输入框 -->
-        <div class="relative w-48 sm:w-64">
-          <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-          <input id="input-project-search" v-model="searchQuery" type="text" placeholder="搜索工程名称、工艺、描述..."
+      <!-- 第二行（移动端）/ 右侧控制组（桌面端）：即时检索、排序、视图切换 -->
+      <div class="flex items-center gap-2 w-full md:w-auto md:ml-auto">
+        <!-- 搜索输入框：移动端 flex-1 自适应扩展，桌面端固定宽度 -->
+        <div class="relative flex-1 md:w-48 lg:w-64 min-w-0">
+          <Search
+            class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+          <input id="input-project-search" v-model="searchQuery" type="text" placeholder="搜索工程名称、工艺..."
             class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors" />
           <button v-if="searchQuery" @click="searchQuery = ''"
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300">
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">
             <X class="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <!-- 排序方式 -->
+        <!-- 移动端紧凑排序按钮及弹层 (md:hidden) -->
+        <div class="relative shrink-0 md:hidden">
+          <button type="button" @click="sortMenuOpen = !sortMenuOpen"
+            class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer shadow-2xs active:scale-95"
+            title="选择排序方式">
+            <ArrowUpDown class="w-3 h-3 text-sky-600 dark:text-sky-400" />
+            <span class="text-[11px]">{{ sortMobileLabel }}</span>
+          </button>
+
+          <!-- 遮罩与排序浮层 -->
+          <div v-if="sortMenuOpen" class="fixed inset-0 z-40" @click="sortMenuOpen = false" />
+          <div v-if="sortMenuOpen"
+            class="absolute right-0 top-full mt-1.5 z-50 min-w-[130px] py-1 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in zoom-in-95 duration-150">
+            <button v-for="opt in sortOptions" :key="opt.value" type="button"
+              @click="sortBy = opt.value; sortMenuOpen = false"
+              class="w-full text-left px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-between cursor-pointer"
+              :class="sortBy === opt.value ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'">
+              <span>{{ opt.label }}</span>
+              <Check v-if="sortBy === opt.value" class="w-3 h-3 text-sky-600 dark:text-sky-400" />
+            </button>
+          </div>
+        </div>
+
+        <!-- 桌面端原生排序选择框 (hidden md:block) -->
         <select id="select-project-sort" v-model="sortBy"
-          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-sky-500 transition-colors cursor-pointer">
+          class="hidden md:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-sky-500 transition-colors cursor-pointer shrink-0">
           <option value="default">默认排序</option>
           <option value="name">工程名称 (A-Z)</option>
           <option value="variable">测点规模 (从大到小)</option>
@@ -450,7 +561,7 @@ const saveAuthModal = async () => {
 
         <!-- 视图切换：网格卡片 / 紧凑列表 -->
         <div
-          class="flex items-center bg-slate-200/80 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+          class="flex items-center bg-slate-200/80 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 shrink-0">
           <button id="btn-view-grid" @click="viewMode = 'grid'" class="p-1.5 rounded-md transition-all cursor-pointer"
             :class="viewMode === 'grid' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
             title="网格卡片视图">

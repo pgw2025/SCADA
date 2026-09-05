@@ -23,7 +23,11 @@ import {
   ChevronDown,
   Check,
   Upload,
-  Download
+  Download,
+  Search,
+  ArrowUpDown,
+  LayoutGrid,
+  List
 } from 'lucide-vue-next';
 
 // Mobile Drawer state
@@ -123,24 +127,82 @@ const varDeadBand = ref<number | null | ''>(null);
 // 阶段 4 起读写权限以 AccessMode(Read/Write/ReadWrite) 为唯一权威；阶段 6 已删旧 bool isReadOnly
 const varAccessMode = ref<'Read' | 'Write' | 'ReadWrite'>('Read');
 
-// Filtered variables for search
-const filteredVariables = computed(() => {
-  if (!currentModel.value) return [];
-  const query = varSearchQuery.value.trim().toLowerCase();
-  if (!query) return currentModel.value.variables;
-  return currentModel.value.variables.filter(v => 
-    v.key.toLowerCase().includes(query) || 
-    v.name.toLowerCase().includes(query) || 
-    (v.description && v.description.toLowerCase().includes(query))
-  );
-});
-
 // AccessMode 展示辅助（阶段 4）：三值 → 中文徽章文案
 const accessLabel = (m?: string): string =>
   m === 'ReadWrite' ? '读写' : m === 'Write' ? '只写' : '只读';
 // 模板变量有效访问模式：后端 DataPointDto.AccessMode 恒为三值之一（阶段 6 起唯一权威）
 const accessOfVar = (v: DataPoint): string =>
   v.accessMode ?? 'Read';
+
+// ---------- 变量搜索、分类过滤与排序（方案一 双行紧凑流） ----------
+const varCategoryFilter = ref<string>('ALL');
+const varSortBy = ref<'default' | 'key' | 'name' | 'type'>('default');
+const varSortMenuOpen = ref<boolean>(false);
+const varViewMode = ref<'card' | 'list'>('card');
+
+const varSortOptions = [
+  { value: 'default', label: '默认顺序', mobileLabel: '默认' },
+  { value: 'key', label: '标识 (A-Z)', mobileLabel: '标识' },
+  { value: 'name', label: '名称 (A-Z)', mobileLabel: '名称' },
+  { value: 'type', label: '数据类型', mobileLabel: '类型' },
+] as const;
+
+const varSortMobileLabel = computed(() => {
+  const found = varSortOptions.find(o => o.value === varSortBy.value);
+  return found ? found.mobileLabel : '排序';
+});
+
+// 分类胶囊与计数
+const varCategories = computed(() => {
+  const list = currentModel.value?.variables || [];
+  return [
+    { id: 'ALL', name: '全部', count: list.length },
+    { id: 'ANALOG', name: '模拟量', count: list.filter(v => v.type !== 'digital' && v.dataType !== 'Boolean').length },
+    { id: 'DIGITAL', name: '开关量', count: list.filter(v => v.type === 'digital' || v.dataType === 'Boolean').length },
+    { id: 'WRITABLE', name: '可写', count: list.filter(v => ['Write', 'ReadWrite'].includes(accessOfVar(v))).length },
+    { id: 'READONLY', name: '只读', count: list.filter(v => accessOfVar(v) === 'Read').length },
+    { id: 'STORED', name: '写时序库', count: list.filter(v => v.isStored !== false).length }
+  ];
+});
+
+// Filtered and sorted variables for search & display
+const filteredVariables = computed(() => {
+  if (!currentModel.value) return [];
+  let list = currentModel.value.variables;
+  const query = varSearchQuery.value.trim().toLowerCase();
+  if (query) {
+    list = list.filter(v => 
+      v.key.toLowerCase().includes(query) || 
+      v.name.toLowerCase().includes(query) || 
+      (v.description && v.description.toLowerCase().includes(query)) ||
+      (v.dataType && v.dataType.toLowerCase().includes(query))
+    );
+  }
+
+  // 分类过滤
+  if (varCategoryFilter.value === 'ANALOG') {
+    list = list.filter(v => v.type !== 'digital' && v.dataType !== 'Boolean');
+  } else if (varCategoryFilter.value === 'DIGITAL') {
+    list = list.filter(v => v.type === 'digital' || v.dataType === 'Boolean');
+  } else if (varCategoryFilter.value === 'WRITABLE') {
+    list = list.filter(v => ['Write', 'ReadWrite'].includes(accessOfVar(v)));
+  } else if (varCategoryFilter.value === 'READONLY') {
+    list = list.filter(v => accessOfVar(v) === 'Read');
+  } else if (varCategoryFilter.value === 'STORED') {
+    list = list.filter(v => v.isStored !== false);
+  }
+
+  // 排序
+  if (varSortBy.value === 'key') {
+    list = [...list].sort((a, b) => a.key.localeCompare(b.key));
+  } else if (varSortBy.value === 'name') {
+    list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+  } else if (varSortBy.value === 'type') {
+    list = [...list].sort((a, b) => (a.dataType || a.type || '').localeCompare(b.dataType || b.type || ''));
+  }
+
+  return list;
+});
 
 // Create standard new model schema
 const handleCreateModel = async () => {
@@ -409,11 +471,11 @@ const handleImportDone = async () => {
   <div class="h-full flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent overflow-hidden">
     
     <!-- Mobile Model Switcher Header (方案一: 移动端顶部紧凑切换条) -->
-    <div class="md:hidden bg-violet-50/80 dark:bg-slate-900 border-b border-violet-100 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2 shrink-0">
+    <div class="md:hidden bg-violet-50/80 dark:bg-slate-900 border-b border-violet-100 dark:border-slate-800 px-3.5 py-2 flex items-center justify-between gap-2 shrink-0">
       <button
         id="btn-open-model-drawer-v"
         @click="isMobileModelDrawerOpen = true"
-        class="flex-1 flex items-center justify-between bg-white dark:bg-slate-800 border border-violet-200/70 dark:border-slate-700 rounded-lg px-3 py-2 text-left shadow-2xs active:scale-[0.99] transition-transform cursor-pointer"
+        class="flex-1 flex items-center justify-between bg-white dark:bg-slate-800 border border-violet-200/70 dark:border-slate-700 rounded-lg px-3 py-1.5 text-left shadow-2xs active:scale-[0.99] transition-transform cursor-pointer"
       >
         <div class="flex items-center gap-2 min-w-0">
           <Layers class="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
@@ -422,6 +484,8 @@ const handleImportDone = async () => {
               {{ currentModel?.name || '选择数据模型' }}
             </div>
             <div class="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+              <span v-if="currentModel?.code" class="font-mono bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 px-1 rounded">{{ currentModel.code }}</span>
+              <span v-if="currentModel?.code">•</span>
               <span>{{ totalVariableCount }} 个变量</span>
             </div>
           </div>
@@ -431,13 +495,22 @@ const handleImportDone = async () => {
         </div>
       </button>
 
-      <button 
-        @click="showVarModal = true"
-        class="bg-violet-600 hover:bg-violet-700 text-white p-2.5 rounded-lg flex items-center justify-center shrink-0 shadow-2xs cursor-pointer"
-        title="添加变量"
-      >
-        <Plus class="w-4 h-4" />
-      </button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          @click="showImportDialog = true"
+          class="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-lg shadow-2xs cursor-pointer active:scale-95"
+          title="导入变量"
+        >
+          <Upload class="w-3.5 h-3.5" />
+        </button>
+        <button 
+          @click="showVarModal = true"
+          class="bg-violet-600 hover:bg-violet-700 text-white p-2 rounded-lg flex items-center justify-center shadow-2xs cursor-pointer active:scale-95"
+          title="添加变量"
+        >
+          <Plus class="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
 
     <!-- LEFT LIST: Models directories (md 及以上桌面端侧边栏) -->
@@ -484,7 +557,8 @@ const handleImportDone = async () => {
     <!-- RIGHT PANEL: Schema detail table and live append -->
     <div class="flex-1 flex flex-col bg-slate-50/50 dark:bg-transparent text-left min-w-0 overflow-hidden">
       
-      <div v-if="currentModel" class="bg-white dark:bg-slate-900 p-4 md:p-5 border-b border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors shrink-0">
+      <!-- Desktop Header (md 及以上展示完整模型元数据与动作) -->
+      <div v-if="currentModel" class="hidden md:flex bg-white dark:bg-slate-900 p-4 lg:p-5 border-b border-slate-200 dark:border-slate-800 shadow-2xs flex-row items-center justify-between gap-4 transition-colors shrink-0">
         <div class="space-y-1">
           <div class="flex items-center gap-2 flex-wrap">
             <h2 class="font-bold text-sm md:text-base text-slate-950 dark:text-white font-sans tracking-tight">
@@ -551,198 +625,361 @@ const handleImportDone = async () => {
         </div>
       </div>
 
-      <!-- Variables template viewer & Search bar -->
-      <div class="flex-1 flex flex-col min-h-0 p-3 md:p-5 space-y-3 overflow-hidden">
-        
-        <div v-if="currentModel" class="flex-1 flex flex-col min-h-0 space-y-3">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors shrink-0 shadow-2xs">
-            <div class="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
-              <Sliders class="w-4 h-4 text-violet-500" />
-              <span>共 <b class="text-indigo-600 dark:text-indigo-400">{{ totalVariableCount }}</b> 个变量</span>
-            </div>
-            
-            <div class="relative w-full sm:w-64 shrink-0">
-              <input 
-                v-model="varSearchQuery"
-                type="text"
-                placeholder="搜索变量..."
-                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-violet-500 placeholder-slate-400 font-sans"
-              />
-            </div>
-          </div>
-
-          <!-- Desktop Table (md 及以上显示) -->
-          <div class="hidden md:block flex-1 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs transition-colors">
-            <table class="w-full text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
-              <thead class="sticky top-0 bg-slate-50 dark:bg-slate-950/90 backdrop-blur-xs z-10">
-                <tr class="text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider">
-                  <th class="px-4 py-3.5">标识</th>
-                  <th class="px-4 py-3.5">名称</th>
-                  <th class="px-4 py-3.5">类型</th>
-                  <th class="px-4 py-3.5">访问</th>
-                  <th class="px-4 py-3.5">单位</th>
-                  <th class="px-4 py-3.5 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                <tr 
-                  v-for="v in filteredVariables" 
-                  :key="v.key"
-                  class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all text-left"
-                >
-                  <td class="px-4 py-3.5 font-bold text-violet-700 dark:text-violet-400">
-                    <span class="flex items-center gap-1">
-                      <Binary class="w-3.5 h-3.5 text-violet-400" />
-                      {{ v.key }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3.5 font-sans font-medium">
-                    <span class="text-slate-800 dark:text-slate-200 font-bold block">{{ v.name }}</span>
-                    <span class="block text-[10px] font-mono text-slate-400 dark:text-slate-500 font-normal leading-relaxed mt-0.5">{{ v.description }}</span>
-                  </td>
-                  <td class="px-4 py-3.5">
-                    <span 
-                      v-if="v.dataType"
-                      class="px-2 py-0.5 rounded text-[10.5px] font-bold font-mono border shadow-3xs tracking-wider uppercase"
-                      :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
-                    >
-                      {{ v.dataType }}
-                    </span>
-                    <span 
-                      v-else
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold border"
-                      :class="v.type === 'digital' ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-300 border-teal-100 dark:border-teal-800' : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border-blue-100 dark:border-blue-800'"
-                    >
-                      {{ v.type === 'digital' ? 'Boolean' : 'Analog' }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3.5">
-                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold font-mono border"
-                      :class="accessOfVar(v) === 'Read'
-                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                        : (accessOfVar(v) === 'Write'
-                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
-                      :title="'访问模式: ' + (accessOfVar(v) === 'ReadWrite' ? '可读可写' : accessOfVar(v) === 'Write' ? '仅可写' : '仅可读')">
-                      {{ accessLabel(accessOfVar(v)) }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3.5 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '无' }}</td>
-                  <td class="px-4 py-3.5 text-right">
-                    <div class="inline-flex items-center gap-1">
-                      <button
-                        @click="openEditVariable(v)"
-                        class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer"
-                        title="编辑此字段"
-                      >
-                        <Pencil class="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        @click="handleDeleteVariable(v)"
-                        class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all cursor-pointer"
-                        title="删除此字段"
-                      >
-                        <Trash2 class="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-
-                <tr v-if="currentModel.variables.length === 0">
-                  <td colspan="6" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
-                    暂无变量，点击"添加变量"创建
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Mobile Cards View (移动端卡片式流) -->
-          <div class="md:hidden flex-1 overflow-y-auto space-y-2.5">
-            <div
-              v-for="v in filteredVariables"
-              :key="v.key"
-              class="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs text-left"
+      <!-- 检索与分类控制栏 (Workbench Toolbar - 方案一 双行紧凑流) -->
+      <div v-if="currentModel" class="bg-white dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 px-3.5 sm:px-6 py-2 sm:py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3 shrink-0 transition-colors shadow-2xs">
+        <!-- 第 1 行：分类过滤横向滑动轨 -->
+        <div class="relative w-full md:w-auto min-w-0">
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full -mx-3.5 px-3.5 md:mx-0 md:px-0">
+            <button
+              v-for="cat in varCategories"
+              :key="cat.id"
+              @click="varCategoryFilter = cat.id"
+              class="inline-flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-[11px] md:text-xs font-medium transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0"
+              :class="varCategoryFilter === cat.id
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800/90 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80'"
             >
-              <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-1.5 flex-wrap">
-                    <span class="font-bold text-xs text-slate-800 dark:text-slate-100">{{ v.name }}</span>
-                    <span 
-                      v-if="v.dataType"
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
-                      :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
+              <span>{{ cat.name }}</span>
+              <span class="text-[10px] font-mono px-1 py-0.2 rounded-full"
+                :class="varCategoryFilter === cat.id ? 'bg-white/20 text-white' : 'bg-slate-200/70 text-slate-500 dark:bg-slate-700 dark:text-slate-400'">
+                {{ cat.count }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 第 2 行（移动端）/ 右侧控制组（桌面端）：搜索 + 排序 + 视图切换 + 桌面快捷统计 -->
+        <div class="flex items-center gap-2 w-full md:w-auto md:ml-auto">
+          <!-- 搜索输入框：移动端 flex-1 自适应伸缩 -->
+          <div class="relative flex-1 md:w-48 lg:w-56 min-w-0">
+            <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+            <input
+              v-model="varSearchQuery"
+              placeholder="搜索标识、名称或描述..."
+              class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-violet-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+            />
+            <button
+              v-if="varSearchQuery"
+              @click="varSearchQuery = ''"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <!-- 紧凑排序按钮及弹层 -->
+          <div class="relative shrink-0">
+            <button
+              type="button"
+              @click="varSortMenuOpen = !varSortMenuOpen"
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer shadow-2xs active:scale-95"
+              title="选择排序方式"
+            >
+              <ArrowUpDown class="w-3 h-3 text-violet-600 dark:text-violet-400" />
+              <span class="text-[11px]">{{ varSortMobileLabel }}</span>
+            </button>
+
+            <!-- 排序遮罩与浮层 -->
+            <div
+              v-if="varSortMenuOpen"
+              class="fixed inset-0 z-40"
+              @click="varSortMenuOpen = false"
+            />
+            <div
+              v-if="varSortMenuOpen"
+              class="absolute right-0 top-full mt-1.5 z-50 min-w-[130px] py-1 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in zoom-in-95 duration-150"
+            >
+              <button
+                v-for="opt in varSortOptions"
+                :key="opt.value"
+                type="button"
+                @click="varSortBy = opt.value; varSortMenuOpen = false"
+                class="w-full text-left px-3 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-between cursor-pointer"
+                :class="varSortBy === opt.value ? 'bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'"
+              >
+                <span>{{ opt.label }}</span>
+                <Check v-if="varSortBy === opt.value" class="w-3 h-3 text-violet-600 dark:text-violet-400" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 移动端视图模式切换（卡片 / 列表） -->
+          <div class="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              @click="varViewMode = 'card'"
+              class="p-1 rounded-md transition-all cursor-pointer"
+              :class="varViewMode === 'card' ? 'bg-white dark:bg-slate-900 text-violet-600 dark:text-violet-400 shadow-2xs' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'"
+              title="卡片视图"
+            >
+              <LayoutGrid class="w-3.5 h-3.5" />
+            </button>
+            <button
+              @click="varViewMode = 'list'"
+              class="p-1 rounded-md transition-all cursor-pointer"
+              :class="varViewMode === 'list' ? 'bg-white dark:bg-slate-900 text-violet-600 dark:text-violet-400 shadow-2xs' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'"
+              title="紧凑列表"
+            >
+              <List class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <!-- 桌面端变量计数 -->
+          <div class="hidden md:flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 pl-1 border-l border-slate-200 dark:border-slate-800">
+            <span>共 <b class="text-violet-600 dark:text-violet-400 font-mono">{{ filteredVariables.length }}</b> / {{ totalVariableCount }} 个</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variables template viewer & lists -->
+      <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+        
+        <div v-if="currentModel" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <!-- Desktop Table (md 及以上显示) -->
+          <div class="hidden md:block flex-1 p-3 md:p-5 overflow-y-auto">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs transition-colors">
+              <table class="w-full text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
+                <thead class="sticky top-0 bg-slate-50 dark:bg-slate-950/90 backdrop-blur-xs z-10">
+                  <tr class="text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+                    <th class="px-4 py-3.5 text-left">标识</th>
+                    <th class="px-4 py-3.5 text-left">名称</th>
+                    <th class="px-4 py-3.5 text-left">类型</th>
+                    <th class="px-4 py-3.5 text-left">访问</th>
+                    <th class="px-4 py-3.5 text-left">单位</th>
+                    <th class="px-4 py-3.5 text-left">历史存储</th>
+                    <th class="px-4 py-3.5 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                  <tr 
+                    v-for="v in filteredVariables" 
+                    :key="v.key"
+                    class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all text-left"
+                  >
+                    <td class="px-4 py-3.5 font-bold text-violet-700 dark:text-violet-400">
+                      <span class="flex items-center gap-1">
+                        <Binary class="w-3.5 h-3.5 text-violet-400" />
+                        {{ v.key }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5 font-sans font-medium">
+                      <span class="text-slate-800 dark:text-slate-200 font-bold block">{{ v.name }}</span>
+                      <span v-if="v.description" class="block text-[10px] font-mono text-slate-400 dark:text-slate-500 font-normal leading-relaxed mt-0.5">{{ v.description }}</span>
+                    </td>
+                    <td class="px-4 py-3.5">
+                      <span 
+                        v-if="v.dataType"
+                        class="px-2 py-0.5 rounded text-[10.5px] font-bold font-mono border shadow-3xs tracking-wider uppercase"
+                        :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
+                      >
+                        {{ v.dataType }}
+                      </span>
+                      <span 
+                        v-else
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                        :class="v.type === 'digital' ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-300 border-teal-100 dark:border-teal-800' : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border-blue-100 dark:border-blue-800'"
+                      >
+                        {{ v.type === 'digital' ? 'Boolean' : 'Analog' }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5">
+                      <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold font-mono border"
+                        :class="accessOfVar(v) === 'Read'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                          : (accessOfVar(v) === 'Write'
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
+                        :title="'访问模式: ' + (accessOfVar(v) === 'ReadWrite' ? '可读可写' : accessOfVar(v) === 'Write' ? '仅可写' : '仅可读')">
+                        {{ accessLabel(accessOfVar(v)) }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5 text-slate-600 dark:text-slate-300 font-bold">{{ v.unit || '—' }}</td>
+                    <td class="px-4 py-3.5">
+                      <span class="text-[11px] font-medium" :class="v.isStored !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                        {{ v.isStored !== false ? '写入TSDB' : '仅内存' }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5 text-right">
+                      <div class="inline-flex items-center gap-1">
+                        <button
+                          @click="openEditVariable(v)"
+                          class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer"
+                          title="编辑此字段"
+                        >
+                          <Pencil class="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          @click="handleDeleteVariable(v)"
+                          class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-all cursor-pointer"
+                          title="删除此字段"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr v-if="filteredVariables.length === 0">
+                    <td colspan="7" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
+                      {{ varSearchQuery || varCategoryFilter !== 'ALL' ? '未找到匹配的变量' : '暂无变量，点击"添加变量"创建' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Mobile Cards View & List View (移动端方案一卡片/列表模式) -->
+          <div class="md:hidden flex-1 overflow-y-auto p-3 sm:p-4">
+            <!-- 卡片视图模式 (Card Mode) -->
+            <div v-if="varViewMode === 'card'" class="space-y-2.5">
+              <div
+                v-for="v in filteredVariables"
+                :key="v.key"
+                class="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs text-left transition-all"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-bold text-xs text-slate-800 dark:text-slate-100">{{ v.name }}</span>
+                      <span 
+                        v-if="v.dataType"
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
+                        :class="v.type === 'digital' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'"
+                      >
+                        {{ v.dataType }}
+                      </span>
+                      <!-- 阶段 4：访问模式徽章 -->
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
+                        :class="accessOfVar(v) === 'Read'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                          : (accessOfVar(v) === 'Write'
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
+                      >
+                        {{ accessLabel(accessOfVar(v)) }}
+                      </span>
+                    </div>
+                    <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
+                      <Binary class="w-3 h-3 text-violet-500 shrink-0" />
+                      <span>Key: <strong class="text-violet-700 dark:text-violet-400 font-bold">{{ v.key }}</strong></span>
+                    </div>
+                    <p v-if="v.description" class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">
+                      {{ v.description }}
+                    </p>
+                  </div>
+
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      @click="openEditVariable(v)"
+                      class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-md text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors cursor-pointer"
+                      title="编辑变量"
                     >
-                      {{ v.dataType }}
+                      <Pencil class="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      @click="handleDeleteVariable(v)"
+                      class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                      title="删除变量"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-3 gap-2 text-[11px]">
+                  <div>
+                    <span class="text-slate-400 block text-[10px]">单位</span>
+                    <span class="font-mono text-slate-700 dark:text-slate-200 font-medium">{{ v.unit || '—' }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block text-[10px]">量程</span>
+                    <span class="font-mono text-slate-700 dark:text-slate-200">
+                      {{ v.min !== undefined && v.max !== undefined ? `[${v.min}, ${v.max}]` : '—' }}
                     </span>
-                    <!-- 阶段 4：访问模式徽章 -->
-                    <span
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border"
-                      :class="accessOfVar(v) === 'Read'
-                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                        : (accessOfVar(v) === 'Write'
-                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')"
-                    >
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block text-[10px]">历史存储</span>
+                    <span class="font-medium" :class="v.isStored !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                      {{ v.isStored !== false ? '写入TSDB' : '仅内存' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 紧凑列表模式 (Compact List Mode) -->
+            <div v-else class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs">
+              <div
+                v-for="v in filteredVariables"
+                :key="v.key"
+                class="p-2.5 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <Binary class="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                    <span class="font-bold font-mono text-xs text-slate-800 dark:text-slate-200 truncate">{{ v.key }}</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">{{ v.name }}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 mt-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                    <span class="px-1 rounded bg-slate-100 dark:bg-slate-800 font-bold uppercase"
+                      :class="v.type === 'digital' ? 'text-emerald-600 dark:text-emerald-400' : 'text-sky-600 dark:text-sky-400'">
+                      {{ v.dataType || (v.type === 'digital' ? 'Boolean' : 'Analog') }}
+                    </span>
+                    <span class="px-1 rounded bg-slate-100 dark:bg-slate-800 font-bold">
                       {{ accessLabel(accessOfVar(v)) }}
                     </span>
+                    <span v-if="v.unit" class="text-slate-600 dark:text-slate-300 font-bold">
+                      {{ v.unit }}
+                    </span>
+                    <span :class="v.isStored !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                      {{ v.isStored !== false ? 'TSDB' : '内存' }}
+                    </span>
                   </div>
-                  <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
-                    <Binary class="w-3 h-3 text-violet-500" />
-                    <span>Key: <strong class="text-violet-700 dark:text-violet-400 font-bold">{{ v.key }}</strong></span>
-                  </div>
-                  <p v-if="v.description" class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">
-                    {{ v.description }}
-                  </p>
                 </div>
 
                 <div class="flex items-center gap-1 shrink-0">
                   <button
                     @click="openEditVariable(v)"
-                    class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 rounded-md text-slate-400 hover:text-violet-600"
+                    class="p-1.5 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
                     title="编辑变量"
                   >
                     <Pencil class="w-3.5 h-3.5" />
                   </button>
                   <button
                     @click="handleDeleteVariable(v)"
-                    class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 rounded-md text-slate-400 hover:text-rose-600"
+                    class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
                     title="删除变量"
                   >
                     <Trash2 class="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-
-              <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-3 gap-2 text-[11px]">
-                <div>
-                  <span class="text-slate-400 block text-[10px]">单位</span>
-                  <span class="font-mono text-slate-700 dark:text-slate-200 font-medium">{{ v.unit || '-' }}</span>
-                </div>
-                <div>
-                  <span class="text-slate-400 block text-[10px]">量程</span>
-                  <span class="font-mono text-slate-700 dark:text-slate-200">
-                    {{ v.min !== undefined && v.max !== undefined ? `[${v.min}, ${v.max}]` : '-' }}
-                  </span>
-                </div>
-                <div>
-                  <span class="text-slate-400 block text-[10px]">历史存储</span>
-                  <span class="text-emerald-600 dark:text-emerald-400 font-medium">
-                    {{ v.isStored !== false ? '写入TSDB' : '仅内存' }}
-                  </span>
-                </div>
-              </div>
             </div>
 
+            <!-- 空状态 -->
             <div v-if="filteredVariables.length === 0" class="text-center py-12 text-slate-400 text-xs">
               <Layers class="w-10 h-10 stroke-[1.5] mb-2 mx-auto text-slate-300 dark:text-slate-600" />
-              <p>{{ varSearchQuery ? '未匹配到相关变量' : '暂无点位变量定义' }}</p>
+              <p>{{ varSearchQuery || varCategoryFilter !== 'ALL' ? '未匹配到相关变量' : '暂无点位变量定义' }}</p>
               <button
+                v-if="varSearchQuery || varCategoryFilter !== 'ALL'"
+                @click="varSearchQuery = ''; varCategoryFilter = 'ALL'"
+                class="mt-3 text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+              >
+                重置过滤条件
+              </button>
+              <button
+                v-else
                 @click="showVarModal = true"
-                class="mt-3 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs"
+                class="mt-3 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs cursor-pointer"
               >
                 <Plus class="w-3.5 h-3.5" /> 立即添加变量
               </button>
+            </div>
+
+            <!-- 底部计数 -->
+            <div v-if="filteredVariables.length > 0" class="mt-3 text-center text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+              已显示 {{ filteredVariables.length }} / {{ totalVariableCount }} 个变量
             </div>
           </div>
         </div>
