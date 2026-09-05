@@ -64,6 +64,19 @@ export interface NotificationTestResult {
   latencyMs?: number;
 }
 
+export interface NotificationLogItem {
+  id: number | string;
+  timestamp: string;
+  channel: 'dingTalk' | 'email';
+  eventType: 'alarmTriggered' | 'alarmRecovered' | 'deviceStatus' | 'systemAlarm' | 'systemError' | 'scriptExecution' | 'test';
+  title: string;
+  recipient: string;
+  status: 'Success' | 'Failed' | 'Retrying';
+  latencyMs: number;
+  error?: string;
+  payloadPreview?: string;
+}
+
 const base = () => `${systemConfig.value.backendApiUrl}/api/NotificationConfig`;
 
 export const fetchNotificationConfig = () => http.get<NotificationConfig>(`${base()}`);
@@ -75,3 +88,12 @@ export const testDingTalk = (dto: DingTalkConfig) =>
 
 export const testEmail = (dto: EmailConfig) =>
   http.post<NotificationTestResult>(`${base()}/test-email`, dto);
+
+export const fetchNotificationLogs = () =>
+  http.get<NotificationLogItem[]>(`${base()}/logs`);
+
+export const clearNotificationLogs = () =>
+  http.post(`${base()}/logs/clear`);
+
+export const retryNotificationLog = (id: number | string) =>
+  http.post<NotificationLogItem>(`${base()}/logs/${id}/retry`);
