@@ -21,6 +21,14 @@ export interface ProjectSummaryDto {
   id: number;
   name: string;
   description: string;
+  category?: string;
+  pageCount?: number;
+  componentCount?: number;
+  variableCount?: number;
+  resolution?: string;
+  status?: string;
+  version?: string;
+  updatedAt?: string;
 }
 export interface ProjectFullDto {
   project: ProjectSummaryDto;

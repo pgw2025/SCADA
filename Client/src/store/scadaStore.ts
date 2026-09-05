@@ -89,7 +89,7 @@ export const initializeScada = async () => {
         selectedProjectId.value = projects[0].id;
         selectedPageId.value = projects[0].pages[0]?.id || '';
         // 同步维护摘要列表（供工程卡片页使用）
-        projectSummaries.value = summaries.map(s => ({ id: s.id, name: s.name, description: s.description }));
+        projectSummaries.value = summaries.map(s => ({ ...s }));
       }
     }
   } catch {
@@ -103,8 +103,8 @@ export const initializeScada = async () => {
 // ===== 组态运行多工程（方案B：路由两级）=====
 // 一级卡片列表页只拉摘要；进入具体工程才按 id 懒加载完整树。
 
-/** 工程摘要列表（卡片页数据源，只含 id/name/description） */
-export const projectSummaries = ref<{ id: number; name: string; description: string }[]>([]);
+/** 工程摘要列表（卡片页数据源，含 id/name/description/category/metrics等） */
+export const projectSummaries = ref<api.ProjectSummaryDto[]>([]);
 
 /**
  * 加载工程摘要（轻量，供工程卡片列表页使用）。
@@ -116,7 +116,7 @@ export const initializeProjectSummaries = async () => {
   try {
     const list = await api.loadProjectSummaries();
     if (list && list.length > 0) {
-      projectSummaries.value = list.map(s => ({ id: s.id, name: s.name, description: s.description }));
+      projectSummaries.value = list.map(s => ({ ...s }));
       _summariesInitialized = true;
       return;
     }
@@ -125,7 +125,13 @@ export const initializeProjectSummaries = async () => {
   }
   const fallback = scadaProjects.value
     .filter(p => p.serverId != null)
-    .map(p => ({ id: p.serverId!, name: p.name, description: p.description }));
+    .map(p => ({
+      id: p.serverId!,
+      name: p.name,
+      description: p.description,
+      pageCount: p.pages?.length || 1,
+      resolution: p.pages?.[0] ? `${p.pages[0].width}×${p.pages[0].height}` : '1920×1080'
+    }));
   if (fallback.length > 0) {
     projectSummaries.value = fallback;
     _summariesInitialized = true;
@@ -175,10 +181,22 @@ export const reloadProjectTree = async (serverId: number): Promise<ScadaScreenPr
 };
 
 /** 工程摘要列表 upsert（导入后卡片页立即可见，无需整页刷新） */
-export const upsertProjectSummary = (s: { id: number; name: string; description: string }) => {
+export const upsertProjectSummary = (s: Partial<api.ProjectSummaryDto> & { id: number; name: string; description?: string }) => {
   const i = projectSummaries.value.findIndex(p => p.id === s.id);
-  if (i >= 0) projectSummaries.value.splice(i, 1, s);
-  else projectSummaries.value.push(s);
+  const full: api.ProjectSummaryDto = {
+    id: s.id,
+    name: s.name,
+    description: s.description || '',
+    category: s.category || '综合自动化',
+    pageCount: s.pageCount || 1,
+    variableCount: s.variableCount || 24,
+    resolution: s.resolution || '1920×1080',
+    status: s.status || 'Running',
+    version: s.version || 'v1.0',
+    updatedAt: s.updatedAt || new Date().toISOString().slice(0, 16).replace('T', ' ')
+  };
+  if (i >= 0) projectSummaries.value.splice(i, 1, { ...projectSummaries.value[i], ...full });
+  else projectSummaries.value.push(full);
 };
 
 /**
