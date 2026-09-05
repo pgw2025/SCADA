@@ -376,10 +376,8 @@ const handleChangeMyPassword = async () => {
           <Menu v-if="!isMobileSidebarOpen" class="w-4.5 h-4.5" />
           <X v-else class="w-4.5 h-4.5" />
         </button>
-        <div
-          class="w-9 h-9 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
-          <Server class="w-5 h-5 text-white animate-pulse" />
-        </div>
+        <img src="/pwa/icon-192.png" :alt="systemConfig.systemTitle"
+          class="w-9 h-9 rounded-lg shadow-md shrink-0 select-none" width="192" height="192" />
         <div class="text-left">
           <h1
             class="text-xs sm:text-sm font-black tracking-wider uppercase flex items-center gap-2 leading-none text-slate-900 dark:text-slate-50">
