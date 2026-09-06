@@ -210,14 +210,61 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
   onHistoryKey(e);
 };
 
+// 方案一：移动端响应式与抽屉/沉浸式画布交互状态
+const isMobileScreen = ref<boolean>(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+const isMobileWidgetSheetOpen = ref<boolean>(false);
+
+const handleScreenResize = () => {
+  if (typeof window !== 'undefined') {
+    isMobileScreen.value = window.innerWidth < 768;
+  }
+};
+
+const handleMobileAddWidget = (type: ComponentType, defaultW: number, defaultH: number, label: string) => {
+  const pg = currentPage.value;
+  const def = getWidgetDef(type);
+  const w = defaultW || def?.defaultWidth || 100;
+  const h = defaultH || def?.defaultHeight || 50;
+  const pw = pg?.width ?? 1100;
+  const ph = pg?.height ?? 700;
+  const x = Math.max(20, Math.round((pw - w) / 2));
+  const y = Math.max(20, Math.round((ph - h) / 2));
+  handleAddWidget(type, w, h, label, x, y);
+  isMobileWidgetSheetOpen.value = false;
+  showToast(`已添加「${label}」至画布中央`, 'success');
+};
+
+const handleSelectPage = (pageId: string) => {
+  selectedPageId.value = pageId;
+  if (isMobileScreen.value) {
+    isProjectListOpen.value = false;
+  }
+};
+
+const openMobileInspector = () => {
+  rightActiveTab.value = 'inspector';
+  isRightSidebarOpen.value = true;
+};
+
 // 阶段2：挂载时从后端整树加载组态（后端为空则显示空态，引导新建工程）
 onMounted(() => {
   initializeScada();
   window.addEventListener('keydown', handleGlobalKeydown);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleScreenResize);
+    if (window.innerWidth < 768) {
+      isProjectListOpen.value = false;
+      isRightSidebarOpen.value = false;
+      isWidgetLibraryOpen.value = false;
+    }
+  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleScreenResize);
+  }
   isScadaFullscreen.value = false;
 });
 
@@ -966,6 +1013,9 @@ const selectProjectDirectly = (projId: string) => {
   if (proj && proj.pages.length > 0) {
     selectedPageId.value = proj.pages[0].id;
   }
+  if (isMobileScreen.value) {
+    isProjectListOpen.value = false;
+  }
 };
 
 const selectedCompObj = computed(() => {
@@ -1055,11 +1105,15 @@ const handleExportPage = async (page: ScadaPage) => {
 
 <template>
   <div
-    class="h-full overflow-y-auto md:overflow-y-hidden flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent">
+    class="h-full overflow-hidden flex flex-col md:flex-row text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent relative">
 
-    <!-- LEFT CONTROL BAR: Scada Projects and multiple subpages directory (全屏模式下隐藏) -->
+    <!-- 移动端左侧工程抽屉遮罩 -->
+    <div v-if="!isScadaFullscreen && isProjectListOpen" @click="isProjectListOpen = false"
+      class="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity"></div>
+
+    <!-- LEFT CONTROL BAR: Scada Projects and multiple subpages directory (桌面端侧边栏 / 移动端滑出抽屉) -->
     <div v-show="!isScadaFullscreen && isProjectListOpen"
-      class="w-full md:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 flex-1 md:flex-none transition-colors">
+      class="fixed md:static inset-y-0 left-0 z-50 md:z-auto w-[85vw] max-w-xs md:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-all shadow-2xl md:shadow-none overflow-hidden">
 
       <!-- Top Screen/Project select -->
       <div class="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
@@ -1085,9 +1139,10 @@ const handleExportPage = async (page: ScadaPage) => {
               <Plus class="w-4 h-4" />
             </button>
             <button @click="isProjectListOpen = false"
-              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer hidden md:block"
+              class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
               title="收起工程列表">
-              <ChevronLeft class="w-4 h-4" />
+              <ChevronLeft class="w-4 h-4 hidden md:block" />
+              <X class="w-4 h-4 md:hidden" />
             </button>
           </div>
         </div>
@@ -1167,8 +1222,8 @@ const handleExportPage = async (page: ScadaPage) => {
         </button>
       </div>
       <div v-if="currentProject"
-        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[140px] md:max-h-none text-left font-sans">
-        <div v-for="page in desktopPages" :key="page.id" @click="selectedPageId = page.id"
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
+        <div v-for="page in desktopPages" :key="page.id" @click="handleSelectPage(page.id)"
           class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
           :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
           <div class="flex items-center justify-between gap-2 overflow-hidden">
@@ -1225,8 +1280,8 @@ const handleExportPage = async (page: ScadaPage) => {
         </button>
       </div>
       <div v-if="currentProject"
-        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[140px] md:max-h-none text-left font-sans">
-        <div v-for="page in mobilePages" :key="page.id" @click="selectedPageId = page.id"
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
+        <div v-for="page in mobilePages" :key="page.id" @click="handleSelectPage(page.id)"
           class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
           :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
           <div class="flex items-center justify-between gap-2 overflow-hidden">
@@ -1274,20 +1329,12 @@ const handleExportPage = async (page: ScadaPage) => {
 
     </div>
 
-    <!-- 工程列表收起态把手（md+：左侧竖条；移动端：顶部横条，点击展开） -->
+    <!-- 工程列表收起态把手（仅桌面端 md+ 显示竖向把手；移动端由顶栏按钮唤起抽屉） -->
     <div v-show="!isScadaFullscreen && !isProjectListOpen" @click="isProjectListOpen = true"
-      class="bg-white dark:bg-slate-900 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none group shadow-xs">
-      <!-- 移动端：横向把手 -->
-      <div class="md:hidden flex items-center justify-center gap-1.5 py-2">
-        <ChevronRight class="w-4 h-4 rotate-90" />
-        <span class="text-[11px] font-bold tracking-widest">工程列表</span>
-      </div>
-      <!-- 桌面端：竖向把手 -->
-      <div class="hidden md:flex flex-col items-center justify-center w-7 h-full min-h-[120px] py-4 gap-2.5">
-        <ChevronRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-        <span
-          class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">工程列表</span>
-      </div>
+      class="hidden md:flex flex-col items-center justify-center w-7 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none py-4 gap-2.5 z-10 group shadow-xs">
+      <ChevronRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+      <span
+        class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">工程列表</span>
     </div>
 
     <!-- 加载态：整树拉取中 -->
@@ -1319,8 +1366,21 @@ const handleExportPage = async (page: ScadaPage) => {
 
         <!-- Canvas bar toggler stats -->
         <div
-          class="bg-white dark:bg-slate-900 px-4 sm:px-5 py-2.5 sm:py-3 border-b border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between shrink-0 transition-colors">
-          <div class="flex items-center gap-2 text-left">
+          class="bg-white dark:bg-slate-900 px-3 sm:px-5 py-2 sm:py-3 border-b border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between shrink-0 transition-colors gap-2">
+          
+          <!-- 移动端左侧：点击呼出工程与画面列表抽屉 -->
+          <div class="flex md:hidden items-center gap-1.5 min-w-0">
+            <button @click="isProjectListOpen = true"
+              class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold border border-slate-200 dark:border-slate-700 max-w-[140px] sm:max-w-[200px] transition-colors cursor-pointer"
+              title="展开工程与画面列表">
+              <FolderIcon class="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span class="truncate">{{ currentPage?.name || '画面列表' }}</span>
+              <ChevronRight class="w-3 h-3 text-slate-400 rotate-90 shrink-0" />
+            </button>
+          </div>
+
+          <!-- 桌面端左侧：当前页面名称与状态 -->
+          <div class="hidden md:flex items-center gap-2 text-left">
             <span class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]" />
             <div>
               <div class="flex items-center gap-1.5 flex-wrap">
@@ -1347,7 +1407,7 @@ const handleExportPage = async (page: ScadaPage) => {
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 sm:gap-2">
             <!-- 视口切换：桌面端 / 移动端 -->
             <div
               class="hidden md:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-bold">
@@ -1359,7 +1419,7 @@ const handleExportPage = async (page: ScadaPage) => {
                 title="移动端视口">📱 移动</button>
             </div>
 
-            <!-- 撤销/重做 -->
+            <!-- 撤销/重做 (桌面端) -->
             <div class="hidden md:flex items-center gap-1">
               <button @click="applyRestored(undo(currentPage.components))" :disabled="!undoAvailable"
                 title="撤销 (Ctrl+Z)"
@@ -1375,7 +1435,7 @@ const handleExportPage = async (page: ScadaPage) => {
               </button>
             </div>
 
-            <!-- 面板显隐快捷切换 (工程/图库/图层/属性) -->
+            <!-- 面板显隐快捷切换 (工程/图库/图层/属性) (仅桌面端) -->
             <div v-if="!isActiveMode"
               class="hidden sm:flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
               <button @click="isProjectListOpen = !isProjectListOpen"
@@ -1418,22 +1478,22 @@ const handleExportPage = async (page: ScadaPage) => {
 
             <!-- Mode switch toggle indicator -->
             <button @click="isActiveMode = !isActiveMode"
-              class="px-3.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 border"
+              class="px-2.5 sm:px-3.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all active:translate-y-0.5 border shrink-0"
               :class="isActiveMode ? 'bg-emerald-600 text-white border-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-slate-900 dark:bg-slate-800 text-[#cbd5e1] border-slate-900 dark:border-slate-700'">
               <Activity class="w-3.5 h-3.5" :class="isActiveMode ? 'animate-pulse' : ''" />
-              {{ isActiveMode ? '运行模式' : '设计模式' }}
+              <span>{{ isActiveMode ? '运行' : '设计' }}</span>
             </button>
 
             <!-- 全屏模式切换按钮 -->
             <button @click="toggleFullscreen()"
-              class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all active:translate-y-0.5 border"
+              class="p-1.5 sm:px-3 sm:py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all active:translate-y-0.5 border shrink-0"
               :class="isScadaFullscreen
                 ? 'bg-sky-600 hover:bg-sky-700 text-white border-sky-600 shadow-[0_0_8px_rgba(2,132,199,0.3)]'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200/70 dark:hover:bg-slate-700'"
               :title="isScadaFullscreen ? '退出全屏模式 (Esc)' : '全屏设计模式 (隐藏菜单与工程列表)'">
               <Minimize2 v-if="isScadaFullscreen" class="w-3.5 h-3.5" />
               <Maximize2 v-else class="w-3.5 h-3.5" />
-              <span class="hidden sm:inline">{{ isScadaFullscreen ? '退出全屏' : '全屏模式' }}</span>
+              <span class="hidden sm:inline">{{ isScadaFullscreen ? '退出全屏' : '全屏' }}</span>
             </button>
           </div>
         </div>
@@ -1455,9 +1515,9 @@ const handleExportPage = async (page: ScadaPage) => {
               class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">器件图库</span>
           </div>
 
-          <!-- Sandbox Design canvas panel -->
-          <div class="flex-1 bg-slate-900 relative overflow-hidden flex flex-col min-h-[350px] md:min-h-0">
-            <div class="flex-1 overflow-auto p-4"
+          <!-- Sandbox Design canvas panel (方案一：满屏自适应沉浸式画布) -->
+          <div class="flex-1 bg-slate-900 relative overflow-hidden flex flex-col h-full min-h-0">
+            <div class="flex-1 overflow-auto p-2 sm:p-4 touch-pan-x touch-pan-y"
               :class="currentPlatform === 'Mobile' ? 'flex justify-center items-start md:items-center' : ''">
               <!-- 移动端：套一层手机外框，强化移动视口区分 -->
               <div v-if="currentPlatform === 'Mobile'"
@@ -1493,6 +1553,75 @@ const handleExportPage = async (page: ScadaPage) => {
                 @component-event="handleComponentEvent" />
             </div>
           </div>
+
+          <!-- 移动端器件图库抽屉（底部弹出 Bottom Sheet） -->
+          <div v-if="!isActiveMode && isMobileWidgetSheetOpen" @click="isMobileWidgetSheetOpen = false"
+            class="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-50 transition-opacity"></div>
+          
+          <div v-if="!isActiveMode && isMobileWidgetSheetOpen"
+            class="md:hidden fixed inset-x-0 bottom-0 max-h-[75vh] bg-white dark:bg-slate-900 rounded-t-2xl border-t border-slate-200 dark:border-slate-800 z-50 flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200">
+            <div class="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2.5 shrink-0"></div>
+            <div class="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div class="flex items-center gap-2">
+                <Package class="w-4 h-4 text-sky-500" />
+                <span class="font-bold text-sm text-slate-800 dark:text-slate-100">工业器件图库</span>
+                <span class="text-[10px] text-slate-400">（点击直接置入画面中央）</span>
+              </div>
+              <button @click="isMobileWidgetSheetOpen = false"
+                class="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <X class="w-4 h-4" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2">
+              <WidgetLibrary @addWidget="handleMobileAddWidget" @collapse="isMobileWidgetSheetOpen = false" />
+            </div>
+          </div>
+
+          <!-- 移动端底部悬浮操作工具栏（方案一：沉浸式画布的核心交互工具栏） -->
+          <div v-if="!isActiveMode"
+            class="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 shadow-2xl rounded-full px-3 py-1.5 flex items-center gap-1.5 transition-all">
+            
+            <!-- 添加器件按钮 -->
+            <button @click="isMobileWidgetSheetOpen = true"
+              class="flex items-center gap-1 px-3 py-1.5 bg-[#1890ff] hover:bg-sky-500 active:scale-95 text-white rounded-full text-xs font-bold shadow-md cursor-pointer transition-transform">
+              <Plus class="w-3.5 h-3.5" />
+              <span>加器件</span>
+            </button>
+
+            <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 my-auto mx-0.5"></div>
+
+            <!-- 撤销 -->
+            <button @click="applyRestored(undo(currentPage.components))" :disabled="!undoAvailable"
+              title="撤销"
+              class="p-1.5 rounded-full transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Undo2 class="w-4 h-4" />
+            </button>
+
+            <!-- 重做 -->
+            <button @click="applyRestored(redo(currentPage.components))" :disabled="!redoAvailable"
+              title="重做"
+              class="p-1.5 rounded-full transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Redo2 class="w-4 h-4" />
+            </button>
+
+            <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 my-auto mx-0.5"></div>
+
+            <!-- 属性面板抽屉唤起 -->
+            <button @click="openMobileInspector"
+              class="p-1.5 rounded-full transition-colors cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 relative"
+              :class="selectedIds.length > 0 ? 'text-[#1890ff] dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60' : ''"
+              title="属性配置">
+              <Sliders class="w-4 h-4" />
+              <span v-if="selectedIds.length > 0" class="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#1890ff]"></span>
+            </button>
+
+            <!-- 图层面板抽屉唤起 -->
+            <button @click="rightActiveTab = 'layers'; isRightSidebarOpen = true"
+              class="p-1.5 rounded-full transition-colors cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="图层管理">
+              <Layers class="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1500,18 +1629,25 @@ const handleExportPage = async (page: ScadaPage) => {
       <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
         @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
 
-      <!-- Right section: Tabbed Right Sidebar (属性配置 & PS 图层管理选项卡) -->
+      <!-- 移动端右侧属性/图层面板遮罩 -->
+      <div v-if="!isActiveMode && isRightSidebarOpen" @click="isRightSidebarOpen = false"
+        class="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity"></div>
+
+      <!-- Right section: Tabbed Right Sidebar (桌面端右侧边栏 / 移动端底部抽屉 Bottom Sheet) -->
       <div v-if="!isActiveMode && isRightSidebarOpen"
-        class="w-full md:w-80 lg:w-84 xl:w-90 bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-all overflow-hidden z-10 shadow-xs">
+        class="fixed md:static inset-x-0 bottom-0 md:inset-x-auto md:bottom-auto max-h-[82vh] md:max-h-none w-full md:w-80 lg:w-84 xl:w-90 bg-white dark:bg-slate-900 rounded-t-2xl md:rounded-none border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-all overflow-hidden z-50 md:z-10 shadow-2xl md:shadow-xs animate-in md:animate-none slide-in-from-bottom duration-200">
+
+        <!-- 移动端抽屉顶部把手条 -->
+        <div class="md:hidden w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0"></div>
 
         <!-- Tab Bar Header -->
         <div
           class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/90 shrink-0 select-none">
           <!-- Segmented Tab Switcher -->
           <div
-            class="flex items-center bg-slate-200/90 dark:bg-slate-800/90 p-0.5 rounded-lg gap-0.5 border border-slate-300/40 dark:border-slate-700/60">
+            class="flex items-center bg-slate-200/90 dark:bg-slate-800/90 p-0.5 rounded-lg gap-0.5 border border-slate-300/40 dark:border-slate-700/60 overflow-x-auto">
             <button @click="rightActiveTab = 'inspector'"
-              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap"
               :class="rightActiveTab === 'inspector'
                 ? 'bg-white dark:bg-slate-900 text-[#1890ff] dark:text-sky-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
@@ -1519,7 +1655,7 @@ const handleExportPage = async (page: ScadaPage) => {
               <span>属性配置</span>
             </button>
             <button @click="rightActiveTab = 'events'"
-              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap"
               :class="rightActiveTab === 'events'
                 ? 'bg-white dark:bg-slate-900 text-[#1890ff] dark:text-sky-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
@@ -1527,7 +1663,7 @@ const handleExportPage = async (page: ScadaPage) => {
               <span>事件</span>
             </button>
             <button @click="rightActiveTab = 'layers'"
-              class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer"
+              class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap"
               :class="rightActiveTab === 'layers'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
@@ -1544,8 +1680,9 @@ const handleExportPage = async (page: ScadaPage) => {
           <!-- Collapse Button -->
           <button @click="isRightSidebarOpen = false"
             class="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="收起右侧面板">
-            <ChevronRight class="w-4 h-4" />
+            title="收起面板">
+            <ChevronRight class="w-4 h-4 hidden md:block" />
+            <X class="w-4 h-4 md:block" />
           </button>
         </div>
 
