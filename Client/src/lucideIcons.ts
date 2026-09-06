@@ -7,7 +7,7 @@ import type { Component } from 'vue';
 import {
   BatteryCharging, Cpu, ToggleLeft, Layers, Workflow, RefreshCw, Gauge, Thermometer,
   Tv, Hash, LayoutDashboard, Activity, Clock, Type, Sparkles, ToggleRight,
-  Image as ImageIcon, Monitor, Smartphone, PanelTop,
+  Image as ImageIcon, Monitor, Smartphone, PanelTop, Sliders, Zap
 } from 'lucide-vue-next';
 
 export const LUCIDE_ICON_MAP: Record<string, Component> = {
@@ -16,7 +16,7 @@ export const LUCIDE_ICON_MAP: Record<string, Component> = {
   thermometer: Thermometer, tv: Tv, hash: Hash, 'layout-dashboard': LayoutDashboard,
   activity: Activity, clock: Clock, type: Type, sparkles: Sparkles,
   'toggle-right': ToggleRight, image: ImageIcon, monitor: Monitor,
-  smartphone: Smartphone, 'panel-top': PanelTop,
+  smartphone: Smartphone, 'panel-top': PanelTop, sliders: Sliders, zap: Zap,
 };
 
 export const getLucideIcon = (name: string): Component | undefined =>

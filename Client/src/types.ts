@@ -21,7 +21,45 @@ export type ComponentType =
   | 'title-header' // 工业大屏与移动端高精度矢量标题背景栏 (3套风格 x 桌面/手机)
   | 'nav-menu'     // 组态导航菜单：桌面顶部横向导航条 / 移动底部 Tab 栏（图标+文字+页面跳转）
   | 'multi-var-dashboard' // 实时多变量看板：支持多变量绑定、列数调节、边框与主题样式、阈值预警与卡片/表格/紧凑模式
-  | 'image';       // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
+  | 'image'        // 自定义图片图元：上传/图库选择，URL 存 props.imageUrl
+  | 'vfd-motor-panel'; // 变频电机标准控制面版 (复合组件：启/停/复位、准备/运行/故障/信号、设定/反馈频率、电流监控)
+
+/** 变频电机标准控制面板配置属性（存于 HMIComponent.props） */
+export interface VfdMotorPanelConfig {
+  motorName?: string;
+  motorTag?: string;
+  // 风格主题预设（与导航菜单 nav-menu 同套枚举：slate-dark/navy-midnight/tech-blue/pure-white/titanium-light/translucent-frost/eco-green/carbon-orange）
+  panelStyle?: string;
+  // 自定义强调色（#38bdf8 视为未设置，回退到各主题默认强调色）
+  panelAccentColor?: string;
+  ratedCurrent?: number;
+  minFreq?: number;
+  maxFreq?: number;
+  freqStep?: number;
+  // 控制指令与状态信号点位（变量 key）
+  startVar?: string;
+  startDeviceId?: number | null;
+  stopVar?: string;
+  stopDeviceId?: number | null;
+  resetVar?: string;
+  resetDeviceId?: number | null;
+  readyVar?: string;
+  readyDeviceId?: number | null;
+  runningVar?: string;
+  runningDeviceId?: number | null;
+  faultVar?: string;
+  faultDeviceId?: number | null;
+  signalVar?: string;
+  signalDeviceId?: number | null;
+  spFreqVar?: string;
+  spFreqDeviceId?: number | null;
+  pvFreqVar?: string;
+  pvFreqDeviceId?: number | null;
+  currentVar?: string;
+  currentDeviceId?: number | null;
+  // 独立指定默认主设备 ID（若留空则继承组件 bindDeviceId）
+  opDeviceId?: number | null;
+}
 
 /** 实时多变量看板子监控项配置（存于 HMIComponent.props.dashboardItems） */
 export interface HmiDashboardItem {

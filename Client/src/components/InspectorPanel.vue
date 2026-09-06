@@ -10,6 +10,7 @@ import ImageLibraryDialog from './ImageLibraryDialog.vue';
 import PageBackgroundInspector from './inspector/PageBackgroundInspector.vue';
 import TrendChartInspector from './inspector/TrendChartInspector.vue';
 import MultiVarDashboardInspector from './inspector/MultiVarDashboardInspector.vue';
+import VfdMotorPanelInspector from './inspector/VfdMotorPanelInspector.vue';
 import RoundedBtnInspector from './inspector/RoundedBtnInspector.vue';
 import NavMenuInspector from './inspector/NavMenuInspector.vue';
 import PropSchemaForm from './inspector/PropSchemaForm.vue';
@@ -277,7 +278,7 @@ const onPickComponentImage = (img: { url: string }) => {
 
         <div>
           <label class="text-[10px] text-gray-500 dark:text-slate-400">
-            {{ selectedComponent?.type === 'multi-var-dashboard' ? '默认绑定设备（预设设备）' : '绑定设备' }}
+            {{ ['multi-var-dashboard', 'vfd-motor-panel'].includes(selectedComponent?.type) ? '默认绑定设备（预设设备）' : '绑定设备' }}
           </label>
           <select :value="selectedComponent?.bindDeviceId ?? ''"
             @change="onBindDeviceChange(($event.target as HTMLSelectElement).value)"
@@ -285,12 +286,12 @@ const onPickComponentImage = (img: { url: string }) => {
             <option value="">-- 未绑定设备（禁止裸 key）--</option>
             <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }} ({{ d.key }})</option>
           </select>
-          <p v-if="selectedComponent?.bindDeviceId == null && selectedComponent?.type !== 'multi-var-dashboard'"
+          <p v-if="selectedComponent?.bindDeviceId == null && !['multi-var-dashboard', 'vfd-motor-panel'].includes(selectedComponent?.type)"
             class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 leading-relaxed">
             未绑定设备：运行态将无法定位变量值，且禁止裸 key 写入。请先选择设备。
           </p>
         </div>
-        <div v-if="selectedComponent?.type !== 'multi-var-dashboard'">
+        <div v-if="!['multi-var-dashboard', 'vfd-motor-panel'].includes(selectedComponent?.type)">
           <label class="text-[10px] text-gray-500 dark:text-slate-400">绑定变量</label>
           <select
             :value="(selectedComponent?.bindDeviceId != null ? selectedComponent?.bindVariableKey : selectedComponent?.bindField) ?? ''"
@@ -299,6 +300,11 @@ const onPickComponentImage = (img: { url: string }) => {
             <option value="">-- 无绑定 --</option>
             <option v-for="v in bindingVariableOptions" :key="v.key" :value="v.key">{{ v.key }}</option>
           </select>
+        </div>
+        <div v-else-if="selectedComponent?.type === 'vfd-motor-panel'"
+          class="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded p-2 flex items-start gap-1.5">
+          <Sparkles class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>变频电机控制面板集成多点位信号，请在下方专属配置区配置启停、状态与频率/电流点位。</span>
         </div>
         <div v-else
           class="text-[10px] text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 rounded p-2 flex items-start gap-1.5">
@@ -618,6 +624,10 @@ const onPickComponentImage = (img: { url: string }) => {
 
         <!-- REAL-TIME MULTI-VARIABLE DASHBOARD CONTROLS (实时多变量监控看板专属配置)——已抽取为子组件 -->
         <MultiVarDashboardInspector v-if="selectedComponent.type === 'multi-var-dashboard'"
+          :component="selectedComponent" @update-prop="(key, value) => updateProp(key, value)" />
+
+        <!-- VFD MOTOR FACEPLATE CONTROLS (变频电机标准控制面板专属配置) -->
+        <VfdMotorPanelInspector v-if="selectedComponent.type === 'vfd-motor-panel'"
           :component="selectedComponent" @update-prop="(key, value) => updateProp(key, value)" />
 
         <!-- Custom fonts controls for Text boxes -->

@@ -29,8 +29,9 @@ import ImageWidget from './components/widgets/ImageWidget.vue';
 import TitleHeaderWidget from './components/widgets/TitleHeaderWidget.vue';
 import NavMenuWidget from './components/widgets/NavMenuWidget.vue';
 import MultiVarDashboardWidget from './components/widgets/MultiVarDashboardWidget.vue';
+import VfdMotorPanelWidget from './components/widgets/VfdMotorPanelWidget.vue';
 
-/** 内置渲染器：renderType → SFC。23 项 = 22 个注册类型 + legacy button。 */
+/** 内置渲染器：renderType → SFC。24 项 = 23 个注册类型 + legacy button。 */
 export const builtinRenderers: Record<string, Component> = {
   boiler: BoilerWidget, pump: PumpWidget, valve: ValveWidget, tank: TankWidget,
   'pipe-h': PipeHWidget, 'pipe-v': PipeVWidget,
@@ -41,4 +42,5 @@ export const builtinRenderers: Record<string, Component> = {
   'sys-time': SysTimeWidget, 'rounded-btn': RoundedBtnWidget, motor: MotorWidget,
   image: ImageWidget, 'title-header': TitleHeaderWidget, 'nav-menu': NavMenuWidget,
   'multi-var-dashboard': MultiVarDashboardWidget,
+  'vfd-motor-panel': VfdMotorPanelWidget,
 };
