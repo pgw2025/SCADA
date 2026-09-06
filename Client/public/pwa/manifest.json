@@ -1,0 +1,38 @@
+{
+  "id": "/",
+  "name": "Industrial HMI Editor",
+  "short_name": "HMI Editor",
+  "description": "An interactive industrial HMI and SCADA configuration editor with live simulated PLC data-bindings, responsive gauges, and automated layout templates.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#021233",
+  "theme_color": "#021233",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
