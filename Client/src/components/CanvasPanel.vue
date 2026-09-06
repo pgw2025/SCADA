@@ -14,6 +14,14 @@ import {
   Play,
   Edit3,
   Lock,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignHorizontalSpaceBetween,
+  AlignVerticalSpaceBetween,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -592,12 +600,6 @@ const alignComponents = (direction: string) => {
   emit('updateComponents', updates);
 };
 
-const onAlignChange = (e: Event) => {
-  const dir = (e.target as HTMLSelectElement).value;
-  if (dir) alignComponents(dir);
-  (e.target as HTMLSelectElement).value = '';
-};
-
 // 阶段5-3：分辨率预设切换
 const onPresetChange = (e: Event) => {
   const [w, h] = (e.target as HTMLSelectElement).value.split('x').map(Number);
@@ -838,30 +840,45 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <!-- 阶段5-2：对齐工具条（单选→画布；多选≥2→选区包围盒/等距分布） -->
-        <select v-if="selectedIds.length > 0 && !isActiveMode" @change="onAlignChange"
-          class="hidden lg:block text-[10px] h-7 bg-white border border-[#d9d9d9] rounded px-1 text-gray-600 focus:outline-none cursor-pointer"
-          title="组件对齐">
-          <option value="" disabled selected>对齐…</option>
-          <template v-if="selectedIds.length === 1">
-            <option value="left">左对齐</option>
-            <option value="right">右对齐</option>
-            <option value="top">顶对齐</option>
-            <option value="bottom">底对齐</option>
-            <option value="h-center">水平居中</option>
-            <option value="v-center">垂直居中</option>
-          </template>
-          <template v-else>
-            <option value="left">左对齐</option>
-            <option value="right">右对齐</option>
-            <option value="top">顶对齐</option>
-            <option value="bottom">底对齐</option>
-            <option value="h-center">水平居中</option>
-            <option value="v-center">垂直居中</option>
-            <option value="distribute-h">水平等距分布</option>
-            <option value="distribute-v">垂直等距分布</option>
-          </template>
-        </select>
+        <!-- 阶段5-2：对齐工具条（单选→画布；多选≥2→选区包围盒/平均分布；图标按钮） -->
+        <div v-if="selectedIds.length > 0 && !isActiveMode"
+          class="hidden lg:flex items-center gap-1 bg-white border border-[#d9d9d9] rounded p-0.5" title="组件对齐">
+          <button @click="alignComponents('left')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="左对齐">
+            <AlignStartVertical class="w-3.5 h-3.5" />
+          </button>
+          <button @click="alignComponents('h-center')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="水平居中">
+            <AlignCenterVertical class="w-3.5 h-3.5" />
+          </button>
+          <button @click="alignComponents('right')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="右对齐">
+            <AlignEndVertical class="w-3.5 h-3.5" />
+          </button>
+          <button v-if="selectedIds.length > 1" @click="alignComponents('distribute-h')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer"
+            title="水平平均对齐">
+            <AlignHorizontalSpaceBetween class="w-3.5 h-3.5" />
+          </button>
+          <div class="w-[1px] h-4 bg-[#e0e0e0] mx-0.5" />
+          <button @click="alignComponents('top')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="顶对齐">
+            <AlignStartHorizontal class="w-3.5 h-3.5" />
+          </button>
+          <button @click="alignComponents('v-center')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="垂直居中">
+            <AlignCenterHorizontal class="w-3.5 h-3.5" />
+          </button>
+          <button @click="alignComponents('bottom')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="底对齐">
+            <AlignEndHorizontal class="w-3.5 h-3.5" />
+          </button>
+          <button v-if="selectedIds.length > 1" @click="alignComponents('distribute-v')"
+            class="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer"
+            title="垂直平均对齐">
+            <AlignVerticalSpaceBetween class="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         <!-- 分辨率预设 -->
         <div class="hidden lg:flex items-center gap-1">

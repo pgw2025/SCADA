@@ -11,6 +11,12 @@ import {
   resetHistory,
 } from '../services/historyService';
 import {
+  setClipboard,
+  getClipboard,
+  hasClipboard,
+  nextPasteOffset,
+} from '../services/clipboardService';
+import {
   scadaProjects,
   selectedProjectId,
   selectedPageId,
@@ -294,13 +300,26 @@ const onHistoryKey = (e: KeyboardEvent) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (!currentPage.value) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    e.preventDefault();
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  const key = e.key.toLowerCase();
+  if (key === 'z') {
     if (e.shiftKey) {
       applyRestored(redo(currentPage.value.components));
     } else {
       applyRestored(undo(currentPage.value.components));
     }
+    return;
+  }
+  // 组合键保护：Shift+C/V 在部分浏览器是 DevTools/新窗快捷键，放行给原生
+  if (e.shiftKey) return;
+  if (e.repeat) return; // 按住不放避免自动连发粘贴
+  if (key === 'c') {
+    handleCopy([...selectedIds.value]);
+  } else if (key === 'x') {
+    handleCut([...selectedIds.value]);
+  } else if (key === 'v') {
+    handlePaste();
   }
 };
 
@@ -599,6 +618,76 @@ const handleImageSelected = (img: { url: string; originalName: string; width: nu
 
   handleAddWidget('image', w, h, label, x, y, { imageUrl: img.url, imageFit: 'fill' as const });
   addLog('组态编辑', `在页面 [${pg.name}] 添加图片图元 [${label}]`, 'info');
+};
+
+// 复刻 CanvasPanel 的锁定判断（组件级 locked + 图层级 locked），供剪贴剪使用。
+// 不依赖画布内部 state，父组件用 currentPage.layers 独立判定。
+const isLockedForCut = (comp: HMIComponent): boolean => {
+  if (comp.locked === true) return true;
+  if (comp.layerId) {
+    const layers = currentPage.value?.layers || [];
+    const layer = layers.find((l) => l.id === comp.layerId);
+    if (layer && layer.locked === true) return true;
+  }
+  return false;
+};
+
+// Ctrl+C：复制选中组件到应用内剪贴板（复制为读操作，允许含锁定组件；不改状态、不记历史）
+const handleCopy = (ids: string[]) => {
+  if (!currentPage.value) return;
+  const targets = currentPage.value.components.filter((c) => ids.includes(c.id));
+  if (!targets.length) return;
+  setClipboard(targets);
+  addLog('组态编辑', `复制组件: ${targets.length} 个到剪贴板`, 'info');
+};
+
+// Ctrl+X：剪切（未锁定部分复制到剪贴板 + 即时删除）。
+// 若选中全部为锁定组件则直接返回，不覆盖已有剪贴板。
+const handleCut = (ids: string[]) => {
+  if (!currentPage.value) return;
+  const targets = currentPage.value.components.filter((c) => ids.includes(c.id));
+  const cuttable = targets.filter((c) => !isLockedForCut(c));
+  if (!cuttable.length) return;
+
+  setClipboard(cuttable);
+  recordDiscrete(currentPage.value.components);
+  const idSet = new Set(cuttable.map((c) => c.id));
+  updateCurrentPageComponents(currentPage.value.components.filter((c) => !idSet.has(c.id)));
+  selectedIds.value = [];
+  addLog('组态编辑', `剪切组件: ${cuttable.length} 个`, 'info');
+
+  cuttable.filter((t) => t.serverId).forEach((t) =>
+    persistComponentDelete(t).catch(() => { })
+  );
+};
+
+// Ctrl+V：粘贴剪贴板内容（不依赖当前选中；一次粘贴 = 一条历史记录）
+const handlePaste = () => {
+  if (!currentPage.value || !hasClipboard()) return;
+  const source = getClipboard();
+  const currentComps = currentPage.value.components;
+  const offset = nextPasteOffset();
+  let zCursor = currentComps.length + 1;
+
+  const clones: HMIComponent[] = source.map((s) => ({
+    ...s,
+    id: genComponentId(s.type),
+    name: `${s.name} (粘贴)`,
+    locked: undefined,
+    x: s.x + offset.x,
+    y: s.y + offset.y,
+    zIndex: zCursor++,
+  }));
+
+  recordDiscrete(currentComps);
+  updateCurrentPageComponents([...currentComps, ...clones]);
+  selectedIds.value = clones.map((c) => c.id);
+  addLog('组态编辑', `粘贴组件: ${clones.length} 个`, 'info');
+
+  // 阶段2：粘贴即新建，落库并回填 serverId（沿用复制逻辑）
+  clones.forEach((c) =>
+    persistNewComponent(currentPage.value, currentProject.value, c).catch(() => { })
+  );
 };
 
 // Duplicate widget(s) — 阶段5-2 支持批量复制
