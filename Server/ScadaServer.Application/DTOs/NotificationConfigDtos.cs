@@ -8,6 +8,10 @@ namespace ScadaServer.Application.DTOs
     {
         public DingTalkConfigDto DingTalk { get; set; } = new();
         public EmailConfigDto Email { get; set; } = new();
+        /// <summary>企业微信配置片段。可空无初始化器：请求体缺失该字段时绑定为 null，
+        /// SaveAsync 据此沿用旧值——若用 = new() 初始化，旧客户端（PWA 离线壳缓存的旧 JS 包）
+        /// PUT 不带 weCom 字段时会绑定到空实例（Enabled=false），已启用渠道被静默重置。</summary>
+        public WeComConfigDto? WeCom { get; set; }
         public ExternalPushPolicy Push { get; set; } = new();
         public NotificationTemplates Templates { get; set; } = new();
     }
@@ -21,6 +25,13 @@ namespace ScadaServer.Application.DTOs
         public string Secret { get; set; } = string.Empty;
         /// <summary>是否存在已配置的加签密钥。</summary>
         public bool HasSecret { get; set; }
+    }
+
+    /// <summary>企业微信群机器人配置片段（webhook 型，无加签字段）。</summary>
+    public class WeComConfigDto
+    {
+        public bool Enabled { get; set; }
+        public string Webhook { get; set; } = string.Empty;
     }
 
     /// <summary>SMTP 邮件配置片段。</summary>
@@ -58,7 +69,7 @@ namespace ScadaServer.Application.DTOs
         /// <summary>投递完成时间（本地时区 ISO 字符串，前端直接展示）。</summary>
         public string Timestamp { get; set; } = string.Empty;
 
-        /// <summary>渠道标识：dingTalk | email | webPush</summary>
+        /// <summary>渠道标识：dingTalk | weCom | email | webPush</summary>
         public string Channel { get; set; } = string.Empty;
 
         /// <summary>事件类型：alarmTriggered | alarmRecovered | deviceStatus | systemAlarm | systemError | scriptExecution | test</summary>

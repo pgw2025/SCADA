@@ -48,6 +48,11 @@ namespace ScadaServer.WebApi.Controllers
         public async Task<IActionResult> TestEmail([FromBody] EmailConfigDto dto)
             => Ok(await _service.TestEmailAsync(dto));
 
+        /// <summary>测试发送企业微信群机器人消息（使用提交的临时值，不落盘）</summary>
+        [HttpPost("test-wecom")]
+        public async Task<IActionResult> TestWeCom([FromBody] WeComConfigDto dto)
+            => Ok(await _service.TestWeComAsync(dto));
+
         /// <summary>查询最近投递记录（默认 500 条，Id 倒序，含三渠道真实投递与测试发送）</summary>
         [HttpGet("logs")]
         public async Task<IActionResult> GetLogs([FromQuery] int limit = 500)

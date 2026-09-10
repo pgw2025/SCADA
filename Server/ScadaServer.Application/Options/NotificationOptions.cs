@@ -7,6 +7,7 @@ namespace ScadaServer.Application.Options
         public DingTalkOptions DingTalk { get; set; } = new();
         public EmailOptions Email { get; set; } = new();
         public WebPushOptions WebPush { get; set; } = new();
+        public WeComOptions WeCom { get; set; } = new();
         public ExternalPushPolicy Push { get; set; } = new();
         public NotificationTemplates Templates { get; set; } = new();
     }
@@ -30,6 +31,16 @@ namespace ScadaServer.Application.Options
         public int MaxConcurrentSends { get; set; } = 8;
 
         public VapidOptions Vapid { get; set; } = new();
+    }
+
+    /// <summary>企业微信群机器人渠道选项（webhook 型，无加签；安全靠机器人「关键词」+「IP 白名单」）。</summary>
+    public class WeComOptions
+    {
+        /// <summary>渠道总开关（Enabled=true 但 Webhook 为空时渠道仍视为禁用，与既有渠道语义一致）。</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>群机器人 webhook 完整地址（含 key）。</summary>
+        public string Webhook { get; set; } = string.Empty;
     }
 
     /// <summary>VAPID 密钥对与身份（Subject 为 mailto:/https: 联系方式；私钥不入库不入前端）</summary>

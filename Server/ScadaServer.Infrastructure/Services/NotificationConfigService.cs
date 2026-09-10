@@ -81,6 +81,11 @@ namespace ScadaServer.Infrastructure.Services
                     FromName = o.Email.FromName,
                     To = o.Email.To?.ToList() ?? new List<string>()
                 },
+                WeCom = new WeComConfigDto
+                {
+                    Enabled = o.WeCom.Enabled,
+                    Webhook = o.WeCom.Webhook
+                },
                 Push = o.Push,
                 Templates = o.Templates
             });
@@ -119,6 +124,14 @@ namespace ScadaServer.Infrastructure.Services
                     FromName = string.IsNullOrWhiteSpace(dto.Email?.FromName) ? "SCADA 报警中心" : dto.Email.FromName.Trim(),
                     To = dto.Email?.To?.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToList() ?? new List<string>()
                 },
+                // WeCom：请求体未携带该片段（旧客户端/脚本）时沿用旧值，防止已启用渠道被静默重置
+                WeCom = dto.WeCom is null
+                    ? current.WeCom
+                    : new WeComOptions
+                    {
+                        Enabled = dto.WeCom.Enabled,
+                        Webhook = (dto.WeCom.Webhook ?? string.Empty).Trim()
+                    },
                 // 完整保留 Push 策略（前端回传整段对象，含未编辑的高级参数）
                 Push = dto.Push ?? current.Push,
                 // 模板：未传/空则沿用旧值，避免覆盖已保存的自定义模板
@@ -146,37 +159,58 @@ namespace ScadaServer.Infrastructure.Services
                 }
             }
 
-            var urlPrefix = _current.Value; // 仅占位避免告警，实际不读取
-            var payload = new Dictionary<string, object>
+            if (merged.WeCom.Enabled && string.IsNullOrWhiteSpace(merged.WeCom.Webhook))
             {
-                ["Notification"] = new Dictionary<string, object>
-                {
-                    ["DingTalk"] = new Dictionary<string, object>
-                    {
-                        ["Enabled"] = merged.DingTalk.Enabled,
-                        ["Webhook"] = merged.DingTalk.Webhook,
-                        ["Secret"] = merged.DingTalk.Secret
-                    },
-                    ["Email"] = new Dictionary<string, object>
-                    {
-                        ["Enabled"] = merged.Email.Enabled,
-                        ["SmtpHost"] = merged.Email.SmtpHost,
-                        ["SmtpPort"] = merged.Email.SmtpPort,
-                        ["UseSsl"] = merged.Email.UseSsl,
-                        ["Username"] = merged.Email.Username,
-                        ["Password"] = merged.Email.Password,
-                        ["From"] = merged.Email.From,
-                        ["FromName"] = merged.Email.FromName,
-                        ["To"] = merged.Email.To
-                    },
-                    ["Push"] = SerializePush(merged.Push),
-                    ["Templates"] = SerializeTemplates(merged.Templates)
-                }
-            };
+                throw new BusinessException("启用企业微信通知时必须填写 Webhook 地址。");
+            }
 
             var path = GetOverridePath();
             var root = await ReadOverrideRootAsync();
-            root["Notification"] = payload["Notification"];
+
+            // 节点级合并（v2）：只覆写本服务管理的五个子节，保留 override 文件中其他子节
+            // （WebPush/VAPID 等）。原「root["Notification"] = payload["Notification"]」整体替换会把
+            // WebPush 节（含 VAPID 私钥）一并抹掉——接入 WeCom 前的既有隐患，本次一并修复。
+            //
+            // 注意：ReadOverrideRootAsync 的 Deserialize<Dictionary<string, object>> 产物中，
+            // 嵌套节点是 JsonElement 而非 Dictionary<string, object>——用 `is Dictionary<string, object>`
+            // 模式匹配恒不命中，必须按 JsonValueKind.Object 枚举拷贝，否则合并退化为覆盖。
+            var notif = new Dictionary<string, object>();
+            if (root.TryGetValue("Notification", out var existingNode)
+                && existingNode is JsonElement { ValueKind: JsonValueKind.Object } existingObj)
+            {
+                foreach (var prop in existingObj.EnumerateObject())
+                {
+                    notif[prop.Name] = prop.Value; // JsonElement 值原样保留，序列化时按原样写出
+                }
+            }
+
+            notif["DingTalk"] = new Dictionary<string, object>
+            {
+                ["Enabled"] = merged.DingTalk.Enabled,
+                ["Webhook"] = merged.DingTalk.Webhook,
+                ["Secret"] = merged.DingTalk.Secret
+            };
+            notif["Email"] = new Dictionary<string, object>
+            {
+                ["Enabled"] = merged.Email.Enabled,
+                ["SmtpHost"] = merged.Email.SmtpHost,
+                ["SmtpPort"] = merged.Email.SmtpPort,
+                ["UseSsl"] = merged.Email.UseSsl,
+                ["Username"] = merged.Email.Username,
+                ["Password"] = merged.Email.Password,
+                ["From"] = merged.Email.From,
+                ["FromName"] = merged.Email.FromName,
+                ["To"] = merged.Email.To
+            };
+            notif["WeCom"] = new Dictionary<string, object>
+            {
+                ["Enabled"] = merged.WeCom.Enabled,
+                ["Webhook"] = merged.WeCom.Webhook
+            };
+            notif["Push"] = SerializePush(merged.Push);
+            notif["Templates"] = SerializeTemplates(merged.Templates);
+            root["Notification"] = notif;
+
             var json = JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
             await System.IO.File.WriteAllTextAsync(path, json);
             _logger.LogInformation("通知配置已写入 override 文件：{Path}（重启后生效）。", path);
@@ -249,6 +283,33 @@ namespace ScadaServer.Infrastructure.Services
                 }, CancellationToken.None));
         }
 
+        /// <inheritdoc/>
+        public async Task<NotificationTestResult> TestWeComAsync(WeComConfigDto dto)
+        {
+            if (dto == null || string.IsNullOrWhiteSpace(dto.Webhook))
+            {
+                return new NotificationTestResult { Success = false, Message = "请先填写 Webhook 地址。" };
+            }
+
+            var opts = Options.Create(new NotificationOptions
+            {
+                WeCom = new WeComOptions
+                {
+                    Enabled = true,
+                    Webhook = dto.Webhook.Trim()
+                }
+            });
+            var sender = new WeComRobotClient(_httpClientFactory, opts, _loggerFactory.CreateLogger<WeComRobotClient>());
+
+            return await SendTestAsync(sender, "企业微信", s => s.SendAsync(
+                new ExternalMessage
+                {
+                    Category = ExternalMessageCategory.SystemError,
+                    Title = "SCADA 通知测试",
+                    MarkdownText = $"## SCADA 通知测试\n- 来源：通知中心测试发送\n- 时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                }, CancellationToken.None));
+        }
+
         // ===== helpers =====
 
         private async Task<NotificationTestResult> SendTestAsync(
@@ -280,6 +341,7 @@ namespace ScadaServer.Infrastructure.Services
                     {
                         "钉钉" => "dingTalk",
                         "邮件" => "email",
+                        "企业微信" => "weCom",
                         _ => channel.ToLowerInvariant()
                     },
                     EventType: "test",

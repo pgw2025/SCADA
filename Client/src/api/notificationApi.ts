@@ -51,8 +51,14 @@ export interface NotificationTemplates {
   scriptExecution: EventTemplate;
 }
 
+export interface WeComConfig {
+  enabled: boolean;
+  webhook: string;
+}
+
 export interface NotificationConfig {
   dingTalk: DingTalkConfig;
+  weCom: WeComConfig;
   email: EmailConfig;
   push: PushPolicy;
   templates: NotificationTemplates;
@@ -67,7 +73,7 @@ export interface NotificationTestResult {
 export interface NotificationLogItem {
   id: number | string;
   timestamp: string;
-  channel: 'dingTalk' | 'email' | 'webPush';
+  channel: 'dingTalk' | 'weCom' | 'email' | 'webPush';
   eventType: 'alarmTriggered' | 'alarmRecovered' | 'deviceStatus' | 'systemAlarm' | 'systemError' | 'scriptExecution' | 'test';
   title: string;
   recipient: string;
@@ -88,6 +94,9 @@ export const testDingTalk = (dto: DingTalkConfig) =>
 
 export const testEmail = (dto: EmailConfig) =>
   http.post<NotificationTestResult>(`${base()}/test-email`, dto);
+
+export const testWeCom = (dto: WeComConfig) =>
+  http.post<NotificationTestResult>(`${base()}/test-wecom`, dto);
 
 export const fetchNotificationLogs = () =>
   http.get<NotificationLogItem[]>(`${base()}/logs`);

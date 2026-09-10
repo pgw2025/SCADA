@@ -17,5 +17,8 @@ namespace ScadaServer.Application.Interfaces
 
         /// <summary>用临时提交的邮件配置发送一封测试邮件（不落盘）。</summary>
         Task<NotificationTestResult> TestEmailAsync(EmailConfigDto dto);
+
+        /// <summary>用临时提交的企业微信配置发送一条测试消息（不落盘）。</summary>
+        Task<NotificationTestResult> TestWeComAsync(WeComConfigDto dto);
     }
 }

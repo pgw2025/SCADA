@@ -35,6 +35,7 @@ import {
   saveNotificationConfig,
   testDingTalk,
   testEmail,
+  testWeCom,
   fetchNotificationLogs,
   clearNotificationLogs,
   retryNotificationLog,
@@ -50,11 +51,13 @@ const loading = ref(true);
 const isSaving = ref(false);
 const testingDing = ref(false);
 const testingEmail = ref(false);
+const testingWeCom = ref(false);
 const saveSuccess = ref(false);
 
 // Test results banner
 const dingTestResult = ref<{ success: boolean; message: string; latencyMs?: number } | null>(null);
 const emailTestResult = ref<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+const weComTestResult = ref<{ success: boolean; message: string; latencyMs?: number } | null>(null);
 
 // Sensitive fields visibility toggle
 const showDingSecret = ref(false);
@@ -66,7 +69,7 @@ const newRecipientInput = ref('');
 // Delivery Logs state
 const logs = ref<NotificationLogItem[]>([]);
 const logsLoading = ref(false);
-const logFilterChannel = ref<'all' | 'dingTalk' | 'email' | 'webPush'>('all');
+const logFilterChannel = ref<'all' | 'dingTalk' | 'weCom' | 'email' | 'webPush'>('all');
 const logFilterStatus = ref<'all' | 'Success' | 'Failed' | 'Retrying'>('all');
 const logSearchQuery = ref('');
 const selectedLogDetail = ref<NotificationLogItem | null>(null);
@@ -370,6 +373,10 @@ const form = reactive<NotificationConfig>({
     fromName: '晋鑫SCADA工业监控中心',
     to: ['duty_engineer@iota-factory.com', 'workshop_supervisor@iota-factory.com']
   },
+  weCom: {
+    enabled: false,
+    webhook: ''
+  },
   push: {
     pushAlarm: true,
     pushDeviceOffline: true,
@@ -393,6 +400,7 @@ onMounted(async () => {
     if (res) {
       if (res.dingTalk) Object.assign(form.dingTalk, res.dingTalk);
       if (res.email) Object.assign(form.email, res.email);
+      if (res.weCom) Object.assign(form.weCom, res.weCom);
       if (res.push) Object.assign(form.push, res.push);
       if (res.templates) {
         templateMeta.forEach(m => {
@@ -521,6 +529,23 @@ const handleTestEmail = async () => {
   }
 };
 
+const handleTestWeCom = async () => {
+  testingWeCom.value = true;
+  weComTestResult.value = null;
+  try {
+    const res = await testWeCom({ ...form.weCom });
+    weComTestResult.value = res;
+    showToast(res.message, res.success ? 'success' : 'error');
+    addLog('系统设置', `企业微信推送验证：${res.message}`, res.success ? 'normal' : 'warning');
+    loadDeliveryLogs();
+  } catch (err: any) {
+    weComTestResult.value = { success: false, message: '测试请求超时或网络不可达: ' + err?.message };
+    showToast('企业微信通道连通性测试失败', 'error');
+  } finally {
+    testingWeCom.value = false;
+  }
+};
+
 // Current active template definition
 const currentMeta = computed(() => {
   return templateMeta.find(m => m.key === activeTemplateKey.value) || templateMeta[0];
@@ -645,6 +670,11 @@ const metrics = computed(() => {
             <span class="w-1.5 h-1.5 rounded-full" :class="form.email.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
             邮件
           </span>
+          <span class="text-slate-300 dark:text-slate-600">|</span>
+          <span class="inline-flex items-center gap-1 font-medium" :class="form.weCom.enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+            <span class="w-1.5 h-1.5 rounded-full" :class="form.weCom.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
+            企微
+          </span>
         </div>
 
         <button
@@ -674,7 +704,7 @@ const metrics = computed(() => {
         >
           <MessageSquare class="w-4 h-4" />
           <span>1. 推送通道矩阵</span>
-          <span class="w-2 h-2 rounded-full" :class="(form.dingTalk.enabled || form.email.enabled) ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
+          <span class="w-2 h-2 rounded-full" :class="(form.dingTalk.enabled || form.email.enabled || form.weCom.enabled) ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
         </button>
 
         <button
@@ -1022,6 +1052,76 @@ const metrics = computed(() => {
             </div>
           </div>
 
+          <!-- WeCom WebHook Card -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col overflow-hidden transition-all">
+            <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold">
+                  <Bell class="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 class="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    企业微信群机器人
+                    <span
+                      class="px-2 py-0.5 rounded text-[10px] font-semibold"
+                      :class="form.weCom.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'"
+                    >
+                      {{ form.weCom.enabled ? '服务已启用' : '未开启' }}
+                    </span>
+                  </h3>
+                  <p class="text-[11px] text-slate-400">企业微信群 WebHook 机器人，markdown 告警直达</p>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" v-model="form.weCom.enabled" class="sr-only peer" />
+                <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+            </div>
+
+            <div class="p-5 space-y-4 flex-1">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  WebHook 目标地址 <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model="form.weCom.webhook"
+                  type="text"
+                  placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+                  class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all font-mono"
+                />
+                <p class="text-[11px] text-slate-400 mt-1">企业微信群「添加群机器人」后生成的 Webhook 完整路径。</p>
+              </div>
+
+              <div
+                v-if="weComTestResult"
+                class="p-3 rounded-lg text-xs flex items-start gap-2.5 transition-all"
+                :class="weComTestResult.success ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800'"
+              >
+                <CheckCircle2 v-if="weComTestResult.success" class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <AlertCircle v-else class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <div class="flex-1">
+                  <div class="font-semibold">{{ weComTestResult.success ? '连通性验证成功' : '通道测试失败' }}</div>
+                  <div class="text-[11px] mt-0.5 opacity-90">{{ weComTestResult.message }}</div>
+                  <div v-if="weComTestResult.latencyMs" class="text-[10px] mt-1 font-mono opacity-80">响应耗时: {{ weComTestResult.latencyMs }}ms</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 bg-slate-50/70 dark:bg-slate-900/70 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span class="text-[11px] text-slate-400">建议在机器人设置中开启关键词校验与 IP 白名单</span>
+              <button
+                type="button"
+                @click="handleTestWeCom"
+                :disabled="testingWeCom || !form.weCom.webhook"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800/80 hover:bg-teal-100 dark:hover:bg-teal-900 transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                <RotateCw v-if="testingWeCom" class="w-3.5 h-3.5 animate-spin" />
+                <Send v-else class="w-3.5 h-3.5" />
+                <span>{{ testingWeCom ? '握手测试中…' : '发送企微测试消息' }}</span>
+              </button>
+            </div>
+          </div>
+
         </div>
 
         <!-- Channel Roadmap / Extension preview banner -->
@@ -1032,7 +1132,7 @@ const metrics = computed(() => {
             </div>
             <div>
               <div class="text-xs font-bold text-slate-800 dark:text-slate-200">更多工业消息中继接入扩展</div>
-              <div class="text-[11px] text-slate-500 dark:text-slate-400">系统已预留 企业微信群机器人 (WeCom)、飞书多维协作机器人 (Feishu) 与 通用 HTTP WebHook 接口。</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400">系统已内置 企业微信群机器人 (WeCom)，后续可扩展 飞书多维协作机器人 (Feishu) 与 通用 HTTP WebHook 接口。</div>
             </div>
           </div>
           <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
@@ -1608,6 +1708,7 @@ const metrics = computed(() => {
             >
               <option value="all">全部推送渠道</option>
               <option value="dingTalk">钉钉群机器人</option>
+              <option value="weCom">企业微信群机器人</option>
               <option value="email">SMTP 邮件</option>
               <option value="webPush">Web 推送</option>
             </select>
@@ -1692,14 +1793,16 @@ const metrics = computed(() => {
                       class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold"
                       :class="{
                         'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900': item.channel === 'dingTalk',
+                        'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400 border border-teal-200/60 dark:border-teal-900': item.channel === 'weCom',
                         'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900': item.channel === 'email',
                         'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400 border border-violet-200/60 dark:border-violet-900': item.channel === 'webPush'
                       }"
                     >
                       <MessageSquare v-if="item.channel === 'dingTalk'" class="w-3 h-3" />
+                      <Bell v-else-if="item.channel === 'weCom'" class="w-3 h-3" />
                       <Mail v-else-if="item.channel === 'email'" class="w-3 h-3" />
                       <Smartphone v-else class="w-3 h-3" />
-                      {{ item.channel === 'dingTalk' ? '钉钉群' : (item.channel === 'email' ? 'SMTP邮件' : 'Web推送') }}
+                      {{ item.channel === 'dingTalk' ? '钉钉群' : (item.channel === 'weCom' ? '企微群' : (item.channel === 'email' ? 'SMTP邮件' : 'Web推送')) }}
                     </span>
                   </td>
                   <td class="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono whitespace-nowrap">
@@ -1790,7 +1893,7 @@ const metrics = computed(() => {
           <div class="grid grid-cols-2 gap-3 py-2 border-y border-slate-100 dark:border-slate-800">
             <div>
               <span class="text-slate-400">分发渠道：</span>
-              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedLogDetail.channel === 'dingTalk' ? '钉钉群机器人' : (selectedLogDetail.channel === 'email' ? 'SMTP 邮件服务' : 'Web Push 推送') }}</span>
+              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedLogDetail.channel === 'dingTalk' ? '钉钉群机器人' : (selectedLogDetail.channel === 'weCom' ? '企业微信群机器人' : (selectedLogDetail.channel === 'email' ? 'SMTP 邮件服务' : 'Web Push 推送')) }}</span>
             </div>
             <div>
               <span class="text-slate-400">投递状态：</span>

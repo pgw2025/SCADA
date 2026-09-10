@@ -111,7 +111,7 @@ namespace ScadaServer.WebApi.HostedServices
         {
             if (_states.Count == 0)
             {
-                _logger.LogInformation("钉钉/邮件通知渠道均未启用，外部消息推送服务空闲。");
+                _logger.LogInformation("钉钉/邮件/企业微信/Web Push 通知渠道均未启用，外部消息推送服务空闲。");
                 return Task.CompletedTask;
             }
 
@@ -331,12 +331,13 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        /// <summary>Sender.Name → 前端渠道标识（已核实：DingTalk/Email/WebPush）。</summary>
+        /// <summary>Sender.Name → 前端渠道标识（已核实：DingTalk/Email/WebPush/WeCom）。</summary>
         private static string MapChannel(string senderName) => senderName.ToUpperInvariant() switch
         {
             "DINGTALK" => "dingTalk",
             "EMAIL" => "email",
             "WEBPUSH" => "webPush",
+            "WECOM" => "weCom",
             _ => senderName.ToLowerInvariant()
         };
 
