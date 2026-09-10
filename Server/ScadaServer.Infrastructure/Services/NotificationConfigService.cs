@@ -224,7 +224,7 @@ namespace ScadaServer.Infrastructure.Services
                 return new NotificationTestResult { Success = false, Message = "请先填写 Webhook 地址。" };
             }
 
-            var opts = Options.Create(new NotificationOptions
+            var opts = new FixedOptionsMonitor<NotificationOptions>(new NotificationOptions
             {
                 DingTalk = new DingTalkOptions
                 {
@@ -256,7 +256,7 @@ namespace ScadaServer.Infrastructure.Services
                 return new NotificationTestResult { Success = false, Message = "请填写 SMTP 主机/账号/发件人/收件人后再测试。" };
             }
 
-            var opts = Options.Create(new NotificationOptions
+            var opts = new FixedOptionsMonitor<NotificationOptions>(new NotificationOptions
             {
                 Email = new EmailOptions
                 {
@@ -291,7 +291,7 @@ namespace ScadaServer.Infrastructure.Services
                 return new NotificationTestResult { Success = false, Message = "请先填写 Webhook 地址。" };
             }
 
-            var opts = Options.Create(new NotificationOptions
+            var opts = new FixedOptionsMonitor<NotificationOptions>(new NotificationOptions
             {
                 WeCom = new WeComOptions
                 {
@@ -311,6 +311,20 @@ namespace ScadaServer.Infrastructure.Services
         }
 
         // ===== helpers =====
+
+        /// <summary>测试发送用固定配置监视器：sender 构造函数已改 IOptionsMonitor，此处提供一个只读快照实现。</summary>
+        private sealed class FixedOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
+        {
+            private readonly TOptions _value;
+
+            public FixedOptionsMonitor(TOptions value) => _value = value;
+
+            public TOptions CurrentValue => _value;
+
+            public TOptions Get(string? name) => _value;
+
+            public IDisposable? OnChange(Action<TOptions, string?> listener) => null;
+        }
 
         private async Task<NotificationTestResult> SendTestAsync(
             IExternalMessageSender sender, string channel, Func<IExternalMessageSender, Task> send)

@@ -20,32 +20,34 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>单次 SMTP 操作超时（MailKit 默认约 100s，显式收敛与钉钉渠道对齐）。</summary>
         private const int SmtpTimeoutMs = 8000;
 
-        private readonly EmailOptions _options;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly ILogger<EmailSender> _logger;
 
-        public EmailSender(IOptions<NotificationOptions> options, ILogger<EmailSender> logger)
+        public EmailSender(IOptionsMonitor<NotificationOptions> options, ILogger<EmailSender> logger)
         {
-            _options = options.Value.Email;
+            _monitor = options;
             _logger = logger;
         }
+
+        private EmailOptions Opt => _monitor.CurrentValue.Email;
 
         public string Name => "Email";
 
         /// <summary>收件方摘要（收件人邮箱列表，投递记录展示用）。</summary>
-        public string RecipientSummary => string.Join(", ", _options.To);
+        public string RecipientSummary => string.Join(", ", Opt.To);
 
-        public bool Enabled => _options.Enabled
-            && !string.IsNullOrWhiteSpace(_options.SmtpHost)
-            && !string.IsNullOrWhiteSpace(_options.Username)
-            && !string.IsNullOrWhiteSpace(_options.Password)
-            && !string.IsNullOrWhiteSpace(_options.From)
-            && _options.To.Count > 0;
+        public bool Enabled => Opt.Enabled
+            && !string.IsNullOrWhiteSpace(Opt.SmtpHost)
+            && !string.IsNullOrWhiteSpace(Opt.Username)
+            && !string.IsNullOrWhiteSpace(Opt.Password)
+            && !string.IsNullOrWhiteSpace(Opt.From)
+            && Opt.To.Count > 0;
 
         public async Task SendAsync(ExternalMessage message, CancellationToken cancellationToken)
         {
             using var mail = new MimeMessage();
-            mail.From.Add(new MailboxAddress(_options.FromName, _options.From));
-            foreach (var to in _options.To)
+            mail.From.Add(new MailboxAddress(Opt.FromName, Opt.From));
+            foreach (var to in Opt.To)
             {
                 if (!string.IsNullOrWhiteSpace(to))
                 {
@@ -59,10 +61,10 @@ namespace ScadaServer.Infrastructure.Communication
             };
 
             using var client = new SmtpClient { Timeout = SmtpTimeoutMs };
-            await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, _options.UseSsl, cancellationToken);
+            await client.ConnectAsync(Opt.SmtpHost, Opt.SmtpPort, Opt.UseSsl, cancellationToken);
             try
             {
-                await client.AuthenticateAsync(_options.Username, _options.Password, cancellationToken);
+                await client.AuthenticateAsync(Opt.Username, Opt.Password, cancellationToken);
                 await client.SendAsync(mail, cancellationToken);
             }
             finally

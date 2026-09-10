@@ -23,36 +23,38 @@ namespace ScadaServer.Infrastructure.Communication
         public const string HttpClientName = "DingTalk";
 
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly DingTalkOptions _options;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly ILogger<DingTalkRobotClient> _logger;
 
         public DingTalkRobotClient(
             IHttpClientFactory httpClientFactory,
-            IOptions<NotificationOptions> options,
+            IOptionsMonitor<NotificationOptions> options,
             ILogger<DingTalkRobotClient> logger)
         {
             _httpClientFactory = httpClientFactory;
-            _options = options.Value.DingTalk;
+            _monitor = options;
             _logger = logger;
         }
 
+        private DingTalkOptions Opt => _monitor.CurrentValue.DingTalk;
+
         public string Name => "DingTalk";
 
-        public bool Enabled => _options.Enabled && !string.IsNullOrWhiteSpace(_options.Webhook);
+        public bool Enabled => Opt.Enabled && !string.IsNullOrWhiteSpace(Opt.Webhook);
 
         /// <summary>收件方摘要（webhook 含 access_token，不回显明文）。</summary>
         public string RecipientSummary => "钉钉群机器人";
 
         public async Task SendAsync(ExternalMessage message, CancellationToken cancellationToken)
         {
-            var url = _options.Webhook;
+            var url = Opt.Webhook;
 
             // 加签：timestamp + "\n" + secret 的 HMAC-SHA256 -> Base64 -> UrlEncode。
-            if (!string.IsNullOrWhiteSpace(_options.Secret))
+            if (!string.IsNullOrWhiteSpace(Opt.Secret))
             {
                 var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                var stringToSign = timestamp + "\n" + _options.Secret;
-                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_options.Secret));
+                var stringToSign = timestamp + "\n" + Opt.Secret;
+                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(Opt.Secret));
                 var sign = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(stringToSign)));
                 var separator = url.Contains('?') ? '&' : '?';
                 url = $"{url}{separator}timestamp={timestamp}&sign={WebUtility.UrlEncode(sign)}";

@@ -21,8 +21,7 @@ namespace ScadaServer.WebApi.Services
     {
         private readonly IScadaNotificationService _inner;
         private readonly IExternalNotificationQueue _queue;
-        private readonly ExternalPushPolicy _policy;
-        private readonly NotificationTemplates _templates;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly NotificationTemplateEngine _engine;
         private readonly ILogger<ExternalNotificationDecorator> _logger;
         private readonly ConcurrentDictionary<int, DateTime> _lastDeviceStatusPushUtc = new();
@@ -30,17 +29,20 @@ namespace ScadaServer.WebApi.Services
         public ExternalNotificationDecorator(
             IScadaNotificationService inner,
             IExternalNotificationQueue queue,
-            IOptions<NotificationOptions> options,
+            IOptionsMonitor<NotificationOptions> options,
             NotificationTemplateEngine engine,
             ILogger<ExternalNotificationDecorator> logger)
         {
             _inner = inner;
             _queue = queue;
-            _policy = options.Value.Push;
-            _templates = options.Value.Templates;
+            _monitor = options;
             _engine = engine;
             _logger = logger;
         }
+
+        // 动态读取：保存后 Push 策略开关与模板即时生效（替代启动快照）。
+        private ExternalPushPolicy Policy => _monitor.CurrentValue.Push;
+        private NotificationTemplates Templates => _monitor.CurrentValue.Templates;
 
         /// <inheritdoc/>
         // 变量更新不外发（高频噪音），直接透传。
@@ -57,15 +59,15 @@ namespace ScadaServer.WebApi.Services
             // Offline/Fault 外发（故障必发）；Online 默认不发；ConfigUpdating/Connecting 状态噪音不外发。
             var push = status switch
             {
-                DeviceStatus.Offline => _policy.PushDeviceOffline,
-                DeviceStatus.Online => _policy.PushDeviceOnline,
+                DeviceStatus.Offline => Policy.PushDeviceOffline,
+                DeviceStatus.Online => Policy.PushDeviceOnline,
                 DeviceStatus.Fault => true,
                 _ => false
             };
             if (!push) return;
 
             // 去抖：同一设备窗口内只外发一次（重连风暴防护）。
-            var debounce = TimeSpan.FromMinutes(Math.Max(0, _policy.DeviceStatusDebounceMinutes));
+            var debounce = TimeSpan.FromMinutes(Math.Max(0, Policy.DeviceStatusDebounceMinutes));
             if (debounce > TimeSpan.Zero)
             {
                 var now = DateTime.UtcNow;
@@ -76,7 +78,7 @@ namespace ScadaServer.WebApi.Services
                 _lastDeviceStatusPushUtc[deviceId] = now;
             }
 
-            var template = EventTemplate.Merge(_templates.DeviceStatus, EventTemplate.DeviceStatusDefault());
+            var template = EventTemplate.Merge(Templates.DeviceStatus, EventTemplate.DeviceStatusDefault());
             var tokens = new Dictionary<string, string?>
             {
                 { "status", status.ToString() },
@@ -101,9 +103,9 @@ namespace ScadaServer.WebApi.Services
         {
             await _inner.NotifySystemAlarmAsync(deviceId, variableKey, variableName, message, level);
 
-            if (!_queue.HasEnabledChannels || !_policy.PushSystemAlarm) return;
+            if (!_queue.HasEnabledChannels || !Policy.PushSystemAlarm) return;
 
-            var template = EventTemplate.Merge(_templates.SystemAlarm, EventTemplate.SystemAlarmDefault());
+            var template = EventTemplate.Merge(Templates.SystemAlarm, EventTemplate.SystemAlarmDefault());
             var tokens = new Dictionary<string, string?>
             {
                 { "deviceId", deviceId.ToString() },
@@ -131,11 +133,11 @@ namespace ScadaServer.WebApi.Services
         {
             await _inner.NotifyAlarmAsync(evt);
 
-            if (!_queue.HasEnabledChannels || !_policy.PushAlarm) return;
+            if (!_queue.HasEnabledChannels || !Policy.PushAlarm) return;
 
             var template = evt.EventType == AlarmEventType.Triggered
-                ? EventTemplate.Merge(_templates.AlarmTriggered, EventTemplate.AlarmTriggeredDefault())
-                : EventTemplate.Merge(_templates.AlarmRecovered, EventTemplate.AlarmRecoveredDefault());
+                ? EventTemplate.Merge(Templates.AlarmTriggered, EventTemplate.AlarmTriggeredDefault())
+                : EventTemplate.Merge(Templates.AlarmRecovered, EventTemplate.AlarmRecoveredDefault());
             var localTime = ToLocalDisplay(evt.TriggeredAt); // UTC -> 本地时区展示
             var tokens = new Dictionary<string, string?>
             {
@@ -173,10 +175,10 @@ namespace ScadaServer.WebApi.Services
             await _inner.NotifyScriptExecutionAsync(evt);
 
             // 仅外发非 Success 结果（Success 每次都发会刷屏）。
-            if (!_queue.HasEnabledChannels || !_policy.PushScript || evt.Result == "Success") return;
+            if (!_queue.HasEnabledChannels || !Policy.PushScript || evt.Result == "Success") return;
 
             var localTime = ToLocalDisplay(evt.StartedAt); // UTC -> 本地时区展示
-            var template = EventTemplate.Merge(_templates.ScriptExecution, EventTemplate.ScriptExecutionDefault());
+            var template = EventTemplate.Merge(Templates.ScriptExecution, EventTemplate.ScriptExecutionDefault());
             var tokens = new Dictionary<string, string?>
             {
                 { "scriptId", evt.ScriptId.ToString() },

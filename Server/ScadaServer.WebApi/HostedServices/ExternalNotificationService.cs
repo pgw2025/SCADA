@@ -42,7 +42,7 @@ namespace ScadaServer.WebApi.HostedServices
         private static readonly TimeSpan SendersDrainTimeout = TimeSpan.FromSeconds(22);
 
         private readonly List<SenderState> _states;
-        private readonly ExternalPushPolicy _policy;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly ILogger<ExternalNotificationService> _logger;
         private readonly INotificationLogRecorder _logRecorder;
         private readonly Channel<ExternalMessage> _mainChannel;
@@ -54,45 +54,50 @@ namespace ScadaServer.WebApi.HostedServices
 
         public ExternalNotificationService(
             IEnumerable<IExternalMessageSender> senders,
-            IOptions<NotificationOptions> options,
+            IOptionsMonitor<NotificationOptions> options,
             INotificationLogRecorder logRecorder,
             ILogger<ExternalNotificationService> logger)
         {
-            _policy = options.Value.Push;
+            _monitor = options;
             _logger = logger;
             _logRecorder = logRecorder;
 
-            _mainChannel = Channel.CreateBounded<ExternalMessage>(new BoundedChannelOptions(Math.Max(64, _policy.QueueCapacity))
+            // 构造期参数（Channel 容量 / 限流桶窗口）在启动时取一次快照；运行期参数走 Push 动态读取。
+            var push = options.CurrentValue.Push;
+
+            _mainChannel = Channel.CreateBounded<ExternalMessage>(new BoundedChannelOptions(Math.Max(64, push.QueueCapacity))
             {
                 FullMode = BoundedChannelFullMode.DropWrite,
                 SingleReader = true
             });
 
-            // 只为启用渠道建立独立通道（未启用渠道不参与扇出与消费）。
+            // 全量保留全部渠道：是否启用的判定下放到扇出时动态判断，运行期启停渠道免重建通道。
             _states = senders
-                .Where(s => s.Enabled)
                 .Select(s => new SenderState
                 {
                     Sender = s,
-                    Channel = Channel.CreateBounded<ExternalMessage>(new BoundedChannelOptions(Math.Max(64, _policy.QueueCapacity))
+                    Channel = Channel.CreateBounded<ExternalMessage>(new BoundedChannelOptions(Math.Max(64, push.QueueCapacity))
                     {
                         FullMode = BoundedChannelFullMode.DropWrite,
                         SingleReader = true
                     }),
-                    Bucket = new RateBucket(TimeSpan.FromMinutes(1), _policy.MaxPerMinutePerChannel)
+                    Bucket = new RateBucket(TimeSpan.FromMinutes(1), push.MaxPerMinutePerChannel)
                 })
                 .ToList();
         }
 
+        /// <summary>运行期推送参数（重试次数/退避）每次发送动态读取，保存后即时生效。</summary>
+        private ExternalPushPolicy Push => _monitor.CurrentValue.Push;
+
         /// <inheritdoc/>
-        public bool HasEnabledChannels => _states.Count > 0;
+        public bool HasEnabledChannels => _states.Any(s => s.Sender.Enabled);
 
         /// <inheritdoc/>
         public bool Enqueue(ExternalMessage message)
         {
             // 无启用渠道直接短路：避免装饰器/日志挂钩白白格式化后积压至队列满。
             // 返回 false 供重试路径回写失败行（普通事件消息调用方忽略返回值）。
-            if (_states.Count == 0) return false;
+            if (!HasEnabledChannels) return false;
 
             if (!_mainChannel.Writer.TryWrite(message))
             {
@@ -104,20 +109,24 @@ namespace ScadaServer.WebApi.HostedServices
 
         /// <inheritdoc/>
         public bool IsChannelEnabled(string senderName) =>
-            _states.Any(s => string.Equals(s.Sender.Name, senderName, StringComparison.OrdinalIgnoreCase));
+            _states.Any(s => s.Sender.Enabled &&
+                string.Equals(s.Sender.Name, senderName, StringComparison.OrdinalIgnoreCase));
 
         /// <inheritdoc/>
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            if (_states.Count == 0)
+            var enabled = _states.Where(s => s.Sender.Enabled).ToList();
+            if (enabled.Count == 0)
             {
                 _logger.LogInformation("钉钉/邮件/企业微信/Web Push 通知渠道均未启用，外部消息推送服务空闲。");
-                return Task.CompletedTask;
+            }
+            else
+            {
+                _logger.LogInformation("外部消息推送服务启动：{Count} 个渠道（{Channels}）。",
+                    enabled.Count, string.Join("、", enabled.Select(s => s.Sender.Name)));
             }
 
-            _logger.LogInformation("外部消息推送服务启动：{Count} 个渠道（{Channels}）。",
-                _states.Count, string.Join("、", _states.Select(s => s.Sender.Name)));
-
+            // 即使无启用渠道，扇出与消费循环仍启动（空转），以便运行期动态启用渠道免重建。
             _fanoutTask = FanoutAsync(_cts.Token);
             foreach (var state in _states)
             {
@@ -195,6 +204,9 @@ namespace ScadaServer.WebApi.HostedServices
                 {
                     foreach (var state in _states)
                     {
+                        // 动态跳过未启用渠道（渠道启停的竞态窗口由 IsChannelEnabled 前置校验兜底）。
+                        if (!state.Sender.Enabled) continue;
+
                         // 重试路径：只投递到目标渠道
                         if (msg.TargetChannel is not null &&
                             !string.Equals(state.Sender.Name, msg.TargetChannel, StringComparison.OrdinalIgnoreCase))
@@ -267,7 +279,7 @@ namespace ScadaServer.WebApi.HostedServices
         private async Task SendWithRetryAsync(IExternalMessageSender sender, ExternalMessage msg, CancellationToken token)
         {
             var sw = Stopwatch.StartNew();
-            var delay = _policy.RetryBaseDelayMs;
+            var delay = Push.RetryBaseDelayMs;
             for (var attempt = 1; ; attempt++)
             {
                 try
@@ -283,7 +295,7 @@ namespace ScadaServer.WebApi.HostedServices
                 }
                 catch (Exception ex)
                 {
-                    if (attempt >= _policy.MaxAttempts)
+                    if (attempt >= Push.MaxAttempts)
                     {
                         _logger.LogError(ex, "渠道 {Channel} 发送失败（共尝试 {Attempts} 次），消息丢弃：{Title}",
                             sender.Name, attempt, msg.Title);
@@ -293,7 +305,7 @@ namespace ScadaServer.WebApi.HostedServices
                     }
 
                     _logger.LogWarning(ex, "渠道 {Channel} 发送失败（第 {Attempt}/{Max} 次），{Delay}ms 后重试。",
-                        sender.Name, attempt, _policy.MaxAttempts, delay);
+                        sender.Name, attempt, Push.MaxAttempts, delay);
                     try
                     {
                         await Task.Delay(delay, token);

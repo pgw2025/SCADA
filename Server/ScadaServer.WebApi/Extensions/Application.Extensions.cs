@@ -120,7 +120,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddSingleton<IScadaNotificationService>(sp => new ExternalNotificationDecorator(
                 sp.GetRequiredService<SignalRNotificationService>(),
                 sp.GetRequiredService<IExternalNotificationQueue>(),
-                sp.GetRequiredService<IOptions<NotificationOptions>>(),
+                sp.GetRequiredService<IOptionsMonitor<NotificationOptions>>(),
                 sp.GetRequiredService<NotificationTemplateEngine>(),
                 sp.GetRequiredService<ILogger<ExternalNotificationDecorator>>()));
 

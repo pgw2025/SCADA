@@ -43,22 +43,24 @@ namespace ScadaServer.Infrastructure.Communication
             RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly WeComOptions _options;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly ILogger<WeComRobotClient> _logger;
 
         public WeComRobotClient(
             IHttpClientFactory httpClientFactory,
-            IOptions<NotificationOptions> options,
+            IOptionsMonitor<NotificationOptions> options,
             ILogger<WeComRobotClient> logger)
         {
             _httpClientFactory = httpClientFactory;
-            _options = options.Value.WeCom;
+            _monitor = options;
             _logger = logger;
         }
 
+        private WeComOptions Opt => _monitor.CurrentValue.WeCom;
+
         public string Name => "WeCom";
 
-        public bool Enabled => _options.Enabled && !string.IsNullOrWhiteSpace(_options.Webhook);
+        public bool Enabled => Opt.Enabled && !string.IsNullOrWhiteSpace(Opt.Webhook);
 
         /// <summary>收件方摘要（webhook 含 key，不回显明文）。</summary>
         public string RecipientSummary => "企业微信群机器人";
@@ -74,7 +76,7 @@ namespace ScadaServer.Infrastructure.Communication
             };
 
             var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.PostAsJsonAsync(_options.Webhook, payload, cancellationToken);
+            using var response = await client.PostAsJsonAsync(Opt.Webhook, payload, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             response.EnsureSuccessStatusCode();
 

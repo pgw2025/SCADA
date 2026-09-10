@@ -40,19 +40,21 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>测试推送目标用户（Tokens 键）。</summary>
         public const string TokenTargetUserId = "targetUserId";
 
-        private readonly WebPushOptions _options;
+        private readonly IOptionsMonitor<NotificationOptions> _monitor;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<WebPushSender> _logger;
 
         public WebPushSender(
-            IOptions<NotificationOptions> options,
+            IOptionsMonitor<NotificationOptions> options,
             IServiceScopeFactory scopeFactory,
             ILogger<WebPushSender> logger)
         {
-            _options = options.Value.WebPush;
+            _monitor = options;
             _scopeFactory = scopeFactory;
             _logger = logger;
         }
+
+        private WebPushOptions Opt => _monitor.CurrentValue.WebPush;
 
         public string Name => "WebPush";
 
@@ -60,10 +62,10 @@ namespace ScadaServer.Infrastructure.Communication
         public string RecipientSummary => "Web Push 订阅设备";
 
         /// <summary>Enabled 且 VAPID 密钥完整（缺密钥启动时渠道禁用，管线不扇出——与既有渠道语义一致）。</summary>
-        public bool Enabled => _options.Enabled
-            && !string.IsNullOrWhiteSpace(_options.Vapid.Subject)
-            && !string.IsNullOrWhiteSpace(_options.Vapid.PublicKey)
-            && !string.IsNullOrWhiteSpace(_options.Vapid.PrivateKey);
+        public bool Enabled => Opt.Enabled
+            && !string.IsNullOrWhiteSpace(Opt.Vapid.Subject)
+            && !string.IsNullOrWhiteSpace(Opt.Vapid.PublicKey)
+            && !string.IsNullOrWhiteSpace(Opt.Vapid.PrivateKey);
 
         public async Task SendAsync(ExternalMessage message, CancellationToken cancellationToken)
         {
@@ -110,8 +112,8 @@ namespace ScadaServer.Infrastructure.Communication
                 return;
             }
 
-            var vapid = new VapidDetails(_options.Vapid.Subject, _options.Vapid.PublicKey, _options.Vapid.PrivateKey);
-            var maxConcurrency = Math.Max(1, _options.MaxConcurrentSends);
+            var vapid = new VapidDetails(Opt.Vapid.Subject, Opt.Vapid.PublicKey, Opt.Vapid.PrivateKey);
+            var maxConcurrency = Math.Max(1, Opt.MaxConcurrentSends);
             using var gate = new SemaphoreSlim(maxConcurrency);
 
             var okIds = new List<long>();
@@ -183,12 +185,12 @@ namespace ScadaServer.Infrastructure.Communication
         private bool PassesSeverityFilter(ExternalMessage message)
         {
             var isRecover = message.Tokens?.TryGetValue("eventType", out var evt) == true && evt == "Recovered";
-            if (isRecover && !_options.PushRecover)
+            if (isRecover && !Opt.PushRecover)
             {
                 return false;
             }
 
-            return SeverityRank(message.Severity) >= SeverityRank(_options.MinSeverity);
+            return SeverityRank(message.Severity) >= SeverityRank(Opt.MinSeverity);
         }
 
         /// <summary>级别排名：Info/Low=0、Warning/Medium=1、Error/High=2、Critical=3（未知=0，保守不推）。</summary>
