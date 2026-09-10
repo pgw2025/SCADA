@@ -32,7 +32,7 @@ namespace ScadaServer.Infrastructure.Services
         private const string OverrideFileName = "appsettings.dboverride.json";
         private const string SecretMask = "******";
 
-        private readonly IOptions<NotificationOptions> _current;
+        private readonly IOptionsMonitor<NotificationOptions> _current;
         private readonly IHostEnvironment _env;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILoggerFactory _loggerFactory;
@@ -40,7 +40,7 @@ namespace ScadaServer.Infrastructure.Services
         private readonly ILogger<NotificationConfigService> _logger;
 
         public NotificationConfigService(
-            IOptions<NotificationOptions> current,
+            IOptionsMonitor<NotificationOptions> current,
             IHostEnvironment env,
             IHttpClientFactory httpClientFactory,
             ILoggerFactory loggerFactory,
@@ -58,7 +58,7 @@ namespace ScadaServer.Infrastructure.Services
         /// <inheritdoc/>
         public Task<NotificationConfigDto> GetAsync()
         {
-            var o = _current.Value;
+            var o = _current.CurrentValue;
             return Task.FromResult(new NotificationConfigDto
             {
                 DingTalk = new DingTalkConfigDto
@@ -100,7 +100,7 @@ namespace ScadaServer.Infrastructure.Services
             }
 
             // 敏感项（密钥/授权码）掩码或空 => 保持旧值不变
-            var current = _current.Value;
+            var current = _current.CurrentValue;
             var secret = ResolveSecret(dto.DingTalk?.Secret, current.DingTalk.Secret, dto.DingTalk?.HasSecret == true);
             var password = ResolveSecret(dto.Email?.Password, current.Email.Password, dto.Email?.HasPassword == true);
 
@@ -230,7 +230,7 @@ namespace ScadaServer.Infrastructure.Services
                 {
                     Enabled = true,
                     Webhook = dto.Webhook.Trim(),
-                    Secret = ResolveSecret(dto.Secret, _current.Value.DingTalk.Secret, dto.HasSecret)
+                    Secret = ResolveSecret(dto.Secret, _current.CurrentValue.DingTalk.Secret, dto.HasSecret)
                 }
             });
             var sender = new DingTalkRobotClient(_httpClientFactory, opts, _loggerFactory.CreateLogger<DingTalkRobotClient>());
@@ -265,7 +265,7 @@ namespace ScadaServer.Infrastructure.Services
                     SmtpPort = dto.SmtpPort <= 0 ? 465 : dto.SmtpPort,
                     UseSsl = dto.UseSsl,
                     Username = dto.Username.Trim(),
-                    Password = ResolveSecret(dto.Password, _current.Value.Email.Password, dto.HasPassword),
+                    Password = ResolveSecret(dto.Password, _current.CurrentValue.Email.Password, dto.HasPassword),
                     From = dto.From.Trim(),
                     FromName = string.IsNullOrWhiteSpace(dto.FromName) ? "SCADA 报警中心" : dto.FromName.Trim(),
                     To = dto.To.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).ToList()

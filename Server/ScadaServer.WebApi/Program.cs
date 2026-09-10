@@ -10,10 +10,12 @@ var builder = WebApplication.CreateBuilder(args);
 // 叠加可选的主库配置覆盖文件（appsettings.dboverride.json）：
 // 主库连接配置在运行期可通过数据库管理页写入该文件，若存在则覆盖 appsettings.json 中同名节。
 // 修改主库连接后需重启服务生效。
+// reloadOnChange:true 使 NotificationConfigService（IOptionsMonitor）在文件变更后即时读到新配置，
+// 解决"配置保存后界面刷新读回旧值"问题；其余组件仍是 IOptions 启动快照，发送渠道仍重启后生效。
 builder.Configuration.AddJsonFile(
     path: System.IO.Path.Combine(builder.Environment.ContentRootPath, "appsettings.dboverride.json"),
     optional: true,
-    reloadOnChange: false);
+    reloadOnChange: true);
 
 // 配置系统数据库选项
 builder.Services.Configure<SystemDbOptions>(builder.Configuration.GetSection(SystemDbOptions.SectionName));
