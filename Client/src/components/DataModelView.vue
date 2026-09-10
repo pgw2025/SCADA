@@ -46,6 +46,8 @@ const modelName = ref<string>('');
 // 阶段 4：模型编码（业务唯一键，后端 DataModel.Code 必填且唯一；存量回填自 Name）
 const modelCode = ref<string>('');
 const modelDesc = ref<string>('');
+// 正在编辑的模型 ID（null = 创建模式）；与变量侧的 editingVariableId 同构
+const editingModelId = ref<string | null>(null);
 
 // Create variable form state Inside Model
 const showVarModal = ref<boolean>(false);
@@ -204,14 +206,56 @@ const filteredVariables = computed(() => {
   return list;
 });
 
-// Create standard new model schema
-const handleCreateModel = async () => {
+// 打开编辑弹窗：回填模型元数据（复用「新建」弹窗表单）
+const openEditModel = (model: DataModel) => {
+  editingModelId.value = model.id;
+  modelName.value = model.name;
+  modelCode.value = model.code ?? '';
+  modelDesc.value = model.description ?? '';
+  showModelModal.value = true;
+};
+
+// 复位模型表单为创建模式默认值
+const resetModelForm = () => {
+  modelName.value = '';
+  modelCode.value = '';
+  modelDesc.value = '';
+};
+
+// 关闭模型弹窗：清空编辑态并复位表单，避免下次「新建」残留编辑预填值
+const closeModelModal = () => {
+  showModelModal.value = false;
+  editingModelId.value = null;
+  resetModelForm();
+};
+
+// Create standard new model schema（创建/编辑分流）
+const handleSaveModel = async () => {
   if (!modelName.value.trim()) return;
 
   // 阶段 4：后端 CreateDataModelDto.Code [Required]，缺省会 400
   const code = modelCode.value.trim();
   if (!code) {
     alert('请填写模型编码（Code）');
+    return;
+  }
+
+  const editingId = editingModelId.value;
+
+  // 编辑分支：后端 UpdateAsync 为「全量替换」语义，payload 必须携带完整字段，
+  // 尤其是 version / isPublished，漏传会被 DTO 默认值覆盖回 1.0 / true。
+  if (editingId) {
+    const ok = await updateDataModelOnBackend(editingId, {
+      name: modelName.value,
+      code,
+      version: currentModel.value?.version ?? '1.0',
+      isPublished: currentModel.value?.isPublished ?? true,
+      description: modelDesc.value,
+    });
+    if (ok) {
+      selectedModelId.value = editingId;
+      closeModelModal();
+    }
     return;
   }
 
@@ -226,12 +270,7 @@ const handleCreateModel = async () => {
 
   if (newModel) {
     selectedModelId.value = newModel.id;
-    showModelModal.value = false;
-
-    // Clear
-    modelName.value = '';
-    modelCode.value = '';
-    modelDesc.value = '';
+    closeModelModal();
   }
 };
 
@@ -543,6 +582,13 @@ const handleImportDone = async () => {
             <span class="text-[9px] font-mono font-bold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded uppercase">
               ID: {{ model.id }}
             </span>
+            <button
+              @click.stop="openEditModel(model)"
+              class="text-slate-300 dark:text-slate-600 hover:text-violet-600 dark:hover:text-violet-400 cursor-pointer transition-colors"
+              title="编辑模型"
+            >
+              <Pencil class="w-3.5 h-3.5" />
+            </button>
           </div>
           <h4 class="font-bold text-xs text-slate-800 dark:text-slate-200 leading-tight block">
             {{ model.name }}
@@ -613,6 +659,14 @@ const handleImportDone = async () => {
           >
             <Plus class="w-4 h-4" />
             添加变量
+          </button>
+
+          <button
+            @click="currentModel && openEditModel(currentModel)"
+            class="text-slate-600 dark:text-slate-300 hover:text-violet-700 dark:hover:text-violet-300 border border-slate-200 dark:border-slate-700 font-bold text-xs px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 cursor-pointer transition-all inline-flex items-center gap-1"
+            title="编辑模型"
+          >
+            <Pencil class="w-4 h-4" />
           </button>
           
           <button 
@@ -1006,6 +1060,12 @@ const handleImportDone = async () => {
           </div>
           <div class="flex items-center gap-2">
             <button
+              @click="currentModel && openEditModel(currentModel); isMobileModelDrawerOpen = false"
+              class="text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-md flex items-center gap-1 font-medium cursor-pointer"
+            >
+              <Pencil class="w-3.5 h-3.5" /> 编辑
+            </button>
+            <button
               @click="showModelModal = true; isMobileModelDrawerOpen = false"
               class="text-xs bg-violet-600 text-white px-2.5 py-1 rounded-md flex items-center gap-1 font-medium cursor-pointer"
             >
@@ -1053,9 +1113,9 @@ const handleImportDone = async () => {
         <div class="bg-slate-900 dark:bg-slate-950 text-white p-4 flex items-center justify-between border-b border-slate-800">
           <div class="flex items-center gap-1.5 font-bold text-xs uppercase tracking-widest">
             <FileJson class="w-4 h-4 text-violet-400" />
-            <span>新建数据模型</span>
+            <span>{{ editingModelId ? '编辑数据模型' : '新建数据模型' }}</span>
           </div>
-          <button @click="showModelModal = false" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
+          <button @click="closeModelModal" class="text-slate-400 hover:text-white cursor-pointer"><X class="w-4 h-4" /></button>
         </div>
 
         <div class="p-5 space-y-4 text-xs">
@@ -1077,7 +1137,7 @@ const handleImportDone = async () => {
               placeholder="例如: S7-PUMP-TPL"
               class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-violet-500"
             />
-            <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">全局唯一（业务编码）。新建模型后不可重复，存量模型已按名称自动回填。</p>
+            <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">全局唯一（业务编码）。{{ editingModelId ? '修改后仍需保持全局唯一。' : '新建模型后不可重复，存量模型已按名称自动回填。' }}</p>
           </div>
           <div>
             <label class="text-slate-500 dark:text-slate-400 font-bold block mb-1">描述</label>
@@ -1092,13 +1152,13 @@ const handleImportDone = async () => {
 
         <div class="bg-slate-50 dark:bg-slate-950 p-3 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
           <button 
-            @click="showModelModal = false"
+            @click="closeModelModal"
             class="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             取消
           </button>
           <button 
-            @click="handleCreateModel"
+            @click="handleSaveModel"
             class="px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-violet-600 hover:bg-slate-800 dark:hover:bg-violet-500 font-bold text-xs text-white cursor-pointer"
           >
             保存
