@@ -85,21 +85,21 @@ export interface NotificationLogItem {
 
 const base = () => `${systemConfig.value.backendApiUrl}/api/NotificationConfig`;
 
-export const fetchNotificationConfig = () => http.get<NotificationConfig>(`${base()}`);
+export const fetchNotificationConfig = async () => (await http.get<NotificationConfig>(`${base()}`)).data;
 
 export const saveNotificationConfig = (dto: NotificationConfig) => http.put(`${base()}`, dto);
 
-export const testDingTalk = (dto: DingTalkConfig) =>
-  http.post<NotificationTestResult>(`${base()}/test-dingtalk`, dto);
+export const testDingTalk = async (dto: DingTalkConfig) =>
+  (await http.post<NotificationTestResult>(`${base()}/test-dingtalk`, dto)).data;
 
-export const testEmail = (dto: EmailConfig) =>
-  http.post<NotificationTestResult>(`${base()}/test-email`, dto);
+export const testEmail = async (dto: EmailConfig) =>
+  (await http.post<NotificationTestResult>(`${base()}/test-email`, dto)).data;
 
-export const testWeCom = (dto: WeComConfig) =>
-  http.post<NotificationTestResult>(`${base()}/test-wecom`, dto);
+export const testWeCom = async (dto: WeComConfig) =>
+  (await http.post<NotificationTestResult>(`${base()}/test-wecom`, dto)).data;
 
-export const fetchNotificationLogs = () =>
-  http.get<NotificationLogItem[]>(`${base()}/logs`);
+export const fetchNotificationLogs = async () =>
+  (await http.get<NotificationLogItem[]>(`${base()}/logs`)).data;
 
 export const clearNotificationLogs = () =>
   http.post(`${base()}/logs/clear`);
