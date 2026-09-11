@@ -163,13 +163,13 @@ export interface HmiEventAction {
       label?: string;
       props?: Record<string, any>;
     };
-    /** openPopup：弹窗内容源组件（当前页面内的组件 id，运行态以模态弹出） */
+    /** openPopup（废弃）：历史「页面内组件」弹窗源组件 id，不再使用；保留字段防旧 JSON 反序列化出错 */
     sourceComponentId?: string;
     /** openPopup：开窗是否要求写权限（true=非 Operator/Admin 拦截开窗；默认 false 可看不可动） */
     requireWritePermission?: boolean;
-    /** openPopup：弹窗目标形态（'component'=页面内组件[默认旧行为]；'page'=弹窗画面） */
+    /** openPopup：弹窗目标。当前固定 'page'（弹窗画面）；兼容保留 'component' 以识别历史旧配置 */
     popupTargetType?: 'component' | 'page';
-    /** openPopup：弹窗画面模式下目标弹窗画面 id（platform='Popup' 的页面） */
+    /** openPopup：目标弹窗画面 id（platform='Popup' 的页面），弹窗画面模式必有 */
     panelPageId?: string;
     /** openPopup：预留 deviceId 参数化覆盖（首版不消费，透传保持页面绑定不变） */
     popupDeviceIds?: number[];

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 统一模态壳：标题栏 + 权限锁标 + 关闭按钮（X/ESC/遮罩三路关闭）+ 居中滚动容器。
-// 由 PopupHost / PopupPageHost 复用，避免关闭逻辑多份漂移（方案 O1）。
+// 由 PopupPageHost 复用，避免关闭逻辑多份漂移（方案 O1）。
 import { onMounted, onUnmounted } from 'vue';
 import { X, Lock } from 'lucide-vue-next';
 

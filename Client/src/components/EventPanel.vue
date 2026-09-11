@@ -134,7 +134,7 @@ const addAction = (type: HmiEventType, kind: HmiEventActionKind) => {
         : kind === 'runScript'
           ? { scriptId: undefined }
           : kind === 'openPopup'
-            ? { sourceComponentId: '', requireWritePermission: false, popupTargetType: 'component' }
+            ? { requireWritePermission: false, popupTargetType: 'page', panelPageId: '' }
             : { targetComponentId: '', patch: {} },
   };
   evt.actions = [...(evt.actions ?? []), action];
@@ -245,15 +245,6 @@ const setPropTargetOptions = computed(() => [
     .filter((c) => c.id !== props.selectedComponent?.id)
     .map((c) => ({ id: c.id, name: `${c.name || c.type} (${c.id.slice(-6)})` })),
 ]);
-
-// ===== openPopup：弹窗源组件候选（当前页全部组件，排除触发组件自身） =====
-// 命名沿用 setPropTargetOptions 先例；不限定面板类型——弹窗内容可为任意组件（看板/趋势等）。
-// 组件是否适合弹窗由设计者判断（trend-chart 等依赖画布数据通道的组件首版不保证数据，见方案 §8-E3）。
-const popupSourceOptions = computed(() =>
-  (props.pageComponents ?? [])
-    .filter((c) => c.id !== props.selectedComponent?.id)
-    .map((c) => ({ id: c.id, name: `${c.name || c.type} (${c.id.slice(-6)})` }))
-);
 
 // ===== openPopup（弹窗画面模式）：候选弹窗画面（platform='Popup'），空画面加标注 =====
 const popupPageOptions = computed(() =>
@@ -544,35 +535,12 @@ const setPatchVisible = (type: HmiEventType, actionId: string, val: string) => {
               </p>
             </template>
 
-            <!-- openPopup 参数：两级——目标形态（组件/画面） -->
+            <!-- openPopup 参数：固定目标为弹窗画面（platform='Popup'） -->
             <template v-else-if="action.kind === 'openPopup'">
               <div>
-                <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗目标</label>
-                <select :value="action.params.popupTargetType ?? 'component'"
-                  @change="updateActionParams(activeEventType, action.id, { popupTargetType: ($event.target as HTMLSelectElement).value as 'component' | 'page' })"
-                  class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
-                  <option value="component">页面内组件</option>
-                  <option value="page">弹窗画面</option>
-                </select>
-              </div>
-              <!-- 弹组件模式：源组件候选 -->
-              <div v-if="(action.params.popupTargetType ?? 'component') === 'component'">
-                <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗内容（页面内组件）</label>
-                <select :value="action.params.sourceComponentId ?? ''"
-                  @change="updateActionParams(activeEventType, action.id, { sourceComponentId: ($event.target as HTMLSelectElement).value })"
-                  class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
-                  <option value="">请选择组件…</option>
-                  <option v-for="t in popupSourceOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
-                </select>
-                <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
-                  运行态将该组件以模态窗口弹出；建议放置于隐藏图层，变量绑定/权限/实时值自动继承。
-                </p>
-              </div>
-              <!-- 弹画面模式：候选弹窗画面（platform='Popup'） -->
-              <div v-else>
                 <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗画面</label>
                 <select :value="action.params.panelPageId ?? ''"
-                  @change="updateActionParams(activeEventType, action.id, { panelPageId: ($event.target as HTMLSelectElement).value })"
+                  @change="updateActionParams(activeEventType, action.id, { panelPageId: ($event.target as HTMLSelectElement).value, popupTargetType: 'page' })"
                   class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
                   <option value="">请选择弹窗画面…</option>
                   <option v-for="t in popupPageOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
