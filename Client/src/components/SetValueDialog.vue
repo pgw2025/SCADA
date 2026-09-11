@@ -135,7 +135,7 @@ const keys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', 'back'];
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+  <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
     @mousedown.self="emit('close')">
     <div
       class="w-full max-w-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden select-none">
