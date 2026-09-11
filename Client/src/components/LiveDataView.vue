@@ -1103,7 +1103,7 @@ onUnmounted(() => {
         <button
           v-if="(selectedDevice?.status === 1 || selectedDevice?.status === 'online') && !selectedVarDetail.isReadOnly"
           type="button"
-          @click="closeVarDetail(); startOverride(selectedVarDetail)"
+          @click="startOverride(selectedVarDetail); closeVarDetail()"
           class="flex-1 py-2.5 px-3 rounded-xl bg-[#1890ff] hover:bg-sky-600 text-white font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
         >
           <Settings class="w-3.5 h-3.5" />
