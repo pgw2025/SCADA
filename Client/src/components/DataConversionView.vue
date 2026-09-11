@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { dataConversions, devices, addLog } from '../store/index';
-import { checkCycleInConversions } from '../utils/algo';
+import { checkCycleInConversions, isTypeCompatible, describeTypeCategory } from '../utils/algo';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
-import { DataConversion } from '../types';
+import { DataConversion, DataTypeEnum } from '../types';
 import { 
   fetchDataConversions,
   createDataConversion,
@@ -85,7 +85,18 @@ const filteredConversions = computed(() => {
   });
 });
 
+// 变量类型助手：取变量 DataType 与下拉展示文案（key（TYPE））
+const getVarType = (devId: number, key: string): DataTypeEnum | undefined => {
+  const dev = devices.value.find(d => d.id === devId);
+  return dev?.variableMeta?.[key]?.dataType;
+};
+const displayVar = (devId: number, key: string): string => {
+  const type = getVarType(devId, key);
+  return type ? `${key}（${type}）` : key;
+};
+
 // Watch source device selection to update variables dropdown list
+// 仅过滤禁用变量；类型兼容性不在下拉过滤（用户可自由选择，保存时统一校验）。
 const sourceVariables = computed(() => {
   const dev = devices.value.find(d => d.id === sourceDevId.value);
   if (!dev) return [];
@@ -96,7 +107,8 @@ const sourceVariables = computed(() => {
 });
 
 // Watch target device selection to update variables dropdown list
-// 目标变量过滤掉「只读」与「禁用」变量（与后端保存期校验一致，避免可选但保存必被拒的挫败）。
+// 目标变量过滤掉「只读」与「禁用」变量（与后端保存期校验一致，避免可选但保存必被拒的挫败）；
+// 类型兼容性不在下拉过滤，保存时统一校验。
 const targetVariables = computed(() => {
   const dev = devices.value.find(d => d.id === targetDevId.value);
   if (!dev) return [];
@@ -106,6 +118,15 @@ const targetVariables = computed(() => {
     if (meta.isEnabled === false) return false;
     return (meta.effectiveAccessMode ?? meta.accessMode) !== 'Read';
   });
+});
+
+// 当前源/目标组合的类型不兼容提示（空串 = 兼容或信息不足）
+const typeMismatchHint = computed(() => {
+  if (!sourceVarKey.value || !targetVarKey.value) return '';
+  const s = getVarType(sourceDevId.value, sourceVarKey.value);
+  const t = getVarType(targetDevId.value, targetVarKey.value);
+  if (!s || !t || isTypeCompatible(s, t)) return '';
+  return `源变量 [${sourceVarKey.value}]（${s}，${describeTypeCategory(s)}）与目标变量 [${targetVarKey.value}]（${t}，${describeTypeCategory(t)}）数据类型不兼容`;
 });
 
 const openNewLinkageModal = () => {
@@ -140,6 +161,15 @@ const handleSaveLinkage = async () => {
   // Prevent self loop A:Temp -> A:Temp
   if (sourceDevId.value === targetDevId.value && sourceVarKey.value === targetVarKey.value) {
     alert('错误: 无法关联相同设备的相同变量 (这会直接构成死循环回路)。');
+    return;
+  }
+
+  // 源/目标变量数据类型兼容校验（矩阵与后端保存期校验一致，先于提交拦截避免 400 挫败）
+  const srcType = getVarType(sourceDevId.value, sourceVarKey.value);
+  const tgtType = getVarType(targetDevId.value, targetVarKey.value);
+  if (!isTypeCompatible(srcType, tgtType)) {
+    alert(`错误: 源变量 [${sourceVarKey.value}]（${srcType ?? '未知'}，${describeTypeCategory(srcType)}）` +
+      `与目标变量 [${targetVarKey.value}]（${tgtType ?? '未知'}，${describeTypeCategory(tgtType)}）数据类型不兼容，禁止建立转换规则。`);
     return;
   }
 
@@ -452,7 +482,7 @@ const toggleLinkStatus = async (c: DataConversion) => {
                   v-model="sourceVarKey"
                   class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-mono text-[11px] text-slate-900 dark:text-white"
                 >
-                  <option v-for="k in sourceVariables" :key="k" :value="k">{{ k }}</option>
+                  <option v-for="k in sourceVariables" :key="k" :value="k">{{ displayVar(sourceDevId, k) }}</option>
                 </select>
               </div>
             </div>
@@ -488,7 +518,7 @@ const toggleLinkStatus = async (c: DataConversion) => {
                   v-model="targetVarKey"
                   class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 focus:outline-none font-mono text-[11px] text-slate-900 dark:text-white"
                 >
-                  <option v-for="k in targetVariables" :key="k" :value="k">{{ k }}</option>
+                  <option v-for="k in targetVariables" :key="k" :value="k">{{ displayVar(targetDevId, k) }}</option>
                 </select>
               </div>
             </div>
@@ -497,6 +527,14 @@ const toggleLinkStatus = async (c: DataConversion) => {
               当前值: <b class="text-slate-600 dark:text-slate-300 font-bold">{{ devices.find(d => d.id === targetDevId)?.variables[targetVarKey] }}</b>
             </p>
           </div>
+
+          <!-- 类型不兼容提示（双向过滤下的兜底提示，如存量规则编辑等场景） -->
+          <p
+            v-if="typeMismatchHint"
+            class="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-2 py-1 rounded text-left leading-relaxed"
+          >
+            ⚠ {{ typeMismatchHint }}，无法保存
+          </p>
 
           <!-- Enable state toggle on save -->
           <div class="flex items-center justify-between py-1">

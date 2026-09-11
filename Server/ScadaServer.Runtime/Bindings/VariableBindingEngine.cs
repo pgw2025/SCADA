@@ -119,7 +119,8 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
                     pendingReasons[c.Id] = "目标设备未运行";
                     continue;
                 }
-                if (!srcRt.Variables.Values.Any(v => v.Key == c.SourceVariableKey))
+                var srcVar = srcRt.Variables.Values.FirstOrDefault(v => v.Key == c.SourceVariableKey);
+                if (srcVar == null)
                 {
                     _logger.LogWarning("变量绑定跳过：源变量 {Key} 在设备 {DeviceId} 不存在。绑定={Name}", c.SourceVariableKey, c.SourceDeviceId, c.Name);
                     skipReasons[c.Id] = "源变量不存在";
@@ -136,6 +137,15 @@ public sealed class VariableBindingEngine : IVariableBindingEngine
                 {
                     _logger.LogWarning("变量绑定跳过：目标变量 {Key} 在设备 {DeviceId} 为只读。绑定={Name}", c.TargetVariableKey, c.TargetDeviceId, c.Name);
                     skipReasons[c.Id] = "目标变量只读";
+                    continue;
+                }
+                // 源/目标变量数据类型兼容性校验（矩阵与保存期校验共用 DataTypeCompatibility）：
+                // 存量跨大类规则在此拦截，列表页显示"未生效（原因：源/目标变量类型不兼容）"而非写出错误值。
+                if (!DataTypeCompatibility.IsCompatible(srcVar.DataType, tgtVar.DataType))
+                {
+                    _logger.LogWarning("变量绑定跳过：源变量 {SrcKey}({SrcType}) 与目标变量 {TgtKey}({TgtType}) 数据类型不兼容。绑定={Name}",
+                        c.SourceVariableKey, srcVar.DataType, c.TargetVariableKey, tgtVar.DataType, c.Name);
+                    skipReasons[c.Id] = "源/目标变量类型不兼容";
                     continue;
                 }
 

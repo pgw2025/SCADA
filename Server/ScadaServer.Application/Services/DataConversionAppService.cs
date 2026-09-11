@@ -1,6 +1,7 @@
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Domain.Entities;
+using ScadaServer.Domain.Enums;
 using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Interfaces.Repositories;
 namespace ScadaServer.Application.Services
@@ -168,6 +169,15 @@ namespace ScadaServer.Application.Services
             if (targetVar.EffectiveAccessMode == "Read")
             {
                 throw new BusinessException($"目标变量 [{dto.TargetVariableKey}] 为只读，禁止作为数据转换目标");
+            }
+
+            // 源/目标变量数据类型兼容性校验（类型兼容矩阵见 DataTypeCompatibility）：
+            // 拦截"布尔↔数值、文本↔其他"等跨大类规则，避免运行期驱动转换失败或值语义错乱。
+            if (!DataTypeCompatibility.IsCompatible(sourceVar.DataType, targetVar.DataType))
+            {
+                throw new BusinessException(
+                    $"源变量 [{dto.SourceVariableKey}]({sourceVar.DataType}) 与目标变量 [{dto.TargetVariableKey}]({targetVar.DataType}) " +
+                    $"数据类型不兼容（{DataTypeCompatibility.DescribeCategory(sourceVar.DataType)}↔{DataTypeCompatibility.DescribeCategory(targetVar.DataType)}），禁止建立转换规则");
             }
         }
     }
