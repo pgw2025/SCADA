@@ -16,6 +16,7 @@
 | [01-方案设计.md](./01-方案设计.md) | 方案 A 完整设计（v1.1 修订版）：调用链、参数 schema、PopupHost 设计、数据流、权限、边界、约束核对、验收清单 |
 | [02-评审修订记录.md](./02-评审修订记录.md) | 代码级评审：P1–P3 事实修正、E1–E6 边界补充、可选优化与 v1.0→v1.1 修订对照 |
 | [03-实施计划.md](./03-实施计划.md) | **实施主计划**：5 阶段 16 步，每步含任务/文件/具体内容/验证/注意，附关键设计决策、风险回滚与工作量估算 |
+| [04-执行记录.md](./04-执行记录.md) | 实施执行记录：各阶段完成情况、采纳决策、验收与待办 |
 
 ## 相关代码位置
 
@@ -23,6 +24,9 @@
 - 事件动作类型/参数：`Client/src/types.ts`（`HmiEventActionKind` / `HmiEventAction`）
 - 设计态事件编辑器：`Client/src/components/EventPanel.vue`
 - 运行态宿主：`Client/src/components/ScadaPlayerView.vue`
+- 预览宿主：`Client/src/components/ScadaTopologyView.vue`
+- 弹窗宿主（新增）：`Client/src/components/PopupHost.vue`
+- 设备引用收集器（新增）：`Client/src/utils/componentDeviceRefs.ts`
 - 画布点击分发：`Client/src/components/CanvasPanel.vue`
 - 复用面板组件：`Client/src/components/widgets/VfdMotorPanelWidget.vue`
 - 组件渲染分发：`Client/src/components/HMIWidget.vue`
@@ -32,5 +36,5 @@
 - [x] 方案可行性分析与设计（v1.0）
 - [x] 代码级评审与修订（v1.1，见 02-评审修订记录）
 - [x] 实施计划编制（5 阶段 16 步，见 03-实施计划）
-- [ ] 待实施（按 03-实施计划 阶段 0 → 阶段 4 顺序执行）
-- [ ] 待回归验收（对照 01-方案设计 §11 验收清单 19 条）
+- [x] 实施（阶段 0–4 完成，见 04-执行记录）
+- [~] 回归验收（冷链接手动验证部分，见 04-执行记录 §5）
