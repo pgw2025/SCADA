@@ -66,6 +66,8 @@ import CanvasPanel from './CanvasPanel.vue';
 import InspectorPanel from './InspectorPanel.vue';
 import EventPanel from './EventPanel.vue';
 import SetValueDialog from './SetValueDialog.vue';
+import PopupHost from './PopupHost.vue';
+import { collectComponentDeviceRefs } from '../utils/componentDeviceRefs';
 import LayersPanel from './LayersPanel.vue';
 import BindingCheckPanel from './BindingCheckPanel.vue';
 import ConfirmModal from './ConfirmModal.vue';
@@ -412,6 +414,9 @@ const boundDeviceIds = computed(() => {
       }
       if (hasUnboundSeries && devices.value.length > 0) ids.add(Number(devices.value[0].id));
     }
+    // P1 收口：通用设备引用收集（覆盖 vfd-motor-panel 等 props.xxxDeviceId 变量级绑定，
+    // 未来组件新增 DeviceId 后缀字段自动生效；bindDeviceId/opDeviceId 与上方分支重复 add 由 Set 幂等去重）
+    collectComponentDeviceRefs(c).forEach((id) => ids.add(id));
   });
   return ids;
 });
@@ -430,6 +435,40 @@ onUnmounted(() => {
 const canControlWrite = computed(() => {
   const r = loginUser.value?.role;
   return r === ROLE_OPERATOR || r === ROLE_ADMIN;
+});
+
+// ===== 弹窗面板（openPopup 动作，编辑器预览 isActiveMode）：与播放器同体验（方案 P2/E6） =====
+const activePopupId = ref<string | null>(null);
+const activePopupComponent = computed(() => {
+  if (!activePopupId.value) return null;
+  return (currentPage.value?.components ?? []).find((c) => c.id === activePopupId.value) ?? null;
+});
+
+const openPopup = (sourceComponentId: string) => {
+  const target = (currentPage.value?.components ?? []).find((c) => c.id === sourceComponentId);
+  if (!target) {
+    showToast('弹窗目标组件不存在（可能已被删除）', 'warning');
+    addLog('组态拓扑', `弹窗打开失败：目标组件 [${sourceComponentId}] 不存在`, 'warning');
+    return;
+  }
+  activePopupId.value = sourceComponentId;
+  addLog('组态拓扑', `打开弹窗面板: [${target.name || target.type}]`, 'normal');
+};
+
+const closePopup = () => { activePopupId.value = null; };
+
+// E1 切页自动关闭（预览态页面切换与播放器一致）
+watch(() => currentPage.value?.id, () => { closePopup(); });
+
+// 弹窗设备订阅差集：与播放器同模式，补订/退订弹窗面板引用的、主订阅未覆盖的设备
+watch(activePopupComponent, (comp, oldComp) => {
+  const pageIds = boundDeviceIds.value; // 主订阅快照（只读，不修改）
+  const oldIds = collectComponentDeviceRefs(oldComp);
+  const newIds = collectComponentDeviceRefs(comp);
+  newIds.forEach((id) => { if (!pageIds.has(id)) subscribeDeviceTelemetry(id); });
+  oldIds.forEach((id) => {
+    if (!pageIds.has(id) && !newIds.has(id)) unsubscribeDeviceTelemetry(id);
+  });
 });
 // 画布尺寸变更：将越界组件拉回画布内（右/下边缘贴齐）并逐个防抖落库
 const clampComponentsToCanvas = (pg: ScadaPage) => {
@@ -865,6 +904,7 @@ const previewEventCtx = computed<HmiEventDispatchContext>(() => ({
     if (patch.label !== undefined) target.label = patch.label;
     if (patch.props) target.props = { ...target.props, ...patch.props };
   },
+  openPopup, // 弹窗动作回调（编辑器预览与运行态一致）
   onBlocked: (msg) => showToast(msg, 'warning'),
 }));
 
@@ -1717,6 +1757,10 @@ const handleExportPage = async (page: ScadaPage) => {
       <!-- var-display 设值弹窗：确认后走 handleTriggerToggleValue('setValue') 写管道 -->
       <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
         @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
+
+      <!-- openPopup 弹窗面板（编辑器预览 isActiveMode）：与播放器同体验（方案 P2/E6） -->
+      <PopupHost v-if="activePopupComponent" :component="activePopupComponent"
+        :can-control-write="canControlWrite" @close="closePopup" />
 
       <!-- 移动端右侧属性/图层面板遮罩 -->
       <div v-if="!isActiveMode && isRightSidebarOpen" @click="isRightSidebarOpen = false"
