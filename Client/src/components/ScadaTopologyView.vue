@@ -26,6 +26,7 @@ import {
   currentPlatform,
   desktopPages,
   mobilePages,
+  popupPages,
   scadaLoading,
   initializeScada,
   isScadaFullscreen,
@@ -956,22 +957,24 @@ const handleCreateProject = () => {
 };
 
 // Add child page to active screen project.
-// platform：新增画面归属端（桌面端/移动端），缺省 Desktop；不同端使用各自默认画布尺寸。
-const PAGE_SIZES: Record<'Desktop' | 'Mobile', { w: number; h: number }> = {
+// platform：新增画面归属端（桌面端/移动端/弹窗画面），缺省 Desktop；不同端使用各自默认画布尺寸。
+const PAGE_SIZES: Record<'Desktop' | 'Mobile' | 'Popup', { w: number; h: number }> = {
   Desktop: { w: 1100, h: 700 },
-  Mobile: { w: 375, h: 812 }
+  Mobile: { w: 375, h: 812 },
+  Popup: { w: 600, h: 450 }
 };
-const handleAddPage = (platform: 'Desktop' | 'Mobile' = 'Desktop') => {
+const handleAddPage = (platform: 'Desktop' | 'Mobile' | 'Popup' = 'Desktop') => {
   const proj = currentProject.value;
   if (!proj) return;
 
-  const list = platform === 'Mobile' ? mobilePages.value : desktopPages.value;
+  const list = platform === 'Mobile' ? mobilePages.value : platform === 'Popup' ? popupPages.value : desktopPages.value;
   const size = PAGE_SIZES[platform];
   const newPageId = `page-${Date.now()}`;
+  const typeName = platform === 'Mobile' ? '移动端画面' : platform === 'Popup' ? '弹窗画面' : '桌面端画面';
   const newPage: ScadaPage = {
     id: newPageId,
     serverId: undefined,
-    name: `${platform === 'Mobile' ? '移动端画面' : '桌面端画面'} ${list.length + 1}`,
+    name: `${typeName} ${list.length + 1}`,
     platform,
     width: size.w,
     height: size.h,
@@ -981,7 +984,7 @@ const handleAddPage = (platform: 'Desktop' | 'Mobile' = 'Desktop') => {
   proj.pages.push(newPage);
   selectedPageId.value = newPageId;
   currentPlatform.value = platform;
-  addLog('组态编辑', `项目 [${proj.name}] 新增${platform === 'Mobile' ? '移动端' : '桌面端'}画面: [${newPage.name}]`, 'normal');
+  addLog('组态编辑', `项目 [${proj.name}] 新增${typeName}画面: [${newPage.name}]`, 'normal');
 
   // 阶段2：确保工程已落库后落库页面并回填 serverId
   ensurePageSaved(newPage, proj).catch(() => { });
@@ -989,6 +992,8 @@ const handleAddPage = (platform: 'Desktop' | 'Mobile' = 'Desktop') => {
 
 // 视口切换：切换到指定端，并选中该端首个画面（保持编辑上下文一致）。
 const switchPlatform = (platform: 'Desktop' | 'Mobile') => {
+  // 弹窗画面不参与端切换（Popup 视口由 select 弹窗页时进入，端切换按钮已禁用；此处双重保险）
+  if (currentPlatform.value === 'Popup') return;
   currentPlatform.value = platform;
   const list = platform === 'Mobile' ? mobilePages.value : desktopPages.value;
   if (list.length > 0) selectedPageId.value = list[0].id;
@@ -1000,7 +1005,7 @@ const handleNavigate = (pageId: string) => {
   const target = currentProject.value?.pages.find(p => isSamePageRef(pageId, p.id));
   if (!target) return;
   selectedPageId.value = target.id;
-  currentPlatform.value = (target.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
+  currentPlatform.value = (target.platform ?? 'Desktop') as 'Desktop' | 'Mobile' | 'Popup';
 };
 
 // 设置/取消某画面为「所在端首页」：同端仅保留一个首页（由后端 AppService 兜底唯一性）。
@@ -1456,6 +1461,58 @@ const handleExportPage = async (page: ScadaPage) => {
         </div>
       </div>
 
+      <!-- 弹窗画面分组：运行时由事件动作以模态方式调用，非运行主画面，故不提供「设为首页」与端切换 -->
+      <div
+        class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-y border-slate-100/60 dark:border-slate-800 mt-1">
+        <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">🪟 弹窗 ({{ popupPages.length }})</span>
+        <button @click="handleAddPage('Popup')"
+          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+          title="新增弹窗画面">
+          <Plus class="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div v-if="currentProject"
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
+        <div v-for="page in popupPages" :key="page.id" @click="handleSelectPage(page.id)"
+          class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
+          :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
+          <div class="flex items-center justify-between gap-2 overflow-hidden">
+            <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
+              <input v-model="renamePageInput" type="text"
+                class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-xs text-slate-800 dark:text-slate-100 outline-none"
+                @keyup.enter="savePageRename(page.id)" />
+              <button @click="savePageRename(page.id)"
+                class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700">
+                <Check class="w-4 h-4" />
+              </button>
+            </div>
+            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
+              <span class="truncate">{{ page.name }}</span>
+            </span>
+            <div v-if="isRenamingPageId !== page.id"
+              class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
+              <button @click.stop="startRenamePage(page.id, page.name)"
+                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名">
+                <Edit class="w-3 h-3" />
+              </button>
+              <button @click.stop="handleDuplicatePage(page)"
+                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
+                <Copy class="w-3 h-3" />
+              </button>
+              <button @click.stop="handleExportPage(page)"
+                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
+                <Download class="w-3 h-3" />
+              </button>
+              <button @click.stop="handleDeletePage(page.id, page.name)"
+                class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
+                <Trash2 class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
+        </div>
+      </div>
+
     </div>
 
     <!-- 工程列表收起态把手（仅桌面端 md+ 显示竖向把手；移动端由顶栏按钮唤起抽屉） -->
@@ -1528,6 +1585,9 @@ const handleExportPage = async (page: ScadaPage) => {
                   <optgroup label="移动端画面" v-if="mobilePages.length">
                     <option v-for="p in mobilePages" :key="p.id" :value="p.id">📱 {{ p.name }}</option>
                   </optgroup>
+                  <optgroup label="弹窗画面" v-if="popupPages.length">
+                    <option v-for="p in popupPages" :key="p.id" :value="p.id">🪟 {{ p.name }}</option>
+                  </optgroup>
                 </select>
               </div>
               <p class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
@@ -1539,11 +1599,14 @@ const handleExportPage = async (page: ScadaPage) => {
           <div class="flex items-center gap-1.5 sm:gap-2">
             <!-- 视口切换：桌面端 / 移动端 -->
             <div
-              class="hidden md:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-bold">
-              <button @click="switchPlatform('Desktop')" class="px-2.5 py-1 cursor-pointer transition-colors"
+              class="hidden md:flex items-center rounded-full border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-bold"
+              :class="currentPlatform === 'Popup' ? 'opacity-40' : ''">
+              <button @click="switchPlatform('Desktop')" :disabled="currentPlatform === 'Popup'"
+                class="px-2.5 py-1 transition-colors disabled:cursor-not-allowed"
                 :class="currentPlatform === 'Desktop' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
                 title="桌面端视口">🖥 桌面</button>
-              <button @click="switchPlatform('Mobile')" class="px-2.5 py-1 cursor-pointer transition-colors"
+              <button @click="switchPlatform('Mobile')" :disabled="currentPlatform === 'Popup'"
+                class="px-2.5 py-1 transition-colors disabled:cursor-not-allowed"
                 :class="currentPlatform === 'Mobile' ? 'bg-[#1890ff] text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
                 title="移动端视口">📱 移动</button>
             </div>
@@ -1649,6 +1712,7 @@ const handleExportPage = async (page: ScadaPage) => {
             <div class="flex-1 overflow-auto p-2 sm:p-4 touch-pan-x touch-pan-y"
               :class="currentPlatform === 'Mobile' ? 'flex justify-center items-start md:items-center' : ''">
               <!-- 移动端：套一层手机外框，强化移动视口区分 -->
+              <!-- 注：Popup（弹窗画面）不做手机外框，走 v-else 桌面式渲染——弹窗画面按设计尺寸（600×450）居中呈现（P3-5 预期行为） -->
               <div v-if="currentPlatform === 'Mobile'"
                 class="shrink-0 rounded-[2.25rem] bg-neutral-900 p-2.5 shadow-2xl ring-1 ring-neutral-700">
                 <div class="rounded-[1.6rem] overflow-hidden bg-slate-900">
