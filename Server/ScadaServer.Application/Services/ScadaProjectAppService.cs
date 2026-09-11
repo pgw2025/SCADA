@@ -18,6 +18,8 @@ namespace ScadaServer.Application.Services
         private readonly IScadaPageRepository _pageRepository;
         /// <summary>组件仓储，用于整树查询及级联清理。</summary>
         private readonly IHmiComponentRepository _componentRepository;
+        /// <summary>画面文件夹仓储：整树返回 Folders、删除/导入时清理与复位页面归属。</summary>
+        private readonly IScadaPageFolderRepository _folderRepository;
         /// <summary>设备仓储，用于导入导出时业务键与 Id 的映射。</summary>
         private readonly IDeviceRepository _deviceRepository;
         /// <summary>组态工程授权仓储：工程 ↔ 用户授权关系的读写。</summary>
@@ -34,6 +36,7 @@ namespace ScadaServer.Application.Services
             IScadaProjectRepository repository,
             IScadaPageRepository pageRepository,
             IHmiComponentRepository componentRepository,
+            IScadaPageFolderRepository folderRepository,
             IDeviceRepository deviceRepository,
             IScadaProjectAuthorizationRepository authRepository,
             ICurrentUser currentUser,
@@ -43,6 +46,7 @@ namespace ScadaServer.Application.Services
             _repository = repository;
             _pageRepository = pageRepository;
             _componentRepository = componentRepository;
+            _folderRepository = folderRepository;
             _deviceRepository = deviceRepository;
             _authRepository = authRepository;
             _currentUser = currentUser;
@@ -125,6 +129,9 @@ namespace ScadaServer.Application.Services
                 // 删除所有页面
                 await _pageRepository.DeleteRangeAsync(p => p.ProjectId == id);
 
+                // 删除画面文件夹（页面已删除，其 FolderId 引用已消除，可安全删除）
+                await _folderRepository.DeleteRangeAsync(f => f.ProjectId == id);
+
                 // 删除工程
                 var entity = await _repository.GetByIdAsync(id);
                 if (entity != null) await _repository.DeleteAsync(entity);
@@ -141,6 +148,7 @@ namespace ScadaServer.Application.Services
             if (!await CanAccessAsync(id)) return null;
 
             var pages = await _pageRepository.GetListAsync(p => p.ProjectId == id);
+            var folders = await _folderRepository.GetListAsync(f => f.ProjectId == id);
             var pageIds = pages.Select(p => p.Id).ToList();
 
             // 阶段4 整树查询优化：仅拉取本工程页面下的组件（SQL 下推过滤），
@@ -184,6 +192,20 @@ namespace ScadaServer.Application.Services
                     })
                     .ToList();
 
+                // 文件架构优先返回文件夹（其下页面以 FolderId 归属，前端组建树时聚合），按父级+排序确定顺序
+                result.Folders.AddRange(
+                    folders.OrderBy(f => f.ParentFolderId).ThenBy(f => f.SortOrder).ThenBy(f => f.Id)
+                        .Select(f => new ScadaPageFolderDto
+                        {
+                            Id = f.Id,
+                            ProjectId = f.ProjectId,
+                            ParentFolderId = f.ParentFolderId,
+                            Platform = f.Platform,
+                            Name = f.Name,
+                            SortOrder = f.SortOrder,
+                            CreatedAt = f.CreatedAt
+                        }));
+
                 result.Pages.Add(new ScadaPageWithComponentsDto
                 {
                     Id = page.Id,
@@ -191,6 +213,8 @@ namespace ScadaServer.Application.Services
                     Name = page.Name,
                     IsHome = page.IsHome,
                     Platform = page.Platform,
+                    FolderId = page.FolderId,
+                    SortOrder = page.SortOrder,
                     Width = page.Width,
                     Height = page.Height,
                     BackgroundJson = page.BackgroundJson,
@@ -454,6 +478,9 @@ namespace ScadaServer.Application.Services
                     Name = pageName,
                     IsHome = isHome,
                     Platform = platform,
+                    // 导入画面一律落目标端根级（迁移文件不含文件夹信息）
+                    FolderId = null,
+                    SortOrder = await GetNextPageSortOrderAsync(projectId, platform, null),
                     Width = source.Width > 0 ? source.Width : 1100,
                     Height = source.Height > 0 ? source.Height : 700,
                     BackgroundJson = NormalizeBackgroundJson(source.BackgroundJson),
@@ -522,12 +549,16 @@ namespace ScadaServer.Application.Services
         private async Task InsertPageAsync(ScadaPageTransferDto page, int projectId, string name, bool isHome,
             Dictionary<string, int> deviceMap, ScadaImportResultDto result)
         {
+            var platform = NormalizePlatform(page.Platform);
             var entity = new ScadaPage
             {
                 ProjectId = projectId,
                 Name = name,
                 IsHome = isHome,
-                Platform = NormalizePlatform(page.Platform),
+                Platform = platform,
+                // 导入画面一律落目标端根级（迁移文件不含文件夹信息）
+                FolderId = null,
+                SortOrder = await GetNextPageSortOrderAsync(projectId, platform, null),
                 Width = page.Width > 0 ? page.Width : 1100,
                 Height = page.Height > 0 ? page.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(page.BackgroundJson),
@@ -537,6 +568,14 @@ namespace ScadaServer.Application.Services
             await _pageRepository.InsertAsync(entity);
             result.ImportedPages++;
             await InsertComponentsAsync(page.Components, entity.Id, deviceMap, result);
+        }
+
+        /// <summary>取目标端根级（FolderId=null）画面段下一个 SortOrder（最大+1）。</summary>
+        private async Task<int> GetNextPageSortOrderAsync(int projectId, string platform, int? folderId)
+        {
+            var pages = await _pageRepository.GetListAsync(p =>
+                p.ProjectId == projectId && p.Platform == platform && p.FolderId == folderId);
+            return pages.Count == 0 ? 1 : pages.Max(p => p.SortOrder) + 1;
         }
 
         /// <summary>

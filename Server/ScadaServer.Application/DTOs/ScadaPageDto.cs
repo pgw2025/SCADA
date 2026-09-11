@@ -23,6 +23,16 @@ namespace ScadaServer.Application.DTOs
         public bool IsHome { get; set; }
 
         /// <summary>
+        /// 所在画面文件夹ID（FK → ScadaPageFolders）。NULL 表示该端根级画面（未放入文件夹）。
+        /// 仅 Desktop/Mobile 端可能非空；Popup 弹窗画面恒为 NULL。
+        /// </summary>
+        public int? FolderId { get; set; }
+
+        /// <summary>同级「画面段」内排序（从 1 起连续编号；与文件夹段相互独立）。</summary>
+        [Range(0, int.MaxValue, ErrorMessage = "排序值必须为非负数")]
+        public int SortOrder { get; set; }
+
+        /// <summary>
         /// 画面归属端：Desktop / Mobile / Popup（Popup=弹窗画面，运行时由事件动作以模态方式调用）。默认 Desktop。
         /// </summary>
         [StringLength(20, ErrorMessage = "归属端不能超过20个字符")]

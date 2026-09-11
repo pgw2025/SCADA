@@ -14,6 +14,8 @@ namespace ScadaServer.Application.Services
         private readonly IScadaPageRepository _repository;
         /// <summary>组件仓储，用于删除页面时级联清理组件。</summary>
         private readonly IHmiComponentRepository _componentRepository;
+        /// <summary>文件夹仓储，校验页面 FolderId 归属合法。</summary>
+        private readonly IScadaPageFolderRepository _folderRepository;
         /// <summary>工作单元，用于删除页面及其组件伴随的原子操作。</summary>
         private readonly IUnitOfWork _uow;
 
@@ -21,10 +23,12 @@ namespace ScadaServer.Application.Services
         public ScadaPageAppService(
             IScadaPageRepository repository,
             IHmiComponentRepository componentRepository,
+            IScadaPageFolderRepository folderRepository,
             IUnitOfWork uow)
         {
             _repository = repository;
             _componentRepository = componentRepository;
+            _folderRepository = folderRepository;
             _uow = uow;
         }
 
@@ -65,12 +69,18 @@ namespace ScadaServer.Application.Services
             if (dto.IsHome)
                 await UnsetOtherHomePagesAsync(dto.ProjectId, platform, null);
 
+            var folderId = await ResolveFolderIdAsync(dto.ProjectId, platform, dto.FolderId);
+
             var entity = new ScadaPage
             {
                 ProjectId = dto.ProjectId,
                 Name = dto.Name,
                 IsHome = dto.IsHome,
                 Platform = platform,
+                FolderId = folderId,
+                SortOrder = dto.SortOrder > 0
+                    ? dto.SortOrder
+                    : await GetNextPageSortOrderAsync(dto.ProjectId, platform, folderId),
                 Width = dto.Width > 0 ? dto.Width : 1100,
                 Height = dto.Height > 0 ? dto.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson),
@@ -93,14 +103,24 @@ namespace ScadaServer.Application.Services
             if (dto.IsHome)
                 await UnsetOtherHomePagesAsync(dto.ProjectId, platform, dto.Id);
 
+            var folderId = await ResolveFolderIdAsync(dto.ProjectId, platform, dto.FolderId);
+            var originFolderId = entity.FolderId;
+
             entity.Name = dto.Name;
             entity.IsHome = dto.IsHome;
             entity.Platform = platform;
+            entity.FolderId = folderId;
             entity.Width = dto.Width > 0 ? dto.Width : entity.Width;
             entity.Height = dto.Height > 0 ? dto.Height : entity.Height;
             entity.BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson);
             entity.AdaptMode = NormalizeAdaptMode(dto.AdaptMode);
             entity.LayersJson = ScadaLayerJson.Normalize(dto.LayersJson);
+
+            // 落入新父级（文件夹/根级）时重排 SortOrder 到画面段末尾；
+            // 否则保留前端 reorder 已写好的值
+            if (folderId != originFolderId)
+                entity.SortOrder = await GetNextPageSortOrderAsync(dto.ProjectId, platform, folderId);
+
             await _repository.UpdateAsync(entity);
             return true;
         }
@@ -131,6 +151,8 @@ namespace ScadaServer.Application.Services
             Name = entity.Name,
             IsHome = entity.IsHome,
             Platform = entity.Platform,
+            FolderId = entity.FolderId,
+            SortOrder = entity.SortOrder,
             Width = entity.Width,
             Height = entity.Height,
             BackgroundJson = entity.BackgroundJson,
@@ -179,6 +201,33 @@ namespace ScadaServer.Application.Services
                 s.IsHome = false;
                 await _repository.UpdateAsync(s);
             }
+        }
+
+        /// <summary>
+        /// 校验并解析页面 FolderId：必须存在、同工程、同端；Popup 端恒为 NULL；非法值抛 400。
+        /// </summary>
+        private async Task<int?> ResolveFolderIdAsync(int projectId, string platform, int? folderId)
+        {
+            if (folderId == null) return null;
+            if (string.Equals(platform, "Popup", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Popup 弹窗画面不能放入文件夹");
+
+            var folder = await _folderRepository.GetByIdAsync(folderId.Value);
+            if (folder == null)
+                throw new ArgumentException("画面所属文件夹不存在");
+            if (folder.ProjectId != projectId)
+                throw new ArgumentException("画面所属文件夹与工程不一致");
+            if (!string.Equals(folder.Platform, platform, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("画面所属文件夹与画面归属端不一致");
+            return folderId;
+        }
+
+        /// <summary>取同 (ProjectId, Platform, FolderId) 画面段下一个 SortOrder（最大+1）。</summary>
+        private async Task<int> GetNextPageSortOrderAsync(int projectId, string platform, int? folderId)
+        {
+            var pages = await _repository.GetListAsync(p =>
+                p.ProjectId == projectId && p.Platform == platform && p.FolderId == folderId);
+            return pages.Count == 0 ? 1 : pages.Max(p => p.SortOrder) + 1;
         }
 
         #endregion

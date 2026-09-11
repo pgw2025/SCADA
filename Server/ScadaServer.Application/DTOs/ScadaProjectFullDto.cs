@@ -21,5 +21,8 @@ namespace ScadaServer.Application.DTOs
 
         /// <summary>工程下的全部页面（含各自组件）</summary>
         public List<ScadaPageWithComponentsDto> Pages { get; set; } = new();
+
+        /// <summary>工程下的全部画面文件夹（含空文件夹；不含页面本身，页面经 FolderId 归属）</summary>
+        public List<ScadaPageFolderDto> Folders { get; set; } = new();
     }
 }
