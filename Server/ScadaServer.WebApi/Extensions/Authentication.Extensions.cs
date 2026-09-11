@@ -33,6 +33,8 @@ namespace ScadaServer.WebApi.Extensions
                     options.JsonSerializerOptions.Converters.Add(new ObjectClrTypeJsonConverter());
                     // 可空数值类型容错：前端清空数字输入提交的 "" 归一化为 null（回退默认/模板值），而非 400
                     options.JsonSerializerOptions.Converters.Add(new NullableNumericJsonConverterFactory());
+                    // 时间统一按 UTC 序列化并带 "Z"（SQLite 读回的 Unspecified 按 UTC 处理），前端 new Date() 才能正确转本地
+                    options.JsonSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
                 })
                 .ConfigureApiBehaviorOptions(options =>
                 {

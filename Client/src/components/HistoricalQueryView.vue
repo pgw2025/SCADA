@@ -113,6 +113,15 @@ const seriesList = ref<HistorySeries[]>([]);
 const visibleKeys = ref<Record<string, boolean>>({});
 const tooltip = ref<{ x: number; y: number; time: string; items: { color: string; label: string; value: string; bad: boolean }[] } | null>(null);
 
+// 后端事件时间为 UTC，统一转成本地时间显示
+const fmtTime = (ts?: string | null) => {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+
 const seriesKey = (deviceKey: string, variableKey: string) => `${deviceKey}|${variableKey}`;
 
 // ==================== 变量下拉 ====================
@@ -993,7 +1002,7 @@ const handleExportCSV = async () => {
                   </span>
                   <span v-else class="text-[9px] text-slate-400 font-mono">Good</span>
                 </td>
-                <td class="p-3.5 pr-5 text-right font-mono text-slate-400 dark:text-slate-500">{{ rec.timestamp }}</td>
+                <td class="p-3.5 pr-5 text-right font-mono text-slate-400 dark:text-slate-500">{{ fmtTime(rec.timestamp) }}</td>
               </tr>
 
               <tr v-if="allTableRecords.length === 0">

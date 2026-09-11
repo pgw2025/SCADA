@@ -165,7 +165,7 @@ const formatEndpoint = (d: Device): string => {
         <!-- Footer: update time & action buttons -->
         <div class="flex items-center justify-between mt-3 pt-1 text-[11px]">
           <span class="text-[10px] text-slate-400 truncate max-w-[100px]">
-            {{ d.lastUpdated ? d.lastUpdated.split('T')[0] : '刚刚' }}
+            {{ d.lastUpdated ? new Date(d.lastUpdated).toLocaleDateString('zh-CN') : '刚刚' }}
           </span>
 
           <div class="flex items-center gap-2">

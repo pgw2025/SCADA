@@ -42,6 +42,15 @@ const setMobileVarViewMode = (mode: 'card' | 'compact') => {
   localStorage.setItem('scada_live_var_mobile_view', mode);
 };
 
+// 后端事件时间为 UTC，统一转成本地时间显示
+const fmtTime = (ts?: string | null) => {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+
 // 移动端变量详情抽屉状态
 const selectedVarDetail = ref<any | null>(null);
 const openVarDetail = (v: any) => {
@@ -184,7 +193,7 @@ const renderedVariables = computed(() => {
       // 优先展示变量级实时推送时间戳（后端采集时刻），无推送时回退设备更新时间
       updatedAt: selectedDevice.value?.variableTimestamps?.[dv.key]
         || selectedDevice.value?.lastUpdated
-        || new Date().toISOString().replace('T', ' ').slice(0, 19)
+        || new Date().toISOString()
     };
   });
 });
@@ -717,7 +726,7 @@ onUnmounted(() => {
                   </span>
                   <span class="truncate ml-auto text-[10px] text-slate-400 flex items-center gap-1">
                     <Clock class="w-3 h-3" />
-                    {{ v.updatedAt ? v.updatedAt.slice(-8) : '--' }}
+                    {{ fmtTime(v.updatedAt) }}
                   </span>
                 </div>
 
