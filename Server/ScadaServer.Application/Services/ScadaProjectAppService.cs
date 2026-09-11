@@ -600,9 +600,11 @@ namespace ScadaServer.Application.Services
             return $"{baseName}-{Guid.NewGuid():N}";
         }
 
-        /// <summary>归一化归属端：空/非法值一律回退 Desktop（与 ScadaPageAppService 行为一致）。</summary>
+        /// <summary>归一化归属端：Desktop / Mobile / Popup，空/非法值一律回退 Desktop（与 ScadaPageAppService 行为一致）。</summary>
         private static string NormalizePlatform(string? platform)
-            => string.Equals(platform, "Mobile", StringComparison.OrdinalIgnoreCase) ? "Mobile" : "Desktop";
+            => string.Equals(platform, "Mobile", StringComparison.OrdinalIgnoreCase) ? "Mobile"
+             : string.Equals(platform, "Popup", StringComparison.OrdinalIgnoreCase) ? "Popup"
+             : "Desktop";
 
         /// <summary>归一化背景 JSON：空白归 NULL；内容结构由前端负责，后端透传。</summary>
         private static string? NormalizeBackgroundJson(string? json)
