@@ -64,6 +64,7 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IProtocolRepository, ProtocolRepository>();
             services.AddScoped<IRepository<MqttVariableConfig, int>, MqttVariableConfigRepository>();
             services.AddScoped<IScadaPageRepository, ScadaPageRepository>();
+            services.AddScoped<IScadaPageFolderRepository, ScadaPageFolderRepository>();
             services.AddScoped<IScadaProjectRepository, ScadaProjectRepository>();
             services.AddScoped<IScadaProjectAuthorizationRepository, ScadaProjectAuthorizationRepository>();
             services.AddScoped<IScheduledTaskRepository, ScheduledTaskRepository>();

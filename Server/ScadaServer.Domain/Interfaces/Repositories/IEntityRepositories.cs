@@ -175,6 +175,11 @@ namespace ScadaServer.Domain.Interfaces.Repositories
     public interface IScadaPageRepository : IRepository<ScadaPage, int> { }
 
     /// <summary>
+    /// SCADA画面文件夹仓储接口
+    /// </summary>
+    public interface IScadaPageFolderRepository : IRepository<ScadaPageFolder, int> { }
+
+    /// <summary>
     /// SCADA项目仓储接口
     /// </summary>
     public interface IScadaProjectRepository : IRepository<ScadaProject, int> { }
