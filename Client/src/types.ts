@@ -136,7 +136,8 @@ export type HmiEventActionKind =
   | 'writeVar'   // 写变量
   | 'navigate'   // 页面跳转
   | 'runScript'  // 执行系统脚本
-  | 'setProp';   // 修改组件属性（运行态生效，不落库）
+  | 'setProp'    // 修改组件属性（运行态生效，不落库）
+  | 'openPopup'; // 打开弹窗面板（运行态弹出页内组件为模态窗口）
 
 export interface HmiEventAction {
   id: string;
@@ -162,6 +163,10 @@ export interface HmiEventAction {
       label?: string;
       props?: Record<string, any>;
     };
+    /** openPopup：弹窗内容源组件（当前页面内的组件 id，运行态以模态弹出） */
+    sourceComponentId?: string;
+    /** openPopup：开窗是否要求写权限（true=非 Operator/Admin 拦截开窗；默认 false 可看不可动） */
+    requireWritePermission?: boolean;
   };
 }
 

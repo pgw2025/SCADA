@@ -31,6 +31,7 @@ import {
   PencilLine,
   ChevronUp,
   ChevronDown,
+  AppWindow,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -132,7 +133,9 @@ const addAction = (type: HmiEventType, kind: HmiEventActionKind) => {
         ? { targetPageId: '' }
         : kind === 'runScript'
           ? { scriptId: undefined }
-          : { targetComponentId: '', patch: {} },
+          : kind === 'openPopup'
+            ? { sourceComponentId: '', requireWritePermission: false }
+            : { targetComponentId: '', patch: {} },
   };
   evt.actions = [...(evt.actions ?? []), action];
   commit(list);
@@ -197,6 +200,7 @@ const ACTION_KIND_META: Record<HmiEventActionKind, { label: string; icon: any }>
   navigate: { label: '页面跳转', icon: CornerUpRight },
   runScript: { label: '运行系统脚本', icon: FileCode2 },
   setProp: { label: '组件控制', icon: Settings2 },
+  openPopup: { label: '打开弹窗面板', icon: AppWindow },
 };
 
 // ===== writeVar：设备/变量候选（严格模式：先选设备再列变量） =====
@@ -241,6 +245,15 @@ const setPropTargetOptions = computed(() => [
     .filter((c) => c.id !== props.selectedComponent?.id)
     .map((c) => ({ id: c.id, name: `${c.name || c.type} (${c.id.slice(-6)})` })),
 ]);
+
+// ===== openPopup：弹窗源组件候选（当前页全部组件，排除触发组件自身） =====
+// 命名沿用 setPropTargetOptions 先例；不限定面板类型——弹窗内容可为任意组件（看板/趋势等）。
+// 组件是否适合弹窗由设计者判断（trend-chart 等依赖画布数据通道的组件首版不保证数据，见方案 §8-E3）。
+const popupSourceOptions = computed(() =>
+  (props.pageComponents ?? [])
+    .filter((c) => c.id !== props.selectedComponent?.id)
+    .map((c) => ({ id: c.id, name: `${c.name || c.type} (${c.id.slice(-6)})` }))
+);
 
 // setProp 补丁的可视化字段读写辅助
 const getPatchVisible = (action: HmiEventAction): '' | 'true' | 'false' => {
@@ -522,6 +535,29 @@ const setPatchVisible = (type: HmiEventType, actionId: string, val: string) => {
                 组件控制仅运行态生效（不落库），典型用法：点击/报警时显示或隐藏报警面板。
               </p>
             </template>
+
+            <!-- openPopup 参数 -->
+            <template v-else-if="action.kind === 'openPopup'">
+              <div>
+                <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗内容（页面内组件）</label>
+                <select :value="action.params.sourceComponentId ?? ''"
+                  @change="updateActionParams(activeEventType, action.id, { sourceComponentId: ($event.target as HTMLSelectElement).value })"
+                  class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
+                  <option value="">请选择组件…</option>
+                  <option v-for="t in popupSourceOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
+                </select>
+                <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
+                  运行态将该组件以模态窗口弹出；建议放置于隐藏图层，变量绑定/权限/实时值自动继承。
+                </p>
+              </div>
+              <label class="flex items-center gap-1.5 cursor-pointer"
+                title="勾选后仅 Operator/Admin 可打开弹窗（默认关闭=全员可看不可动）">
+                <input type="checkbox" :checked="action.params.requireWritePermission === true"
+                  @change="updateActionParams(activeEventType, action.id, { requireWritePermission: ($event.target as HTMLInputElement).checked })"
+                  class="accent-[#1890ff] cursor-pointer" />
+                <span class="text-[9px] text-gray-400 dark:text-slate-500">开窗需写权限（默认关闭=可看不可动）</span>
+              </label>
+            </template>
           </div>
 
           <!-- 添加动作 -->
@@ -542,7 +578,8 @@ const setPatchVisible = (type: HmiEventType, actionId: string, val: string) => {
       <section class="space-y-1.5">
         <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-relaxed">
           运行态优先执行事件配置；未配置事件的按钮/开关仍走原「操作模式」逻辑（新旧共存）。<br />
-          写变量与脚本动作需 Operator/Admin 权限；「按下/松开」适合点动（按下写1、松开写0）。
+          写变量与脚本动作需 Operator/Admin 权限；「按下/松开」适合点动（按下写1、松开写0）。<br />
+          弹窗面板默认全员可看不可动；勾选「开窗需写权限」后仅操作员/管理员可打开。
         </p>
       </section>
     </div>
