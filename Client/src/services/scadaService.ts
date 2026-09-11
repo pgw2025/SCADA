@@ -1,4 +1,4 @@
-import { HMIComponent, ScadaScreenProject, ScadaPage } from '../types';
+import { HMIComponent, ScadaScreenProject, ScadaPage, ScadaPageFolder } from '../types';
 import { scadaProjects, selectedProjectId, selectedPageId } from '../store/scadaStore';
 import { addLog } from '../store/index';
 import * as api from '../api/scadaApi';
@@ -65,7 +65,7 @@ export const ensureProjectSaved = async (proj: ScadaScreenProject): Promise<numb
 export const ensurePageSaved = async (page: ScadaPage, proj: ScadaScreenProject): Promise<number> => {
   if (page.serverId && page.serverId > 0) return page.serverId;
   const projectId = await ensureProjectSaved(proj);
-  const id = await withRetry(() => api.createPage(api.toPageDto(page, projectId)));
+  const id = await withRetry(() => api.createPage(api.toPageDto(page, projectId, buildFolderIdMap(proj))));
   page.serverId = id;
   return id;
 };
@@ -128,7 +128,7 @@ export const persistPageUpdate = (page: ScadaPage): Promise<void> => {
   _pageUpdateTimers.set(key, setTimeout(() => {
     _pageUpdateTimers.delete(key);
     const proj = findProjectOf(page);
-    withRetry(() => api.updatePage(api.toPageDto(page, proj?.serverId ?? 0)))
+    withRetry(() => api.updatePage(api.toPageDto(page, proj?.serverId ?? 0, proj ? buildFolderIdMap(proj) : undefined)))
       .catch(() => { /* toast by interceptor */ });
   }, 600));
   return Promise.resolve();
@@ -157,6 +157,117 @@ export const persistProjectUpdate = async (proj: ScadaScreenProject) => {
 
 export const persistProjectDelete = async (proj: ScadaScreenProject) => {
   if (proj.serverId) await withRetry(() => api.deleteProject(proj.serverId));
+};
+
+// ===== 画面文件夹持久化（P5：文件夹 uid/serverId 双轨 + 拖拽/排序编排）=====
+
+/** 当前工程 文件夹uid -> serverId 映射（用于 toDto 的 folderId 解析、reorder 前后端一致） */
+export const buildFolderIdMap = (proj: ScadaScreenProject): Map<string, number> => {
+  const map = new Map<string, number>();
+  proj.folders.forEach(f => { if (f.serverId && f.serverId > 0) map.set(f.id, f.serverId); });
+  return map;
+};
+
+/** 后端 FolderDto 所需线格式：folderId(uid) -> parentFolderId(int)，父夹未落库时解析为 null（根级） */
+const toFolderDto = (folder: ScadaPageFolder, proj: ScadaScreenProject) => {
+  let parentServerId: number | null = null;
+  if (folder.parentFolderId) {
+    parentServerId = buildFolderIdMap(proj).get(folder.parentFolderId) ?? null;
+    if (parentServerId == null) {
+      const m = /^srv-(\d+)$/.exec(folder.parentFolderId);
+      if (m) parentServerId = Number(m[1]);
+    }
+  }
+  return {
+    id: folder.serverId ?? 0,
+    projectId: proj.serverId ?? 0,
+    parentFolderId: parentServerId,
+    platform: folder.platform,
+    name: folder.name,
+    sortOrder: folder.sortOrder ?? 0,
+  };
+};
+
+// 确保文件夹已落库（先确保工程 + 父夹），返回 serverId
+export const ensureFolderSaved = async (folder: ScadaPageFolder, proj: ScadaScreenProject): Promise<number> => {
+  if (folder.serverId && folder.serverId > 0) return folder.serverId;
+  const projectId = await ensureProjectSaved(proj);
+  // 父文件夹（uid）先落库，保证其 serverId 可被解析为后端 int parentFolderId
+  let parentServerId: number | null = null;
+  if (folder.parentFolderId) {
+    const parent = proj.folders.find(f => f.id === folder.parentFolderId);
+    if (parent) parentServerId = await ensureFolderSaved(parent, proj);
+    else {
+      const m = /^srv-(\d+)$/.exec(folder.parentFolderId);
+      if (m) parentServerId = Number(m[1]);
+    }
+  }
+  const id = await withRetry(() => api.createPageFolder({
+    projectId,
+    parentFolderId: parentServerId,
+    platform: folder.platform,
+    name: folder.name,
+    sortOrder: folder.sortOrder ?? 0,
+  }));
+  folder.serverId = id;
+  return id;
+};
+
+// 防抖：文件夹重命名/移动（已落库才 PUT）
+const _folderUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export const persistFolderUpdate = (folder: ScadaPageFolder, proj: ScadaScreenProject): Promise<void> => {
+  if (!folder.serverId) return Promise.resolve();
+  const key = String(folder.serverId);
+  if (_folderUpdateTimers.has(key)) clearTimeout(_folderUpdateTimers.get(key)!);
+  _folderUpdateTimers.set(key, setTimeout(() => {
+    _folderUpdateTimers.delete(key);
+    withRetry(() => api.updatePageFolder(toFolderDto(folder, proj)))
+      .catch(() => { /* toast by interceptor */ });
+  }, 600));
+  return Promise.resolve();
+};
+
+/** 清除文件夹防抖定时器：删除前调用，避免残留 PUT 打到已删除文件夹。 */
+export const clearFolderUpdateTimer = (folderServerId: number | undefined) => {
+  if (folderServerId == null) return;
+  const key = String(folderServerId);
+  const t = _folderUpdateTimers.get(key);
+  if (t) { clearTimeout(t); _folderUpdateTimers.delete(key); }
+};
+
+// 删除文件夹：默认 reparent（内容上提）；cascade 可选（连同子夹与画面删除）
+export const persistFolderDelete = async (folder: ScadaPageFolder, mode: 'reparent' | 'cascade' = 'reparent') => {
+  clearFolderUpdateTimer(folder.serverId);
+  if (folder.serverId) await withRetry(() => api.deletePageFolder(folder.serverId, mode));
+};
+
+/**
+ * 同级统一排序落库：folderIds/pageIds 为前端 uid 数组（按目标顺序），
+ * 排序赋 1..N 后全量提交 reorder。父级用 uid，未落库时解析为 null（根级）。
+ */
+export const persistFolderReorder = async (
+  proj: ScadaScreenProject,
+  platform: 'Desktop' | 'Mobile',
+  parentFolderId: string | undefined,
+  folderIds: string[],
+  pageIds: string[]
+) => {
+  if (!proj.serverId) return;
+  const map = buildFolderIdMap(proj);
+  let parentServerId: number | null = parentFolderId ? (map.get(parentFolderId) ?? null) : null;
+  if (parentServerId == null && parentFolderId) {
+    const m = /^srv-(\d+)$/.exec(parentFolderId);
+    if (m) parentServerId = Number(m[1]);
+  }
+  await withRetry(() => api.reorderPageFolders({
+    platform,
+    parentFolderId: parentServerId,
+    folders: folderIds.map((fid, i) => ({ id: map.get(fid) ?? 0, sortOrder: i + 1 })),
+    pages: pageIds.map((pid, i) => {
+      const page = proj.pages.find(p => p.id === pid);
+      return { id: page?.serverId ?? Number((/^srv-(\d+)$/.exec(pid))?.[1] ?? 0), sortOrder: i + 1 };
+    }),
+  }));
 };
 
 /**

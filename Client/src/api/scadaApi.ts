@@ -1,6 +1,6 @@
 import { http } from './http';
 import { systemConfig } from '../store/configStore';
-import { HMIComponent, HMILayer, ScadaPage, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
+import { HMIComponent, HMILayer, ScadaPage, ScadaPageFolder, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
 
 /**
  * 组态设计后端 API 封装（对应阶段1的 ScadaProject / ScadaPage / HmiComponent 三组端点）。
@@ -33,6 +33,24 @@ export interface ProjectSummaryDto {
 export interface ProjectFullDto {
   project: ProjectSummaryDto;
   pages: PageWithComponentsDto[];
+  folders: FolderDto[];
+}
+/** 与后端 ScadaPageFolderDto 对齐（camelCase 线格式） */
+export interface FolderDto {
+  id: number;
+  projectId: number;
+  parentFolderId: number | null;
+  platform: string;
+  name: string;
+  sortOrder: number;
+  createdAt?: string;
+}
+/** 与后端 FolderReorderDto 对齐：同级「文件夹段」+「画面段」各自全量排序 */
+export interface FolderReorderDto {
+  platform?: string | null;
+  parentFolderId?: number | null;
+  folders: { id: number; sortOrder: number }[];
+  pages: { id: number; sortOrder: number }[];
 }
 export interface PageWithComponentsDto {
   id: number;
@@ -40,6 +58,8 @@ export interface PageWithComponentsDto {
   name: string;
   isHome: boolean;
   platform: string;
+  folderId: number | null;
+  sortOrder: number;
   width: number;
   height: number;
   backgroundJson: string | null;
@@ -53,6 +73,8 @@ export interface PageDto {
   name: string;
   isHome: boolean;
   platform: string;
+  folderId: number | null;
+  sortOrder: number;
   width: number;
   height: number;
   backgroundJson?: string | null;
@@ -133,6 +155,26 @@ export const deletePage = async (id: number): Promise<void> => {
   await http.delete(`${API()}/ScadaPage/${id}`);
 };
 
+// ---- 画面文件夹 ----
+export const listPageFolders = async (projectId: number): Promise<FolderDto[]> => {
+  const r = await http.get<FolderDto[]>(`${API()}/ScadaPageFolder`, { params: { projectId } });
+  return r.data || [];
+};
+export const createPageFolder = async (dto: Partial<FolderDto>): Promise<number> => {
+  const r = await http.post<FolderDto>(`${API()}/ScadaPageFolder`, dto);
+  return r.data.id ?? r.data;
+};
+export const updatePageFolder = async (dto: Partial<FolderDto>): Promise<void> => {
+  await http.put(`${API()}/ScadaPageFolder`, dto);
+};
+/** 删除文件夹：mode=reparent（默认内容上提）/ cascade（连同子夹与画面删除） */
+export const deletePageFolder = async (id: number, mode: 'reparent' | 'cascade' = 'reparent'): Promise<void> => {
+  await http.delete(`${API()}/ScadaPageFolder/${id}`, { params: { mode } });
+};
+export const reorderPageFolders = async (dto: FolderReorderDto): Promise<void> => {
+  await http.post(`${API()}/ScadaPageFolder/reorder`, dto);
+};
+
 // ---- 组件 ----
 export const createComponent = async (dto: Partial<ComponentDto>): Promise<number> => {
   const r = await http.post<ComponentDto>(`${API()}/HmiComponent`, dto);
@@ -185,12 +227,15 @@ export const toProjectDto = (p: ScadaScreenProject) => ({
   description: p.description ?? '',
 });
 
-export const toPageDto = (pg: ScadaPage, projectId: number) => ({
+export const toPageDto = (pg: ScadaPage, projectId: number, folderMap?: Map<string, number>) => ({
   id: pg.serverId ?? 0,
   projectId,
   name: pg.name,
   isHome: pg.isHome ?? false,
   platform: pg.platform ?? 'Desktop',
+  // 前端 uid(folderId) -> 后端 int(FolderId)；未指明文件夹/未落库文件夹传 null（根级）
+  folderId: pg.folderId ? (folderMap?.get(pg.folderId) ?? null) : null,
+  sortOrder: pg.sortOrder ?? 0,
   width: pg.width ?? PAGE_DEFAULT_W,
   height: pg.height ?? PAGE_DEFAULT_H,
   // 背景配置对象 <-> 后端 BackgroundJson 字符串；未配置传 null（后端归一化为 NULL）
@@ -245,12 +290,24 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   name: d.name,
   platform: d.platform === 'Mobile' || d.platform === 'Popup' ? (d.platform as 'Mobile' | 'Popup') : 'Desktop',
   isHome: d.isHome,
+  // folderId 由 fromProjectFullDto 依据 folderMap(serverId->uid) 回填；字段缺失时保持 undefined（根级）
+  sortOrder: d.sortOrder ?? 0,
   width: d.width,
   height: d.height,
   background: parseBackgroundJson(d.backgroundJson),
   adaptMode: d.adaptMode === 'FitScaleUp' || d.adaptMode === 'Stretch' ? (d.adaptMode as PageAdaptMode) : null,
   layers: parseLayersJson(d.layersJson),
   components: (d.components || []).map(fromComponentDto),
+});
+
+/** 后端 FolderDto -> 前端文件夹（serverId 回填；parentFolderId 由 fromProjectFullDto 映射为前端 parentFolderId uid） */
+export const fromFolderDto = (d: FolderDto): ScadaPageFolder => ({
+  id: `srv-${d.id}`,
+  serverId: d.id,
+  name: d.name,
+  platform: (d.platform === 'Mobile' ? 'Mobile' : 'Desktop'),
+  parentFolderId: d.parentFolderId ? `srv-${d.parentFolderId}` : undefined,
+  sortOrder: d.sortOrder ?? 0,
 });
 
 /** 后端 LayersJson 字符串 -> 前端图层数组；非法/缺失返回 undefined（走 LayersPanel 默认图层兜底） */
@@ -291,13 +348,32 @@ const parseBackgroundJson = (json: string | null | undefined): PageBackground | 
   }
 };
 
-export const fromProjectFullDto = (d: ProjectFullDto): ScadaScreenProject => ({
-  id: `srv-${d.project.id}`,
-  serverId: d.project.id,
-  name: d.project.name,
-  description: d.project.description,
-  pages: (d.pages || []).map(fromPageDto),
-});
+export const fromProjectFullDto = (d: ProjectFullDto): ScadaScreenProject => {
+  const folders = (d.folders || []).map(fromFolderDto);
+  // serverId(int) -> uid，用于把页面的后端 FolderId(int) 解析成前端 folderId(uid)
+  const folderMap = new Map<number, string>();
+  folders.forEach(f => { if (f.serverId !== undefined) folderMap.set(f.serverId, f.id); });
+
+  const pages = (d.pages || []).map(pg => {
+    const page = fromPageDto(pg);
+    // 后端 FolderId 非空且该文件夹在本次加载集中 → 映射为 uid；否则保持根级
+    if (pg.folderId != null) {
+      const uid = folderMap.get(pg.folderId);
+      if (uid) page.folderId = uid;
+      else page.folderId = undefined;
+    }
+    return page;
+  });
+
+  return {
+    id: `srv-${d.project.id}`,
+    serverId: d.project.id,
+    name: d.project.name,
+    description: d.project.description,
+    pages,
+    folders,
+  };
+};
 
 const safeParse = (json: string): Record<string, any> => {
   try {

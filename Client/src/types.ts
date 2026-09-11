@@ -984,9 +984,28 @@ export interface ScadaPage {
   background?: PageBackground | null;
   /** 运行端自适应屏幕模式（后端持久化；null/undefined=未配置回退兼容行为：等比缩小不放大） */
   adaptMode?: PageAdaptMode | null;
+  /** 所在画面文件夹的 uid（前端内联 id）。未放入文件夹=undefined（该端根级）。Popup 画面恒不设。 */
+  folderId?: string;
+  /** 同级「画面段」内排序（后端持久化；缺省 0，由后端搬迁/前端 reorder 写入连续值） */
+  sortOrder?: number;
   /** 页面图层管理列表（PS 式多图层系统，支持图层显隐、锁定、透明度与拖拽排序） */
   layers?: HMILayer[];
   components: HMIComponent[];
+}
+
+/** 组态画面文件夹：用于画面列表的文件夹分类管理（仅 Desktop/Mobile 端，Popup 不建文件夹）。 */
+export interface ScadaPageFolder {
+  /** 前端内联 id（folder-<uid>）；未落库即新建文件夹 */
+  id: string;
+  /** 后端自增主键（创建后回填）；未保存的新文件夹为 undefined */
+  serverId?: number;
+  name: string;
+  /** 文件夹归属端：Desktop / Mobile（仅这两个值，Popup 不允许建文件夹） */
+  platform: 'Desktop' | 'Mobile';
+  /** 父文件夹 uid（前端内联 id）。undefined=该端根级文件夹（支持多级嵌套） */
+  parentFolderId?: string;
+  /** 同级「文件夹段」内排序（缺省 0） */
+  sortOrder?: number;
 }
 
 // ===== 组态页面背景与自适应配置 =====
@@ -1019,6 +1038,8 @@ export interface ScadaScreenProject {
   name: string;
   description: string;
   pages: ScadaPage[];
+  /** 工程的画面文件夹列表（仅 Desktop/Mobile；页面经 folderId 归属到文件夹或其根级） */
+  folders: ScadaPageFolder[];
 }
 
 export interface SystemLog {

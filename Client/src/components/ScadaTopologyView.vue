@@ -1013,6 +1013,7 @@ const handleCreateProject = () => {
     serverId: undefined,
     name: newProjectName.value,
     description: newProjectDesc.value || '新建SCADA工程',
+    folders: [],
     pages: [
       {
         id: `page-${Date.now()}-primary`,
