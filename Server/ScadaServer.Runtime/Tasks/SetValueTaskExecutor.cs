@@ -27,7 +27,7 @@ namespace ScadaServer.Runtime.Tasks
         {
             var (deviceId, variableKey, value) = ParseParams(task.ParamsJson);
 
-            var (success, error) = await _runtimeDeviceManager.WriteVariableAsync(
+            var (success, error, _) = await _runtimeDeviceManager.WriteVariableAsync(
                 deviceId, variableKey, value, "计划任务");
             if (!success)
             {

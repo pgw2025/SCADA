@@ -140,7 +140,7 @@ namespace ScadaServer.Runtime.Scripting
             var writeTask = _runtime.WriteVariableAsync(device.Device.Id, variableKey, value, "系统脚本");
             try
             {
-                var (success, error) = writeTask
+                var (success, error, _) = writeTask
                     .WaitAsync(TimeSpan.FromMilliseconds(_writeBridgeTimeoutMs))
                     .GetAwaiter().GetResult();
                 errorMessage = error ?? string.Empty;
@@ -161,7 +161,7 @@ namespace ScadaServer.Runtime.Scripting
         }
 
         /// <summary>记录孤儿写入任务的迟到结果（超时放弃等待后，底层写入可能成功或失败落地）。</summary>
-        private void ObserveOrphanWrite(Task<(bool Success, string? ErrorMessage)> task, string deviceKey, string variableKey)
+        private void ObserveOrphanWrite(Task<(bool Success, string? ErrorMessage, VariableWriteFailureKind FailureKind)> task, string deviceKey, string variableKey)
         {
             try
             {
@@ -172,7 +172,7 @@ namespace ScadaServer.Runtime.Scripting
                 }
                 else if (task.IsCompleted)
                 {
-                    var (success, error) = task.Result;
+                    var (success, error, _) = task.Result;
                     _logger?.LogWarning(
                         "脚本写桥超时后的底层写入迟到落地：{DeviceKey}.{VariableKey} → {Result}{Error}",
                         deviceKey, variableKey, success ? "成功" : "失败",

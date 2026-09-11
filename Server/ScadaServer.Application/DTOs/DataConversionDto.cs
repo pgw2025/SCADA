@@ -28,5 +28,19 @@ namespace ScadaServer.Application.DTOs
 
         /// <summary>是否启用该转换规则</summary>
         public bool Active { get; set; }
+
+        /// <summary>
+        /// 越限值策略（Clamp=夹取后写入 / Reject=越限拒绝），默认 Clamp。
+        /// </summary>
+        public string OutOfRangePolicy { get; set; } = "Clamp";
+
+        /// <summary>
+        /// 绑定加载状态（仅读，返回时由引擎快照填充）：Active=已生效 / Skipped=已跳过 / Pending=等待设备就绪。
+        /// 未启用规则保持 null。
+        /// </summary>
+        public string? BindingStatus { get; set; }
+
+        /// <summary>绑定未生效（Skipped/Pending）时的原因文案；生效时为 null。</summary>
+        public string? SkipReason { get; set; }
     }
 }

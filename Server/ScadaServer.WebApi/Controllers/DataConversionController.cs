@@ -23,7 +23,31 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll() => Ok(await _appService.GetListAsync());
+        public async Task<IActionResult> GetAll()
+        {
+            var list = await _appService.GetListAsync();
+            var skipReasons = _bindingEngine.GetSkipReasons();
+            var pendingReasons = _bindingEngine.GetPendingReasons();
+            foreach (var dto in list)
+            {
+                if (!dto.Active) continue;
+                if (skipReasons.TryGetValue(dto.Id, out var skipReason))
+                {
+                    dto.BindingStatus = "Skipped";
+                    dto.SkipReason = skipReason;
+                }
+                else if (pendingReasons.TryGetValue(dto.Id, out var pendingReason))
+                {
+                    dto.BindingStatus = "Pending";
+                    dto.SkipReason = pendingReason;
+                }
+                else
+                {
+                    dto.BindingStatus = "Active";
+                }
+            }
+            return Ok(list);
+        }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id) => Ok(await _appService.GetByIdAsync(id));

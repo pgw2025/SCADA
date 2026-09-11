@@ -272,7 +272,12 @@ namespace ScadaServer.Runtime
                 return;
             }
 
-            await BuildAndRegisterDeviceAsync(device);
+            var registered = await BuildAndRegisterDeviceAsync(device);
+            if (registered)
+            {
+                // 设备就绪：去抖重载绑定索引，补加载此前因设备未运行被跳过（pending）的规则（根因 B1）。
+                _bindingEngine.ScheduleReload();
+            }
         }
 
         /// <inheritdoc/>
@@ -839,39 +844,63 @@ namespace ScadaServer.Runtime
         }
 
         /// <inheritdoc/>
-        public async Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value, string? writeSource = null)
+        public async Task<(bool Success, string? ErrorMessage, VariableWriteFailureKind FailureKind)> WriteVariableAsync(
+            int deviceId, string variableKey, object value, string? writeSource = null, string outOfRangePolicy = "Reject")
         {
             // 审计埋点：非 HTTP 来源（系统脚本/变量绑定）在运行时层记录操作日志；
             // HTTP 用户写入由 WebApi 层 [AuditLog] 过滤器记录（含操作人/IP），writeSource 传 null 跳过避免重复。
-            async Task<(bool Success, string? ErrorMessage)> FailAsync(string message)
+            async Task<(bool Success, string? ErrorMessage, VariableWriteFailureKind FailureKind)> FailAsync(string message, VariableWriteFailureKind kind)
             {
                 await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, false, message);
-                return (false, message);
+                return (false, message, kind);
             }
 
             if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
-                return await FailAsync("设备不在运行中");
+                return await FailAsync("设备不在运行中", VariableWriteFailureKind.DeviceNotRunning);
 
             var vr = runtime.Variables.Values.FirstOrDefault(v => v.Key == variableKey);
             if (vr == null)
-                return await FailAsync($"设备下不存在变量 [{variableKey}]");
+                return await FailAsync($"设备下不存在变量 [{variableKey}]", VariableWriteFailureKind.VariableNotExist);
             if (!vr.IsEnabled)
-                return await FailAsync($"变量 [{variableKey}] 已禁用");
+                return await FailAsync($"变量 [{variableKey}] 已禁用", VariableWriteFailureKind.VariableDisabled);
             if (vr.IsReadOnly)
-                return await FailAsync($"变量 [{variableKey}] 为只读，禁止写入");
+                return await FailAsync($"变量 [{variableKey}] 为只读，禁止写入", VariableWriteFailureKind.VariableReadOnly);
             if (runtime.Driver == null)
-                return await FailAsync("设备驱动未就绪");
+                return await FailAsync("设备驱动未就绪", VariableWriteFailureKind.DriverNotReady);
             if (runtime.ConnectionState != DeviceConnectionState.Connected)
-                return await FailAsync("设备未连接，无法写入");
+                return await FailAsync("设备未连接，无法写入", VariableWriteFailureKind.DeviceNotConnected);
 
-            // 服务端强校验数值上下限：前端写值弹窗的 min/max 仅为 HTML 输入约束（可被绕过），
-            // 越限值禁止下发物理设备。布尔量（0/1 语义）不参与数值限幅校验。
+            // 服务端数值上下限校验（根因 A4）：布尔量（0/1 语义）不参与数值限幅校验。
+            // Clamp=夹取到 [Min,Max] 后写入（消除"值一超限就不转发"）；Reject=越限拒绝（用户/脚本写入原语义）。
+            var clampPolicy = string.Equals(outOfRangePolicy, "Clamp", StringComparison.OrdinalIgnoreCase);
             if (value is not bool && TryToNumber(value) is double numericValue)
             {
                 if (vr.Min.HasValue && numericValue < vr.Min.Value)
-                    return await FailAsync($"写入值 {numericValue} 低于变量 [{variableKey}] 下限 {vr.Min}");
+                {
+                    if (clampPolicy)
+                    {
+                        _logger.LogWarning("写入值 {Value} 低于变量 [{VarKey}] 下限 {Min}，已夹取为下限。",
+                            numericValue, variableKey, vr.Min.Value);
+                        value = vr.Min.Value;
+                    }
+                    else
+                    {
+                        return await FailAsync($"写入值 {numericValue} 低于变量 [{variableKey}] 下限 {vr.Min}", VariableWriteFailureKind.OutOfRange);
+                    }
+                }
                 if (vr.Max.HasValue && numericValue > vr.Max.Value)
-                    return await FailAsync($"写入值 {numericValue} 超过变量 [{variableKey}] 上限 {vr.Max}");
+                {
+                    if (clampPolicy)
+                    {
+                        _logger.LogWarning("写入值 {Value} 超过变量 [{VarKey}] 上限 {Max}，已夹取为上限。",
+                            numericValue, variableKey, vr.Max.Value);
+                        value = vr.Max.Value;
+                    }
+                    else
+                    {
+                        return await FailAsync($"写入值 {numericValue} 超过变量 [{variableKey}] 上限 {vr.Max}", VariableWriteFailureKind.OutOfRange);
+                    }
+                }
             }
 
             // 写入方向：工程值 → 驱动原始值。当前版本恒等透传（未启用反算公式，行为与改造前一致）；
@@ -892,12 +921,12 @@ namespace ScadaServer.Runtime
                 _logger.LogWarning(
                     "设备 {DeviceId} 变量 [{VarKey}] 写入超时（>{TimeoutMs}ms），已放弃等待：底层写入可能仍在进行（孤儿任务），最终结果以写入审计日志为准。",
                     deviceId, variableKey, _deviceWriteTimeoutMs);
-                return await FailAsync($"写入超时（>{_deviceWriteTimeoutMs}ms），底层写入仍在进行，结果以审计日志为准");
+                return await FailAsync($"写入超时（>{_deviceWriteTimeoutMs}ms），底层写入仍在进行，结果以审计日志为准", VariableWriteFailureKind.Timeout);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning("设备 {DeviceId} 变量 [{VarKey}] 写入失败: {Msg}", deviceId, variableKey, ex.Message);
-                return await FailAsync($"写入失败: {ex.Message}");
+                return await FailAsync($"写入失败: {ex.Message}", VariableWriteFailureKind.DriverError);
             }
 
             // 写成功后短暂持锁仅同步运行时内存态（纯内存赋值，微秒级），
@@ -957,7 +986,7 @@ namespace ScadaServer.Runtime
             }
 
             await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, true, null);
-            return (true, null);
+            return (true, null, VariableWriteFailureKind.None);
         }
 
         /// <summary>

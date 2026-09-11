@@ -230,6 +230,12 @@ namespace ScadaServer.Infrastructure.Persistence
                 .HasConstraintName("FK_DeviceDataModels_DataModels_DataModelId");
             modelBuilder.Entity<DatabaseConfig>().ToTable("DatabaseConfigs");
             modelBuilder.Entity<DataConversion>().ToTable("DataConversions");
+            // 越限策略（Clamp/Reject）：限长映射 varchar 并落库默认 Clamp，
+            // 使存量规则回填为 Clamp（longtext 无法建字面默认，MySQL 存量为空串会被引擎按非 Clamp 处理）。
+            modelBuilder.Entity<DataConversion>()
+                .Property(c => c.OutOfRangePolicy)
+                .HasMaxLength(16)
+                .HasDefaultValue("Clamp");
             // 数据模型（阶段 4 补全 Code/Version）：Code/Version 显式限长映射为 varchar
             // （Pomelo 对无长度 string 默认映射 longtext，无法建索引）；Code 唯一索引见 AddDataModelCodeUniqueIndex 迁移。
             modelBuilder.Entity<DataModel>().ToTable("DataModels");

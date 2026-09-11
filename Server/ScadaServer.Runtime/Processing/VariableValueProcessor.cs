@@ -90,13 +90,10 @@ namespace ScadaServer.Runtime.Processing
                 vr.UpdateTime = now;
                 vr.Quality = VariableQuality.Good;
 
-                // 回声抑制：若本次回读值等于绑定引擎最近一次写入的期望值且落在窗口内，
-                // 视为绑定写入的回显，不发布变化事件。
-                // 窗口公式兼容订阅模式：PollingIntervalMs 在订阅语义下为服务端采样/发布间隔。
-                var echoWindowMs = Math.Max(vr.PollingIntervalMs, 1000) * 2;
-                var isEcho = vr.LastBindingWriteValue != null
-                             && (now - vr.LastBindingWriteTime).TotalMilliseconds <= echoWindowMs
-                             && ValueEquals(newValue, vr.LastBindingWriteValue);
+                // 回声抑制（根因 D1）：绑定写入成功后，在静默窗口内目标变量的任何回读值一律不发布变化事件
+                // （仅窗口判定，不再比对期望值），避免"先回读旧值 Y → 污染下游 / 后回读新值 X → 被误抑制"。
+                // 窗口过后恢复传播；内存值照常更新（vr.Value 反映真实回读，仅抑制事件发布）。
+                var isEcho = (now - vr.LastBindingWriteTime).TotalMilliseconds <= EchoWindowMs(vr);
 
                 vr.IsChanged = !Equals(vr.Value, vr.PreviousValue) && !isEcho;
             }
@@ -160,11 +157,8 @@ namespace ScadaServer.Runtime.Processing
                 vr.UpdateTime = now;
                 vr.Quality = VariableQuality.Good;
 
-                // 回声抑制窗口公式与轮询一致（订阅语义下 PollingIntervalMs = 采样间隔）。
-                var echoWindowMs = Math.Max(vr.PollingIntervalMs, 1000) * 2;
-                var isEcho = vr.LastBindingWriteValue != null
-                             && (now - vr.LastBindingWriteTime).TotalMilliseconds <= echoWindowMs
-                             && ValueEquals(value, vr.LastBindingWriteValue);
+                // 回声抑制（根因 D1）：窗口判定，语义与轮询路径一致。
+                var isEcho = (now - vr.LastBindingWriteTime).TotalMilliseconds <= EchoWindowMs(vr);
 
                 vr.IsChanged = !Equals(vr.Value, vr.PreviousValue) && !isEcho;
             }
@@ -671,22 +665,11 @@ namespace ScadaServer.Runtime.Processing
         }
 
         /// <summary>
-        /// 值相等比较，优先引用/类型相等，其次按数值相等（覆盖 int/long/double 同值但类型不同的场景），用于回声抑制判定。
+        /// 回声静默窗口（根因 D1）：绑定写入后目标变量的回读在此窗口内不发布变化事件。
+        /// 窗口 = min(max(PollingIntervalMs, 1000) * 2, 5000)，避免轮询间隔过大时静默过久。
         /// </summary>
-        private static bool ValueEquals(object? a, object? b)
-        {
-            if (ReferenceEquals(a, b)) return true;
-            if (a == null || b == null) return false;
-            if (a.Equals(b)) return true;
-            try
-            {
-                return Convert.ToDouble(a, CultureInfo.InvariantCulture) == Convert.ToDouble(b, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        private static double EchoWindowMs(VariableRuntime vr) =>
+            Math.Min(Math.Max(vr.PollingIntervalMs, 1000) * 2, 5000);
 
         /// <summary>单条通知载荷（对齐 <see cref="IScadaNotificationService.NotifyVariableUpdateAsync"/> 签名）。</summary>
         private readonly record struct VariableNotification(

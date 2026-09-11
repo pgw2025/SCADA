@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using ScadaServer.Domain.Enums;
 
 namespace ScadaServer.Application.Interfaces
 {
@@ -44,7 +45,9 @@ namespace ScadaServer.Application.Interfaces
         /// <param name="variableKey">变量业务键（DataPoint.Key）</param>
         /// <param name="value">待写入的原始值</param>
         /// <param name="writeSource">写入来源（如「系统脚本」「变量绑定」）；非空时在运行时层记录写入审计日志，null（默认）表示 HTTP 用户写入（由 WebApi 审计过滤器记录）</param>
-        /// <returns>(Success, ErrorMessage)；Success=true 时 ErrorMessage 为 null</returns>
-        Task<(bool Success, string? ErrorMessage)> WriteVariableAsync(int deviceId, string variableKey, object value, string? writeSource = null);
+        /// <param name="outOfRangePolicy">越限策略（根因 A4）：Clamp=夹取到 [Min,Max] 后写入 / Reject=越限拒绝。默认 Reject（保持用户/脚本写入原语义），变量绑定经规则级策略传入。</param>
+        /// <returns>(Success, ErrorMessage, FailureKind)；Success=true 时 ErrorMessage 为 null、FailureKind 为 None</returns>
+        Task<(bool Success, string? ErrorMessage, VariableWriteFailureKind FailureKind)> WriteVariableAsync(
+            int deviceId, string variableKey, object value, string? writeSource = null, string outOfRangePolicy = "Reject");
     }
 }

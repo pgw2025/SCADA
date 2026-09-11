@@ -920,6 +920,10 @@ export interface DataConversion {
   targetDeviceId: number;
   targetVariableKey: string;
   active: boolean;
+  /** 绑定加载状态（仅启用规则由后端填充）：Active=已生效 / Skipped=已跳过 / Pending=等待设备就绪 */
+  bindingStatus?: 'Active' | 'Skipped' | 'Pending';
+  /** 未生效原因（bindingStatus 为 Skipped/Pending 时非空） */
+  skipReason?: string;
 }
 
 export interface SystemUser {

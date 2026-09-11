@@ -44,5 +44,11 @@ namespace ScadaServer.Domain.Entities
         /// 是否启用
         /// </summary>
         public bool Active { get; set; }
+
+        /// <summary>
+        /// 越限值策略（根因 A4）：Clamp=夹取到 [Min,Max] 后写入 / Reject=越限拒绝。
+        /// 默认 Clamp（消除"值一超限就不转发"的偶发丢失）。
+        /// </summary>
+        public string OutOfRangePolicy { get; set; } = "Clamp";
     }
 }

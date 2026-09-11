@@ -991,7 +991,7 @@ namespace ScadaServer.Application.Services
         /// </summary>
         public async Task WriteVariableAsync(int deviceId, string variableKey, object value)
         {
-            var (success, errorMessage) = await _runtimeDeviceManager.WriteVariableAsync(deviceId, variableKey, value);
+            var (success, errorMessage, _) = await _runtimeDeviceManager.WriteVariableAsync(deviceId, variableKey, value);
             if (!success)
             {
                 throw new BusinessException(errorMessage ?? "变量写入失败");

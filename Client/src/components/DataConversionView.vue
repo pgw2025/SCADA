@@ -89,14 +89,23 @@ const filteredConversions = computed(() => {
 const sourceVariables = computed(() => {
   const dev = devices.value.find(d => d.id === sourceDevId.value);
   if (!dev) return [];
-  return Object.keys(dev.variables);
+  return Object.keys(dev.variables).filter(k => {
+    const meta = dev.variableMeta?.[k];
+    return meta == null || meta.isEnabled !== false;
+  });
 });
 
 // Watch target device selection to update variables dropdown list
+// 目标变量过滤掉「只读」与「禁用」变量（与后端保存期校验一致，避免可选但保存必被拒的挫败）。
 const targetVariables = computed(() => {
   const dev = devices.value.find(d => d.id === targetDevId.value);
   if (!dev) return [];
-  return Object.keys(dev.variables);
+  return Object.keys(dev.variables).filter(k => {
+    const meta = dev.variableMeta?.[k];
+    if (meta == null) return true;
+    if (meta.isEnabled === false) return false;
+    return (meta.effectiveAccessMode ?? meta.accessMode) !== 'Read';
+  });
 });
 
 const openNewLinkageModal = () => {
@@ -310,6 +319,20 @@ const toggleLinkStatus = async (c: DataConversion) => {
             <div class="space-y-1">
               <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100 leading-snug">{{ c.name }}</h4>
               <span class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">转换通道 ID: {{ c.id }}</span>
+              <span
+                v-if="c.active && c.bindingStatus === 'Skipped'"
+                class="ml-1 inline-flex items-center gap-1 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.5 rounded"
+              >
+                <ShieldAlert class="w-2.5 h-2.5" />
+                未生效：{{ c.skipReason || '已跳过' }}
+              </span>
+              <span
+                v-else-if="c.active && c.bindingStatus === 'Pending'"
+                class="ml-1 inline-flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 px-1.5 py-0.5 rounded"
+              >
+                <ShieldAlert class="w-2.5 h-2.5" />
+                等待设备就绪
+              </span>
             </div>
 
             <!-- Active / Inactive switch -->
