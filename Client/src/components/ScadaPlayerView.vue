@@ -25,6 +25,7 @@ import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
 import SetValueDialog from './SetValueDialog.vue';
 import PopupHost from './PopupHost.vue';
+import PopupPageHost from './PopupPageHost.vue';
 import { collectComponentDeviceRefs } from '../utils/componentDeviceRefs';
 
 const route = useRoute();
@@ -144,6 +145,10 @@ onUnmounted(() => {
   collectComponentDeviceRefs(activePopupComponent.value).forEach(id => {
     if (!boundDeviceIds.value.has(id)) unsubscribeDeviceTelemetry(id);
   });
+  // 弹窗画面补订的设备同理兜底退订（两类弹窗互斥，集合取并集去重）
+  collectPageDeviceRefs(popupPageToShow.value).forEach(id => {
+    if (!boundDeviceIds.value.has(id)) unsubscribeDeviceTelemetry(id);
+  });
 });
 
 // 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
@@ -206,7 +211,11 @@ const activePopupComponent = computed(() => {
 });
 
 const openPopup = (sourceComponentId: string) => {
-  const target = (currentPage.value?.components ?? []).find((c) => c.id === sourceComponentId);
+  // P2 互斥：打开组件弹窗前关闭画面弹窗（两类弹窗不同时存在）
+  if (popupPageToShow.value) closePagePopup();
+  // P1 归属双查：先主画面后弹窗画面，保证弹窗画面内的「弹组件」配置也能解析到目标
+  const target = (currentPage.value?.components ?? []).find((c) => c.id === sourceComponentId)
+    ?? (popupPageToShow.value?.components ?? []).find((c) => c.id === sourceComponentId);
   // E2 悬空引用：面板已被删除 → 提示且不开窗（配置入口只列现存组件，此为运行期兜底）
   if (!target) {
     showToast('弹窗目标组件不存在（可能已被删除）', 'warning');
@@ -220,8 +229,35 @@ const openPopup = (sourceComponentId: string) => {
 
 const closePopup = () => { activePopupId.value = null; };
 
-// E1 切页自动关闭：nav-menu 跳转后 sourceComponentId 跨页失效；退订由下方订阅 watch 自动完成
-watch(() => currentPage.value?.id, () => { closePopup(); });
+// ===== 弹窗画面（openPagePopup 动作）：单层栈 + 幂等 + 与组件弹窗互斥（方案 P2 / D9） =====
+const activePopupPage = ref<string | null>(null);
+const popupPageToShow = computed(() => {
+  if (!activePopupPage.value) return null;
+  return (currentProject.value?.pages ?? []).find(
+    (p) => p.id === activePopupPage.value && (p.platform ?? 'Desktop') === 'Popup'
+  ) ?? null;
+});
+
+const openPagePopup = (pageId: string) => {
+  if (popupPageToShow.value) return; // 幂等：已开则保持（首版单层弹窗，禁嵌套）
+  closePopup(); // P2 互斥：关组件弹窗
+  const target = (currentProject.value?.pages ?? []).find(
+    (p) => p.id === pageId && (p.platform ?? 'Desktop') === 'Popup'
+  );
+  // 悬空引用：弹窗画面已被删除 → 提示且不开窗（运行期兜底）
+  if (!target) {
+    showToast('弹窗画面不存在（可能已被删除）', 'warning');
+    addLog('组态运行', `弹窗画面打开失败：页面 [${pageId}] 不存在或非弹窗画面`, 'warning');
+    return;
+  }
+  activePopupPage.value = pageId;
+  addLog('组态运行', `打开弹窗画面: [${target.name}]`, 'normal');
+};
+
+const closePagePopup = () => { activePopupPage.value = null; };
+
+// E1 切页自动关闭：nav-menu 跳转后 source 引用跨页失效；两类弹窗一并关闭；退订由下方订阅 watch 自动完成
+watch(() => currentPage.value?.id, () => { closePopup(); closePagePopup(); });
 
 // 弹窗设备订阅差集：打开时补订「收集集合内尚未被主订阅覆盖」的设备，关闭时退订「不再被引用」的设备。
 // 主订阅（boundDeviceIds）已含 bindDeviceId（v-show 隐藏组件不参与过滤），此处仅做增量补订/退订，
@@ -238,6 +274,25 @@ watch(activePopupComponent, (comp, oldComp) => {
   });
 });
 
+/** 整页组件设备引用聚合（供弹窗画面订阅差集与兜底退订复用；函数声明提升，可在 onUnmounted 前引用） */
+function collectPageDeviceRefs(page: { components?: any[] } | null | undefined): number[] {
+  const ids = new Set<number>();
+  (page?.components ?? []).forEach((c) => collectComponentDeviceRefs(c).forEach((id) => ids.add(id)));
+  return [...ids];
+}
+
+// 弹窗画面设备订阅差集：与组件弹窗采用同一差集算法（两类弹窗互斥，分别对主订阅求差即可防误退订共用设备）。
+// 打开时补订「主订阅未覆盖」的设备，关闭/切页时退订「不再被引用」者，防订阅残留与 stale 值。
+watch(popupPageToShow, (page, oldPage) => {
+  const pageIds = boundDeviceIds.value; // 主订阅快照（只读，不修改）
+  const oldIds = collectPageDeviceRefs(oldPage);
+  const newIds = collectPageDeviceRefs(page);
+  newIds.forEach((id) => { if (!pageIds.has(id)) subscribeDeviceTelemetry(id); });
+  oldIds.forEach((id) => {
+    if (!pageIds.has(id) && !newIds.has(id)) unsubscribeDeviceTelemetry(id);
+  });
+});
+
 // 阶段2-2：质量分级显示——按组件绑定（deviceId+variableKey）回读变量质量，
 // 非 Good 质量（Bad/Uncertain/CommunicationError/…）在画布组件上叠加角标，提示数据不可信。
 const componentQualities = computed(() => {
@@ -245,6 +300,42 @@ const componentQualities = computed(() => {
   const devIndex = new Map<number | string, any>();
   devices.value.forEach((d) => devIndex.set(d.id, d));
   (currentPage.value?.components ?? []).forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const q = devIndex.get(c.bindDeviceId)?.variableMeta?.[c.bindVariableKey]?.quality;
+      if (q && q !== 'Good') result[c.id] = String(q);
+    }
+  });
+  return result;
+});
+
+// P1 弹窗画面实时值：与主 componentValues 严格复合键同源逻辑（deviceId+variableKey，严禁裸 key，D10）。
+// 遍历对象改为弹窗画面组件；未绑定组件显示 0。
+const popupPageComponentValues = computed(() => {
+  const composite: Record<string, number | boolean> = {};
+  devices.value.forEach((d) => {
+    if (d.status === 'online' || d.status === 1) {
+      Object.keys(d.variables).forEach((k) => {
+        composite[`${d.id}:${k}`] = d.variables[k];
+      });
+    }
+  });
+  const result: Record<string, number | boolean> = {};
+  (popupPageToShow.value?.components ?? []).forEach((c) => {
+    if (c.bindDeviceId != null && c.bindVariableKey) {
+      const v = composite[`${c.bindDeviceId}:${c.bindVariableKey}`];
+      if (v !== undefined) { result[c.id] = v; return; }
+    }
+    result[c.id] = 0;
+  });
+  return result;
+});
+
+// P1 弹窗画面质量标记：与主 componentQualities 同逻辑，作用于弹窗页面组件（E2 必做）
+const popupPageComponentQualities = computed(() => {
+  const result: Record<string, string> = {};
+  const devIndex = new Map<number | string, any>();
+  devices.value.forEach((d) => devIndex.set(d.id, d));
+  (popupPageToShow.value?.components ?? []).forEach((c) => {
     if (c.bindDeviceId != null && c.bindVariableKey) {
       const q = devIndex.get(c.bindDeviceId)?.variableMeta?.[c.bindVariableKey]?.quality;
       if (q && q !== 'Good') result[c.id] = String(q);
@@ -320,6 +411,9 @@ let lastSetValueAt = 0;
 const SET_VALUE_COOLDOWN_MS = 1200;
 
 const handleRequestSetValue = (component: HMIComponent) => {
+  // P2 互斥：打开设值弹窗前关闭两类弹窗（避免三层模态叠加；设值完成用户重点按钮重开弹窗）
+  closePopup();
+  closePagePopup();
   if (component.bindDeviceId == null || !(component.bindVariableKey || component.bindField)) {
     showToast('该组件未绑定设备/变量，无法设定', 'warning');
     return;
@@ -373,12 +467,32 @@ const eventCtx = computed<HmiEventDispatchContext>(() => ({
     if (patch.props) target.props = { ...target.props, ...patch.props };
   },
   openPopup, // 弹窗动作回调（hmiEventService runAction 分支消费）
+  openPagePopup, // 弹弹窗画面动作回调
   onBlocked: (msg) => showToast(msg, 'warning'),
 }));
 
+// P1 弹窗画面作用域上下文：共享主实现（writeVariable/navigateToPage/runScript/canControlWrite 等复用），
+// 仅覆盖三项页面作用域差异成员——setProp 补丁 / 弹组件 openPopup / 弹画面 openPagePopup 均解析到弹窗画面组件。
+const popupEventCtx = computed<HmiEventDispatchContext>(() => ({
+  ...eventCtx.value,
+  applyRuntimePatch: (componentId, patch) => {
+    const comps = popupPageToShow.value?.components ?? [];
+    const target = comps.find((c) => c.id === componentId);
+    if (!target) return;
+    if (patch.visible !== undefined) target.visible = patch.visible;
+    if (patch.label !== undefined) target.label = patch.label;
+    if (patch.props) target.props = { ...target.props, ...patch.props };
+  },
+  openPopup, // 组件模式弹窗：sourceComponentId 在弹窗页 components 内解析（openPopup 内部已双查）
+  openPagePopup, // 已开时幂等（禁嵌套 D9）
+}));
+
 // 事件系统：交互类事件（click/press/release）由 CanvasPanel 上抛分发
+// P1 归属路由：以组件 id 判断归属主画面或弹窗画面，选用对应作用域上下文（id 全局生成无跨页冲突）。
 const handleComponentEvent = (component: HMIComponent, eventType: string) => {
-  dispatchComponentEvent(component, eventType as HmiEventType, eventCtx.value);
+  const inMain = (currentPage.value?.components ?? []).some((c) => c.id === component.id);
+  const ctx = inMain ? eventCtx.value : popupEventCtx.value;
+  dispatchComponentEvent(component, eventType as HmiEventType, ctx);
 };
 
 // 事件系统：数据类事件（valueChange/alarm）监听（值变化条件过滤、报警触发/恢复去重由 composable 处理）
@@ -386,6 +500,13 @@ useHmiDataEvents({
   components: () => currentPage.value?.components ?? [],
   componentValues,
   ctx: () => eventCtx.value,
+});
+
+// P1 弹窗画面数据事件第二实例：监听弹窗页面组件，未开窗时 components 为空数组、watch 零开销
+useHmiDataEvents({
+  components: () => popupPageToShow.value?.components ?? [],
+  componentValues: popupPageComponentValues,
+  ctx: () => popupEventCtx.value,
 });
 
 // 报警事件校准：进入播放器时拉取一次当前未恢复报警（SignalR 实时增量由全局连接推送）
@@ -426,12 +547,22 @@ onMounted(() => {
         @request-set-value="handleRequestSetValue" />
     </div>
 
-    <!-- var-display 设值弹窗：确认后走 handleTriggerToggleValue('setValue') 写管道 -->
-    <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
-      @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
+    <!-- 弹窗画面宿主 (openPagePopup)：P2 层级排在组件弹窗之上、设值弹窗之下 -->
+    <PopupPageHost v-if="popupPageToShow" :page="popupPageToShow"
+      :can-control-write="canControlWrite"
+      :component-values="popupPageComponentValues"
+      :component-qualities="popupPageComponentQualities"
+      @trigger-toggle-value="handleTriggerToggleValue" @navigate-to-page="handleNavigate"
+      @trigger-run-script="handleTriggerRunScript" @component-event="handleComponentEvent"
+      @request-set-value="handleRequestSetValue" @close="closePagePopup" />
 
     <!-- openPopup 弹窗面板：CanvasPanel 缩放容器外同级；复用 HMIWidget 渲染源组件快照（方案 §5） -->
     <PopupHost v-if="activePopupComponent" :component="activePopupComponent"
-      :can-control-write="canControlWrite" @close="closePopup" />
+      :can-control-write="canControlWrite" @request-set-value="handleRequestSetValue"
+      @close="closePopup" />
+
+    <!-- var-display 设值弹窗：确认后走 handleTriggerToggleValue('setValue') 写管道；P2 恒最上层 -->
+    <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
+      @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
   </div>
 </template>
