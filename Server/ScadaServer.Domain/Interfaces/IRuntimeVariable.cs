@@ -17,6 +17,9 @@ namespace ScadaServer.Domain.Interfaces
     /// </summary>
     public interface IRuntimeVariable
     {
+        /// <summary>设备 ID（Device.Id），唯一标识该变量所属设备。跨设备隔离用。</summary>
+        int DeviceId { get; }
+
         /// <summary>变量业务键（来自 DataPoint.Key）。</summary>
         string Key { get; }
 

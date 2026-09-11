@@ -625,6 +625,7 @@ namespace ScadaServer.Runtime
                     // 构建 RuntimeVariable：变量定义来自 DataPoint，设备配置来自 DataPointMapping。
                     runtime.Variables[dv.Id] = new VariableRuntime
                     {
+                        DeviceId = device.Id,
                         Definition = dv.DataPoint,
                         Instance = dv,
                         NextPollTime = now // 首轮立即采集

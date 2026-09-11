@@ -25,14 +25,13 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>
         /// 写入值存储（键 = "设备Id:变量Key"）。写入后 ReadAsync / ReadBatchAsync 优先返回该值，
         /// 使虚拟设备在刷新后仍能"读回"最后一次写入的值，贴近真实链路。
-        /// 键带设备维度：即便将来驱动改为单例/共享实例，也不会跨设备串值。
+        /// 键带设备维度（取自变量的 DeviceId，而非连接ID）：连接级单例共享驱动、
+        /// 同连接挂载多台设备时，按设备隔离写入缓存，避免同名变量跨设备串值。
         /// </summary>
-        private int? _deviceId;
-
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _writtenValues = new();
 
         /// <summary>为写入值缓存生成带设备维度的复合键。</summary>
-        private string KeyOf(string key) => _deviceId.HasValue ? $"{_deviceId}:{key}" : key;
+        private static string KeyOf(IRuntimeVariable variable) => $"{variable.DeviceId}:{variable.Key}";
 
         public async Task<bool> ConnectAsync(IRuntimeConnection connection)
         {
@@ -61,11 +60,6 @@ namespace ScadaServer.Infrastructure.Communication
             // 区间合法性兜底，避免后续 GenerateValue 除零或负区间。
             if (_config.IntervalMs < 10) _config.IntervalMs = 10;
 
-            // 记录连接维度 ID，用于写入值缓存的复合键（P1 起连接参数取自连接上下文；
-            // 共享前每设备独立连接实例，键天然设备隔离；共享后同连接设备为测试场景——
-            // 真实驱动（S7/OPC UA）不依赖该缓存，不受影响）。
-            _deviceId = connection.ConnectionId;
-
             _connected = true;
             await Task.Delay(10);
             return true;
@@ -75,7 +69,7 @@ namespace ScadaServer.Infrastructure.Communication
         {
             if (!_connected) return null;
             // 写入过的变量优先返回最后一次写入值，否则生成模拟值。
-            if (_writtenValues.TryGetValue(KeyOf(variable.Key), out var written))
+            if (_writtenValues.TryGetValue(KeyOf(variable), out var written))
             {
                 return await Task.FromResult(written);
             }
@@ -87,7 +81,7 @@ namespace ScadaServer.Infrastructure.Communication
             if (!_connected) throw new InvalidOperationException("虚拟设备未连接");
 
             // 落库写入值（原始值即可），供后续 ReadAsync / ReadBatchAsync 读回。
-            _writtenValues[KeyOf(variable.Key)] = value;
+            _writtenValues[KeyOf(variable)] = value;
             await Task.CompletedTask;
         }
 
@@ -99,7 +93,7 @@ namespace ScadaServer.Infrastructure.Communication
             foreach (var v in variables)
             {
                 // 与 ReadAsync 对齐：写入过的值优先返回，再退化到模拟生成。
-                if (_writtenValues.TryGetValue(KeyOf(v.Key), out var written))
+                if (_writtenValues.TryGetValue(KeyOf(v), out var written))
                 {
                     results[v.Key] = written;
                     continue;

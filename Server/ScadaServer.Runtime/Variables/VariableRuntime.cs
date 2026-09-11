@@ -23,6 +23,9 @@ public class VariableRuntime : IRuntimeVariable
     public DataPointMapping? Instance { get; init; }
 
     // ===================== 变量定义（来自 DataPoint） =====================
+    /// <summary>设备 ID（Device.Id），唯一标识该变量所属设备。跨设备隔离用（虚拟驱动写入缓存键前缀）。</summary>
+    public int DeviceId { get; init; }
+
     /// <summary>变量业务键（来自 DataPoint.Key）。</summary>
     public string Key => Definition.Key;
 
