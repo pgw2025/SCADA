@@ -167,6 +167,12 @@ export interface HmiEventAction {
     sourceComponentId?: string;
     /** openPopup：开窗是否要求写权限（true=非 Operator/Admin 拦截开窗；默认 false 可看不可动） */
     requireWritePermission?: boolean;
+    /** openPopup：弹窗目标形态（'component'=页面内组件[默认旧行为]；'page'=弹窗画面） */
+    popupTargetType?: 'component' | 'page';
+    /** openPopup：弹窗画面模式下目标弹窗画面 id（platform='Popup' 的页面） */
+    panelPageId?: string;
+    /** openPopup：预留 deviceId 参数化覆盖（首版不消费，透传保持页面绑定不变） */
+    popupDeviceIds?: number[];
   };
 }
 
@@ -967,8 +973,8 @@ export interface ScadaPage {
   /** 后端自增主键（持久化后回填）；未保存的新页面为 undefined */
   serverId?: number;
   name: string;
-  /** 画面归属端：Desktop（桌面端）/ Mobile（移动端）。缺省回退 Desktop。 */
-  platform?: 'Desktop' | 'Mobile';
+  /** 画面归属端：Desktop（桌面端）/ Mobile（移动端）/ Popup（弹窗画面）。缺省回退 Desktop。 */
+  platform?: 'Desktop' | 'Mobile' | 'Popup';
   /** 是否为所在端（桌面端/移动端）的首页。同一 (工程, 端) 至多一个首页。 */
   isHome?: boolean;
   /** 画布尺寸（后端持久化；缺省回退默认 1100×700） */

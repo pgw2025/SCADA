@@ -23,7 +23,7 @@ namespace ScadaServer.Application.DTOs
         public bool IsHome { get; set; }
 
         /// <summary>
-        /// 画面归属端：Desktop / Mobile。默认 Desktop。
+        /// 画面归属端：Desktop / Mobile / Popup（Popup=弹窗画面，运行时由事件动作以模态方式调用）。默认 Desktop。
         /// </summary>
         [StringLength(20, ErrorMessage = "归属端不能超过20个字符")]
         public string Platform { get; set; } = "Desktop";

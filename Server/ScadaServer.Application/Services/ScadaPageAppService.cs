@@ -138,9 +138,14 @@ namespace ScadaServer.Application.Services
             LayersJson = entity.LayersJson
         };
 
-        /// <summary>归一化归属端：空/非法值一律回退 Desktop。</summary>
+        /// <summary>归一化归属端：Desktop / Mobile / Popup，空/非法值一律回退 Desktop。</summary>
         private static string NormalizePlatform(string? platform)
-            => string.Equals(platform, "Mobile", StringComparison.OrdinalIgnoreCase) ? "Mobile" : "Desktop";
+            => platform?.Trim() switch
+            {
+                var p when string.Equals(p, "Mobile", StringComparison.OrdinalIgnoreCase) => "Mobile",
+                var p when string.Equals(p, "Popup", StringComparison.OrdinalIgnoreCase) => "Popup",
+                _ => "Desktop",
+            };
 
         /// <summary>
         /// 归一化背景配置 JSON：空白串归一化为 NULL（未配置）。

@@ -36,8 +36,9 @@ namespace ScadaServer.Domain.Entities
         public bool IsHome { get; set; }
 
         /// <summary>
-        /// 画面归属端：Desktop（桌面端）/ Mobile（移动端）。默认 Desktop。
-        /// 同一工程下桌面端与移动端各自维护独立画面列表，互不关联。
+        /// 画面归属端：Desktop（桌面端）/ Mobile（移动端）/ Popup（弹窗画面）。默认 Desktop。
+        /// 同一工程下桌面端、移动端各自维护独立画面列表，互不关联；
+        /// Popup 弹窗画面不属于运行主画面，仅由事件动作以模态方式调用。
         /// </summary>
         public string Platform { get; set; } = "Desktop";
 

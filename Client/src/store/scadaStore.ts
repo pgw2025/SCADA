@@ -43,8 +43,8 @@ export const EMPTY_PAGE: Readonly<ScadaPage> = Object.freeze(_EMPTY_PAGE);
  */
 export const currentPageSafe = computed<ScadaPage>(() => currentPage.value ?? (EMPTY_PAGE as ScadaPage));
 
-// 双布局：当前编辑/查看的端（Desktop / Mobile）。缺省 Desktop。
-export const currentPlatform = ref<'Desktop' | 'Mobile'>('Desktop');
+// 当前编辑/查看的端（Desktop / Mobile / Popup）。缺省 Desktop。
+export const currentPlatform = ref<'Desktop' | 'Mobile' | 'Popup'>('Desktop');
 
 /** 组态设计全屏模式状态（全屏下隐藏系统顶部菜单、系统侧边栏与编辑器左侧工程列表） */
 export const isScadaFullscreen = ref<boolean>(false);
@@ -56,16 +56,19 @@ export const toggleScadaFullscreen = (val?: boolean) => {
   }
 };
 
-// 按归属端分组的页面列表（缺省按 Desktop 处理），编辑器页面树据此分两栏。
+// 按归属端分组的页面列表（缺省按 Desktop 处理），编辑器页面树据此分栏。
 export const desktopPages = computed(() =>
   (currentProject.value?.pages ?? []).filter(p => (p.platform ?? 'Desktop') === 'Desktop'));
 export const mobilePages = computed(() =>
   (currentProject.value?.pages ?? []).filter(p => (p.platform ?? 'Mobile') === 'Mobile'));
+// 弹窗画面（platform='Popup'）：不属于运行主画面，运行时由事件动作以模态方式调用。
+export const popupPages = computed(() =>
+  (currentProject.value?.pages ?? []).filter(p => (p.platform ?? 'Desktop') === 'Popup'));
 
 // 选中页面时自动同步当前端，保证视口与页面归属一致。
 watch(selectedPageId, (id) => {
   const pg = currentProject.value?.pages.find(p => p.id === id);
-  if (pg) currentPlatform.value = (pg.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
+  if (pg) currentPlatform.value = (pg.platform ?? 'Desktop') as 'Desktop' | 'Mobile' | 'Popup';
 });
 
 /**

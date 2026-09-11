@@ -243,7 +243,7 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   id: `srv-${d.id}`,
   serverId: d.id,
   name: d.name,
-  platform: d.platform === 'Mobile' ? 'Mobile' : 'Desktop',
+  platform: d.platform === 'Mobile' || d.platform === 'Popup' ? (d.platform as 'Mobile' | 'Popup') : 'Desktop',
   isHome: d.isHome,
   width: d.width,
   height: d.height,
