@@ -32,6 +32,8 @@ export interface HmiEventDispatchContext {
   runScript: (scriptId: number) => void;
   /** 运行态组件补丁（不落库）：componentId + 顶层字段/props 补丁 */
   applyRuntimePatch: (componentId: string, patch: { visible?: boolean; label?: string; props?: Record<string, any> }) => void;
+  /** 打开弹窗回调（运行态/预览宿主实现；未实现的宿主由 runAction 降级提示） */
+  openPopup?: (sourceComponentId: string) => void;
   /** 动作被拦截/跳过时的提示回调（可选） */
   onBlocked?: (message: string) => void;
 }
@@ -102,6 +104,22 @@ const runAction = (
       // 目标组件（空=自身）；补丁仅改运行态渲染数据
       const targetId = p.targetComponentId || component.id;
       if (p.patch) ctx.applyRuntimePatch(targetId, p.patch);
+      return;
+    }
+    case 'openPopup': {
+      // 可选：开窗前权限拦截（默认 false=可看不可动，仅面板内操作受权限约束）
+      if (p.requireWritePermission && !ctx.canControlWrite) {
+        ctx.onBlocked?.('当前角色无弹窗操作权限');
+        return;
+      }
+      const sourceId = p.sourceComponentId;
+      if (!sourceId) return;
+      // 宿主能力判空降级（预览宿主未实现时不崩溃）
+      if (!ctx.openPopup) {
+        ctx.onBlocked?.('当前宿主不支持弹窗动作');
+        return;
+      }
+      ctx.openPopup(sourceId);
       return;
     }
     default:

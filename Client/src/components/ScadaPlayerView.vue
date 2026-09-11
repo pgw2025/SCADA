@@ -24,6 +24,8 @@ import { HMIComponent, HmiEventType } from '../types';
 import { RefreshCw } from 'lucide-vue-next';
 import CanvasPanel from './CanvasPanel.vue';
 import SetValueDialog from './SetValueDialog.vue';
+import PopupHost from './PopupHost.vue';
+import { collectComponentDeviceRefs } from '../utils/componentDeviceRefs';
 
 const route = useRoute();
 
@@ -124,6 +126,9 @@ const boundDeviceIds = computed(() => {
       }
       if (hasUnboundSeries && devices.value.length > 0) ids.add(Number(devices.value[0].id));
     }
+    // P1 收口：通用设备引用收集（覆盖 vfd-motor-panel 等 props.xxxDeviceId 变量级绑定，
+    // 未来组件新增 DeviceId 后缀字段自动生效；bindDeviceId/opDeviceId 与上方分支重复 add 由 Set 幂等去重）
+    collectComponentDeviceRefs(c).forEach((id) => ids.add(id));
   });
   return ids;
 });
@@ -135,6 +140,10 @@ watch(boundDeviceIds, (newIds, oldIds) => {
 
 onUnmounted(() => {
   boundDeviceIds.value.forEach(id => unsubscribeDeviceTelemetry(id));
+  // 弹窗补订的设备（可能不在主订阅集合）销毁兜底退订，防订阅残留
+  collectComponentDeviceRefs(activePopupComponent.value).forEach(id => {
+    if (!boundDeviceIds.value.has(id)) unsubscribeDeviceTelemetry(id);
+  });
 });
 
 // 严格模式：运行时实时值解析（仅复合绑定 deviceId+variableKey；禁止裸 key 取值）
@@ -187,6 +196,46 @@ watch(() => currentPage.value?.id, () => {
 const canControlWrite = computed(() => {
   const r = loginUser.value?.role;
   return r === ROLE_OPERATOR || r === ROLE_ADMIN;
+});
+
+// ===== 弹窗面板（openPopup 动作）：单层弹窗 + 幂等重开（方案 §5/§8-E5） =====
+const activePopupId = ref<string | null>(null);
+const activePopupComponent = computed(() => {
+  if (!activePopupId.value) return null;
+  return (currentPage.value?.components ?? []).find((c) => c.id === activePopupId.value) ?? null;
+});
+
+const openPopup = (sourceComponentId: string) => {
+  const target = (currentPage.value?.components ?? []).find((c) => c.id === sourceComponentId);
+  // E2 悬空引用：面板已被删除 → 提示且不开窗（配置入口只列现存组件，此为运行期兜底）
+  if (!target) {
+    showToast('弹窗目标组件不存在（可能已被删除）', 'warning');
+    addLog('组态运行', `弹窗打开失败：目标组件 [${sourceComponentId}] 不存在`, 'warning');
+    return;
+  }
+  // E5 幂等：同 id 重复点击保持已开，不叠加
+  activePopupId.value = sourceComponentId;
+  addLog('组态运行', `打开弹窗面板: [${target.name || target.type}]`, 'normal');
+};
+
+const closePopup = () => { activePopupId.value = null; };
+
+// E1 切页自动关闭：nav-menu 跳转后 sourceComponentId 跨页失效；退订由下方订阅 watch 自动完成
+watch(() => currentPage.value?.id, () => { closePopup(); });
+
+// 弹窗设备订阅差集：打开时补订「收集集合内尚未被主订阅覆盖」的设备，关闭时退订「不再被引用」的设备。
+// 主订阅（boundDeviceIds）已含 bindDeviceId（v-show 隐藏组件不参与过滤），此处仅做增量补订/退订，
+// 避免干扰主 watch 的对账逻辑。
+watch(activePopupComponent, (comp, oldComp) => {
+  const pageIds = boundDeviceIds.value; // 主订阅快照（只读，不修改）
+  const oldIds = collectComponentDeviceRefs(oldComp);
+  const newIds = collectComponentDeviceRefs(comp);
+  // 补订：新集合中主订阅未覆盖的设备
+  newIds.forEach((id) => { if (!pageIds.has(id)) subscribeDeviceTelemetry(id); });
+  // 退订：旧集合中主订阅未覆盖、且新集合不再引用的设备
+  oldIds.forEach((id) => {
+    if (!pageIds.has(id) && !newIds.has(id)) unsubscribeDeviceTelemetry(id);
+  });
 });
 
 // 阶段2-2：质量分级显示——按组件绑定（deviceId+variableKey）回读变量质量，
@@ -323,6 +372,7 @@ const eventCtx = computed<HmiEventDispatchContext>(() => ({
     if (patch.label !== undefined) target.label = patch.label;
     if (patch.props) target.props = { ...target.props, ...patch.props };
   },
+  openPopup, // 弹窗动作回调（hmiEventService runAction 分支消费）
   onBlocked: (msg) => showToast(msg, 'warning'),
 }));
 
@@ -379,5 +429,9 @@ onMounted(() => {
     <!-- var-display 设值弹窗：确认后走 handleTriggerToggleValue('setValue') 写管道 -->
     <SetValueDialog v-if="setValueTarget" :component="setValueTarget" :current="setValueCurrentValue"
       @close="setValueTarget = null" @confirm="handleSetValueConfirm" />
+
+    <!-- openPopup 弹窗面板：CanvasPanel 缩放容器外同级；复用 HMIWidget 渲染源组件快照（方案 §5） -->
+    <PopupHost v-if="activePopupComponent" :component="activePopupComponent"
+      :can-control-write="canControlWrite" @close="closePopup" />
   </div>
 </template>
