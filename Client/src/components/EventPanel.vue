@@ -10,7 +10,7 @@ import {
   HmiEventWriteMode,
 } from '../types';
 import { devices } from '../store/deviceStore';
-import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
+import { desktopPages, mobilePages, popupPages, currentPlatform } from '../store/scadaStore';
 import { systemScripts } from '../store/configStore';
 import { loadSystemScripts } from '../services/scriptService';
 import { loginUser } from '../store/userStore';
@@ -134,7 +134,7 @@ const addAction = (type: HmiEventType, kind: HmiEventActionKind) => {
         : kind === 'runScript'
           ? { scriptId: undefined }
           : kind === 'openPopup'
-            ? { sourceComponentId: '', requireWritePermission: false }
+            ? { sourceComponentId: '', requireWritePermission: false, popupTargetType: 'component' }
             : { targetComponentId: '', patch: {} },
   };
   evt.actions = [...(evt.actions ?? []), action];
@@ -200,7 +200,7 @@ const ACTION_KIND_META: Record<HmiEventActionKind, { label: string; icon: any }>
   navigate: { label: '页面跳转', icon: CornerUpRight },
   runScript: { label: '运行系统脚本', icon: FileCode2 },
   setProp: { label: '组件控制', icon: Settings2 },
-  openPopup: { label: '打开弹窗面板', icon: AppWindow },
+  openPopup: { label: '打开弹窗', icon: AppWindow },
 };
 
 // ===== writeVar：设备/变量候选（严格模式：先选设备再列变量） =====
@@ -253,6 +253,14 @@ const popupSourceOptions = computed(() =>
   (props.pageComponents ?? [])
     .filter((c) => c.id !== props.selectedComponent?.id)
     .map((c) => ({ id: c.id, name: `${c.name || c.type} (${c.id.slice(-6)})` }))
+);
+
+// ===== openPopup（弹窗画面模式）：候选弹窗画面（platform='Popup'），空画面加标注 =====
+const popupPageOptions = computed(() =>
+  popupPages.value.map((p) => ({
+    id: p.id,
+    name: p.components.length ? p.name : `${p.name}（空画面）`,
+  }))
 );
 
 // setProp 补丁的可视化字段读写辅助
@@ -536,9 +544,19 @@ const setPatchVisible = (type: HmiEventType, actionId: string, val: string) => {
               </p>
             </template>
 
-            <!-- openPopup 参数 -->
+            <!-- openPopup 参数：两级——目标形态（组件/画面） -->
             <template v-else-if="action.kind === 'openPopup'">
               <div>
+                <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗目标</label>
+                <select :value="action.params.popupTargetType ?? 'component'"
+                  @change="updateActionParams(activeEventType, action.id, { popupTargetType: ($event.target as HTMLSelectElement).value as 'component' | 'page' })"
+                  class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
+                  <option value="component">页面内组件</option>
+                  <option value="page">弹窗画面</option>
+                </select>
+              </div>
+              <!-- 弹组件模式：源组件候选 -->
+              <div v-if="(action.params.popupTargetType ?? 'component') === 'component'">
                 <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗内容（页面内组件）</label>
                 <select :value="action.params.sourceComponentId ?? ''"
                   @change="updateActionParams(activeEventType, action.id, { sourceComponentId: ($event.target as HTMLSelectElement).value })"
@@ -548,6 +566,23 @@ const setPatchVisible = (type: HmiEventType, actionId: string, val: string) => {
                 </select>
                 <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
                   运行态将该组件以模态窗口弹出；建议放置于隐藏图层，变量绑定/权限/实时值自动继承。
+                </p>
+              </div>
+              <!-- 弹画面模式：候选弹窗画面（platform='Popup'） -->
+              <div v-else>
+                <label class="text-[9px] text-gray-400 dark:text-slate-500">弹窗画面</label>
+                <select :value="action.params.panelPageId ?? ''"
+                  @change="updateActionParams(activeEventType, action.id, { panelPageId: ($event.target as HTMLSelectElement).value })"
+                  class="w-full bg-white dark:bg-slate-900 border border-[#d9d9d9] dark:border-slate-700 rounded px-1.5 py-1 text-[10px] focus:outline-none focus:border-[#1890ff]">
+                  <option value="">请选择弹窗画面…</option>
+                  <option v-for="t in popupPageOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
+                </select>
+                <p v-if="popupPageOptions.length === 0"
+                  class="text-[9px] text-amber-500 dark:text-amber-400 mt-1 leading-snug">
+                  当前工程没有弹窗画面，请先在画面列表「🪟 弹窗」分组中新建。
+                </p>
+                <p v-else class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-snug">
+                  运行态将该弹窗画面以模态窗口整体弹出（组件/图层/背景/适配全复用）。
                 </p>
               </div>
               <label class="flex items-center gap-1.5 cursor-pointer"

@@ -34,6 +34,8 @@ export interface HmiEventDispatchContext {
   applyRuntimePatch: (componentId: string, patch: { visible?: boolean; label?: string; props?: Record<string, any> }) => void;
   /** 打开弹窗回调（运行态/预览宿主实现；未实现的宿主由 runAction 降级提示） */
   openPopup?: (sourceComponentId: string) => void;
+  /** 打开弹窗画面回调（platform='Popup' 的画面以模态方式调用；未实现的宿主降级提示） */
+  openPagePopup?: (pageId: string) => void;
   /** 动作被拦截/跳过时的提示回调（可选） */
   onBlocked?: (message: string) => void;
 }
@@ -107,11 +109,20 @@ const runAction = (
       return;
     }
     case 'openPopup': {
-      // 可选：开窗前权限拦截（默认 false=可看不可动，仅面板内操作受权限约束）
+      // 可选：开窗前权限拦截（默认 false=可看不可动，仅面板内操作受权限约束）——「弹组件/弹画面」两模式共用
       if (p.requireWritePermission && !ctx.canControlWrite) {
         ctx.onBlocked?.('当前角色无弹窗操作权限');
         return;
       }
+      // 弹窗画面模式：打开一张 platform='Popup' 的画面为模态
+      if (p.popupTargetType === 'page') {
+        const pageId = p.panelPageId;
+        if (!pageId) { ctx.onBlocked?.('未选择弹窗画面'); return; }
+        if (!ctx.openPagePopup) { ctx.onBlocked?.('当前宿主不支持弹窗画面动作'); return; }
+        ctx.openPagePopup(pageId);
+        return;
+      }
+      // ★ 原「弹组件」分支原样保留（旧行为/旧配置兼容）
       const sourceId = p.sourceComponentId;
       if (!sourceId) return;
       // 宿主能力判空降级（预览宿主未实现时不崩溃）
