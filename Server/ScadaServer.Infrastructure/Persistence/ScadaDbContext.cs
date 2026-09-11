@@ -56,6 +56,7 @@ namespace ScadaServer.Infrastructure.Persistence
         public DbSet<Protocol> Protocols => Set<Protocol>();
         public DbSet<MqttServer> MqttServers => Set<MqttServer>();
         public DbSet<MqttVariableConfig> MqttVariableConfigs => Set<MqttVariableConfig>();
+        public DbSet<ScadaPageFolder> ScadaPageFolders => Set<ScadaPageFolder>();
         public DbSet<ScadaPage> ScadaPages => Set<ScadaPage>();
         public DbSet<ScadaProject> ScadaProjects => Set<ScadaProject>();
         public DbSet<ScadaProjectAuthorization> ScadaProjectAuthorizations => Set<ScadaProjectAuthorization>();
@@ -318,6 +319,26 @@ namespace ScadaServer.Infrastructure.Persistence
                 .IsUnique()
                 .HasDatabaseName("ix_mqttvariableconfig_server_device_var");
             modelBuilder.Entity<ScadaPage>().ToTable("ScadaPages");
+            // 画面文件夹表（阶段：画面列表文件夹化）：自引用 ParentFolderId 支持多级嵌套。
+            // 结构归属关系均用 Restrict——删除文件夹前由应用服务在事务内先改引用或先删内容，
+            // 杜绝数据库静默级联（与 Area/Controller 删除约束风格一致）。
+            modelBuilder.Entity<ScadaPageFolder>().ToTable("ScadaPageFolders");
+            modelBuilder.Entity<ScadaPageFolder>()
+                .Property(f => f.Platform).HasMaxLength(16).HasDefaultValue("Desktop");
+            modelBuilder.Entity<ScadaPageFolder>()
+                .Property(f => f.Name).HasMaxLength(100);
+            modelBuilder.Entity<ScadaPageFolder>()
+                .HasOne(f => f.Parent)
+                .WithMany(f => f.Children)
+                .HasForeignKey(f => f.ParentFolderId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_ScadaPageFolders_ScadaPageFolders_ParentFolderId");
+            modelBuilder.Entity<ScadaPageFolder>()
+                .HasIndex(f => f.ParentFolderId)
+                .HasDatabaseName("ix_scadepagefolders_parent");
+            modelBuilder.Entity<ScadaPageFolder>()
+                .HasIndex(f => new { f.ProjectId, f.Platform })
+                .HasDatabaseName("ix_scadepagefolders_project_platform");
             modelBuilder.Entity<ScadaProject>().ToTable("ScadaProjects");
             modelBuilder.Entity<ScheduledTask>().ToTable("ScheduledTasks");
             modelBuilder.Entity<Sensor>().ToTable("Sensors");
@@ -506,6 +527,21 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<ScadaPage>()
                 .Property(p => p.AdaptMode)
                 .HasMaxLength(32);
+
+            // 画面文件夹化：FolderId 可空外键→ScadaPageFolders（Restrict，删除前应用层先还引用）；
+            // SortOrder 默认 0（存量由迁移回填连续值）；folderid 索引支撑按文件夹检索画面。
+            modelBuilder.Entity<ScadaPage>()
+                .HasOne<ScadaPageFolder>()
+                .WithMany(f => f.Pages)
+                .HasForeignKey(p => p.FolderId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_ScadaPages_ScadaPageFolders_FolderId");
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.SortOrder)
+                .HasDefaultValue(0);
+            modelBuilder.Entity<ScadaPage>()
+                .HasIndex(p => p.FolderId)
+                .HasDatabaseName("ix_scadepages_folderid");
 
             modelBuilder.Entity<ScadaPage>()
                 .HasIndex(p => new { p.ProjectId, p.Platform })

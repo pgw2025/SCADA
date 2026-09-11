@@ -31,6 +31,18 @@ namespace ScadaServer.Domain.Entities
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
+        /// 所在画面文件夹ID（FK → ScadaPageFolders）。NULL 表示该端根级画面（未放入文件夹）。
+        /// 仅 Desktop/Mobile 端可能非空；Popup 弹窗画面恒为 NULL。
+        /// </summary>
+        public int? FolderId { get; set; }
+
+        /// <summary>
+        /// 同级「画面段」内排序（从 1 起连续编号；与文件夹段 SortOrder 相互独立）。
+        /// 默认 0，应用层新建/重排时写入连续值。
+        /// </summary>
+        public int SortOrder { get; set; }
+
+        /// <summary>
         /// 是否为首页
         /// </summary>
         public bool IsHome { get; set; }
