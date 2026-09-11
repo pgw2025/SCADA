@@ -150,6 +150,16 @@ export const persistPageDelete = async (page: ScadaPage) => {
   if (page.serverId) await withRetry(() => api.deletePage(page.serverId));
 };
 
+/**
+ * 页面在夹间/段间移动：立即（非防抖）落库 FolderId，随后的 reorder 才满足后端
+ * 「排序项须已在目标父级」的校验（ReorderAsync 只重排、不搬家）。
+ */
+export const persistPageMove = async (page: ScadaPage, proj: ScadaScreenProject) => {
+  if (!page.serverId) return;
+  clearPageUpdateTimer(page.serverId);
+  await withRetry(() => api.updatePage(api.toPageDto(page, proj.serverId ?? 0, buildFolderIdMap(proj))));
+};
+
 export const persistProjectUpdate = async (proj: ScadaScreenProject) => {
   if (!proj.serverId) return;
   await withRetry(() => api.updateProject(api.toProjectDto(proj)));
@@ -239,6 +249,13 @@ export const clearFolderUpdateTimer = (folderServerId: number | undefined) => {
 export const persistFolderDelete = async (folder: ScadaPageFolder, mode: 'reparent' | 'cascade' = 'reparent') => {
   clearFolderUpdateTimer(folder.serverId);
   if (folder.serverId) await withRetry(() => api.deletePageFolder(folder.serverId, mode));
+};
+
+/** 文件夹夹间移动：立即（非防抖）落库 ParentFolderId，供 reorder 校验使用。 */
+export const persistFolderMove = async (folder: ScadaPageFolder, proj: ScadaScreenProject) => {
+  if (!folder.serverId) return;
+  clearFolderUpdateTimer(folder.serverId);
+  await withRetry(() => api.updatePageFolder(toFolderDto(folder, proj)));
 };
 
 /**

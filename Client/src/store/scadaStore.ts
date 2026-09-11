@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue';
-import { ScadaScreenProject, ScadaPage } from '../types';
+import { ScadaScreenProject, ScadaPage, ScadaPageFolder } from '../types';
 import * as api from '../api/scadaApi';
 import { loginUser } from './userStore';
 import { ROLE_ADMIN } from '../constants/roles';
@@ -215,4 +215,66 @@ export const resetScadaStore = () => {
   scadaLoading.value = false;
   _scadaInitialized = false;
   _summariesInitialized = false;
+};
+
+// ===== 画面列表文件夹树（P6：从扁平 folders/pages 组装递归树）=====
+
+/** 树节点：kind='folder' 为文件夹节点（含递归 children），kind='page' 为叶子画面节点 */
+export interface PageTreeNode {
+  kind: 'folder' | 'page';
+  /** folder.id 或 page.id（前端 uid） */
+  id: string;
+  name: string;
+  folder?: ScadaPageFolder;
+  page?: ScadaPage;
+  /** 文件夹节点的直接下级（文件夹段在前，画面段在后），页面节点恒为空 */
+  children: PageTreeNode[];
+  /** 缩进层级（根级=0） */
+  depth: number;
+}
+
+const _folderSort = (a: ScadaPageFolder, b: ScadaPageFolder) =>
+  (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+const _pageSort = (a: ScadaPage, b: ScadaPage) =>
+  (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+
+/**
+ * 组装某个端（Desktop/Mobile）的画面文件夹树（Popup 不建夹）。
+ * 每级「文件夹段在前 + 画面段在后」，各段按 SortOrder/Id 稳定排序；
+ * 未被放入任何文件夹的画面落在根级。返回根级节点数组。
+ */
+export const buildFolderTree = (platform: 'Desktop' | 'Mobile'): PageTreeNode[] => {
+  const proj = currentProject.value;
+  if (!proj) return [];
+  const folders = (proj.folders || []).filter(f => f.platform === platform);
+  const pages = (proj.pages || []).filter(p => (p.platform ?? 'Desktop') === platform);
+
+  const folderByParent = new Map<string, ScadaPageFolder[]>();
+  folders.forEach(f => {
+    const key = f.parentFolderId ?? '';
+    if (!folderByParent.has(key)) folderByParent.set(key, []);
+    folderByParent.get(key)!.push(f);
+  });
+  const pagesByFolder = new Map<string, ScadaPage[]>();
+  pages.forEach(p => {
+    const key = p.folderId ?? '';
+    if (!pagesByFolder.has(key)) pagesByFolder.set(key, []);
+    pagesByFolder.get(key)!.push(p);
+  });
+
+  const buildNode = (folder: ScadaPageFolder, depth: number): PageTreeNode => {
+    const children: PageTreeNode[] = [];
+    (folderByParent.get(folder.id) ?? []).slice().sort(_folderSort)
+      .forEach(sub => children.push(buildNode(sub, depth + 1)));
+    (pagesByFolder.get(folder.id) ?? []).slice().sort(_pageSort)
+      .forEach(pg => children.push({ kind: 'page', id: pg.id, name: pg.name, page: pg, children: [], depth: depth + 1 }));
+    return { kind: 'folder', id: folder.id, name: folder.name, folder, children, depth };
+  };
+
+  const roots: PageTreeNode[] = [];
+  (folderByParent.get('') ?? []).slice().sort(_folderSort)
+    .forEach(f => roots.push(buildNode(f, 0)));
+  (pagesByFolder.get('') ?? []).slice().sort(_pageSort)
+    .forEach(pg => roots.push({ kind: 'page', id: pg.id, name: pg.name, page: pg, children: [], depth: 0 }));
+  return roots;
 };

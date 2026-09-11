@@ -33,7 +33,8 @@ import {
   toggleScadaFullscreen,
   projectSummaries,
   reloadProjectTree,
-  upsertProjectSummary
+  upsertProjectSummary,
+  buildFolderTree
 } from '../store/scadaStore';
 import { exportProjectFile, exportPageFile, parseTransferFile, importProject, importPage } from '../api/scadaApi';
 import {
@@ -44,10 +45,16 @@ import {
   persistComponentDelete,
   persistPageUpdate,
   persistPageDelete,
+  persistPageMove,
   persistProjectUpdate,
   persistProjectDelete,
   persistDuplicatePage,
-  reconcileComponents
+  reconcileComponents,
+  ensureFolderSaved,
+  persistFolderUpdate,
+  persistFolderMove,
+  persistFolderDelete,
+  persistFolderReorder
 } from '../services/scadaService';
 import { devices } from '../store/deviceStore';
 import { loginUser } from '../store/userStore';
@@ -60,10 +67,11 @@ import { isSamePageRef } from '../utils/pageId';
 import { subscribeDeviceTelemetry, unsubscribeDeviceTelemetry } from '../services/signalRService';
 import { showToast } from '../services/toastService';
 import { triggerRuntimeScript } from '../services/scriptService';
-import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, HMILayer, HmiEventType } from '../types';
+import { HMIComponent, ComponentType, ScadaScreenProject, ScadaPage, ScadaPageFolder, HMILayer, HmiEventType } from '../types';
 import { dispatchComponentEvent, useHmiDataEvents, HmiEventDispatchContext } from '../services/hmiEventService';
 import WidgetLibrary from './WidgetLibrary.vue';
 import CanvasPanel from './CanvasPanel.vue';
+import ScadaPageTree from './ScadaPageTree.vue';
 import InspectorPanel from './InspectorPanel.vue';
 import EventPanel from './EventPanel.vue';
 import SetValueDialog from './SetValueDialog.vue';
@@ -76,6 +84,7 @@ import ImageLibraryDialog from './ImageLibraryDialog.vue';
 import { getWidgetDef } from '../widgetRegistry';
 import {
   FolderIcon,
+  FolderPlus,
   Layers,
   Plus,
   Trash2,
@@ -180,6 +189,14 @@ function onConfirmModal() {
 // Inline page renaming states
 const isRenamingPageId = ref<string | null>(null);
 const renamePageInput = ref<string>('');
+
+// Inline folder renaming states
+const isRenamingFolderId = ref<string | null>(null);
+const renameFolderInput = ref<string>('');
+
+// 画面列表文件夹（P6）：树展开/拖拽状态
+const expandedFolderIds = ref<Set<string>>(new Set());
+const dragItem = ref<{ kind: 'page' | 'folder'; id: string; platform: string } | null>(null);
 
 // Inline project renaming states
 const isRenamingProjId = ref<string | null>(null);
@@ -1179,6 +1196,229 @@ const savePageRename = (pId: string) => {
   isRenamingPageId.value = null;
 };
 
+// ===== 画面列表文件夹（P6）=====
+const desktopFolderTree = computed(() => buildFolderTree('Desktop'));
+const mobileFolderTree = computed(() => buildFolderTree('Mobile'));
+
+const toggleFolder = (folderId: string) => {
+  const s = new Set(expandedFolderIds.value);
+  if (s.has(folderId)) s.delete(folderId); else s.add(folderId);
+  expandedFolderIds.value = s;
+};
+
+const genFolderId = () => {
+  const suffix = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+    ? (crypto as Crypto).randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `folder-${suffix}`;
+};
+
+const normParent = (id: string | undefined): string | undefined =>
+  (id && id.trim() ? id : undefined);
+
+const folderSortKey = (a: ScadaPageFolder, b: ScadaPageFolder) =>
+  (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+const pageSortKey = (a: ScadaPage, b: ScadaPage) =>
+  (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+
+// folderIds 顺序即目标段顺序（1..N 递增写入内存再 reorder 落库）
+const reindexAndPersistSegment = async (
+  proj: ScadaScreenProject,
+  platform: 'Desktop' | 'Mobile',
+  parentId: string | undefined,
+  kind: 'folder' | 'page',
+  orderIds: string[]
+) => {
+  if (kind === 'folder') {
+    proj.folders.forEach(f => {
+      if (f.platform === platform && normParent(f.parentFolderId) === parentId) {
+        const i = orderIds.indexOf(f.id);
+        f.sortOrder = i >= 0 ? i + 1 : (f.sortOrder ?? 0);
+      }
+    });
+    const kept = proj.folders.filter(f =>
+      f.platform === platform && normParent(f.parentFolderId) === parentId && orderIds.includes(f.id));
+    if (kept.length) await persistFolderReorder(proj, platform, parentId, kept.map(f => f.id), []);
+  } else {
+    proj.pages.forEach(p => {
+      if ((p.platform ?? 'Desktop') === platform && normParent(p.folderId) === parentId) {
+        const i = orderIds.indexOf(p.id);
+        p.sortOrder = i >= 0 ? i + 1 : (p.sortOrder ?? 0);
+      }
+    });
+    const kept = proj.pages.filter(p =>
+      (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === parentId && orderIds.includes(p.id));
+    if (kept.length) await persistFolderReorder(proj, platform, parentId, [], kept.map(p => p.id));
+  }
+};
+
+// 判断 targetParent 是否落在 folderId 的子树内（含自身）：用于文件夹循环移动拦截
+const isFolderDescendant = (targetParent: string | undefined, folderId: string): boolean => {
+  const proj = currentProject.value;
+  if (!targetParent || !proj) return false;
+  let cur: string | undefined = targetParent;
+  while (cur) {
+    if (cur === folderId) return true;
+    const f = proj.folders.find(x => x.id === cur);
+    cur = f ? normParent(f.parentFolderId) : undefined;
+  }
+  return false;
+};
+
+/**
+ * 统一拖放落点：placementParent 为行所处层级（folders/pages 归属父级 uid），
+ * beforeNodeId 为目标行（folder 或 page 的 uid）；undefined 表示追加到该层级对应段末尾。
+ * 语义：拖到文件夹行→入夹（folder 同级时视为段内重排）；拖到画面行/容器→落在该层级对应段。
+ */
+const applyDrop = async (platform: 'Desktop' | 'Mobile', placementParent: string | undefined, beforeNodeId: string | undefined) => {
+  const proj = currentProject.value;
+  if (!proj || !dragItem.value) { dragItem.value = null; return; }
+  const item = dragItem.value;
+  if (item.platform !== platform) { showToast('不能跨端拖拽画面/文件夹', 'warning'); dragItem.value = null; return; }
+  const placeParent = normParent(placementParent);
+
+  const kindOf = (id?: string): 'folder' | 'page' | undefined => {
+    if (!id) return undefined;
+    if (proj.folders.some(f => f.id === id)) return 'folder';
+    if (proj.pages.some(p => p.id === id)) return 'page';
+    return undefined;
+  };
+  const beforeKind = kindOf(beforeNodeId);
+
+  try {
+    if (item.kind === 'folder') {
+      const folder = proj.folders.find(f => f.id === item.id);
+      if (!folder) return;
+      const sameLevel = beforeKind === 'folder' &&
+        normParent(proj.folders.find(f => f.id === beforeNodeId)?.parentFolderId) === normParent(folder.parentFolderId);
+      let newParent: string | undefined;
+      let orderBeforeId: string | undefined;
+      if (beforeKind === 'folder' && sameLevel) {
+        newParent = normParent(folder.parentFolderId); orderBeforeId = beforeNodeId; // 段内重排
+      } else if (beforeKind === 'folder') {
+        newParent = beforeNodeId; // 平移入该文件夹
+      } else {
+        newParent = placeParent; // 落到行所在层级对应段（追加）
+      }
+      if (isFolderDescendant(newParent, folder.id)) {
+        showToast('不能把文件夹移动到自身或其子文件夹内', 'warning');
+        return;
+      }
+      const oldParent = normParent(folder.parentFolderId);
+      folder.platform = platform;
+      folder.parentFolderId = newParent;
+      if (oldParent !== newParent) await persistFolderMove(folder, proj);
+      else if (orderBeforeId) await persistFolderMove(folder, proj);
+
+      let order = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === newParent)
+        .slice().sort(folderSortKey).map(f => f.id).filter(id => id !== folder.id);
+      if (orderBeforeId && order.includes(orderBeforeId)) order.splice(order.indexOf(orderBeforeId), 0, folder.id);
+      else order.push(folder.id);
+      await reindexAndPersistSegment(proj, platform, newParent, 'folder', order);
+      if (oldParent !== newParent) {
+        const src = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === oldParent)
+          .slice().sort(folderSortKey).map(f => f.id).filter(id => id !== folder.id);
+        await reindexAndPersistSegment(proj, platform, oldParent, 'folder', src);
+      }
+      addLog('组态编辑', `文件夹移动: [${folder.name}]`, 'normal');
+    } else {
+      const page = proj.pages.find(p => p.id === item.id);
+      if (!page) return;
+      let newParent: string | undefined;
+      let orderBeforeId: string | undefined;
+      if (beforeKind === 'folder') { newParent = beforeNodeId; }            // 页面入夹（追加）
+      else if (beforeKind === 'page') { newParent = placeParent; orderBeforeId = beforeNodeId; } // 段内重排/入新层级
+      else { newParent = placeParent; }
+      const oldParent = normParent(page.folderId);
+      if (oldParent !== newParent) {
+        page.folderId = newParent;
+        await persistPageMove(page, proj);
+      }
+      let order = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === newParent)
+        .slice().sort(pageSortKey).map(p => p.id).filter(id => id !== page.id);
+      if (orderBeforeId && order.includes(orderBeforeId)) order.splice(order.indexOf(orderBeforeId), 0, page.id);
+      else order.push(page.id);
+      await reindexAndPersistSegment(proj, platform, newParent, 'page', order);
+      if (oldParent !== newParent) {
+        const src = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === oldParent)
+          .slice().sort(pageSortKey).map(p => p.id);
+        await reindexAndPersistSegment(proj, platform, oldParent, 'page', src);
+      }
+      addLog('组态编辑', `画面移动: [${page.name}]`, 'normal');
+    }
+  } finally {
+    dragItem.value = null;
+  }
+};
+
+const onDragStart = (item: { kind: 'page' | 'folder'; id: string; platform: string }) => {
+  dragItem.value = item;
+};
+const onDragEnd = () => { dragItem.value = null; };
+
+const handleCreateSubfolder = (platform: 'Desktop' | 'Mobile', parentFolderId?: string) => {
+  const proj = currentProject.value;
+  if (!proj) return;
+  const parent = parentFolderId ? proj.folders.find(f => f.id === parentFolderId) : undefined;
+  const pf = parent?.platform ?? platform;
+  const siblingCount = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === normParent(parentFolderId)).length;
+  const newFolder: ScadaPageFolder = {
+    id: genFolderId(),
+    serverId: undefined,
+    name: '新文件夹',
+    platform: pf,
+    parentFolderId,
+    sortOrder: siblingCount + 1,
+  };
+  proj.folders.push(newFolder);
+  if (parentFolderId) {
+    const s = new Set(expandedFolderIds.value); s.add(parentFolderId); expandedFolderIds.value = s;
+  }
+  isRenamingFolderId.value = newFolder.id;
+  renameFolderInput.value = '';
+  addLog('组态编辑', `新建文件夹: [${newFolder.name}]（工程 [${proj.name}]）`, 'normal');
+  ensureFolderSaved(newFolder, proj).catch(() => { });
+};
+const handleCreateRootFolder = (platform: 'Desktop' | 'Mobile') => handleCreateSubfolder(platform, undefined);
+
+const startRenameFolder = (folderId: string, name: string) => {
+  isRenamingFolderId.value = folderId;
+  renameFolderInput.value = name;
+};
+const saveRenameFolder = (folderId: string) => {
+  const proj = currentProject.value;
+  if (!proj) return;
+  const folder = proj.folders.find(f => f.id === folderId);
+  if (folder && renameFolderInput.value.trim() && renameFolderInput.value.trim() !== folder.name) {
+    const oldName = folder.name;
+    folder.name = renameFolderInput.value.trim();
+    addLog('组态编辑', `文件夹更名: [${oldName}] -> [${folder.name}]`, 'normal');
+    persistFolderUpdate(folder, proj).catch(() => { });
+  }
+  isRenamingFolderId.value = null;
+};
+
+const handleDeleteFolder = (folder: ScadaPageFolder) => {
+  const proj = currentProject.value;
+  if (!proj) return;
+  askConfirm('删除文件夹', `确定删除文件夹「${folder.name}」吗？文件夹中的画面将上移到其上一级，不会删除画面本身。`, () => {
+    const platform = folder.platform;
+    const parentId = normParent(folder.parentFolderId);
+    proj.folders.forEach(f => { if (normParent(f.parentFolderId) === folder.id) f.parentFolderId = parentId; });
+    proj.pages.forEach(p => { if (normParent(p.folderId) === folder.id) p.folderId = parentId; });
+    proj.folders = proj.folders.filter(f => f.id !== folder.id);
+    const folderOrder = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === parentId)
+      .slice().sort(folderSortKey).map(f => f.id);
+    const pageOrder = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === parentId)
+      .slice().sort(pageSortKey).map(p => p.id);
+    void reindexAndPersistSegment(proj, platform, parentId, 'folder', folderOrder);
+    void reindexAndPersistSegment(proj, platform, parentId, 'page', pageOrder);
+    persistFolderDelete(folder).catch(() => { });
+    const s = new Set(expandedFolderIds.value); s.delete(folder.id); expandedFolderIds.value = s;
+    addLog('组态编辑', `删除文件夹: [${folder.name}]（画面上移）`, 'warning');
+  });
+};
+
 const startRenameProj = (pId: string, currentText: string) => {
   isRenamingProjId.value = pId;
   renameProjInput.value = currentText;
@@ -1426,120 +1666,68 @@ const handleExportPage = async (page: ScadaPage) => {
         </div>
       </div>
 
-      <!-- 桌面端分组 -->
+      <!-- 桌面端分组（画面文件夹树） -->
       <div
         class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-100/60 dark:border-slate-800">
         <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">🖥 桌面端 ({{ desktopPages.length }})</span>
-        <button @click="handleAddPage('Desktop')"
-          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
-          title="新增桌面端画面">
-          <Plus class="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div v-if="currentProject"
-        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
-        <div v-for="page in desktopPages" :key="page.id" @click="handleSelectPage(page.id)"
-          class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
-          :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
-          <div class="flex items-center justify-between gap-2 overflow-hidden">
-            <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
-              <input v-model="renamePageInput" type="text"
-                class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-xs text-slate-800 dark:text-slate-100 outline-none"
-                @keyup.enter="savePageRename(page.id)" />
-              <button @click="savePageRename(page.id)"
-                class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700">
-                <Check class="w-4 h-4" />
-              </button>
-            </div>
-            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
-              <span v-if="page.isHome"
-                class="shrink-0 text-[8px] bg-amber-500 text-white px-1 py-0.5 rounded leading-none">首页</span>
-              <span class="truncate">{{ page.name }}</span>
-            </span>
-            <div v-if="isRenamingPageId !== page.id"
-              class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
-              <button @click.stop="setHomePage(page)" class="text-xs text-slate-400 hover:text-amber-500"
-                :title="page.isHome ? '当前已是该端首页' : '设为该端首页'">
-                <Home class="w-3 h-3" :class="page.isHome ? 'text-amber-500' : ''" />
-              </button>
-              <button @click.stop="startRenamePage(page.id, page.name)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名">
-                <Edit class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDuplicatePage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
-                <Copy class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleExportPage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
-                <Download class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDeletePage(page.id, page.name)"
-                class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
-                <Trash2 class="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
+        <div class="flex items-center gap-1">
+          <button @click="handleCreateRootFolder('Desktop')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新建桌面端文件夹">
+            <FolderPlus class="w-3.5 h-3.5" />
+          </button>
+          <button @click="handleAddPage('Desktop')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新增桌面端画面">
+            <Plus class="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
+      <div v-if="currentProject"
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans"
+        @dragover.prevent @drop.prevent="applyDrop('Desktop', undefined, undefined)">
+        <ScadaPageTree :nodes="desktopFolderTree" platform="Desktop" :expanded-ids="expandedFolderIds"
+          :selected-page-id="selectedPageId" :is-renaming-page-id="isRenamingPageId" :rename-page-input="renamePageInput"
+          :is-renaming-folder-id="isRenamingFolderId" :rename-folder-input="renameFolderInput" :drag-item="dragItem"
+          @select-page="handleSelectPage" @start-rename-page="startRenamePage" @save-rename-page="savePageRename"
+          @set-home="setHomePage" @duplicate-page="handleDuplicatePage" @export-page="handleExportPage"
+          @delete-page="handleDeletePage" @toggle-folder="toggleFolder"
+          @create-subfolder="(pid) => handleCreateSubfolder('Desktop', pid)"
+          @start-rename-folder="startRenameFolder" @save-rename-folder="saveRenameFolder" @delete-folder="handleDeleteFolder"
+          @drag-start="onDragStart" @drag-end="onDragEnd"
+          @drop-item="(t, b) => applyDrop('Desktop', t, b)" />
+      </div>
 
-      <!-- 移动端分组 -->
+      <!-- 移动端分组（画面文件夹树） -->
       <div
         class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-y border-slate-100/60 dark:border-slate-800 mt-1">
         <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">📱 移动端 ({{ mobilePages.length }})</span>
-        <button @click="handleAddPage('Mobile')"
-          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
-          title="新增移动端画面">
-          <Plus class="w-3.5 h-3.5" />
-        </button>
+        <div class="flex items-center gap-1">
+          <button @click="handleCreateRootFolder('Mobile')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新建移动端文件夹">
+            <FolderPlus class="w-3.5 h-3.5" />
+          </button>
+          <button @click="handleAddPage('Mobile')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新增移动端画面">
+            <Plus class="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
       <div v-if="currentProject"
-        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
-        <div v-for="page in mobilePages" :key="page.id" @click="handleSelectPage(page.id)"
-          class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
-          :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
-          <div class="flex items-center justify-between gap-2 overflow-hidden">
-            <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
-              <input v-model="renamePageInput" type="text"
-                class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-xs text-slate-800 dark:text-slate-100 outline-none"
-                @keyup.enter="savePageRename(page.id)" />
-              <button @click="savePageRename(page.id)"
-                class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700">
-                <Check class="w-4 h-4" />
-              </button>
-            </div>
-            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
-              <span v-if="page.isHome"
-                class="shrink-0 text-[8px] bg-amber-500 text-white px-1 py-0.5 rounded leading-none">首页</span>
-              <span class="truncate">{{ page.name }}</span>
-            </span>
-            <div v-if="isRenamingPageId !== page.id"
-              class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
-              <button @click.stop="setHomePage(page)" class="text-xs text-slate-400 hover:text-amber-500"
-                :title="page.isHome ? '当前已是该端首页' : '设为该端首页'">
-                <Home class="w-3 h-3" :class="page.isHome ? 'text-amber-500' : ''" />
-              </button>
-              <button @click.stop="startRenamePage(page.id, page.name)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名">
-                <Edit class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDuplicatePage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
-                <Copy class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleExportPage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
-                <Download class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDeletePage(page.id, page.name)"
-                class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
-                <Trash2 class="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
-        </div>
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans"
+        @dragover.prevent @drop.prevent="applyDrop('Mobile', undefined, undefined)">
+        <ScadaPageTree :nodes="mobileFolderTree" platform="Mobile" :expanded-ids="expandedFolderIds"
+          :selected-page-id="selectedPageId" :is-renaming-page-id="isRenamingPageId" :rename-page-input="renamePageInput"
+          :is-renaming-folder-id="isRenamingFolderId" :rename-folder-input="renameFolderInput" :drag-item="dragItem"
+          @select-page="handleSelectPage" @start-rename-page="startRenamePage" @save-rename-page="savePageRename"
+          @set-home="setHomePage" @duplicate-page="handleDuplicatePage" @export-page="handleExportPage"
+          @delete-page="handleDeletePage" @toggle-folder="toggleFolder"
+          @create-subfolder="(pid) => handleCreateSubfolder('Mobile', pid)"
+          @start-rename-folder="startRenameFolder" @save-rename-folder="saveRenameFolder" @delete-folder="handleDeleteFolder"
+          @drag-start="onDragStart" @drag-end="onDragEnd"
+          @drop-item="(t, b) => applyDrop('Mobile', t, b)" />
       </div>
 
       <!-- 弹窗画面分组：运行时由事件动作以模态方式调用，非运行主画面，故不提供「设为首页」与端切换 -->
