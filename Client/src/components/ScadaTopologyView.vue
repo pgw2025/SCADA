@@ -112,12 +112,12 @@ import {
   Upload
 } from 'lucide-vue-next';
 
-// 面板收起/展开控制状态
-const isWidgetLibraryOpen = ref<boolean>(true);
+// 面板收起/展开控制状态（默认收起：打开组态设计页面时器件库与右侧属性/事件面板为收起态）
+const isWidgetLibraryOpen = ref<boolean>(false);
 // 工程列表侧边栏收起/展开控制状态
 const isProjectListOpen = ref<boolean>(true);
 // 右侧侧边栏（以选项卡模式整合属性配置、事件配置与图层管理）
-const isRightSidebarOpen = ref<boolean>(true);
+const isRightSidebarOpen = ref<boolean>(false);
 const rightActiveTab = ref<'inspector' | 'events' | 'layers'>('inspector');
 // 当前选中的活动图层
 const activeLayerId = ref<string | null>(null);
