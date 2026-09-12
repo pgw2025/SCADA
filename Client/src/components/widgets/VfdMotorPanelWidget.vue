@@ -255,6 +255,7 @@ const vfdThemeVars = computed<Record<string, string>>(() => {
     '--vfd-hover': t.hover,
     '--vfd-ok': t.ok,
     '--vfd-ok-soft': t.okSoft,
+    '--vfd-run': t.ok,
     '--vfd-err': t.err,
     '--vfd-err-soft': t.errSoft,
     '--vfd-warn': t.warn,
@@ -446,10 +447,17 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (simTimer) clearInterval(simTimer);
+  if (startTimer) clearTimeout(startTimer);
+  if (stopTimer) clearTimeout(stopTimer);
+  if (resetTimer) clearTimeout(resetTimer);
 });
 
 // 下发指令的通用方法
 const writeToDevice = (key: string, value: number | boolean, overrideDevId?: any) => {
+  if (key == null || key === '') {
+    showToast('未配置写入变量，请在属性面板绑定对应点位', 'warning');
+    return;
+  }
   const devId = resolveDeviceId(overrideDevId);
   if (devId != null) {
     const dev = devices.value.find(d => Number(d.id) === Number(devId));
@@ -459,28 +467,39 @@ const writeToDevice = (key: string, value: number | boolean, overrideDevId?: any
   }
 };
 
-// 设定频率弹窗/快速调整
-const showFreqDialog = ref(false);
-const tempFreqInput = ref(30.0);
+// 命令脉冲定时器句柄（复用防快速连点竞态）
+let startTimer: any = null;
+let stopTimer: any = null;
+let resetTimer: any = null;
 
-const openFreqModal = (e: MouseEvent | TouchEvent) => {
-  e.stopPropagation();
+// 设定频率内嵌直输（无弹窗）
+const spFreqInput = ref<string>('30.0');
+
+// 同步当前 SP 到输入框（设备值变化或外部步进时刷新，仅在非输入焦点态覆盖，避免打断正在输入）
+const syncSpFreqInput = () => {
+  if (document.activeElement?.tagName === 'INPUT') return;
+  spFreqInput.value = spFreq.value.toFixed(1);
+};
+watch(spFreq, () => syncSpFreqInput(), { immediate: true });
+
+// 提交直输值：校验并 clamp 到 minFreq~maxFreq 后写设备
+const commitFreqInput = () => {
   if (!props.isActiveMode) return;
   if (!hasWritePermission.value) {
     showToast('当前用户权限不足，无法修改电机设定频率', 'warning');
+    syncSpFreqInput();
     return;
   }
-  tempFreqInput.value = spFreq.value;
-  showFreqDialog.value = true;
-};
-
-const confirmFreqModal = () => {
-  let val = Number(tempFreqInput.value);
-  if (isNaN(val)) val = minFreq.value;
+  let val = Number(spFreqInput.value);
+  if (isNaN(val)) {
+    // 非法输入：回显当前值
+    syncSpFreqInput();
+    return;
+  }
   val = Math.max(minFreq.value, Math.min(maxFreq.value, Number(val.toFixed(1))));
   localSpFreq.value = val;
   writeToDevice(spFreqVar.value, val, propOr('spFreqDeviceId', null));
-  showFreqDialog.value = false;
+  spFreqInput.value = val.toFixed(1);
   showToast(`电机频率设定已更新: ${val} Hz`, 'info');
 };
 
@@ -495,6 +514,7 @@ const stepFrequency = (delta: number, e: MouseEvent | TouchEvent) => {
   next = Math.max(minFreq.value, Math.min(maxFreq.value, next));
   localSpFreq.value = next;
   writeToDevice(spFreqVar.value, next, propOr('spFreqDeviceId', null));
+  spFreqInput.value = next.toFixed(1);
 };
 
 // 启动操作
@@ -520,11 +540,11 @@ const handleStart = (e: MouseEvent | TouchEvent) => {
   // 写入启动指令
   localRunning.value = true;
   writeToDevice(startVar.value, true, propOr('startDeviceId', null));
-  writeToDevice(runningVar.value, true, propOr('runningDeviceId', null));
   showToast(`[${motorTag.value}] 启动指令已下发`, 'success');
 
   // 若为点动脉冲，0.5s 后复位 startVar 脉冲
-  setTimeout(() => {
+  if (startTimer) clearTimeout(startTimer);
+  startTimer = setTimeout(() => {
     writeToDevice(startVar.value, false, propOr('startDeviceId', null));
   }, 500);
 };
@@ -541,10 +561,10 @@ const handleStop = (e: MouseEvent | TouchEvent) => {
 
   localRunning.value = false;
   writeToDevice(stopVar.value, true, propOr('stopDeviceId', null));
-  writeToDevice(runningVar.value, false, propOr('runningDeviceId', null));
   showToast(`[${motorTag.value}] 电机停机指令已下发`, 'info');
 
-  setTimeout(() => {
+  if (stopTimer) clearTimeout(stopTimer);
+  stopTimer = setTimeout(() => {
     writeToDevice(stopVar.value, false, propOr('stopDeviceId', null));
   }, 500);
 };
@@ -557,14 +577,19 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
     showToast('当前用户角色无复位权限', 'warning');
     return;
   }
+  if (!isFault.value) {
+    showToast('当前无故障，无需复位', 'info');
+    return;
+  }
 
+  // 仅本地演示态直接清故障；真机态只发复位脉冲，等待 PLC 回写 st_fault=0
   localFault.value = false;
   localReady.value = true;
   writeToDevice(resetVar.value, true, propOr('resetDeviceId', null));
-  writeToDevice(faultVar.value, false, propOr('faultDeviceId', null));
-  showToast(`[${motorTag.value}] 故障告警已清除复位`, 'success');
+  showToast(`[${motorTag.value}] 故障复位指令已下发`, 'success');
 
-  setTimeout(() => {
+  if (resetTimer) clearTimeout(resetTimer);
+  resetTimer = setTimeout(() => {
     writeToDevice(resetVar.value, false, propOr('resetDeviceId', null));
   }, 500);
 };
@@ -623,7 +648,7 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
           <rect x="6" y="42" width="22" height="14" rx="1.5" :fill="`url(#vfd-shaft-${component.id})`" style="stroke: var(--vfd-svg-stroke)" stroke-width="0.75" />
           <!-- 旋转指示器 -->
           <g :transform="`translate(12, 49) rotate(${motorAngle})`">
-            <line x1="-4" y1="0" x2="4" y2="0" :style="{ stroke: isRunning ? 'var(--vfd-accent)' : 'var(--vfd-svg-stroke)' }" stroke-width="2" stroke-linecap="round" />
+            <line x1="-4" y1="0" x2="4" y2="0" :style="{ stroke: isRunning ? 'var(--vfd-run)' : 'var(--vfd-svg-stroke)' }" stroke-width="2" stroke-linecap="round" />
           </g>
 
           <!-- 定子外壳与散热肋片 -->
@@ -640,8 +665,8 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
           <!-- 后风扇罩 & 旋转动效扇叶 -->
           <path d="M 94 28 C 104 28 106 40 106 47 C 106 54 104 66 94 66 Z" style="fill: var(--vfd-svg-base); stroke: var(--vfd-svg-stroke)" stroke-width="1" />
           <g :transform="`translate(98, 47) rotate(${motorAngle})`">
-            <line x1="-5" y1="0" x2="5" y2="0" :style="{ stroke: isRunning ? '#22c55e' : 'var(--vfd-svg-stroke)' }" stroke-width="2" />
-            <line x1="0" y1="-5" x2="0" y2="5" :style="{ stroke: isRunning ? '#22c55e' : 'var(--vfd-svg-stroke)' }" stroke-width="2" />
+            <line x1="-5" y1="0" x2="5" y2="0" :style="{ stroke: isRunning ? 'var(--vfd-run)' : 'var(--vfd-svg-stroke)' }" stroke-width="2" />
+            <line x1="0" y1="-5" x2="0" y2="5" :style="{ stroke: isRunning ? 'var(--vfd-run)' : 'var(--vfd-svg-stroke)' }" stroke-width="2" />
           </g>
         </svg>
 
@@ -711,13 +736,13 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
             <Minus class="w-2.5 h-2.5" />
           </button>
 
-          <!-- 点击弹窗输入 -->
-          <span @click="openFreqModal($event)"
-            class="font-mono text-xs font-bold cursor-pointer hover:underline px-1"
-            style="color: var(--vfd-sp)"
-            title="点击设定具体频率">
-            {{ spFreq.toFixed(1) }}
-          </span>
+          <!-- 内嵌直输输入框（失焦/回车提交，步进按钮两侧保留） -->
+          <input type="number" v-model="spFreqInput" :min="minFreq" :max="maxFreq" step="0.1"
+            :disabled="!isActiveMode || !hasWritePermission"
+            @blur="commitFreqInput"
+            @keyup.enter="($event.target as HTMLInputElement).blur()"
+            class="vfd-freq-input w-16 rounded px-1 py-0.5 text-center font-mono font-bold focus:outline-none"
+            title="直接输入设定频率，回车或失焦生效" />
 
           <button @click="stepFrequency(freqStep, $event)"
             :disabled="!isActiveMode || !hasWritePermission"
@@ -801,39 +826,13 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
 
       <!-- 复位按钮 -->
       <button @click="handleReset($event)"
-        :disabled="!isActiveMode || !hasWritePermission"
+        :disabled="!isActiveMode || !isFault || !hasWritePermission"
         class="vfd-btn vfd-btn--reset h-9 rounded-lg font-bold text-xs flex items-center justify-center gap-1 border transition-all cursor-pointer select-none"
         :class="isFault ? 'vfd-btn--reset-fault animate-pulse' : ''"
         title="清除故障告警并复位状态">
         <RotateCcw class="w-3.5 h-3.5" />
         <span>复位</span>
       </button>
-    </div>
-
-    <!-- 频率直接输入浮动对话框 -->
-    <div v-if="showFreqDialog" @click.stop
-      class="vfd-overlay absolute inset-0 backdrop-blur-xs flex flex-col justify-center items-center p-4 z-30">
-      <div class="vfd-dialog w-full p-3 rounded-xl shadow-2xl space-y-3 text-center">
-        <div class="flex items-center justify-between text-xs font-bold" style="color: var(--vfd-title)">
-          <span>设定电机频率</span>
-          <span class="text-[10px] vfd-faint-text font-normal">{{ minFreq }} ~ {{ maxFreq }} Hz</span>
-        </div>
-        <div class="flex items-center justify-center gap-2">
-          <input type="number" v-model="tempFreqInput" :min="minFreq" :max="maxFreq" step="0.1"
-            class="vfd-input w-24 rounded px-2 py-1 text-center font-mono text-base font-bold focus:outline-none" />
-          <span class="text-xs vfd-muted-text font-mono">Hz</span>
-        </div>
-        <div class="flex items-center gap-2 pt-1">
-          <button @click="showFreqDialog = false"
-            class="vfd-dialog-cancel flex-1 py-1 rounded text-xs cursor-pointer">
-            取消
-          </button>
-          <button @click="confirmFreqModal"
-            class="vfd-dialog-confirm flex-1 py-1 rounded text-xs font-bold text-white cursor-pointer">
-            确定
-          </button>
-        </div>
-      </div>
     </div>
 
   </div>
@@ -945,29 +944,30 @@ const handleReset = (e: MouseEvent | TouchEvent) => {
 }
 .vfd-btn--reset.vfd-btn--reset-fault:hover { background: #f59e0b; }
 
-/* 频率输入对话框 */
-.vfd-overlay {
-  background: var(--vfd-overlay);
-}
-.vfd-dialog {
-  background: var(--vfd-dialog);
-  border: 1px solid var(--vfd-dialog-border);
-}
-.vfd-input {
+/* 频率内嵌直输输入框（变大 + 醒目，随主题强调色） */
+.vfd-freq-input {
   background: var(--vfd-well);
   border: 1px solid var(--vfd-accent);
-  color: var(--vfd-accent);
+  color: var(--vfd-sp);
+  font-size: 14px;
+  line-height: 1.4;
 }
-.vfd-input:focus {
+.vfd-freq-input:focus {
   box-shadow: 0 0 0 1px var(--vfd-accent);
+  background: var(--vfd-well-soft);
 }
-.vfd-dialog-cancel {
-  background: var(--vfd-btn-bg);
-  color: var(--vfd-btn-text);
+.vfd-freq-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
-.vfd-dialog-cancel:hover { background: var(--vfd-btn-bg-hover); }
-.vfd-dialog-confirm {
-  background: var(--vfd-accent);
+/* 隐藏 number 输入框默认上下箭头，视觉更干净 */
+.vfd-freq-input::-webkit-outer-spin-button,
+.vfd-freq-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
-.vfd-dialog-confirm:hover { filter: brightness(1.1); }
+.vfd-freq-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
 </style>
