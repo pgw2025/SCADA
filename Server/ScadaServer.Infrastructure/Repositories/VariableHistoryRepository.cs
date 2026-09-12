@@ -161,6 +161,9 @@ namespace ScadaServer.Infrastructure.Repositories
             }
 
             var agg = isMax ? "MAX(`Value`)" : isMin ? "MIN(`Value`)" : "AVG(`Value`)";
+            // ONLY_FULL_GROUP_BY 兼容：SELECT / GROUP BY / ORDER BY 三处必须使用完全一致的桶表达式
+            //（统一用 FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(`Timestamp`)/{0})*{0})），否则 MySQL 会把
+            // 表达式中未聚合的裸 `Timestamp` 列判定为非法，报 Expression #N is not in GROUP BY clause。
             var sqlAgg =
                 "SELECT 0 AS `Id`, 0 AS `DeviceId`, '' AS `DeviceKey`, {1} AS `VariableKey`, '' AS `VariableName`,\n" +
                 "       " + agg + " AS `Value`, NULL AS `RawValue`,\n" +
@@ -171,8 +174,8 @@ namespace ScadaServer.Infrastructure.Repositories
                 "  AND ({2} = '' OR `DeviceKey` = {2})\n" +
                 "  AND `Timestamp` >= {3}\n" +
                 "  AND `Timestamp` <= {4}\n" +
-                "GROUP BY FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0}\n" +
-                "ORDER BY `Timestamp` DESC\n" +
+                "GROUP BY FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0})\n" +
+                "ORDER BY FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0}) DESC\n" +
                 "LIMIT {5}";
             var parametersAgg = BuildParams(windowSec, variableKey, devKey, start, end, limit);
             return await Db.VariableHistories
