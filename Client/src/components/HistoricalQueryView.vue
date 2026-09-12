@@ -152,6 +152,9 @@ const openRecordDetail = (rec: {
   variableKey: string; value: number; unit?: string; quality?: string; timestamp: string;
 }) => { selectedRecordDetail.value = rec; };
 const closeRecordDetail = () => { selectedRecordDetail.value = null; };
+// 数据明细全屏模式（桌面/移动均可用，独立于图表全屏 isFullscreen）
+const tableFullscreen = ref(false);
+const toggleTableFullscreen = () => { tableFullscreen.value = !tableFullscreen.value; };
 // 移动端全屏（isFullscreen && !isDesktop）→ 图表旋转 90° 横屏看图
 const isMobileFullscreen = computed(() => isFullscreen.value && !isDesktop.value);
 // 实际视口尺寸（px），用于移动端全屏旋转铺满（避开 100vh 受地址栏影响的问题）
@@ -1653,37 +1656,77 @@ const handleExportCSV = async () => {
     </div>
 
     <!-- 明细表格 -->
-    <div v-show="mobileView === 'table'" class="px-3 sm:px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex">
-      <div class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between transition-colors">
+    <div v-show="mobileView === 'table'"
+      :class="tableFullscreen ? 'fixed inset-0 z-50 p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 flex' : 'px-3 sm:px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex'">
+      <div
+        :class="tableFullscreen ? 'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-2xl transition-colors' : 'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between transition-colors'">
 
-        <!-- 移动端视图模式切换（仅手机端显示） -->
+        <!-- 全屏标题栏（桌面端 + 移动端全屏时均显示） -->
         <div
+          v-if="tableFullscreen"
+          class="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 shrink-0">
+          <span class="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+            <FileSpreadsheet class="w-3.5 h-3.5" />
+            数据明细（共 {{ totalRecordsCount }} 条）
+          </span>
+          <button type="button" @click="toggleTableFullscreen"
+            class="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-[#1890ff] transition-colors cursor-pointer shrink-0"
+            title="退出全屏">
+            <Minimize2 class="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <!-- 移动端视图模式切换（仅手机端显示，全屏时不显示以免重复） -->
+        <div
+          v-if="!tableFullscreen"
           class="md:hidden flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 shrink-0">
           <span class="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <FileSpreadsheet class="w-3.5 h-3.5" />
             数据明细（共 {{ totalRecordsCount }} 条）
           </span>
-          <div class="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
-            <button type="button" @click="setMobileViewMode('card')"
-              class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-              :class="mobileViewMode === 'card'
-                ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
-                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="卡片模式">
-              <LayoutList class="w-3.5 h-3.5" />
-              <span>卡片</span>
-            </button>
-            <button type="button" @click="setMobileViewMode('compact')"
-              class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-              :class="mobileViewMode === 'compact'
-                ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
-                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="紧凑模式">
-              <AlignJustify class="w-3.5 h-3.5" />
-              <span>紧凑</span>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <div class="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+              <button type="button" @click="setMobileViewMode('card')"
+                class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                :class="mobileViewMode === 'card'
+                  ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="卡片模式">
+                <LayoutList class="w-3.5 h-3.5" />
+                <span>卡片</span>
+              </button>
+              <button type="button" @click="setMobileViewMode('compact')"
+                class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                :class="mobileViewMode === 'compact'
+                  ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="紧凑模式">
+                <AlignJustify class="w-3.5 h-3.5" />
+                <span>紧凑</span>
+              </button>
+            </div>
+            <button type="button" @click="toggleTableFullscreen"
+              class="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-[#1890ff] transition-colors cursor-pointer shrink-0"
+              :title="tableFullscreen ? '退出全屏' : '全屏查看数据明细'">
+              <Minimize2 v-if="tableFullscreen" class="w-3.5 h-3.5" />
+              <Maximize2 v-else class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
         <!-- ================= 1. 桌面端表格（>= md） ================= -->
+        <!-- 桌面端工具栏（非全屏时显示，含全屏入口） -->
+        <div
+          v-if="!tableFullscreen"
+          class="hidden md:flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 shrink-0">
+          <span class="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <FileSpreadsheet class="w-3.5 h-3.5" />
+            数据明细（共 {{ totalRecordsCount }} 条）
+          </span>
+          <button type="button" @click="toggleTableFullscreen"
+            class="p-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-[#1890ff] transition-colors cursor-pointer shrink-0"
+            title="全屏查看数据明细">
+            <Maximize2 class="w-3.5 h-3.5" />
+          </button>
+        </div>
         <div class="hidden md:block overflow-x-auto flex-1">
           <table class="w-full text-left text-xs font-sans">
             <thead class="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px]">
