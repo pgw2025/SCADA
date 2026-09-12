@@ -247,7 +247,7 @@ namespace ScadaServer.Application.Services
                 if (folders[i].SortOrder != i + 1) { folders[i].SortOrder = i + 1; await _folderRepository.UpdateAsync(folders[i]); }
 
             var pages = (await _pageRepository.GetListAsync(p => p.FolderId == parentFolderId
-                                                                 && string.Equals(p.Platform, platform, StringComparison.OrdinalIgnoreCase)))
+                                                                 && p.Platform == platform))
                 .OrderBy(p => p.SortOrder).ThenBy(p => p.Id).ToList();
             for (int i = 0; i < pages.Count; i++)
                 if (pages[i].SortOrder != i + 1) { pages[i].SortOrder = i + 1; await _pageRepository.UpdateAsync(pages[i]); }
@@ -281,7 +281,7 @@ namespace ScadaServer.Application.Services
         {
             var dup = await _folderRepository.AnyAsync(f =>
                 f.ProjectId == projectId && f.Platform == platform && f.ParentFolderId == parentFolderId
-                && string.Equals(f.Name, name, StringComparison.Ordinal)
+                && f.Name == name
                 && (excludeFolderId == null || f.Id != excludeFolderId.Value));
             if (dup)
                 throw new ArgumentException("同层级下已存在同名文件夹");

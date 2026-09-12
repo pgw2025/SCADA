@@ -19,7 +19,7 @@
               :class="expandedIds.has(node.id) ? 'rotate-90' : ''" />
             <FolderIcon class="w-3.5 h-3.5 shrink-0 text-amber-500" />
             <span v-if="isRenamingFolderId === node.id" class="flex items-center gap-1 w-full" @click.stop>
-              <input ref="folderRenameRef" v-model="renameFolderInputLocal" type="text" class="rename-input"
+              <input :ref="setFolderRenameEl" v-model="renameFolderInputLocal" type="text" class="rename-input"
                 @keyup.enter="saveRenameFolder(node.id)" @click.stop />
               <button class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700" @click="saveRenameFolder(node.id)">
                 <Check class="w-4 h-4" />
@@ -79,7 +79,7 @@
         @click="emitSelectPage(node.id)">
         <div class="flex items-center justify-between gap-2 w-full min-w-0">
           <div v-if="isRenamingPageId === node.id" class="flex items-center gap-1 w-full" @click.stop>
-            <input ref="pageRenameRef" v-model="renamePageInputLocal" type="text" class="rename-input"
+            <input :ref="setPageRenameEl" v-model="renamePageInputLocal" type="text" class="rename-input"
               @keyup.enter="emitSaveRenamePage(node.id)" @click.stop />
             <button class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700" @click="emitSaveRenamePage(node.id)">
               <Check class="w-4 h-4" />
@@ -113,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, shallowRef, watch, nextTick } from 'vue';
 import { ChevronRight, FolderIcon, FolderPlus, Edit, Trash2, Check, Copy, Download, Home } from 'lucide-vue-next';
 import type { PageTreeNode } from '../store/scadaStore';
 
@@ -181,14 +181,16 @@ const renameFolderInputLocal = ref(props.renameFolderInput);
 const renamePageInputLocal = ref(props.renamePageInput);
 watch(() => props.renameFolderInput, (v) => { renameFolderInputLocal.value = v ?? ''; });
 watch(() => props.renamePageInput, (v) => { renamePageInputLocal.value = v ?? ''; });
+const pageRenameEl = shallowRef<HTMLInputElement | null>(null);
+const setPageRenameEl = (el: any) => { pageRenameEl.value = el ?? null; };
 watch(() => props.isRenamingPageId, async (v, old) => {
-  if (v && v !== old) { await nextTick(); (pageRenameRef.value as HTMLInputElement | null)?.focus(); }
+  if (v && v !== old) { await nextTick(); pageRenameEl.value?.focus(); }
 });
-const pageRenameRef = ref<HTMLInputElement | null>(null);
+const folderRenameEl = shallowRef<HTMLInputElement | null>(null);
+const setFolderRenameEl = (el: any) => { folderRenameEl.value = el ?? null; };
 watch(() => props.isRenamingFolderId, async (v, old) => {
-  if (v && v !== old) { await nextTick(); (folderRenameRef.value as HTMLInputElement | null)?.focus(); }
+  if (v && v !== old) { await nextTick(); folderRenameEl.value?.focus(); }
 });
-const folderRenameRef = ref<HTMLInputElement | null>(null);
 
 const saveRenameFolder = (id: string) => emitSaveRenameFolder(id);
 
