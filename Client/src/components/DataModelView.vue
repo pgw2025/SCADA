@@ -119,6 +119,29 @@ const varAccessLevel = ref<'RO' | 'RW'>('RW');
 const varIsStored = ref<boolean>(true);
 const varStoreMode = ref<'None' | 'Change' | 'Cycle' | 'Compressed' | 'Aggregated'>('Change');
 const varStoreIntervalMs = ref<number | ''>(300000);
+// 存储周期「数值 + 单位」拆分：界面用人类可读的数值与单位，提交时换算回毫秒（StoreIntervalMs）
+const varStoreIntervalValue = ref<number | ''>(5);
+const varStoreIntervalUnit = ref<'second' | 'minute' | 'hour'>('minute');
+const storeIntervalUnitOptions = [
+  { value: 'second', label: '秒', ms: 1000 },
+  { value: 'minute', label: '分', ms: 60 * 1000 },
+  { value: 'hour', label: '时', ms: 60 * 60 * 1000 },
+];
+// 由「数值 + 单位」合成为毫秒；非法/空值回退默认 300000ms（5 分钟）
+const storeIntervalMsFromValue = computed<number>(() => {
+  const v = varStoreIntervalValue.value;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return 300000;
+  const unit = storeIntervalUnitOptions.find(u => u.value === varStoreIntervalUnit.value);
+  return Math.max(1000, Math.round(v * (unit?.ms ?? 60000)));
+});
+// 把毫秒值按「最大整单位」拆分为数值 + 单位（用于编辑回填），下限 1 秒
+function splitStoreIntervalMs(ms: number | '' | undefined): { value: number; unit: 'second' | 'minute' | 'hour' } {
+  const raw = typeof ms === 'number' ? ms : 300000;
+  const safe = Math.max(1000, raw);
+  if (safe >= 3600000 && safe % 3600000 === 0) return { value: safe / 3600000, unit: 'hour' };
+  if (safe >= 60000 && safe % 60000 === 0) return { value: safe / 60000, unit: 'minute' };
+  return { value: Math.round(safe / 1000), unit: 'second' };
+}
 
 // OPCUA custom state properties
 const varUpdateMode = ref<'subscription' | 'polling'>('subscription');
@@ -308,8 +331,15 @@ const openEditVariable = (v: DataPoint) => {
   varAccessLevel.value = (v.extensionData?.accessLevel as 'RO' | 'RW') || 'RW';
   // 历史存储
   varIsStored.value = v.isStored !== false && v.storeMode !== 'None';
-  varStoreMode.value = v.storeMode && v.storeMode !== 'None' ? v.storeMode : 'Change';
+  // Compressed/Aggregated 后端当前等同 Cycle，前端已禁用这两个选项；编辑遗留数据时归一化为 Cycle，避免下拉框出现不可选的当前值
+  const rawMode = v.storeMode && v.storeMode !== 'None' ? v.storeMode : 'Change';
+  varStoreMode.value = (rawMode === 'Compressed' || rawMode === 'Aggregated') ? 'Cycle' : rawMode;
   varStoreIntervalMs.value = v.storeIntervalMs ?? 300000;
+  {
+    const split = splitStoreIntervalMs(v.storeIntervalMs ?? 300000);
+    varStoreIntervalValue.value = split.value;
+    varStoreIntervalUnit.value = split.unit;
+  }
   // OPCUA / MQTT
   varUpdateMode.value = v.updateMode || 'subscription';
   // 工业级参数：换算表达式优先取正式字段；旧数据兼容回填 extensionData.scaleExpr（保存后即迁入正式字段）
@@ -332,6 +362,8 @@ const resetVarForm = () => {
   varIsStored.value = true;
   varStoreMode.value = 'Change';
   varStoreIntervalMs.value = 300000;
+  varStoreIntervalValue.value = 5;
+  varStoreIntervalUnit.value = 'minute';
   varUpdateMode.value = 'subscription';
   varScaleExpression.value = '';
   varDeadBand.value = null;
@@ -393,7 +425,7 @@ const handleSaveVariable = async () => {
     isStored: varIsStored.value,
     // 未勾选"存储历史"时显式发 None,后端据此派生 IsStored=false,不写时序库
     storeMode: varIsStored.value ? varStoreMode.value : 'None',
-    storeIntervalMs: varIsStored.value ? (varStoreIntervalMs.value === '' ? 300000 : varStoreIntervalMs.value) : 300000,
+    storeIntervalMs: varIsStored.value ? storeIntervalMsFromValue.value : 300000,
     updateMode: varUpdateMode.value,
     // 换算表达式：空串发 null（后端语义 = 恒等变换）
     scaleExpression: varScaleExpression.value.trim() === '' ? null : varScaleExpression.value.trim(),
@@ -1272,17 +1304,71 @@ const handleImportDone = async () => {
               >
                 <option value="Change">变动存储</option>
                 <option value="Cycle">定时存储</option>
-                <option value="Compressed">压缩存储</option>
-                <option value="Aggregated">聚合存储</option>
+                <option value="Compressed" disabled>压缩存储（规划中）</option>
+                <option value="Aggregated" disabled>聚合存储（规划中）</option>
               </select>
             </div>
             <p v-if="!varIsStored" class="text-[9px] text-slate-400 dark:text-slate-500">不勾选则变量仅驻留内存,不写入时序数据库 (StoreMode=None)。</p>
+
+            <!-- 变动存储：变化阈值（死区）+ 兜底周期 -->
+            <div v-if="varIsStored && varStoreMode === 'Change'" class="space-y-2 rounded-lg bg-emerald-100/50 dark:bg-emerald-900/30 p-2">
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-600 dark:text-slate-300 font-bold text-[11px] shrink-0">变化阈值（死区）</label>
+                <input
+                  v-model="varDeadBand"
+                  type="number"
+                  step="0.001"
+                  placeholder="0 = 任何变化都记录"
+                  class="w-28 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
+                />
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-600 dark:text-slate-300 font-bold text-[11px] shrink-0">兜底周期</label>
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="varStoreIntervalValue"
+                    type="number"
+                    min="1"
+                    class="w-16 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
+                  />
+                  <select
+                    v-model="varStoreIntervalUnit"
+                    class="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-1 py-1 text-[11px] text-slate-600 dark:text-slate-300 focus:outline-none"
+                  >
+                    <option v-for="u in storeIntervalUnitOptions" :key="u.value" :value="u.value">{{ u.label }}</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-[9px] text-emerald-600 dark:text-emerald-400 leading-snug">|新值−上次存储值| 超过阈值才写入；值长时间不变则每兜底周期强制存一条，避免趋势断档。</p>
+            </div>
+
+            <!-- 定时存储：存储周期 -->
+            <div v-if="varIsStored && varStoreMode === 'Cycle'" class="space-y-2 rounded-lg bg-emerald-100/50 dark:bg-emerald-900/30 p-2">
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-600 dark:text-slate-300 font-bold text-[11px] shrink-0">存储周期</label>
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="varStoreIntervalValue"
+                    type="number"
+                    min="1"
+                    class="w-16 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
+                  />
+                  <select
+                    v-model="varStoreIntervalUnit"
+                    class="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-1 py-1 text-[11px] text-slate-600 dark:text-slate-300 focus:outline-none"
+                  >
+                    <option v-for="u in storeIntervalUnitOptions" :key="u.value" :value="u.value">{{ u.label }}</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-[9px] text-emerald-600 dark:text-emerald-400 leading-snug">按设定周期定时采样写入，与设备采集轮询间隔解耦。</p>
+            </div>
           </div>
 
           <!-- Industrial-grade Enhanced Fields -->
           <div class="p-3 bg-orange-50/50 dark:bg-orange-950/40 rounded-xl space-y-3 border border-orange-100 dark:border-orange-800">
             <div class="font-bold text-[10px] text-orange-700 dark:text-orange-400 uppercase tracking-wider">工业级参数</div>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 gap-2">
               <div>
                 <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">访问模式</label>
                 <select
@@ -1294,16 +1380,6 @@ const handleImportDone = async () => {
                   <option value="Write">只写</option>
                   <option value="ReadWrite">读写</option>
                 </select>
-              </div>
-              <div>
-                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">死区阈值</label>
-                <input
-                  v-model="varDeadBand"
-                  type="number"
-                  step="0.001"
-                  placeholder="变化超过此值才触发更新"
-                  class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white"
-                />
               </div>
             </div>
           </div>
