@@ -143,16 +143,19 @@ const isBoxSelecting = ref<boolean>(false);
 const boxRect = ref<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
 
 // 阶段X：移动端画布手势——交互模式（select=框选 / pan=平移）、单指平移、双指捏合缩放
-const interactionMode = ref<'select' | 'pan'>('select');
+// 用 defineModel 双向绑定：父级 dock 栏与顶部工具栏共享同一交互模式状态
+const interactionMode = defineModel<'select' | 'pan'>('interactionMode', { default: 'select' });
 const isPanning = ref<boolean>(false);
 const panStart = ref<{ x: number; y: number }>({ x: 0, y: 0 });
-const panStartScroll = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const panStartOffset = ref<{ x: number; y: number }>({ x: 0, y: 0 });
+// 平移偏移量（屏幕像素）：画布通过 transform translate 移动，不依赖滚动容器溢出
+const panOffset = ref<{ x: number; y: number }>({ x: 0, y: 0 });
 // 双指捏合：记录活跃触点与起始距离/缩放/中心
 const activePointers = new Map<number, { x: number; y: number }>();
 const isPinching = ref<boolean>(false);
 const pinchStartDistance = ref<number>(0);
 const pinchStartZoom = ref<number>(1);
-const pinchStartScroll = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const pinchStartOffset = ref<{ x: number; y: number }>({ x: 0, y: 0 });
 const pinchAnchorCanvas = ref<{ x: number; y: number }>({ x: 0, y: 0 }); // 缩放锚点在画布坐标系（不动点）
 
 // 屏幕坐标 → 画布坐标（按 zoom 反算；拉伸模式下 X/Y 各自按轴缩放反算）
@@ -406,26 +409,23 @@ const handleMouseMove = (e: PointerEvent) => {
     const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     if (pinchStartDistance.value <= 0) return;
     const ratio = dist / pinchStartDistance.value;
-    const nextZoom = Math.max(0.5, Math.min(1.5, pinchStartZoom.value * ratio));
+    const nextZoom = Math.max(0.1, Math.min(2.5, pinchStartZoom.value * ratio));
     zoom.value = nextZoom;
     zoomY.value = nextZoom;
-    // 缩放后补偿滚动，使锚点（双指中点对应的画布坐标）在视口中的位置保持不变
-    const el = workspaceRef.value;
-    if (el) {
-      const dZoom = nextZoom - pinchStartZoom.value;
-      el.scrollLeft = pinchStartScroll.value.left + pinchAnchorCanvas.value.x * dZoom;
-      el.scrollTop = pinchStartScroll.value.top + pinchAnchorCanvas.value.y * dZoom;
-    }
+    // 缩放后调整平移偏移，使锚点（双指中点对应的画布坐标）在屏幕上的位置保持不变
+    panOffset.value = {
+      x: pinchStartOffset.value.x + pinchAnchorCanvas.value.x * (pinchStartZoom.value - nextZoom),
+      y: pinchStartOffset.value.y + pinchAnchorCanvas.value.y * (pinchStartZoom.value - nextZoom),
+    };
     return;
   }
 
-  // 平移画布：反向累加滚动位置
+  // 平移画布：累加平移偏移量（transform translate，不依赖滚动）
   if (isPanning.value) {
-    const el = workspaceRef.value;
-    if (el) {
-      el.scrollLeft = panStartScroll.value.left - (e.clientX - panStart.value.x);
-      el.scrollTop = panStartScroll.value.top - (e.clientY - panStart.value.y);
-    }
+    panOffset.value = {
+      x: panStartOffset.value.x + (e.clientX - panStart.value.x),
+      y: panStartOffset.value.y + (e.clientY - panStart.value.y),
+    };
     return;
   }
 
@@ -555,7 +555,7 @@ const handleStageMouseDown = (e: PointerEvent) => {
     const pts = [...activePointers.values()];
     pinchStartDistance.value = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     pinchStartZoom.value = zoom.value;
-    pinchStartScroll.value = { left: workspaceRef.value?.scrollLeft ?? 0, top: workspaceRef.value?.scrollTop ?? 0 };
+    pinchStartOffset.value = { x: panOffset.value.x, y: panOffset.value.y };
     // 记录双指中点对应的画布坐标作为缩放锚点（缩放过程中保持该点不动）
     const midX = (pts[0].x + pts[1].x) / 2;
     const midY = (pts[0].y + pts[1].y) / 2;
@@ -567,10 +567,10 @@ const handleStageMouseDown = (e: PointerEvent) => {
 
   // 单指：按交互模式分支
   if (interactionMode.value === 'pan') {
-    // 平移模式：空白处单指拖动 = 平移画布（用工作区滚动实现）
+    // 平移模式：空白处单指拖动 = 平移画布（transform translate）
     isPanning.value = true;
     panStart.value = { x: e.clientX, y: e.clientY };
-    panStartScroll.value = { left: workspaceRef.value?.scrollLeft ?? 0, top: workspaceRef.value?.scrollTop ?? 0 };
+    panStartOffset.value = { x: panOffset.value.x, y: panOffset.value.y };
     e.preventDefault();
     return;
   }
@@ -706,12 +706,12 @@ const onPresetChange = (e: Event) => {
 
 // 设计模式工具栏缩放（等比：双轴同步）
 const zoomIn = () => {
-  const v = Math.min(1.5, zoom.value + 0.1);
+  const v = Math.min(2.5, zoom.value + 0.1);
   zoom.value = v;
   zoomY.value = v;
 };
 const zoomOut = () => {
-  const v = Math.max(0.5, zoom.value - 0.1);
+  const v = Math.max(0.1, zoom.value - 0.1);
   zoom.value = v;
   zoomY.value = v;
 };
@@ -888,9 +888,9 @@ onUnmounted(() => {
 
         <div class="h-5 w-[1px] bg-gray-300 hidden md:block" />
 
-        <!-- 平移/框选交互模式切换：始终显示（手机端需用它切换「平移画布」与「框选」手势） -->
+        <!-- 平移/框选交互模式切换（桌面端显示；手机端改由底部 dock 栏承载） -->
         <button @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'" :class="[
-          'text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer flex items-center gap-1',
+          'hidden md:flex text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer items-center gap-1',
           interactionMode === 'pan'
             ? 'bg-white border-[#1890ff] text-[#1890ff]'
             : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
@@ -1020,7 +1020,8 @@ onUnmounted(() => {
       <!-- 拉伸填满（Stretch）模式下 X/Y 独立缩放，占位宽高分别按各轴 zoom 计算 -->
       <div class="relative shrink-0" :class="readonly ? 'mx-auto' : ''" :style="{
         width: canvasWidth * zoom + 'px',
-        height: canvasHeight * zoomY + 'px'
+        height: canvasHeight * zoomY + 'px',
+        transform: `translate(${panOffset.x}px, ${panOffset.y}px)`
       }">
         <!-- 边框/圆角/阴影仅设计态显示：运行态（readonly）纯净铺满，无边框卡片感 -->
         <div ref="canvasRef"

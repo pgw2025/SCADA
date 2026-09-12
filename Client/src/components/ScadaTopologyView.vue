@@ -106,6 +106,7 @@ import {
   Package,
   Sliders,
   Zap,
+  Hand,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -147,6 +148,9 @@ const selectedId = computed<string | null>(() =>
   selectedIds.value.length === 1 ? selectedIds.value[0] : null
 );
 const isActiveMode = ref<boolean>(false);
+
+// 阶段X：画布交互模式（select=框选 / pan=平移），提升到父级供底部 dock 栏与画布顶部工具栏共享
+const interactionMode = ref<'select' | 'pan'>('select');
 
 // 页面属性：背景选中态（与组件选中互斥；点击画布空白背景 → InspectorPanel 切换为「页面属性」表单）
 const isBackgroundSelected = ref<boolean>(false);
@@ -2004,7 +2008,7 @@ const handleExportPage = async (page: ScadaPage) => {
                     @add-component-at="handleAddWidgetAt" @navigate-to-page="handleNavigate"
                     @trigger-run-script="handleTriggerRunScript" @select-background="handleSelectBackground"
                     @request-set-value="handleRequestSetValue"
-                    @component-event="handleComponentEvent" />
+                    @component-event="handleComponentEvent" v-model:interaction-mode="interactionMode" />
                 </div>
               </div>
               <CanvasPanel v-else :components="currentPage.components" :selectedId="selectedId"
@@ -2019,7 +2023,7 @@ const handleExportPage = async (page: ScadaPage) => {
                 @update-canvas-size="handleUpdateCanvasSize" @add-component-at="handleAddWidgetAt"
                 @navigate-to-page="handleNavigate" @trigger-run-script="handleTriggerRunScript"
                 @select-background="handleSelectBackground" @request-set-value="handleRequestSetValue"
-                @component-event="handleComponentEvent" />
+                @component-event="handleComponentEvent" v-model:interaction-mode="interactionMode" />
             </div>
           </div>
 
@@ -2089,6 +2093,16 @@ const handleExportPage = async (page: ScadaPage) => {
               class="p-1.5 rounded-full transition-colors cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               title="图层管理">
               <Layers class="w-4 h-4" />
+            </button>
+
+            <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 my-auto mx-0.5"></div>
+
+            <!-- 平移/框选交互模式切换（移动端画布手势：平移模式空白拖动=平移画布，框选模式=橡皮筋框选） -->
+            <button @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'"
+              class="p-1.5 rounded-full transition-colors cursor-pointer relative"
+              :class="interactionMode === 'pan' ? 'text-[#1890ff] dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'"
+              :title="interactionMode === 'pan' ? '平移模式（空白拖动平移画布，双指捏合缩放）' : '框选模式（空白拖动框选，双指捏合缩放）'">
+              <Hand class="w-4 h-4" />
             </button>
           </div>
         </div>
