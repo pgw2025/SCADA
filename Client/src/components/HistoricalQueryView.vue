@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { historicalRecords } from '../store/historyStore';
 import { systemConfig, addLog } from '../store/index';
 import {
@@ -120,6 +120,8 @@ const queryError = ref('');   // 阶段5 P3-10：查询失败错误态（空串=
 const yAxisMode = ref<'percent' | 'value'>('value');
 // X 轴时间方向：true=最新在左，false=最新在右
 const xNewestFirst = ref(true);
+// 缩放子窗口（null=全量）。用于放大查看秒级变化先后
+const zoomRange = ref<{ min: number; max: number } | null>(null);
 const tooltip = ref<{ x: number; y: number; time: string; items: { color: string; label: string; value: string; bad: boolean }[] } | null>(null);
 
 // 后端事件时间为 UTC，统一转成本地时间显示
@@ -314,6 +316,7 @@ const applySeries = (input: SeriesInput[]) => {
   seriesList.value.forEach(s => (vis[s.key] = true));
   visibleKeys.value = vis;
   currentPageNum.value = 1;
+  zoomRange.value = null; // 数据变化时复位缩放，避免残留旧窗口
 };
 
 // ==================== 数据加载 ====================
@@ -345,6 +348,8 @@ const loadVariableOptions = async () => {
 };
 
 onMounted(() => {
+  // 全局 mouseup：拖出 SVG 后松开鼠标也要结束拖动
+  window.addEventListener('mouseup', handleChartMouseUp);
   if (isSimulation.value) {
     // 模拟模式：仅加载演示变量，不默认选中、不自动查询
     return;
@@ -353,8 +358,32 @@ onMounted(() => {
   }
 });
 
+onBeforeUnmount(() => {
+  window.removeEventListener('mouseup', handleChartMouseUp);
+});
+
 // ==================== 趋势图几何 ====================
 const visibleSeries = computed(() => seriesList.value.filter(s => visibleKeys.value[s.key] !== false));
+
+// 全量数据时间域（所有可见曲线的时间 min/max）
+const fullTimeDomain = computed(() => {
+  let min = Infinity, max = -Infinity;
+  visibleSeries.value.forEach(s => s.records.forEach(r => {
+    const t = new Date(r.timestamp).getTime();
+    if (isNaN(t)) return;
+    if (t < min) min = t;
+    if (t > max) max = t;
+  }));
+  if (!isFinite(min)) return { min: 0, max: 1 };
+  if (min === max) { min -= 1; max += 1; }
+  return { min, max };
+});
+
+// 有效时间域：缩放子窗口（若有）优先，否则全量域
+const effectiveTimeDomain = computed(() => {
+  if (zoomRange.value) return zoomRange.value;
+  return fullTimeDomain.value;
+});
 
 // 所有可见曲线是否可共享数值轴（用于「具体值」判定）
 // 判定：数量 ≥2，且单位「要么全部相同、要么全部为空（均无量纲）」。仅当单位各不相同（有的有、有的无、或值不同）才视为不可共享。
@@ -411,14 +440,20 @@ const lttb = (points: ChartPoint[], threshold: number): ChartPoint[] => {
 
 const formatTimeLabel = (t: number): string => {
   const d = new Date(t);
-  const span = currentSpanMs.value;
-  if (span > 0 && span <= 24 * 3600 * 1000) {
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // 用「有效时间域」跨度（缩放后自适应），而非时间窗选项跨度
+  const span = effectiveTimeDomain.value.max - effectiveTimeDomain.value.min;
+  const p = (n: number) => String(n).padStart(2, '0');
+  if (span > 0 && span <= 60 * 1000) {
+    // ≤1 分钟：显示到秒（如 14:32:07），便于分辨秒级先后
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  if (span > 60 * 1000 && span <= 24 * 3600 * 1000) {
+    return `${p(d.getHours())}:${p(d.getMinutes())}`;
   }
   if (span > 24 * 3600 * 1000 && span <= 31 * 24 * 3600 * 1000) {
-    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
 const chartGeometry = computed(() => {
@@ -431,7 +466,7 @@ const chartGeometry = computed(() => {
     return { key: s.key, color: s.color, unit: s.unit, label: s.variableName, pts };
   });
 
-  // 全局时间域
+  // 全量时间域（用于空态/单点判断）
   let tMin = Infinity, tMax = -Infinity;
   ds.forEach(d => d.pts.forEach(p => {
     if (p.t < tMin) tMin = p.t;
@@ -440,12 +475,15 @@ const chartGeometry = computed(() => {
   if (!isFinite(tMin) || ds.length === 0) {
     return { series: [] as any[], yTicks: [] as any[], xTicks: [] as any[], multi: false, empty: true, useSharedAxis: false, sharedMin: 0, sharedMax: 1 };
   }
-  if (tMin === tMax) { tMin -= 1; tMax += 1; }
-  const tSpan = tMax - tMin;
-  // X 轴时间方向：xNewestFirst 时最新在最左（tMax 落于 PAD_X）；否则最新在最右（tMin 落于 PAD_X）
+
+  // 有效时间域（缩放子窗口优先），映射据此绘制
+  const eMin = effectiveTimeDomain.value.min;
+  const eMax = effectiveTimeDomain.value.max;
+  const tSpan = eMax - eMin;
+  // X 轴时间方向：xNewestFirst 时最新在最左（eMax 落于 PAD_X）；否则最新在最右（eMin 落于 PAD_X）
   const getX = (t: number) => xNewestFirst.value
-    ? PAD_X + ((tMax - t) / tSpan) * (SVG_W - 2 * PAD_X)
-    : PAD_X + ((t - tMin) / tSpan) * (SVG_W - 2 * PAD_X);
+    ? PAD_X + ((eMax - t) / tSpan) * (SVG_W - 2 * PAD_X)
+    : PAD_X + ((t - eMin) / tSpan) * (SVG_W - 2 * PAD_X);
   const getYForValue = (v: number, min: number, max: number) => {
     const span = max - min || 1;
     return SVG_H - PAD_Y - ((v - min) / span) * (SVG_H - 2 * PAD_Y);
@@ -540,13 +578,13 @@ const chartGeometry = computed(() => {
     });
   }
 
-  // X 轴刻度：5 等分时间标签（方向随 xNewestFirst）
+  // X 轴刻度：5 等分时间标签（方向随 xNewestFirst，基于有效时间域）
   const xTicks = [0, 1, 2, 3, 4].map(i => {
-    const t = xNewestFirst.value ? tMax - (tSpan * i) / 4 : tMin + (tSpan * i) / 4;
+    const t = xNewestFirst.value ? eMax - (tSpan * i) / 4 : eMin + (tSpan * i) / 4;
     return { x: getX(t), label: formatTimeLabel(t) };
   });
 
-  return { series, yTicks, xTicks, multi, empty: false, getX, useSharedAxis, sharedMin, sharedMax };
+  return { series, yTicks, xTicks, multi, empty: false, getX, useSharedAxis, sharedMin, sharedMax, eMin, eMax };
 });
 
 // ==================== 统计条 ====================
@@ -563,22 +601,146 @@ const statsBySeries = computed(() =>
 );
 
 // ==================== Tooltip ====================
-const chartMouseLeave = () => { tooltip.value = null; };
+const chartMouseLeave = () => {
+  tooltip.value = null;
+  // 拖出 SVG 时结束拖动（框选则取消，平移则保留当前位置）
+  if (dragState.value?.type === 'brush') dragState.value = null;
+};
 
-// 通过反算像素→时间实现 hover（独立函数，避免计算属性内引用）
+// ==================== 缩放 ====================
+// 判断是否处于缩放态（用于 UI 提示）
+const isZoomed = computed(() => zoomRange.value !== null);
+
+// 滚轮缩放：以光标位置为锚点缩放有效时间域；缩到覆盖全量时复位
+const handleChartWheel = (ev: WheelEvent) => {
+  const g = chartGeometry.value;
+  if (g.empty || g.series.length === 0) return;
+  ev.preventDefault();
+  const svgEl = ev.currentTarget as SVGSVGElement;
+  const rect = svgEl.getBoundingClientRect();
+  const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
+  const scale = SVG_W - 2 * PAD_X;
+  const ratioPx = Math.min(1, Math.max(0, (px - PAD_X) / scale));
+  const curMin = g.eMin, curMax = g.eMax;
+  const curSpan = curMax - curMin;
+
+  // 缩放系数：滚轮向下（deltaY>0）缩小窗口，向上放大
+  const factor = ev.deltaY > 0 ? 1.25 : 0.8;
+  let newSpan = curSpan * factor;
+  // 最小窗口：1 秒（避免无限放大到单点）
+  if (newSpan < 1000) newSpan = 1000;
+
+  // 光标处绝对时间 t0（方向无关地由 ratioPx 反推）
+  const t0 = xNewestFirst.value
+    ? curMax - ratioPx * curSpan
+    : curMin + ratioPx * curSpan;
+
+  // 缩放后保持 t0 仍位于 ratioPx 比例处
+  let newMin: number, newMax: number;
+  if (xNewestFirst.value) {
+    newMax = t0 + ratioPx * newSpan;
+    newMin = newMax - newSpan;
+  } else {
+    newMin = t0 - ratioPx * newSpan;
+    newMax = newMin + newSpan;
+  }
+
+  // 夹紧到全量域
+  const fullMin = fullTimeDomain.value.min;
+  const fullMax = fullTimeDomain.value.max;
+  const clampedMin = Math.max(newMin, fullMin);
+  const clampedMax = Math.min(newMax, fullMax);
+  // 若已覆盖全量（缩小回全量），复位
+  if (clampedMin <= fullMin && clampedMax >= fullMax) {
+    zoomRange.value = null;
+    return;
+  }
+  zoomRange.value = { min: clampedMin, max: clampedMax };
+};
+
+// 双击复位缩放
+const handleChartDblClick = () => {
+  zoomRange.value = null;
+};
+
+// ==================== 平移 / 框选 ====================
+// 拖动状态：null=无，{type:'pan'} 平移，{type:'brush'} 框选放大
+const dragState = ref<{ type: 'pan' | 'brush'; startPx: number; startMin: number; startMax: number } | null>(null);
+// 框选当前末端像素（用于实时绘制矩形）
+const brushEndPx = ref(0);
+// 是否正在拖动（平移或框选）
+const isDragging = computed(() => dragState.value !== null);
+
+// 将客户端坐标换算为 SVG 绘图坐标 px
+const clientToSvgPx = (ev: MouseEvent, el: SVGSVGElement) => {
+  const rect = el.getBoundingClientRect();
+  return ((ev.clientX - rect.left) / rect.width) * SVG_W;
+};
+
+// 鼠标按下：Shift=框选放大；否则=平移（仅已缩放态可平移）
+const handleChartMouseDown = (ev: MouseEvent) => {
+  const g = chartGeometry.value;
+  if (g.empty || g.series.length === 0) return;
+  const svgEl = ev.currentTarget as SVGSVGElement;
+  const px = clientToSvgPx(ev, svgEl);
+  if (ev.shiftKey) {
+    // 框选放大：无需已缩放
+    dragState.value = { type: 'brush', startPx: px, startMin: g.eMin, startMax: g.eMax };
+    brushEndPx.value = px;
+  } else if (isZoomed.value) {
+    // 平移：仅在已缩放态有意义
+    dragState.value = { type: 'pan', startPx: px, startMin: g.eMin, startMax: g.eMax };
+    ev.preventDefault();
+  }
+};
+
+// 鼠标移动：拖动中处理平移/框选，否则显示 tooltip
 const handleChartMouseMove = (ev: MouseEvent) => {
   const g = chartGeometry.value;
   if (g.empty || g.series.length === 0) return;
   const svgEl = ev.currentTarget as SVGSVGElement;
+
+  // 拖动中：平移 / 框选
+  if (dragState.value) {
+    const px = clientToSvgPx(ev, svgEl);
+    const ds = dragState.value;
+    if (ds.type === 'brush') {
+      brushEndPx.value = px;
+      return;
+    }
+    // 平移：把像素位移换算成时间位移 Δt
+    const rect = svgEl.getBoundingClientRect();
+    const scale = SVG_W - 2 * PAD_X;
+    const dxPx = px - ds.startPx;
+    const startSpan = ds.startMax - ds.startMin;
+    const dt = (dxPx / scale) * startSpan;
+    // 平移方向（抓取语义：内容跟随鼠标移动）
+    // 最新在左时 getX=(eMax-t)/span，内容向右=窗口更新(eMax增大)=时间增大，与 dxPx 同号；
+    // 最新在右时 getX=(t-eMin)/span，内容向右=窗口更旧=时间减小，与 dxPx 反号。
+    const signedDt = xNewestFirst.value ? dt : -dt;
+    let newMin = ds.startMin + signedDt;
+    let newMax = ds.startMax + signedDt;
+    // 夹紧到全量域
+    const fullMin = fullTimeDomain.value.min;
+    const fullMax = fullTimeDomain.value.max;
+    const span = newMax - newMin;
+    if (newMin < fullMin) { newMin = fullMin; newMax = fullMin + span; }
+    if (newMax > fullMax) { newMax = fullMax; newMin = fullMax - span; }
+    zoomRange.value = { min: newMin, max: newMax };
+    tooltip.value = null;
+    return;
+  }
+
+  // 非拖动：tooltip
   const rect = svgEl.getBoundingClientRect();
   const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
   const py = ((ev.clientY - rect.top) / rect.height) * SVG_H;
 
-  // 反算时间域（方向随 xNewestFirst）
+  // 反算时间域（方向随 xNewestFirst，基于有效时间域）
   const inner = px - PAD_X;
   const scale = SVG_W - 2 * PAD_X;
-  const tMin = timeDomainForTooltip.value.min;
-  const tMax = timeDomainForTooltip.value.max;
+  const tMin = g.eMin;
+  const tMax = g.eMax;
   const tVal = xNewestFirst.value
     ? tMax - (inner / scale) * (tMax - tMin)
     : tMin + (inner / scale) * (tMax - tMin);
@@ -604,9 +766,35 @@ const handleChartMouseMove = (ev: MouseEvent) => {
   tooltip.value = {
     x: px,
     y: py,
-    time: new Date(tVal).toISOString(),
+    time: fmtTime(new Date(tVal).toISOString()),
     items
   };
+};
+
+// 鼠标松开：结束平移 / 完成框选放大
+const handleChartMouseUp = () => {
+  const ds = dragState.value;
+  if (!ds) return;
+  if (ds.type === 'brush') {
+    // 框选放大：将 [startPx, brushEndPx] 映射到时间区间
+    const g = chartGeometry.value;
+    const scale = SVG_W - 2 * PAD_X;
+    const p1 = Math.min(ds.startPx, brushEndPx.value);
+    const p2 = Math.max(ds.startPx, brushEndPx.value);
+    // 像素 → 时间（基于框选时的有效域 g.eMin/g.eMax，方向相关）
+    const span = g.eMax - g.eMin;
+    const tOfPx = (p: number) => xNewestFirst.value
+      ? g.eMax - ((p - PAD_X) / scale) * span
+      : g.eMin + ((p - PAD_X) / scale) * span;
+    let t1 = tOfPx(p1);
+    let t2 = tOfPx(p2);
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    // 最小框选窗口 1 秒；太窄视为误触忽略
+    if (t2 - t1 >= 1000) {
+      zoomRange.value = { min: t1, max: t2 };
+    }
+  }
+  dragState.value = null;
 };
 
 // 供 tooltip 使用的派生数据（避免在函数内重复构建）
@@ -619,16 +807,6 @@ const allSeriesPoints = computed(() =>
       .sort((a, b) => a.t - b.t)
   }))
 );
-const timeDomainForTooltip = computed(() => {
-  let min = Infinity, max = -Infinity;
-  allSeriesPoints.value.forEach(d => d.pts.forEach(p => {
-    if (p.t < min) min = p.t;
-    if (p.t > max) max = p.t;
-  }));
-  if (!isFinite(min)) return { min: 0, max: 1 };
-  if (min === max) { min -= 1; max += 1; }
-  return { min, max };
-});
 
 const tooltipStyle = computed(() => {
   if (!tooltip.value) return {};
@@ -950,7 +1128,17 @@ const handleExportCSV = async () => {
             </div>
 
             <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-medium">
-              {{ isLoading ? '查询中...' : `可见序列 ${chartGeometry.series.length} · 数据点 ${allTableRecords.length} 个` }}
+              <template v-if="isLoading">查询中...</template>
+              <template v-else>
+                可见序列 {{ chartGeometry.series.length }} · 数据点 {{ allTableRecords.length }} 个
+                <button
+                  v-if="isZoomed"
+                  @click="zoomRange = null"
+                  class="ml-2 px-2 py-0.5 rounded-md text-[10px] font-bold text-white bg-sky-500 hover:bg-sky-400 cursor-pointer inline-flex items-center gap-0.5 transition-colors"
+                >
+                  复位
+                </button>
+              </template>
             </span>
           </div>
         </div>
@@ -974,8 +1162,13 @@ const handleExportCSV = async () => {
               v-if="!chartGeometry.empty && chartGeometry.series.length >= 1"
               :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
               class="w-full h-auto min-w-[640px] block"
+              :style="{ cursor: isDragging ? 'grabbing' : 'grab' }"
               @mousemove="handleChartMouseMove"
+              @mousedown="handleChartMouseDown"
+              @mouseup="handleChartMouseUp"
               @mouseleave="chartMouseLeave"
+              @wheel="handleChartWheel"
+              @dblclick="handleChartDblClick"
             >
               <!-- 横向网格 -->
               <line
@@ -1084,6 +1277,20 @@ const handleExportCSV = async () => {
                   stroke-dasharray="4,3"
                 />
               </g>
+
+              <!-- 框选矩形（Shift+拖动 放大） -->
+              <rect
+                v-if="dragState && dragState.type === 'brush'"
+                :x="Math.min(dragState.startPx, brushEndPx)"
+                :y="PAD_Y"
+                :width="Math.abs(brushEndPx - dragState.startPx)"
+                :height="SVG_H - 2 * PAD_Y"
+                fill="#1890ff"
+                fill-opacity="0.12"
+                stroke="#1890ff"
+                stroke-width="1"
+                stroke-dasharray="4,3"
+              />
             </svg>
 
             <!-- 空态 / 错误态 -->
