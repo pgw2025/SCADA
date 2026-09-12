@@ -124,8 +124,8 @@ const visibleKeys = ref<Record<string, boolean>>({});
 const queryError = ref('');   // 阶段5 P3-10：查询失败错误态（空串=无错误）
 // Y 轴显示模式：percent=百分比归一化（多变量默认）；value=共享数值轴（仅同单位时可用）
 const yAxisMode = ref<'percent' | 'value'>('value');
-// X 轴时间方向：true=最新在左，false=最新在右
-const xNewestFirst = ref(true);
+// X 轴时间方向：true=最新在左，false=最新在右（默认最新在右）
+const xNewestFirst = ref(false);
 // 缩放子窗口（null=全量）。用于放大查看秒级变化先后
 const zoomRange = ref<{ min: number; max: number } | null>(null);
 // 全屏图表模式（手机端体验优化）
@@ -612,11 +612,12 @@ const chartGeometry = computed(() => {
     const circles = sampled
       .filter((_, i) => i % circleStep === 0 || i === sampled.length - 1)
       .map(p => ({ x: getX(p.t), y: norm(p.v), v: p.v, t: p.t, bad: p.bad }));
-    // 数值标签防重叠：按 X 方向扫描，与上一个已标注点水平间距不足 MIN_LABEL_GAP 时跳过该点标签
+    // 数值标签防重叠：按时间轴方向扫描，与上一个已标注点的水平间距不足 MIN_LABEL_GAP 时跳过该点标签。
+    // 注意：xNewestFirst 时 X 随时间递减（最新在最左），故须用 Math.abs 比较绝对间距，否则只有首点会显示标签。
     const MIN_LABEL_GAP = 42; // 最小水平间距（SVG 单位）
-    let lastLabelX = -Infinity;
+    let lastLabelX: number | null = null;
     const labeledCircles = circles.map(c => {
-      const show = c.x - lastLabelX >= MIN_LABEL_GAP;
+      const show = lastLabelX === null || Math.abs(c.x - lastLabelX) >= MIN_LABEL_GAP;
       if (show) lastLabelX = c.x;
       return { ...c, showLabel: show };
     });
