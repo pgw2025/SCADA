@@ -589,12 +589,20 @@ const chartGeometry = computed(() => {
     const circles = sampled
       .filter((_, i) => i % circleStep === 0 || i === sampled.length - 1)
       .map(p => ({ x: getX(p.t), y: norm(p.v), v: p.v, t: p.t, bad: p.bad }));
+    // 数值标签防重叠：按 X 方向扫描，与上一个已标注点水平间距不足 MIN_LABEL_GAP 时跳过该点标签
+    const MIN_LABEL_GAP = 42; // 最小水平间距（SVG 单位）
+    let lastLabelX = -Infinity;
+    const labeledCircles = circles.map(c => {
+      const show = c.x - lastLabelX >= MIN_LABEL_GAP;
+      if (show) lastLabelX = c.x;
+      return { ...c, showLabel: show };
+    });
     // 最新数据点（时间最大）：用于端点高亮标记「哪边是最新」
     const latest = d.pts.length ? d.pts[d.pts.length - 1] : null;
     const latestPoint = latest
       ? { x: getX(latest.t), y: norm(latest.v), v: latest.v, bad: latest.bad }
       : null;
-    return { key: d.key, color: d.color, label: d.label, unit: d.unit, path, circles, min, max, norm, latestPoint };
+    return { key: d.key, color: d.color, label: d.label, unit: d.unit, path, circles: labeledCircles, min, max, norm, latestPoint };
   });
 
   // Y 轴刻度：共享数值轴模式/单曲线显示数值；多曲线独立归一化显示百分比
@@ -1523,6 +1531,16 @@ const handleExportCSV = async () => {
                 />
                 <g v-for="(c, ci) in s.circles" :key="ci">
                   <circle :cx="c.x" :cy="c.y" r="3.5" :fill="c.bad ? '#ef4444' : '#0f172a'" :stroke="s.color" stroke-width="2" />
+                  <text
+                    v-if="c.showLabel"
+                    :x="c.x"
+                    :y="c.y - 8"
+                    :fill="s.color"
+                    font-family="monospace"
+                    font-size="8.5"
+                    font-weight="bold"
+                    text-anchor="middle"
+                  >{{ c.v.toFixed(2) }}</text>
                 </g>
                 <!-- 最新数据点高亮（标记「哪边是最新」） -->
                 <circle

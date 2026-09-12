@@ -37,3 +37,7 @@ docs/db-refactor/_baseline/
 
 # db-refactor 批次B 全量备份（删列前 mysqldump 替代物：pymysql 逻辑备份）
 docs/db-refactor/_backups/
+
+# ── Runtime backups ──
+# 数据库管理页运行时生成的备份包（backup_*.zip），不入库
+Server/ScadaServer.WebApi/Backups/
