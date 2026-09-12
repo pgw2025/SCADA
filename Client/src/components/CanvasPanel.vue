@@ -211,7 +211,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 };
 
 // Pointer Events callbacks
-const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
+const handleDragStart = (e: PointerEvent, component: HMIComponent) => {
   if (props.isActiveMode) {
     // ===== 事件系统：优先消费 props.events 配置（共存策略）=====
     // 配置了交互类事件（click/press/release）且含可用动作 → 走事件分发，不再回退 buttonMode；
@@ -228,11 +228,9 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
       const onRelease = () => {
         emit('componentEvent', component, 'release');
         emit('componentEvent', component, 'click');
-        window.removeEventListener('mouseup', onRelease);
-        window.removeEventListener('touchend', onRelease);
+        window.removeEventListener('pointerup', onRelease);
       };
-      window.addEventListener('mouseup', onRelease);
-      window.addEventListener('touchend', onRelease);
+      window.addEventListener('pointerup', onRelease);
       return;
     }
 
@@ -298,14 +296,12 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
           // 按1送0 / 点动：按下写入 1，松开写入 0
           emit('triggerToggleValue', devId, varKey, legacy, 'momentary', true);
 
-          // Fast release on window mouseup or touchend
+          // Fast release on window pointerup
           const onRelease = () => {
             emit('triggerToggleValue', devId, varKey, legacy, 'momentary', false);
-            window.removeEventListener('mouseup', onRelease);
-            window.removeEventListener('touchend', onRelease);
+            window.removeEventListener('pointerup', onRelease);
           };
-          window.addEventListener('mouseup', onRelease);
-          window.addEventListener('touchend', onRelease);
+          window.addEventListener('pointerup', onRelease);
         } else {
           // 取反 / Toggle mode
           emit('triggerToggleValue', devId, varKey, legacy, 'toggle');
@@ -349,6 +345,10 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
   // 集合为空（如 Ctrl 取消最后一个选中）则不进入拖动
   if (selSet.length === 0) return;
 
+  e.preventDefault();
+  // 捕获指针：手指/鼠标移出组件边界后仍持续收到 pointermove，避免拖到一半卡住
+  (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+
   isDragging.value = true;
   dragStart.value = { x: e.clientX, y: e.clientY };
   // 记录所有选中项拖拽前坐标（只记录未锁定且可见的选中项）
@@ -358,11 +358,13 @@ const handleDragStart = (e: MouseEvent, component: HMIComponent) => {
     .map((c) => ({ id: c.id, x: c.x, y: c.y }));
 };
 
-const handleResizeStart = (e: MouseEvent, component: HMIComponent, handle: string) => {
+const handleResizeStart = (e: PointerEvent, component: HMIComponent, handle: string) => {
   // 阶段5-2：缩放手柄仅对单选组件生效，锁定或隐藏组件禁止缩放
   if (props.selectedIds.length !== 1 || component.id !== props.selectedId || isComponentLocked(component) || !isComponentVisible(component)) return;
   e.stopPropagation();
   e.preventDefault();
+  // 捕获指针：手指移出手柄后仍持续收到 pointermove，缩放不中断
+  (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
   activeResizeHandle.value = handle;
   dragStart.value = { x: e.clientX, y: e.clientY };
   compOriginalPos.value = {
@@ -373,7 +375,7 @@ const handleResizeStart = (e: MouseEvent, component: HMIComponent, handle: strin
   };
 };
 
-const handleMouseMove = (e: MouseEvent) => {
+const handleMouseMove = (e: PointerEvent) => {
   // 阶段5-2：框选（空白区域拖拽橡皮筋）
   if (isBoxSelecting.value) {
     const cur = toCanvasCoords(e.clientX, e.clientY);
@@ -476,8 +478,8 @@ const handleMouseUp = () => {
 };
 
 // 阶段5-2：空白区域按下 → 起手框选
-const handleStageMouseDown = (e: MouseEvent) => {
-  if (props.isActiveMode || e.button !== 0) return;
+const handleStageMouseDown = (e: PointerEvent) => {
+  if (props.isActiveMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
   const start = toCanvasCoords(e.clientX, e.clientY);
   isBoxSelecting.value = true;
   boxRect.value = { x: start.x, y: start.y, w: 0, h: 0 };
@@ -718,8 +720,8 @@ const canvasBackgroundStyle = computed(() => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('mouseup', handleMouseUp);
-  window.addEventListener('mouseup', handleStageMouseUp);
+  window.addEventListener('pointerup', handleMouseUp);
+  window.addEventListener('pointerup', handleStageMouseUp);
   // 阶段5-7：只读模式监听工作区尺寸变化，画布自动适配
   if (props.readonly && workspaceRef.value) {
     fitObserver = new ResizeObserver(applyFitZoom);
@@ -739,14 +741,14 @@ onUnmounted(() => {
   fitObserver?.disconnect();
   fitObserver = null;
   window.removeEventListener('keydown', handleKeyDown);
-  window.removeEventListener('mouseup', handleMouseUp);
-  window.removeEventListener('mouseup', handleStageMouseUp);
+  window.removeEventListener('pointerup', handleMouseUp);
+  window.removeEventListener('pointerup', handleStageMouseUp);
 });
 </script>
 
 <template>
   <div class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none"
-    @mouseup="handleMouseUp">
+    @pointerup="handleMouseUp">
     <!-- Top Toolbar controls（只读/运行时模式隐藏编辑器工具条） -->
     <div v-if="!readonly"
       class="h-12 border-b border-[#d9d9d9] bg-[#fafafa] px-4 flex items-center justify-between z-10 gap-2 flex-wrap shadow-sm">
@@ -903,8 +905,8 @@ onUnmounted(() => {
     <!-- Editor Inner Stage workspace -->
     <div ref="workspaceRef"
       class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
-      :class="readonly ? 'p-0' : 'p-8'" @mousedown="handleStageMouseDown" @mousemove="handleMouseMove"
-      @mouseup="handleStageMouseUp">
+      :class="readonly ? 'p-0' : 'p-8'" @pointerdown="handleStageMouseDown" @pointermove="handleMouseMove"
+      @pointerup="handleStageMouseUp" :style="{ touchAction: readonly ? 'auto' : 'none' }">
       <!-- Canvas bounding card container -->
       <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
       <!-- 阶段5-7：只读模式 mx-auto 水平居中、垂直顶部对齐（避免上方留白，溢出时可滚动） -->
@@ -955,7 +957,7 @@ onUnmounted(() => {
 
           <!-- Render individual canvas components -->
           <div v-for="component in components" :key="component.id" v-show="isComponentVisible(component)"
-            @mousedown="handleDragStart($event, component)" @click.stop :class="[
+            @pointerdown="handleDragStart($event, component)" @click.stop :class="[
               'absolute rounded transition-shadow',
               isActiveMode
                 ? 'cursor-pointer hover:brightness-105'
@@ -1009,27 +1011,27 @@ onUnmounted(() => {
               <!-- NW Handle -->
               <div
                 class="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nwse-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 'nw')" />
+                @pointerdown="handleResizeStart($event, component, 'nw')" />
               <!-- SW Handle -->
               <div
                 class="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 'sw')" />
+                @pointerdown="handleResizeStart($event, component, 'sw')" />
               <!-- NE Handle -->
               <div
                 class="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#1890ff] rounded-full cursor-nesw-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 'ne')" />
+                @pointerdown="handleResizeStart($event, component, 'ne')" />
               <!-- SE Handle (Primary Resize trigger) -->
               <div
                 class="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-[#1890ff] border border-white rounded-full cursor-nwse-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 'se')" />
+                @pointerdown="handleResizeStart($event, component, 'se')" />
               <!-- East handle -->
               <div
                 class="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-e-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 'e')" />
+                @pointerdown="handleResizeStart($event, component, 'e')" />
               <!-- South handle -->
               <div
                 class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-[#1890ff] rounded-full cursor-s-resize z-50 shadow"
-                @mousedown="handleResizeStart($event, component, 's')" />
+                @pointerdown="handleResizeStart($event, component, 's')" />
             </template>
           </div>
         </div>

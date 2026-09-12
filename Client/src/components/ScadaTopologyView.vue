@@ -1985,7 +1985,7 @@ const handleExportPage = async (page: ScadaPage) => {
 
           <!-- Sandbox Design canvas panel (方案一：满屏自适应沉浸式画布) -->
           <div class="flex-1 bg-slate-900 relative overflow-hidden flex flex-col h-full min-h-0">
-            <div class="flex-1 overflow-auto p-2 sm:p-4 touch-pan-x touch-pan-y"
+            <div class="flex-1 overflow-auto p-2 sm:p-4"
               :class="currentPlatform === 'Mobile' ? 'flex justify-center items-start md:items-center' : ''">
               <!-- 移动端：套一层手机外框，强化移动视口区分 -->
               <!-- 注：Popup（弹窗画面）不做手机外框，走 v-else 桌面式渲染——弹窗画面按设计尺寸（600×450）居中呈现（P3-5 预期行为） -->
