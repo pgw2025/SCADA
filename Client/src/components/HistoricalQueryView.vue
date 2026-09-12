@@ -106,7 +106,7 @@ const onSearchBlur = () => {
   setTimeout(() => { isInputFocused.value = false; }, 250);
 };
 const selectedVars = ref<SelectedVar[]>([]);
-const selectedTimeframe = ref<TimeframeKey>('all');
+const selectedTimeframe = ref<TimeframeKey>('hour');
 const customStart = ref('');
 const customEnd = ref('');
 const aggregateWindowMs = ref<number>(0);
@@ -421,7 +421,8 @@ const chartGeometry = computed(() => {
   }
   if (tMin === tMax) { tMin -= 1; tMax += 1; }
   const tSpan = tMax - tMin;
-  const getX = (t: number) => PAD_X + ((t - tMin) / tSpan) * (SVG_W - 2 * PAD_X);
+  // X 轴反向：最新数据在最左（tMax 落于 PAD_X），最旧数据在最右
+  const getX = (t: number) => PAD_X + ((tMax - t) / tSpan) * (SVG_W - 2 * PAD_X);
   const getYForValue = (v: number, min: number, max: number) => {
     const span = max - min || 1;
     return SVG_H - PAD_Y - ((v - min) / span) * (SVG_H - 2 * PAD_Y);
@@ -489,9 +490,9 @@ const chartGeometry = computed(() => {
     });
   }
 
-  // X 轴刻度：5 等分时间标签
+  // X 轴刻度：5 等分时间标签（最新在左 → 最旧在右）
   const xTicks = [0, 1, 2, 3, 4].map(i => {
-    const t = tMin + (tSpan * i) / 4;
+    const t = tMax - (tSpan * i) / 4;
     return { x: getX(t), label: formatTimeLabel(t) };
   });
 
@@ -523,12 +524,12 @@ const handleChartMouseMove = (ev: MouseEvent) => {
   const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
   const py = ((ev.clientY - rect.top) / rect.height) * SVG_H;
 
-  // 反算时间域（getX(t) = PAD_X + ((t - tMin)/(tMax - tMin)) * (SVG_W - 2*PAD_X)）
+  // 反算时间域（getX(t) = PAD_X + ((tMax - t)/(tMax - tMin)) * (SVG_W - 2*PAD_X)，最新在左）
   const inner = px - PAD_X;
   const scale = SVG_W - 2 * PAD_X;
   const tMin = timeDomainForTooltip.value.min;
   const tMax = timeDomainForTooltip.value.max;
-  const tVal = tMin + (inner / scale) * (tMax - tMin);
+  const tVal = tMax - (inner / scale) * (tMax - tMin);
 
   const items: { color: string; label: string; value: string; bad: boolean }[] = [];
   const allDs = allSeriesPoints.value;
