@@ -21,8 +21,7 @@ import {
   setDeviceEnabledAndSync
 } from '../services/deviceService';
 import { fetchControllerOptions } from '../api/controllerApi';
-import { fetchDeviceConnections, createDeviceConnection } from '../api/connectionApi';
-import { fetchProtocols } from '../api/protocolApi';
+import { fetchDeviceConnections } from '../api/connectionApi';
 import { startBackendPolling, stopBackendPolling } from '../services/pollService';
 import {
   Device,
@@ -30,9 +29,7 @@ import {
   AreaTreeNode,
   ControllerOption,
   DeviceConnectionSummary,
-  DeviceConnectionRequest,
-  DeviceConnection,
-  Protocol
+  DeviceConnection
 } from '../types';
 
 // Modular Child Components
@@ -367,65 +364,13 @@ const handleSaveDevice = async (formData: any) => {
     return;
   }
 
-  let targetConnectionId = formData.connectionId;
-
-  // Handle direct/quick mode connection creation if needed
-  if (formData.connectionMode === 'quick' && !targetConnectionId) {
-    try {
-      const protoKey = formData.protocolKey || 'OPCUA';
-      const protocols = await fetchProtocols();
-      const matchedProto = protocols.find((p: Protocol) => p.key.toUpperCase() === protoKey.toUpperCase()) || protocols[0];
-      const controllers = await fetchControllerOptions();
-      const defaultCtrl = controllers[0];
-
-      if (matchedProto && defaultCtrl) {
-        let configJson = '{}';
-        if (protoKey === 'OPCUA') {
-          configJson = JSON.stringify({
-            EndpointUrl: formData.endpointUrl || `opc.tcp://${formData.ipAddress || '127.0.0.1'}:${formData.port || 4840}`,
-            SecurityPolicy: 'None'
-          });
-        } else if (protoKey === 'S7') {
-          configJson = JSON.stringify({
-            IpAddress: formData.ipAddress || '127.0.0.1',
-            Port: Number(formData.port) || 102,
-            Rack: Number(formData.rack) || 0,
-            Slot: Number(formData.slot) || 1,
-            CpuType: formData.cpuType || 'S71500'
-          });
-        } else if (protoKey === 'MODBUSTCP') {
-          configJson = JSON.stringify({
-            IpAddress: formData.ipAddress || '127.0.0.1',
-            Port: Number(formData.port) || 502
-          });
-        }
-
-        const connReq: DeviceConnectionRequest = {
-          ControllerId: defaultCtrl.id,
-          Name: `${formData.name} 连接`,
-          ProtocolId: matchedProto.id,
-          ConfigJson: configJson,
-          TimeoutMs: 5000,
-          ReconnectIntervalMs: 5000,
-          IsEnabled: true
-        };
-        const resp = await createDeviceConnection(connReq);
-        targetConnectionId = resp?.data?.id;
-        formData.controllerId = defaultCtrl.id;
-      }
-    } catch (err: any) {
-      deviceFormErrorMessage.value = err?.message || '自动创建通信连接失败';
-      return;
-    }
-  }
-
   const payload = {
     name: formData.name,
     key: formData.key,
     areaId: formData.areaId,
     modelId: Number(formData.modelId) || 0,
     controllerId: formData.controllerId || null,
-    connectionId: targetConnectionId || null
+    connectionId: formData.connectionId || null
   };
 
   const result = isEditingDevice.value && editingDeviceId.value != null

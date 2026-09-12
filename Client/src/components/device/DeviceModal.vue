@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
-import { Device, Area, DataModel, ControllerOption, DeviceConnectionSummary, DeviceType, DEVICE_TYPES } from '../../types';
-import { Cpu, X, Server, Link2, Settings2, Plus, Trash2, CheckCircle2 } from 'lucide-vue-next';
+import { Area, DataModel, ControllerOption, DeviceConnectionSummary } from '../../types';
+import { Cpu, X, Server, Link2 } from 'lucide-vue-next';
 
 const props = defineProps<{
   show: boolean;
@@ -30,19 +30,8 @@ const isEnabled = ref(true);
 
 // Models
 const primaryModelId = ref<number | null>(null);
-const secondaryModelIds = ref<number[]>([]);
 
-// Connection mode
-const connectionMode = ref<'quick' | 'advanced'>('quick');
-const protocolKey = ref<string>('OPCUA');
-const ipAddress = ref('127.0.0.1');
-const port = ref<number | string>(4840);
-const endpointUrl = ref('opc.tcp://127.0.0.1:4840');
-const cpuType = ref('S7-1500');
-const rack = ref(0);
-const slot = ref(1);
-
-// Advanced connection
+// Connection
 const selectedControllerId = ref<number | null>(null);
 const selectedConnectionId = ref<number | null>(null);
 
@@ -59,32 +48,10 @@ watch(
 
       // Model
       primaryModelId.value = d.modelId ? Number(d.modelId) : (props.dataModels[0] ? Number(props.dataModels[0].id) : null);
-      if (d.models && Array.isArray(d.models)) {
-        secondaryModelIds.value = d.models
-          .filter((m: any) => !m.isPrimary)
-          .map((m: any) => Number(m.modelId));
-      } else {
-        secondaryModelIds.value = [];
-      }
 
-      // Connection Mode
-      if (d.connectionId) {
-        connectionMode.value = 'advanced';
-        selectedConnectionId.value = d.connectionId;
-        selectedControllerId.value = d.controllerId || null;
-      } else {
-        connectionMode.value = 'quick';
-        selectedConnectionId.value = null;
-        selectedControllerId.value = null;
-      }
-
-      protocolKey.value = d.protocolKey || (d.type ? d.type.toUpperCase() : 'OPCUA');
-      ipAddress.value = d.ipAddress || '127.0.0.1';
-      port.value = d.port || (protocolKey.value === 'S7' ? 102 : 4840);
-      endpointUrl.value = d.endpointUrl || 'opc.tcp://127.0.0.1:4840';
-      cpuType.value = d.cpuType || 'S7-1500';
-      rack.value = d.rack ?? 0;
-      slot.value = d.slot ?? 1;
+      // Connection
+      selectedConnectionId.value = d.connectionId || null;
+      selectedControllerId.value = d.controllerId || null;
     }
   },
   { immediate: true }
@@ -96,18 +63,6 @@ const filteredConnections = computed(() => {
   return props.connections.filter(c => c.controllerId === selectedControllerId.value);
 });
 
-// Update default ports when protocol changes in quick mode
-const handleProtocolChange = () => {
-  if (protocolKey.value === 'S7') {
-    port.value = 102;
-  } else if (protocolKey.value === 'OPCUA') {
-    port.value = 4840;
-    endpointUrl.value = `opc.tcp://${ipAddress.value || '127.0.0.1'}:4840`;
-  } else if (protocolKey.value === 'MODBUSTCP') {
-    port.value = 502;
-  }
-};
-
 const handleSave = () => {
   const payload: any = {
     name: name.value,
@@ -115,34 +70,11 @@ const handleSave = () => {
     areaId: areaId.value,
     isEnabled: isEnabled.value,
     modelId: primaryModelId.value,
-    secondaryModelIds: secondaryModelIds.value,
-    connectionMode: connectionMode.value
+    controllerId: selectedControllerId.value,
+    connectionId: selectedConnectionId.value
   };
 
-  if (connectionMode.value === 'advanced') {
-    payload.controllerId = selectedControllerId.value;
-    payload.connectionId = selectedConnectionId.value;
-  } else {
-    payload.protocolKey = protocolKey.value;
-    payload.ipAddress = ipAddress.value;
-    payload.port = Number(port.value) || 0;
-    payload.endpointUrl = endpointUrl.value;
-    payload.cpuType = cpuType.value;
-    payload.rack = rack.value;
-    payload.slot = slot.value;
-  }
-
   emit('save', payload);
-};
-
-// Add secondary model
-const addSecondaryModel = (modelId: number) => {
-  if (!secondaryModelIds.value.includes(modelId) && modelId !== primaryModelId.value) {
-    secondaryModelIds.value.push(modelId);
-  }
-};
-const removeSecondaryModel = (index: number) => {
-  secondaryModelIds.value.splice(index, 1);
 };
 </script>
 
@@ -272,203 +204,34 @@ const removeSecondaryModel = (index: number) => {
               </option>
             </select>
           </div>
-
-          <!-- Secondary Models -->
-          <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
-            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-              附加绑定数据模型 (多对多拓展)
-            </label>
-            <p class="text-[11px] text-slate-400 mb-2">设备可同时继承多个通用模版（如：能耗计量模版、振动监测模版）：</p>
-
-            <div class="space-y-2">
-              <div
-                v-for="(mid, idx) in secondaryModelIds"
-                :key="mid"
-                class="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
-              >
-                <span class="font-medium text-slate-800 dark:text-slate-200">
-                  {{ dataModels.find(m => Number(m.id) === mid)?.name || `模型 #${mid}` }}
-                </span>
-                <button
-                  type="button"
-                  @click="removeSecondaryModel(idx)"
-                  class="text-rose-500 hover:text-rose-700 cursor-pointer p-1"
-                >
-                  <Trash2 class="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <!-- Selector to add -->
-              <div class="flex items-center gap-2 pt-1">
-                <select
-                  id="add-secondary-select"
-                  class="flex-1 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
-                >
-                  <option value="">-- 选择要附加的模型 --</option>
-                  <option
-                    v-for="m in dataModels.filter(m => Number(m.id) !== primaryModelId && !secondaryModelIds.includes(Number(m.id)))"
-                    :key="m.id"
-                    :value="m.id"
-                  >
-                    {{ m.name }}
-                  </option>
-                </select>
-                <button
-                  type="button"
-                  @click="() => {
-                    const sel = document.getElementById('add-secondary-select') as HTMLSelectElement;
-                    if (sel && sel.value) {
-                      addSecondaryModel(Number(sel.value));
-                      sel.value = '';
-                    }
-                  }"
-                  class="px-3 py-1.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 font-bold text-xs cursor-pointer inline-flex items-center gap-1"
-                >
-                  <Plus class="w-3.5 h-3.5" />
-                  <span>添加绑定</span>
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- TAB 3: CONNECTION -->
         <div v-if="activeTab === 'connection'" class="space-y-4">
-          <!-- Mode Switcher -->
-          <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80">
-            <button
-              type="button"
-              @click="connectionMode = 'quick'"
-              class="py-2 text-center rounded-lg font-bold text-xs transition-all cursor-pointer"
-              :class="connectionMode === 'quick' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'"
+          <div>
+            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">所属控制器</label>
+            <select
+              v-model="selectedControllerId"
+              class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
             >
-              直接配置模式 (快速)
-            </button>
-            <button
-              type="button"
-              @click="connectionMode = 'advanced'"
-              class="py-2 text-center rounded-lg font-bold text-xs transition-all cursor-pointer"
-              :class="connectionMode === 'advanced' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'"
-            >
-              挂载独立连接资产 (高级)
-            </button>
+              <option :value="null">-- 选择物理控制器 --</option>
+              <option v-for="c in controllers" :key="c.id" :value="c.id">
+                {{ c.name }} ({{ c.code }}) - {{ c.protocolName }}
+              </option>
+            </select>
           </div>
 
-          <!-- Quick Mode Fields -->
-          <div v-if="connectionMode === 'quick'" class="space-y-3">
-            <div>
-              <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">通信协议类型</label>
-              <select
-                v-model="protocolKey"
-                @change="handleProtocolChange"
-                class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:border-[#1890ff]"
-              >
-                <option value="OPCUA">OPC UA 工业协议</option>
-                <option value="S7">西门子 S7 (S7-1200/1500/300/400)</option>
-                <option value="MODBUSTCP">Modbus TCP 工业总线</option>
-                <option value="MQTT">MQTT 物联网网关</option>
-                <option value="VIRTUAL">虚拟测试设备 (无须物理硬件)</option>
-              </select>
-            </div>
-
-            <div v-if="protocolKey === 'OPCUA'">
-              <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">OPC UA 端点 URL</label>
-              <input
-                v-model="endpointUrl"
-                type="text"
-                placeholder="opc.tcp://192.168.1.100:4840"
-                class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-[#1890ff]"
-              />
-            </div>
-
-            <div v-else-if="protocolKey === 'S7'" class="space-y-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">PLC IP 地址</label>
-                  <input
-                    v-model="ipAddress"
-                    type="text"
-                    placeholder="192.168.0.1"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">端口</label>
-                  <input
-                    v-model="port"
-                    type="number"
-                    placeholder="102"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
-                  />
-                </div>
-              </div>
-              <div class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">CPU 型号</label>
-                  <select
-                    v-model="cpuType"
-                    class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  >
-                    <option value="S7-1500">S7-1500</option>
-                    <option value="S7-1200">S7-1200</option>
-                    <option value="S7-300">S7-300</option>
-                    <option value="S7-400">S7-400</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">机架 (Rack)</label>
-                  <input v-model.number="rack" type="number" min="0" class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono" />
-                </div>
-                <div>
-                  <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">插槽 (Slot)</label>
-                  <input v-model.number="slot" type="number" min="0" class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono" />
-                </div>
-              </div>
-            </div>
-
-            <div v-else-if="protocolKey === 'MODBUSTCP'" class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">主机 IP</label>
-                <input v-model="ipAddress" type="text" placeholder="192.168.1.50" class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono" />
-              </div>
-              <div>
-                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">端口</label>
-                <input v-model="port" type="number" placeholder="502" class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono" />
-              </div>
-            </div>
-
-            <div v-else-if="protocolKey === 'VIRTUAL'" class="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-500">
-              虚拟设备使用内置数学发生器产生运行数据，无需配置物理网络。
-            </div>
-          </div>
-
-          <!-- Advanced Mode Fields -->
-          <div v-else class="space-y-3">
-            <div>
-              <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">所属控制器</label>
-              <select
-                v-model="selectedControllerId"
-                class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-              >
-                <option :value="null">-- 选择物理控制器 --</option>
-                <option v-for="c in controllers" :key="c.id" :value="c.id">
-                  {{ c.name }} ({{ c.code }}) - {{ c.protocolName }}
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">已建立的连接通道</label>
-              <select
-                v-model="selectedConnectionId"
-                class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-              >
-                <option :value="null">-- 选择连接通道 --</option>
-                <option v-for="conn in filteredConnections" :key="conn.id" :value="conn.id">
-                  #{{ conn.id }} ({{ conn.protocolName }}) - {{ conn.host }}:{{ conn.port }}
-                </option>
-              </select>
-            </div>
+          <div>
+            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">已建立的连接通道</label>
+            <select
+              v-model="selectedConnectionId"
+              class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+            >
+              <option :value="null">-- 选择连接通道 --</option>
+              <option v-for="conn in filteredConnections" :key="conn.id" :value="conn.id">
+                #{{ conn.id }} ({{ conn.protocolName }}) - {{ conn.host }}:{{ conn.port }}
+              </option>
+            </select>
           </div>
         </div>
       </div>
