@@ -21,7 +21,9 @@ import {
   FileSpreadsheet,
   X,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Maximize2,
+  Minimize2
 } from 'lucide-vue-next';
 
 // ==================== 常量 ====================
@@ -29,10 +31,12 @@ const MAX_SELECTED = 8;            // 多变量对比上限（阶段3 P3-15：�
 const CHART_TARGET_POINTS = 600;   // LTTB 降采样目标点数
 const RAW_SINGLE_LIMIT = 10000;    // 原始数据模式单变量取数上限（阶段3 P2-7：对齐后端 50000 中的前端安全值）
 const AGG_LIMIT = 2000;            // 聚合模式取数上限（聚合后行数少，2000 足够）
-const SVG_W = 800;
-const SVG_H = 240;
-const PAD_X = 50;
-const PAD_Y = 30;
+const BASE_SVG_W = 800;
+const BASE_SVG_H = 240;
+const BASE_PAD_X = 50;
+const BASE_PAD_Y = 30;
+// 全屏旋转层 viewBox 基准宽度（横向虚拟像素），高度按旋转层实际宽高比动态换算
+const FULLSCREEN_SVG_W = 1000;
 const CHART_COLORS = ['#38bdf8', '#34d399', '#f59e0b', '#f472b6', '#a78bfa', '#f87171', '#22d3ee', '#a3e635'];
 const PAGE_SIZE = 15;
 
@@ -122,7 +126,32 @@ const yAxisMode = ref<'percent' | 'value'>('value');
 const xNewestFirst = ref(true);
 // 缩放子窗口（null=全量）。用于放大查看秒级变化先后
 const zoomRange = ref<{ min: number; max: number } | null>(null);
+// 全屏图表模式（手机端体验优化）
+const isFullscreen = ref(false);
+// 移动端视图切换：chart=趋势图，table=数据明细（桌面端与移动端统一，二选一显示）
+const mobileView = ref<'chart' | 'table'>('chart');
+// 是否桌面端（≥768px）。桌面端全屏不隐藏无关元素、不旋转图表
+const isDesktop = ref(window.matchMedia('(min-width: 768px)').matches);
+// 移动端全屏（isFullscreen && !isDesktop）→ 图表旋转 90° 横屏看图
+const isMobileFullscreen = computed(() => isFullscreen.value && !isDesktop.value);
+// 实际视口尺寸（px），用于移动端全屏旋转铺满（避开 100vh 受地址栏影响的问题）
+const viewportW = ref(window.innerWidth);
+const viewportH = ref(window.innerHeight);
 const tooltip = ref<{ x: number; y: number; time: string; items: { color: string; label: string; value: string; bad: boolean }[] } | null>(null);
+
+// ==================== 图表坐标系（响应式，全屏按旋转层比例缩放避免变形） ====================
+// 图表缩放系数：非全屏=1；手机全屏= FULLSCREEN_SVG_W / BASE_SVG_W（等比例放大坐标与字号）
+const chartScale = computed(() => (isMobileFullscreen.value ? FULLSCREEN_SVG_W / BASE_SVG_W : 1));
+// viewBox 尺寸：手机全屏时高度按旋转层实际宽高比换算，使 viewBox 比例与画布一致 → meet 等比缩放即铺满且零变形
+const SVG_W = computed(() => Math.round(BASE_SVG_W * chartScale.value));
+const SVG_H = computed(() => {
+  if (!isMobileFullscreen.value) return BASE_SVG_H;
+  const w = viewportW.value, h = viewportH.value;
+  const ratio = (w > 0 && h > 0) ? w / h : BASE_SVG_H / BASE_SVG_W;
+  return Math.round(FULLSCREEN_SVG_W * ratio);
+});
+const PAD_X = computed(() => Math.round(BASE_PAD_X * chartScale.value));
+const PAD_Y = computed(() => Math.round(BASE_PAD_Y * chartScale.value));
 
 // 后端事件时间为 UTC，统一转成本地时间显示
 const fmtTime = (ts?: string | null) => {
@@ -347,9 +376,17 @@ const loadVariableOptions = async () => {
   }
 };
 
+// 监听视口尺寸变化（含地址栏伸缩、旋转），同步 viewport 尺寸
+const onResize = () => { viewportW.value = window.innerWidth; viewportH.value = window.innerHeight; };
+
 onMounted(() => {
   // 全局 mouseup：拖出 SVG 后松开鼠标也要结束拖动
   window.addEventListener('mouseup', handleChartMouseUp);
+  // 监听断点变化，同步 isDesktop（桌面端全屏不隐藏、不旋转）
+  const mql = window.matchMedia('(min-width: 768px)');
+  const onMqlChange = (e: MediaQueryListEvent) => { isDesktop.value = e.matches; };
+  mql.addEventListener('change', onMqlChange);
+  window.addEventListener('resize', onResize);
   if (isSimulation.value) {
     // 模拟模式：仅加载演示变量，不默认选中、不自动查询
     return;
@@ -360,6 +397,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('mouseup', handleChartMouseUp);
+  window.removeEventListener('resize', onResize);
 });
 
 // ==================== 趋势图几何 ====================
@@ -457,6 +495,8 @@ const formatTimeLabel = (t: number): string => {
 };
 
 const chartGeometry = computed(() => {
+  // 解构为纯数字（SVG_W/SVG_H/PAD_X/PAD_Y 是 computed ref，函数体内需 .value）
+  const W = SVG_W.value, H = SVG_H.value, PX = PAD_X.value, PY = PAD_Y.value;
   // 各可见序列原始点（按时间升序）
   const ds = visibleSeries.value.map(s => {
     const pts: ChartPoint[] = s.records
@@ -480,13 +520,13 @@ const chartGeometry = computed(() => {
   const eMin = effectiveTimeDomain.value.min;
   const eMax = effectiveTimeDomain.value.max;
   const tSpan = eMax - eMin;
-  // X 轴时间方向：xNewestFirst 时最新在最左（eMax 落于 PAD_X）；否则最新在最右（eMin 落于 PAD_X）
+  // X 轴时间方向：xNewestFirst 时最新在最左（eMax 落于 PX）；否则最新在最右（eMin 落于 PX）
   const getX = (t: number) => xNewestFirst.value
-    ? PAD_X + ((eMax - t) / tSpan) * (SVG_W - 2 * PAD_X)
-    : PAD_X + ((t - eMin) / tSpan) * (SVG_W - 2 * PAD_X);
+    ? PX + ((eMax - t) / tSpan) * (W - 2 * PX)
+    : PX + ((t - eMin) / tSpan) * (W - 2 * PX);
   const getYForValue = (v: number, min: number, max: number) => {
     const span = max - min || 1;
-    return SVG_H - PAD_Y - ((v - min) / span) * (SVG_H - 2 * PAD_Y);
+    return H - PY - ((v - min) / span) * (H - 2 * PY);
   };
 
   const multi = ds.length > 1;
@@ -567,7 +607,7 @@ const chartGeometry = computed(() => {
     });
   } else if (multi) {
     yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => ({
-      y: SVG_H - PAD_Y - f * (SVG_H - 2 * PAD_Y),
+      y: H - PY - f * (H - 2 * PY),
       label: `${Math.round(f * 100)}%`
     }));
   } else if (series.length === 1) {
@@ -618,9 +658,9 @@ const handleChartWheel = (ev: WheelEvent) => {
   ev.preventDefault();
   const svgEl = ev.currentTarget as SVGSVGElement;
   const rect = svgEl.getBoundingClientRect();
-  const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
-  const scale = SVG_W - 2 * PAD_X;
-  const ratioPx = Math.min(1, Math.max(0, (px - PAD_X) / scale));
+  const px = ((ev.clientX - rect.left) / rect.width) * SVG_W.value;
+  const scale = SVG_W.value - 2 * PAD_X.value;
+  const ratioPx = Math.min(1, Math.max(0, (px - PAD_X.value) / scale));
   const curMin = g.eMin, curMax = g.eMax;
   const curSpan = curMax - curMin;
 
@@ -674,7 +714,7 @@ const isDragging = computed(() => dragState.value !== null);
 // 将客户端坐标换算为 SVG 绘图坐标 px
 const clientToSvgPx = (ev: MouseEvent, el: SVGSVGElement) => {
   const rect = el.getBoundingClientRect();
-  return ((ev.clientX - rect.left) / rect.width) * SVG_W;
+  return ((ev.clientX - rect.left) / rect.width) * SVG_W.value;
 };
 
 // 鼠标按下：Shift=框选放大；否则=平移（仅已缩放态可平移）
@@ -710,7 +750,7 @@ const handleChartMouseMove = (ev: MouseEvent) => {
     }
     // 平移：把像素位移换算成时间位移 Δt
     const rect = svgEl.getBoundingClientRect();
-    const scale = SVG_W - 2 * PAD_X;
+    const scale = SVG_W.value - 2 * PAD_X.value;
     const dxPx = px - ds.startPx;
     const startSpan = ds.startMax - ds.startMin;
     const dt = (dxPx / scale) * startSpan;
@@ -733,12 +773,19 @@ const handleChartMouseMove = (ev: MouseEvent) => {
 
   // 非拖动：tooltip
   const rect = svgEl.getBoundingClientRect();
-  const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
-  const py = ((ev.clientY - rect.top) / rect.height) * SVG_H;
+  const px = ((ev.clientX - rect.left) / rect.width) * SVG_W.value;
+  const py = ((ev.clientY - rect.top) / rect.height) * SVG_H.value;
+  showTooltipAt(px, py);
+};
+
+// 按 SVG 坐标显示 tooltip（供鼠标移动与触屏点按共用）
+const showTooltipAt = (px: number, py: number) => {
+  const g = chartGeometry.value;
+  if (g.empty || g.series.length === 0) return;
 
   // 反算时间域（方向随 xNewestFirst，基于有效时间域）
-  const inner = px - PAD_X;
-  const scale = SVG_W - 2 * PAD_X;
+  const inner = px - PAD_X.value;
+  const scale = SVG_W.value - 2 * PAD_X.value;
   const tMin = g.eMin;
   const tMax = g.eMax;
   const tVal = xNewestFirst.value
@@ -778,14 +825,14 @@ const handleChartMouseUp = () => {
   if (ds.type === 'brush') {
     // 框选放大：将 [startPx, brushEndPx] 映射到时间区间
     const g = chartGeometry.value;
-    const scale = SVG_W - 2 * PAD_X;
+    const scale = SVG_W.value - 2 * PAD_X.value;
     const p1 = Math.min(ds.startPx, brushEndPx.value);
     const p2 = Math.max(ds.startPx, brushEndPx.value);
     // 像素 → 时间（基于框选时的有效域 g.eMin/g.eMax，方向相关）
     const span = g.eMax - g.eMin;
     const tOfPx = (p: number) => xNewestFirst.value
-      ? g.eMax - ((p - PAD_X) / scale) * span
-      : g.eMin + ((p - PAD_X) / scale) * span;
+      ? g.eMax - ((p - PAD_X.value) / scale) * span
+      : g.eMin + ((p - PAD_X.value) / scale) * span;
     let t1 = tOfPx(p1);
     let t2 = tOfPx(p2);
     if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
@@ -795,6 +842,185 @@ const handleChartMouseUp = () => {
     }
   }
   dragState.value = null;
+};
+
+// ==================== 触屏手势 ====================
+// 触屏状态：单指（平移/点按）或双指（捏合缩放）
+const touchState = ref<{
+  mode: 'tap' | 'pan' | 'pinch';
+  startX: number;         // 单指起始 px（用于判定点按 vs 平移）
+  startY: number;
+  startMin: number;       // 手势起点有效域
+  startMax: number;
+  startSpan: number;
+  pinchStartDist: number; // 双指起始距离
+  pinchStartSpan: number;
+  moved: boolean;         // 是否已发生显著移动
+} | null>(null);
+
+const handleChartTouchStart = (ev: TouchEvent) => {
+  const g = chartGeometry.value;
+  if (g.empty || g.series.length === 0) return;
+  const svgEl = ev.currentTarget as SVGSVGElement;
+  const rect = svgEl.getBoundingClientRect();
+  const toPx = (t: Touch) => ({
+    x: ((t.clientX - rect.left) / rect.width) * SVG_W.value,
+    y: ((t.clientY - rect.top) / rect.height) * SVG_H.value
+  });
+
+  if (ev.touches.length === 2) {
+    // 双指：捏合缩放
+    const t1 = toPx(ev.touches[0]);
+    const t2 = toPx(ev.touches[1]);
+    const dist = Math.hypot(t2.x - t1.x, t2.y - t1.y);
+    touchState.value = {
+      mode: 'pinch',
+      startX: (t1.x + t2.x) / 2,
+      startY: (t1.y + t2.y) / 2,
+      startMin: g.eMin,
+      startMax: g.eMax,
+      startSpan: g.eMax - g.eMin,
+      pinchStartDist: dist,
+      pinchStartSpan: g.eMax - g.eMin,
+      moved: true
+    };
+    ev.preventDefault();
+    return;
+  }
+
+  if (ev.touches.length === 1) {
+    const p = toPx(ev.touches[0]);
+    touchState.value = {
+      mode: 'tap',
+      startX: p.x,
+      startY: p.y,
+      startMin: g.eMin,
+      startMax: g.eMax,
+      startSpan: g.eMax - g.eMin,
+      pinchStartDist: 0,
+      pinchStartSpan: 0,
+      moved: false
+    };
+  }
+};
+
+const handleChartTouchMove = (ev: TouchEvent) => {
+  const ts = touchState.value;
+  if (!ts) return;
+  const g = chartGeometry.value;
+  const svgEl = ev.currentTarget as SVGSVGElement;
+  const rect = svgEl.getBoundingClientRect();
+  const toPx = (t: Touch) => ({
+    x: ((t.clientX - rect.left) / rect.width) * SVG_W.value,
+    y: ((t.clientY - rect.top) / rect.height) * SVG_H.value
+  });
+
+  if (ts.mode === 'pinch' && ev.touches.length === 2) {
+    // 捏合缩放
+    const t1 = toPx(ev.touches[0]);
+    const t2 = toPx(ev.touches[1]);
+    const dist = Math.hypot(t2.x - t1.x, t2.y - t1.y);
+    if (ts.pinchStartDist === 0) return;
+    const factor = ts.pinchStartDist / dist; // 张开(dist增大)→factor<1 放大
+    let newSpan = ts.pinchStartSpan * factor;
+    if (newSpan < 1000) newSpan = 1000;
+    const fullMin = fullTimeDomain.value.min;
+    const fullMax = fullTimeDomain.value.max;
+    if (newSpan >= fullMax - fullMin) {
+      zoomRange.value = null;
+      return;
+    }
+    // 以两指中心为锚点
+    const ratioPx = Math.min(1, Math.max(0, (ts.startX - PAD_X.value) / (SVG_W.value - 2 * PAD_X.value)));
+    const t0 = xNewestFirst.value
+      ? ts.startMax - ratioPx * ts.startSpan
+      : ts.startMin + ratioPx * ts.startSpan;
+    let newMin: number, newMax: number;
+    if (xNewestFirst.value) {
+      newMax = t0 + ratioPx * newSpan;
+      newMin = newMax - newSpan;
+    } else {
+      newMin = t0 - ratioPx * newSpan;
+      newMax = newMin + newSpan;
+    }
+    const clampedMin = Math.max(newMin, fullMin);
+    const clampedMax = Math.min(newMax, fullMax);
+    if (clampedMin <= fullMin && clampedMax >= fullMax) { zoomRange.value = null; return; }
+    zoomRange.value = { min: clampedMin, max: clampedMax };
+    ev.preventDefault();
+    return;
+  }
+
+  if (ts.mode === 'tap' && ev.touches.length === 1) {
+    const p = toPx(ev.touches[0]);
+    const dx = p.x - ts.startX;
+    const dy = p.y - ts.startY;
+    // 位移超过阈值 → 切换为平移（仅缩放态）；同时拦截页面滚动
+    if (Math.hypot(dx, dy) > 8) {
+      ts.mode = 'pan';
+      ts.moved = true;
+    }
+    if (ts.mode === 'pan') {
+      if (isZoomed.value) {
+        // 平移：像素位移 → 时间位移
+        const scale = SVG_W.value - 2 * PAD_X.value;
+        const dt = (dx / scale) * ts.startSpan;
+        const signedDt = xNewestFirst.value ? dt : -dt;
+        let newMin = ts.startMin + signedDt;
+        let newMax = ts.startMax + signedDt;
+        const fullMin = fullTimeDomain.value.min;
+        const fullMax = fullTimeDomain.value.max;
+        const span = newMax - newMin;
+        if (newMin < fullMin) { newMin = fullMin; newMax = fullMin + span; }
+        if (newMax > fullMax) { newMax = fullMax; newMin = fullMax - span; }
+        zoomRange.value = { min: newMin, max: newMax };
+        tooltip.value = null;
+      }
+      ev.preventDefault();
+      return;
+    }
+  }
+};
+
+const handleChartTouchEnd = (ev: TouchEvent) => {
+  const ts = touchState.value;
+  if (!ts) return;
+  // 点按（无显著移动）：显示 tooltip
+  if (ts.mode === 'tap' && !ts.moved) {
+    // 用最后一次触摸坐标（可能在 touches 里）
+    if (ev.changedTouches && ev.changedTouches.length > 0) {
+      const svgEl = ev.currentTarget as SVGSVGElement;
+      const rect = svgEl.getBoundingClientRect();
+      const t = ev.changedTouches[0];
+      const px = ((t.clientX - rect.left) / rect.width) * SVG_W.value;
+      const py = ((t.clientY - rect.top) / rect.height) * SVG_H.value;
+      showTooltipAt(px, py);
+    }
+  }
+  // 双指结束：若剩单指，转入平移起点
+  if (ts.mode === 'pinch' && ev.touches.length === 1) {
+    const svgEl = ev.currentTarget as SVGSVGElement;
+    const rect = svgEl.getBoundingClientRect();
+    const t = ev.touches[0];
+    const px = ((t.clientX - rect.left) / rect.width) * SVG_W.value;
+    const py = ((t.clientY - rect.top) / rect.height) * SVG_H.value;
+    const g = chartGeometry.value;
+    touchState.value = {
+      mode: 'tap',
+      startX: px,
+      startY: py,
+      startMin: g.eMin,
+      startMax: g.eMax,
+      startSpan: g.eMax - g.eMin,
+      pinchStartDist: 0,
+      pinchStartSpan: 0,
+      moved: false
+    };
+    return;
+  }
+  if (ev.touches.length === 0) {
+    touchState.value = null;
+  }
 };
 
 // 供 tooltip 使用的派生数据（避免在函数内重复构建）
@@ -810,8 +1036,8 @@ const allSeriesPoints = computed(() =>
 
 const tooltipStyle = computed(() => {
   if (!tooltip.value) return {};
-  const leftPct = (tooltip.value.x / SVG_W) * 100;
-  const topPct = (tooltip.value.y / SVG_H) * 100;
+  const leftPct = (tooltip.value.x / SVG_W.value) * 100;
+  const topPct = (tooltip.value.y / SVG_H.value) * 100;
   const flipX = leftPct > 55;
   return {
     left: `${leftPct}%`,
@@ -914,7 +1140,7 @@ const handleExportCSV = async () => {
   <div class="h-full flex flex-col text-[#1e293b] dark:text-slate-100 select-none bg-slate-50 dark:bg-transparent overflow-y-auto">
 
     <!-- 顶部横幅 -->
-    <div class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-colors">
+    <div v-show="isDesktop || !isFullscreen" class="bg-white dark:bg-slate-900 p-5 border-b border-slate-200 dark:border-slate-800 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-colors">
       <div class="space-y-1">
         <h2 class="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
           <Calendar class="w-5 h-5 text-[#1890ff]" />
@@ -935,7 +1161,7 @@ const handleExportCSV = async () => {
     </div>
 
     <!-- 查询工具栏 -->
-    <div class="p-6 bg-slate-50 dark:bg-transparent border-b border-slate-200/60 dark:border-slate-800/60 flex flex-col gap-4 text-left select-none relative z-30">
+    <div v-show="isDesktop || !isFullscreen" class="p-3 sm:p-6 bg-slate-50 dark:bg-transparent border-b border-slate-200/60 dark:border-slate-800/60 flex flex-col gap-4 text-left select-none relative z-30">
 
       <!-- 变量多选 -->
       <div class="w-full relative">
@@ -1005,12 +1231,12 @@ const handleExportCSV = async () => {
           <label class="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-sans">
             时间范围
           </label>
-          <div class="grid grid-cols-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 font-bold text-[11px] shadow-xs text-center">
+          <div class="flex overflow-x-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 font-bold text-[11px] shadow-xs">
             <button
               v-for="tf in TIMEFRAME_OPTIONS"
               :key="tf.key"
               @click="selectTimeframe(tf.key)"
-              class="py-2 rounded-md transition-all cursor-pointer"
+              class="py-2 px-3 rounded-md transition-all cursor-pointer shrink-0 whitespace-nowrap"
               :class="selectedTimeframe === tf.key ? 'bg-slate-900 dark:bg-sky-600 text-white font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'"
             >
               {{ tf.label }}
@@ -1064,11 +1290,31 @@ const handleExportCSV = async () => {
       </div>
     </div>
 
+    <!-- 「趋势图 / 数据明细」视图切换（固定置顶，切换不跳位） -->
+    <div v-show="isDesktop || !isFullscreen" class="px-3 sm:px-6 pb-3">
+      <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1 font-bold text-[12px] md:max-w-md">
+        <button
+          @click="mobileView = 'chart'"
+          class="flex-1 py-2 rounded-md transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+          :class="mobileView === 'chart' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'"
+        >
+          <TrendingUp class="w-3.5 h-3.5" /> 趋势图
+        </button>
+        <button
+          @click="mobileView = 'table'"
+          class="flex-1 py-2 rounded-md transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+          :class="mobileView === 'table' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'"
+        >
+          <FileSpreadsheet class="w-3.5 h-3.5" /> 数据明细
+        </button>
+      </div>
+    </div>
+
     <!-- 趋势图 -->
-    <div class="px-6 pb-6 shrink-0 text-left">
+    <div v-show="mobileView === 'chart'" class="px-3 sm:px-6 pb-6 shrink-0 text-left">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs overflow-hidden transition-colors">
 
-        <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div v-show="isDesktop || !isFullscreen" class="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div class="flex items-center gap-2">
             <TrendingUp class="w-4 h-4 text-emerald-500 animate-pulse" />
             <span class="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-tight">
@@ -1082,11 +1328,22 @@ const handleExportCSV = async () => {
             </span>
           </div>
 
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 overflow-x-auto max-w-full">
+            <!-- 全屏图表 -->
+            <button
+              v-if="chartGeometry.series.length >= 1"
+              @click="isFullscreen = !isFullscreen"
+              class="shrink-0 p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              :title="isFullscreen ? '退出全屏' : '全屏查看图表'"
+            >
+              <Minimize2 v-if="isFullscreen" class="w-3.5 h-3.5" />
+              <Maximize2 v-else class="w-3.5 h-3.5" />
+            </button>
+
             <!-- X 轴时间方向切换 -->
             <div
               v-if="chartGeometry.series.length >= 1"
-              class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5"
+              class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 shrink-0"
               title="切换 X 轴时间方向：最新在左 / 最新在右"
             >
               <button
@@ -1144,7 +1401,7 @@ const handleExportCSV = async () => {
         </div>
 
         <!-- 统计条 -->
-        <div v-if="statsBySeries.length > 0" class="flex flex-wrap gap-x-5 gap-y-1 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800/60 text-[10px] font-sans">
+        <div v-show="isDesktop || !isFullscreen" v-if="statsBySeries.length > 0" class="flex flex-wrap gap-x-5 gap-y-1 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800/60 text-[10px] font-sans">
           <span v-for="s in statsBySeries" :key="s.key" class="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
             <span class="w-2 h-2 rounded-full inline-block" :style="{ background: s.color }"></span>
             <b class="text-slate-700 dark:text-slate-200 font-bold">{{ s.label }}</b>
@@ -1156,19 +1413,33 @@ const handleExportCSV = async () => {
           </span>
         </div>
 
-        <div class="w-full relative bg-slate-50/50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 p-2 overflow-x-auto">
-          <div class="relative">
+        <Teleport to="body" :disabled="!isFullscreen">
+        <div
+          class="w-full overflow-hidden"
+          :class="isFullscreen ? 'fixed z-50 inset-0 bg-white dark:bg-slate-900 rounded-none border-0 p-3 flex flex-col' : 'relative bg-slate-50/50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 p-2'"
+        >
+          <div
+            class="relative"
+            :class="isFullscreen ? 'flex-1 min-h-0' : ''"
+            :style="isMobileFullscreen ? { position: 'absolute', top: '50%', left: '50%', width: `${viewportH}px`, height: `${viewportW}px`, transform: 'translate(-50%, -50%) rotate(90deg)' } : {}"
+          >
             <svg
               v-if="!chartGeometry.empty && chartGeometry.series.length >= 1"
               :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
-              class="w-full h-auto min-w-[640px] block"
-              :style="{ cursor: isDragging ? 'grabbing' : 'grab' }"
+              preserveAspectRatio="xMidYMid meet"
+              class="w-full min-w-0 block"
+              :class="isFullscreen ? 'h-full' : 'h-auto'"
+              :style="{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }"
               @mousemove="handleChartMouseMove"
               @mousedown="handleChartMouseDown"
               @mouseup="handleChartMouseUp"
               @mouseleave="chartMouseLeave"
               @wheel="handleChartWheel"
               @dblclick="handleChartDblClick"
+              @touchstart="handleChartTouchStart"
+              @touchmove="handleChartTouchMove"
+              @touchend="handleChartTouchEnd"
+              @touchcancel="handleChartTouchEnd"
             >
               <!-- 横向网格 -->
               <line
@@ -1328,12 +1599,23 @@ const handleExportCSV = async () => {
               </div>
             </div>
           </div>
+
+          <!-- 全屏：右上角悬浮退出按钮（放在旋转层之外，不随图表旋转） -->
+          <button
+            v-if="isFullscreen"
+            @click="isFullscreen = false"
+            class="absolute top-3 right-3 z-30 w-9 h-9 rounded-full bg-slate-800/80 hover:bg-slate-700 text-white shadow-lg cursor-pointer inline-flex items-center justify-center transition-colors"
+            title="退出全屏"
+          >
+            <Minimize2 class="w-4 h-4" />
+          </button>
         </div>
+        </Teleport>
       </div>
     </div>
 
     <!-- 明细表格 -->
-    <div class="px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex">
+    <div v-show="mobileView === 'table'" class="px-3 sm:px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex">
       <div class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between transition-colors">
         <div class="overflow-x-auto flex-1">
           <table class="w-full text-left text-xs font-sans">
