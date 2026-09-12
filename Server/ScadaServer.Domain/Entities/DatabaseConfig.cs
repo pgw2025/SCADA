@@ -84,5 +84,20 @@ namespace ScadaServer.Domain.Entities
         /// 最近一次连接测试时间
         /// </summary>
         public DateTime? LastCheckedAt { get; set; }
+
+        /// <summary>
+        /// 历史迁移断点（已成功迁移到 InfluxDB 的最后一条 MySQL 历史记录 Id）。null 表示尚未迁移/从 0 开始。
+        /// </summary>
+        public long? MigrateLastId { get; set; }
+
+        /// <summary>
+        /// 历史迁移状态（Running / Completed / Interrupted）。null 表示从未迁移。
+        /// </summary>
+        public string? MigrateStatus { get; set; }
+
+        /// <summary>
+        /// 最近一次迁移断点更新时间（UTC）。
+        /// </summary>
+        public DateTime? MigrateUpdatedAt { get; set; }
     }
 }

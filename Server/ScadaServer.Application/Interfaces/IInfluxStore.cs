@@ -18,6 +18,13 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>按生效历史库配置重建客户端（配置变更热切换；内部加锁）</summary>
         void Rebuild(DatabaseConfig config);
 
+        /// <summary>
+        /// 停用当前生效的 InfluxDB 客户端（取消生效/删除配置时调用）。
+        /// <para>原子清空当前 Holder 并标记旧 Holder retired，使 <see cref="IsConfigured"/> 立即变为 false，</para>
+        /// <para>后续写入/查询回退 MySQL；进行中的请求受引用计数保护不受影响。区别于 <see cref="IDisposable"/>，本方法不设置 disposed 标志，可再次 Rebuild。</para>
+        /// </summary>
+        void Reset();
+
         /// <summary>批量写入历史采样点（内部有限重试）；返回是否成功，失败由调用方决定回退</summary>
         Task<bool> WriteAsync(List<VariableHistory> points);
 
@@ -53,5 +60,11 @@ namespace ScadaServer.Application.Interfaces
         /// 返回是否成功与数据行数；未配置 InfluxDB 时返回失败。
         /// </summary>
         Task<(bool Success, long Rows, string Message)> ExportAllAsync(string outputCsvPath);
+
+        /// <summary>
+        /// 按时间范围（UTC，闭区间）导出 variable_history 测量为 CSV 文本（分片备份用）。
+        /// 返回 CSV 文本；查询失败抛出异常。未配置 InfluxDB 时返回 null。
+        /// </summary>
+        Task<string?> ExportRangeAsync(DateTime startUtc, DateTime endUtc);
     }
 }

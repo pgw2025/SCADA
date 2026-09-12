@@ -10,19 +10,35 @@ namespace ScadaServer.Application.Services
     /// 统一以 <c>DatabaseConfigs</c> 表为事实源（替代原 databases.json 双轨）。
     /// 处理：字段映射、密码/令牌掩码回显与“掩码不改密”、同 Type 生效唯一性。
     /// </para>
+    /// <para>
+    /// 生效历史库配置的写路径（新增/更新/删除）即时联动 <see cref="IInfluxStore"/>，
+    /// 使配置变更无需重启/手动迁移即可生效或停用（阶段1 P1-1）。
+    /// </para>
     /// </summary>
     public class DatabaseConfigAppService : IDatabaseConfigAppService
     {
         /// <summary>敏感字段回显占位符，用于「掩码回显、掩码不改密」。</summary>
         private const string SecretMask = "******";
 
+        /// <summary>历史库类型标识。</summary>
+        private const string HistoricalType = "Historical";
+
+        /// <summary>InfluxDB 后端类型标识。</summary>
+        private const string InfluxBackendType = "InfluxDB";
+
         /// <summary>数据库配置仓储，提供持久化能力。</summary>
         private readonly IDatabaseConfigRepository _repository;
 
-        /// <summary>构造函数：注入数据库配置仓储。</summary>
-        public DatabaseConfigAppService(IDatabaseConfigRepository repository)
+        /// <summary>InfluxDB 时序库客户端（生效历史库配置联动用）。</summary>
+        private readonly IInfluxStore _influxStore;
+
+        /// <summary>构造函数：注入数据库配置仓储与时序库客户端。</summary>
+        public DatabaseConfigAppService(
+            IDatabaseConfigRepository repository,
+            IInfluxStore influxStore)
         {
             _repository = repository;
+            _influxStore = influxStore;
         }
 
         /// <summary>按主键获取数据库配置，不存在时返回 null。</summary>
@@ -53,6 +69,12 @@ namespace ScadaServer.Application.Services
             }
 
             await _repository.InsertAsync(entity);
+
+            // 创建即生效历史库配置：联动 InfluxStore 即时生效（阶段1 P1-1）
+            if (IsActiveHistoricalInflux(entity))
+            {
+                _influxStore.Rebuild(entity);
+            }
         }
 
         /// <summary>更新数据库配置：校验后应用修改；密码/令牌传掩码或空则保留原值；由备用切换生效时降级同 Type 其它配置。</summary>
@@ -77,6 +99,7 @@ namespace ScadaServer.Application.Services
             }
 
             var wasActive = entity.IsActive;
+            var wasHistoricalInflux = IsHistoricalInflux(entity);
             FromDto(entity, dto);
 
             // 由备用切换为生效时，同 Type 其它生效配置降级
@@ -86,6 +109,18 @@ namespace ScadaServer.Application.Services
             }
 
             await _repository.UpdateAsync(entity);
+
+            // 生效历史库配置变更联动（阶段1 P1-1）
+            if (IsActiveHistoricalInflux(entity))
+            {
+                // 更新后仍为生效历史库：按新配置重建客户端（热切换）。
+                _influxStore.Rebuild(entity);
+            }
+            else if (wasActive && wasHistoricalInflux)
+            {
+                // 原为生效历史库，更新后不再是生效状态（停用/改类型/改后端）：停用客户端回退 MySQL。
+                _influxStore.Reset();
+            }
         }
 
         /// <summary>删除数据库配置；记录不存在时静默忽略。</summary>
@@ -94,9 +129,25 @@ namespace ScadaServer.Application.Services
             var entity = await _repository.GetByIdAsync(id);
             if (entity != null)
             {
+                var wasActiveHistoricalInflux = IsActiveHistoricalInflux(entity);
                 await _repository.DeleteAsync(entity);
+
+                // 删除的是当前生效历史库：停用客户端回退 MySQL（阶段1 P1-1）
+                if (wasActiveHistoricalInflux)
+                {
+                    _influxStore.Reset();
+                }
             }
         }
+
+        /// <summary>判定实体是否为「生效的 InfluxDB 历史库配置」（Type=Historical 且 BackendType=InfluxDB 且 IsActive）。</summary>
+        private static bool IsActiveHistoricalInflux(DatabaseConfig e) =>
+            e.IsActive && IsHistoricalInflux(e);
+
+        /// <summary>判定实体是否为「InfluxDB 历史库配置」（忽略 IsActive）。</summary>
+        private static bool IsHistoricalInflux(DatabaseConfig e) =>
+            string.Equals(e.Type, HistoricalType, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.BackendType, InfluxBackendType, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// 将同一 Type 下其它生效配置置为非生效，保证同 Type 仅一条 <see cref="DatabaseConfig.IsActive"/>。

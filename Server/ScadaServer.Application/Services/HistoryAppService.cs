@@ -1,6 +1,7 @@
 using System.Text;
 using ScadaServer.Application.DTOs;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.Application.Services
@@ -13,20 +14,28 @@ namespace ScadaServer.Application.Services
         /// <summary>批量查询单次变量数上限</summary>
         private const int MaxBatchVariables = 8;
 
-        /// <summary>查询/导出行数上限</summary>
-        private const int MaxLimit = 10000;
+        /// <summary>查询/导出行数上限（阶段3：与 Controller 导出上限 50000 统一）</summary>
+        private const int MaxLimit = 50000;
 
         private readonly IVariableHistoryRepository _repository;
         /// <summary>时序存储（InfluxDB），已配置时优先读取历史数据。</summary>
         private readonly IInfluxStore _influxStore;
+        /// <summary>数据库配置仓储，用于读取生效历史库配置概要（状态接口）。</summary>
+        private readonly IDatabaseConfigRepository _databaseConfigRepository;
+        /// <summary>历史写入统计提供者（状态接口 writePath 字段）。</summary>
+        private readonly IHistoryRecorderStats _historyRecorderStats;
 
-        /// <summary>构造函数：注入历史仓储与时序存储（InfluxDB）。</summary>
+        /// <summary>构造函数：注入历史仓储、时序存储（InfluxDB）、数据库配置仓储与写入统计提供者。</summary>
         public HistoryAppService(
             IVariableHistoryRepository repository,
-            IInfluxStore influxStore)
+            IInfluxStore influxStore,
+            IDatabaseConfigRepository databaseConfigRepository,
+            IHistoryRecorderStats historyRecorderStats)
         {
             _repository = repository;
             _influxStore = influxStore;
+            _databaseConfigRepository = databaseConfigRepository;
+            _historyRecorderStats = historyRecorderStats;
         }
 
         /// <inheritdoc/>
@@ -106,11 +115,19 @@ namespace ScadaServer.Application.Services
                 foreach (var rec in records)
                 {
                     sb.Append($"\"{rec.Timestamp:O}\",");
-                    sb.Append($"\"{rec.DeviceKey}\",");
-                    sb.Append($"\"{rec.VariableKey}\",");
+                    sb.Append($"\"{EscapeCsv(rec.DeviceKey)}\",");
+                    sb.Append($"\"{EscapeCsv(rec.VariableKey)}\",");
                     sb.Append($"\"{EscapeCsv(rec.VariableName)}\",");
-                    sb.Append(rec.Value);
-                    sb.Append($",\"{rec.Quality ?? "Good"}\"\n");
+                    // Value：NaN/Infinity 输出空串，避免 Excel 解析错误（阶段5 P3-13）
+                    if (double.IsNaN(rec.Value) || double.IsInfinity(rec.Value))
+                    {
+                        sb.Append(string.Empty);
+                    }
+                    else
+                    {
+                        sb.Append(rec.Value);
+                    }
+                    sb.Append($",\"{EscapeCsv(rec.Quality ?? "Good")}\"\n");
                 }
             }
 
@@ -149,7 +166,18 @@ namespace ScadaServer.Application.Services
             }
 
             // 取最近 limit 条（倒序，按时间范围过滤），转升序返回，便于前端按时间顺序绘制曲线。
-            var records = await _repository.GetLatestAsync(normalizedDevice, normalizedKey, limit, start, end);
+            // 阶段3：聚合窗口 > 0 时走 MySQL 聚合降采样（与 Influx 语义对齐），否则走原始点查询。
+            List<VariableHistory> records;
+            if (aggregateWindowMs.HasValue && aggregateWindowMs.Value > 0)
+            {
+                var aggregated = await _repository.GetAggregatedAsync(
+                    normalizedDevice, normalizedKey, start, end, aggregateWindowMs.Value, aggregateFn, limit);
+                records = aggregated;
+            }
+            else
+            {
+                records = await _repository.GetLatestAsync(normalizedDevice, normalizedKey, limit, start, end);
+            }
 
             return records
                 .OrderBy(r => r.Timestamp)
@@ -168,11 +196,62 @@ namespace ScadaServer.Application.Services
                 .ToList();
         }
 
-        /// <summary>CSV 字段转义：包裹双引号并将字段内引号翻倍。</summary>
+        /// <summary>CSV 字段转义：包裹双引号、内部引号翻倍、换行/制表符归一（保证单行结构，阶段5 P3-13）。</summary>
         private static string EscapeCsv(string value)
         {
             if (string.IsNullOrEmpty(value)) return string.Empty;
-            return value.Replace("\"", "\"\"");
+            return value
+                .Replace("\"", "\"\"")
+                .Replace("\r\n", "\n")
+                .Replace("\r", "\n")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
+        }
+
+        /// <inheritdoc/>
+        public async Task<HistoryStatusDto> GetStatusAsync()
+        {
+            var status = new HistoryStatusDto
+            {
+                InfluxConfigured = _influxStore.IsConfigured,
+                Backend = _influxStore.IsConfigured ? "InfluxDB" : "MySQL"
+            };
+
+            // 读取生效的 InfluxDB 历史库配置概要（脱敏），供前端展示。
+            var list = await _databaseConfigRepository.GetListAsync();
+            var active = list.FirstOrDefault(c =>
+                string.Equals(c.Type, "Historical", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(c.BackendType, "InfluxDB", StringComparison.OrdinalIgnoreCase) &&
+                c.IsActive);
+
+            if (active != null)
+            {
+                status.Influx = new HistoryInfluxInfoDto
+                {
+                    Name = active.Name,
+                    Host = active.Host,
+                    Port = active.Port,
+                    Bucket = string.IsNullOrWhiteSpace(active.Bucket) ? active.DatabaseName : active.Bucket,
+                    Org = active.Org,
+                    LastStatus = active.LastStatus
+                };
+            }
+
+            // 组装写入路径统计（阶段2）
+            var stats = _historyRecorderStats.GetStats();
+            status.WritePath = new HistoryWritePathDto
+            {
+                QueueDepth = stats.QueueDepth,
+                EnqueuedTotal = stats.EnqueuedTotal,
+                DroppedQueueFull = stats.DroppedQueueFull,
+                DroppedAllBackendFailed = stats.DroppedAllBackendFailed,
+                InvalidValuePoints = stats.InvalidValuePoints,
+                RetryBufferDepth = stats.RetryBufferDepth,
+                LastFlushAt = stats.LastFlushAt,
+                LastWriteSucceededAt = stats.LastWriteSucceededAt
+            };
+
+            return status;
         }
     }
 }

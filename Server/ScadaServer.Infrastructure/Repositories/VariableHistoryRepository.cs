@@ -71,5 +71,140 @@ namespace ScadaServer.Infrastructure.Repositories
                 .Take(size)
                 .ToListAsync();
         }
+
+        /// <inheritdoc/>
+        public async Task<long> DeleteBeforeAsync(DateTime cutoffUtc, int batchSize, int batchDelayMs, CancellationToken token)
+        {
+            long total = 0;
+            while (true)
+            {
+                var deleted = await Db.Database.ExecuteSqlInterpolatedAsync(
+                    $"DELETE FROM `VariableHistory` WHERE `Timestamp` < {cutoffUtc} ORDER BY `Id` LIMIT {batchSize}",
+                    token);
+                if (deleted <= 0)
+                {
+                    break;
+                }
+                total += deleted;
+                if (deleted < batchSize)
+                {
+                    break;
+                }
+                if (batchDelayMs > 0)
+                {
+                    await Task.Delay(batchDelayMs, token);
+                }
+            }
+            return total;
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<VariableHistory>> GetAggregatedAsync(
+            string deviceKey,
+            string variableKey,
+            DateTime? start,
+            DateTime? end,
+            long windowMs,
+            string fn,
+            int limit)
+        {
+            // 窗口向上取整为整数秒，防 windowSec=0 除零；窗口上限 30 天防溢出。
+            var windowSec = Math.Max(1L, (windowMs + 999) / 1000);
+            if (windowSec > 30L * 24 * 3600)
+            {
+                windowSec = 30L * 24 * 3600;
+            }
+
+            // 聚合函数白名单（杜绝 SQL 注入）。
+            var fnNorm = (fn ?? "mean").ToLowerInvariant();
+            var isFirst = fnNorm == "first";
+            var isLast = fnNorm == "last";
+            var isMax = fnNorm == "max";
+            var isMin = fnNorm == "min";
+            if (!isFirst && !isLast && !isMax && !isMin)
+            {
+                fnNorm = "mean"; // 非法函数回退 mean
+            }
+
+            var hasDevice = !string.IsNullOrWhiteSpace(deviceKey);
+            var devKey = hasDevice ? deviceKey : string.Empty;
+
+            // first/last 与 mean/max/min 两条 SQL 分支。聚合函数名（agg）/排序方向（orderDir）为白名单常量，非用户输入。
+            // 其余值通过 FromSqlRaw 的位置占位符 {0}..{5}（string.Format 语义）参数化绑定，数组固定 6 元素、占位符连续，
+            // 未提供的条件（无 device/无 start/无 end）用「恒真」写法保留占位符位置，杜绝参数错位与 SQL 注入：
+            //   {0}=windowSec, {1}=variableKey, {2}=deviceKey, {3}=start, {4}=end, {5}=limit
+            // 注意：SQL 模板用普通字符串拼接（非 $ 插值），避免 {0} 被 C# 插值误解析；{0}..{5} 是 string.Format 占位符。
+            if (isFirst || isLast)
+            {
+                var orderDir = isFirst ? "ASC" : "DESC";
+                var sql =
+                    "WITH b AS (\n" +
+                    "    SELECT `Id`, `DeviceId`, `DeviceKey`, `VariableKey`, `VariableName`, `Value`, `RawValue`, `Timestamp`, `Quality`,\n" +
+                    "           FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0} AS bucket,\n" +
+                    "           ROW_NUMBER() OVER (PARTITION BY FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0} ORDER BY `Timestamp` " + orderDir + ", `Id` " + orderDir + ") AS rn\n" +
+                    "    FROM `VariableHistory`\n" +
+                    "    WHERE `VariableKey` = {1}\n" +
+                    "                      AND ({2} = '' OR `DeviceKey` = {2})\n" +
+                    "                      AND `Timestamp` >= {3}\n" +
+                    "                      AND `Timestamp` <= {4}\n" +
+                    ")\n" +
+                    "SELECT `Id`, `DeviceId`, `DeviceKey`, `VariableKey`, `VariableName`, `Value`, `RawValue`, `Timestamp`, `Quality`\n" +
+                    "FROM b\n" +
+                    "WHERE `rn` = 1\n" +
+                    "ORDER BY `bucket` DESC\n" +
+                    "LIMIT {5}";
+                var parameters = BuildParams(windowSec, variableKey, devKey, start, end, limit);
+                return await Db.VariableHistories
+                    .FromSqlRaw(sql, parameters)
+                    .AsNoTracking()
+                    .ToListAsync();
+            }
+
+            var agg = isMax ? "MAX(`Value`)" : isMin ? "MIN(`Value`)" : "AVG(`Value`)";
+            var sqlAgg =
+                "SELECT 0 AS `Id`, 0 AS `DeviceId`, '' AS `DeviceKey`, {1} AS `VariableKey`, '' AS `VariableName`,\n" +
+                "       " + agg + " AS `Value`, NULL AS `RawValue`,\n" +
+                "       FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0}) AS `Timestamp`,\n" +
+                "       NULL AS `Quality`\n" +
+                "FROM `VariableHistory`\n" +
+                "WHERE `VariableKey` = {1}\n" +
+                "  AND ({2} = '' OR `DeviceKey` = {2})\n" +
+                "  AND `Timestamp` >= {3}\n" +
+                "  AND `Timestamp` <= {4}\n" +
+                "GROUP BY FLOOR(UNIX_TIMESTAMP(`Timestamp`) / {0}) * {0}\n" +
+                "ORDER BY `Timestamp` DESC\n" +
+                "LIMIT {5}";
+            var parametersAgg = BuildParams(windowSec, variableKey, devKey, start, end, limit);
+            return await Db.VariableHistories
+                .FromSqlRaw(sqlAgg, parametersAgg)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        /// <summary>
+        /// 构造固定 6 元素的参数数组，下标语义与 SQL 中 {0}..{5} 位置占位符一一对应：
+        /// {0}=windowSec, {1}=variableKey, {2}=deviceKey, {3}=start, {4}=end, {5}=limit。
+        /// <para>未提供的条件在 SQL 里用「恒真」写法保留占位符位置（如 deviceKey 为空时传 ''，配合
+        /// `({2} = '' OR DeviceKey = {2})` 恒真；start 为 null 时传 DateTime.MinValue，`Timestamp >= {3}` 恒真；
+        /// end 为 null 时传 DateTime.MaxValue，`Timestamp <= {4}` 恒真），从而保证占位符始终连续、数组长度固定。</para>
+        /// </summary>
+        private static object[] BuildParams(
+            long windowSec,
+            string variableKey,
+            string deviceKey,
+            DateTime? start,
+            DateTime? end,
+            int limit)
+        {
+            return new object[]
+            {
+                windowSec,                                      // {0}
+                variableKey,                                    // {1}
+                string.IsNullOrEmpty(deviceKey) ? "" : deviceKey, // {2}
+                (start.HasValue ? (object)start.Value : DateTime.MinValue), // {3}
+                (end.HasValue ? (object)end.Value : DateTime.MaxValue),     // {4}
+                limit                                           // {5}
+            };
+        }
     }
 }

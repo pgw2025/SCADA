@@ -302,6 +302,26 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         /// <paramref name="afterId"/> 为“跳过 ≤ 该 Id 的行”；连续调用传上一批末条 Id 即可全表游标遍历。
         /// </summary>
         Task<List<VariableHistory>> GetBatchAfterIdAsync(long afterId, int size);
+
+        /// <summary>
+        /// 删除指定时间（UTC）之前的全部历史数据，分批删除（每批 <paramref name="batchSize"/> 行，批间延迟），
+        /// 返回删除总条数。用于历史清理计划任务与保留期自动清理。
+        /// </summary>
+        Task<long> DeleteBeforeAsync(DateTime cutoffUtc, int batchSize, int batchDelayMs, CancellationToken token);
+
+        /// <summary>
+        /// 按时间窗口聚合降采样查询（MySQL 路径，语义与 Flux aggregateWindow 对齐）。
+        /// <para><paramref name="windowMs"/> 为窗口毫秒；<paramref name="fn"/> 为聚合函数（mean/max/min/first/last）。</para>
+        /// <para>聚合行无主键（Id=0），RawValue/Quality 返回 null。</para>
+        /// </summary>
+        Task<List<VariableHistory>> GetAggregatedAsync(
+            string deviceKey,
+            string variableKey,
+            DateTime? start,
+            DateTime? end,
+            long windowMs,
+            string fn,
+            int limit);
     }
 
     /// <summary>

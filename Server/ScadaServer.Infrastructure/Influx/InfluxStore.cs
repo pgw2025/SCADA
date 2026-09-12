@@ -147,6 +147,31 @@ namespace ScadaServer.Infrastructure.Influx
         }
 
         /// <inheritdoc/>
+        public void Reset()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                _logger.LogWarning(
+                    "InfluxStore 已经释放，忽略 Reset 请求。");
+
+                return;
+            }
+
+            var oldHolder =
+                Interlocked.Exchange(
+                    ref _holder,
+                    null);
+
+            if (oldHolder != null)
+            {
+                oldHolder.MarkRetired();
+
+                _logger.LogInformation(
+                    "InfluxDB 历史库客户端已停用，历史数据回退 MySQL。");
+            }
+        }
+
+        /// <inheritdoc/>
         public async Task<bool> WriteAsync(List<VariableHistory> points)
         {
             if (points == null || points.Count == 0)
@@ -244,9 +269,15 @@ namespace ScadaServer.Infrastructure.Influx
                 limit = 100;
             }
 
-            if (limit > 10000)
+            if (limit > 50000)
             {
-                limit = 10000;
+                limit = 50000;
+            }
+
+            // 阶段5 P3-11：start 为空时显式化为「最近 30 天」，把隐式 -30d 行为变显式、可测试、可文档化。
+            if (start == null)
+            {
+                start = (end ?? DateTime.UtcNow).AddDays(-30);
             }
 
             if (Volatile.Read(ref _disposed) != 0)
@@ -580,69 +611,179 @@ namespace ScadaServer.Infrastructure.Influx
                         "InfluxDB Bucket 或 Org 未配置。");
                 }
 
-                var flux =
-                    $"from(bucket: \"{Escape(holder.Bucket)}\")\n" +
-                    "  |> range(start: 0)\n" +
-                    $"  |> filter(fn: (r) => r._measurement == \"{Escape(MeasurementName)}\")";
-
-                var csv =
-                    await holder.Client
-                        .GetQueryApi()
-                        .QueryRawAsync(
-                            flux,
-                            null,
-                            holder.Org);
-
-                if (string.IsNullOrEmpty(csv))
+                // 阶段5 P3-14：按自然月分片导出，避免一次性拉全量 CSV 造成内存/超时风险。
+                // 先探测数据最早时间（轻量 first()），无数据则写空文件。
+                var earliest = await QueryEarliestTimeAsync(holder);
+                if (earliest == null)
                 {
-                    /*
-                     * 空结果也写出文件。
-                     */
-                    await System.IO.File.WriteAllTextAsync(
-                        outputCsvPath,
-                        string.Empty);
-
-                    return (
-                        true,
-                        0,
-                        "InfluxDB 时序数据为空，已导出空文件。");
+                    await System.IO.File.WriteAllTextAsync(outputCsvPath, string.Empty);
+                    return (true, 0, "InfluxDB 时序数据为空，已导出空文件。");
                 }
 
-                await System.IO.File.WriteAllTextAsync(
-                    outputCsvPath,
-                    csv);
+                // 删除旧文件（若存在），按月循环追加
+                System.IO.File.Delete(outputCsvPath);
 
-                /*
-                 * InfluxDB 原生 CSV：
-                 * 每一行对应 CSV 中的一行。
-                 *
-                 * 注意：
-                 * 这里统计的是换行数量，而不是严格意义上的
-                 * 数据点数量，因为 CSV 中可能包含注释/表头。
-                 */
-                var rows = csv.Count(
-                    c => c == '\n');
+                var totalRows = 0L;
+                var monthStart = new DateTime(earliest.Value.Year, earliest.Value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var now = DateTime.UtcNow;
 
-                return (
-                    true,
-                    rows,
-                    $"已导出 {rows} 行时序数据。");
+                while (monthStart <= now)
+                {
+                    var monthEnd = monthStart.AddMonths(1);
+
+                    string csv;
+                    try
+                    {
+                        csv = await QueryRangeCsvAsync(holder, monthStart, monthEnd);
+                    }
+                    catch (Exception ex)
+                    {
+                        // 单片失败重试 1 次
+                        try
+                        {
+                            await Task.Delay(1000);
+                            csv = await QueryRangeCsvAsync(holder, monthStart, monthEnd);
+                        }
+                        catch (Exception retryEx)
+                        {
+                            _logger.LogWarning(
+                                retryEx,
+                                "InfluxDB 分片导出失败（{Start} ~ {End}），跳过该片。",
+                                monthStart,
+                                monthEnd);
+                            monthStart = monthEnd;
+                            continue;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(csv))
+                    {
+                        // 首片含表头，后续片去表头（Influx CSV 首行为注释表头）。
+                        if (totalRows == 0)
+                        {
+                            await System.IO.File.AppendAllTextAsync(outputCsvPath, csv);
+                        }
+                        else
+                        {
+                            await System.IO.File.AppendAllTextAsync(outputCsvPath, StripCsvHeader(csv));
+                        }
+                        totalRows += csv.Count(c => c == '\n');
+                    }
+
+                    monthStart = monthEnd;
+                }
+
+                return (true, totalRows, $"已分片导出 {totalRows} 行时序数据。");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "InfluxDB 全量导出失败。");
-
-                return (
-                    false,
-                    0,
-                    $"InfluxDB 全量导出失败: {ex.Message}");
+                _logger.LogWarning(ex, "InfluxDB 全量导出失败。");
+                return (false, 0, $"InfluxDB 全量导出失败: {ex.Message}");
             }
             finally
             {
                 holder.Release();
             }
+        }
+
+        /// <inheritdoc/>
+        public async Task<string?> ExportRangeAsync(DateTime startUtc, DateTime endUtc)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return null;
+            }
+
+            var holder = AcquireHolder();
+            if (holder == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(holder.Bucket) ||
+                    string.IsNullOrWhiteSpace(holder.Org))
+                {
+                    return null;
+                }
+
+                return await QueryRangeCsvAsync(holder, startUtc, endUtc);
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                holder.Release();
+            }
+        }
+
+        /// <summary>查询指定时间范围内 variable_history 的 CSV（Influx 原生格式）。</summary>
+        private async Task<string> QueryRangeCsvAsync(ClientHolder holder, DateTime startUtc, DateTime endUtc)
+        {
+            var flux =
+                $"from(bucket: \"{Escape(holder.Bucket)}\")\n" +
+                $"  |> range(start: {ToRfc3339(startUtc)}, stop: {ToRfc3339(endUtc)})\n" +
+                $"  |> filter(fn: (r) => r._measurement == \"{Escape(MeasurementName)}\")";
+
+            var csv = await holder.Client
+                .GetQueryApi()
+                .QueryRawAsync(flux, null, holder.Org);
+
+            return string.IsNullOrEmpty(csv) ? string.Empty : csv;
+        }
+
+        /// <summary>查询 variable_history 中最早一条数据时间（无数据返回 null）。</summary>
+        private async Task<DateTime?> QueryEarliestTimeAsync(ClientHolder holder)
+        {
+            var flux =
+                $"from(bucket: \"{Escape(holder.Bucket)}\")\n" +
+                "  |> range(start: 0)\n" +
+                $"  |> filter(fn: (r) => r._measurement == \"{Escape(MeasurementName)}\")\n" +
+                "  |> first()\n" +
+                "  |> keep(columns: [\"_time\"])";
+
+            var tables = holder.Client
+                .GetQueryApiSync()
+                .QuerySync(flux, holder.Org);
+
+            foreach (var table in tables)
+            {
+                foreach (var record in table.Records)
+                {
+                    var t = record.GetTimeInDateTime();
+                    if (t.HasValue)
+                    {
+                        return DateTime.SpecifyKind(t.Value, DateTimeKind.Utc);
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>去掉 Influx CSV 的表头注释行（首行以 # 开头），用于分片追加。</summary>
+        private static string StripCsvHeader(string csv)
+        {
+            var idx = csv.IndexOf('\n');
+            if (idx < 0)
+            {
+                return csv;
+            }
+            // 跳过首行；若首行是表头注释（# 开头），仅跳一行。
+            var firstLine = csv.Substring(0, idx);
+            if (firstLine.StartsWith('#'))
+            {
+                return csv.Substring(idx + 1);
+            }
+            return csv;
+        }
+
+        /// <summary>DateTime → RFC3339 字符串（UTC，用于 Flux range 参数）。</summary>
+        private static string ToRfc3339(DateTime dt)
+        {
+            return dt.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         /// <summary>

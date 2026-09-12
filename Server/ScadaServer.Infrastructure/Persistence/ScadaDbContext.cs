@@ -431,6 +431,12 @@ namespace ScadaServer.Infrastructure.Persistence
             modelBuilder.Entity<VariableHistory>()
                 .HasIndex(h => new { h.VariableKey, h.Timestamp })
                 .HasDatabaseName("ix_variablehistory_key_timestamp");
+            // 阶段2：按 Timestamp 单列索引，支撑保留期清理的 DELETE ... WHERE Timestamp < cutoff。
+            modelBuilder.Entity<VariableHistory>()
+                .HasIndex(h => h.Timestamp)
+                .HasDatabaseName("ix_variablehistory_timestamp");
+            // 说明：阶段3 的 (DeviceKey, VariableKey, Timestamp) 复合索引因 DeviceKey 为 longtext 无法直接建全列索引，
+            // 改用前缀索引（DeviceKey(191)），在迁移文件 AddVariableHistoryIndexes 中以原生 SQL 手动创建（见该迁移）。
 
             // 变量实时快照表：每设备每变量一行，复合主键 (DeviceId, VariableKey)，
             // 由实时快照服务批量 Upsert，无需自增主键。

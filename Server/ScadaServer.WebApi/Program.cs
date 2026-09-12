@@ -29,6 +29,9 @@ builder.Services.Configure<HmiImageOptions>(builder.Configuration.GetSection(Hmi
 // 配置外部消息通知选项（钉钉群机器人 + SMTP 邮件）
 builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
 
+// 配置历史数据保留选项（MySQL 历史保留期，默认 0 关闭）
+builder.Services.Configure<HistoryRetentionOptions>(builder.Configuration.GetSection(HistoryRetentionOptions.SectionName));
+
 // 将 ILogger 运行日志写入数据库的 Provider：
 // 以单例注册（不经 builder.Logging.AddProvider），由 LoggerFactory 延迟解析，
 // 保证依赖链（SystemLogRecorder 单例）完整后再实例化，避免 Host 构建期提前创建导致解析失败。
@@ -78,6 +81,9 @@ builder.Services.AddHostedService<AlarmRecordCleanupHostedService>();
 
 // 脚本执行记录自动清理托管服务（每天 3 点按系统配置保留期分批清理 ScriptExecutionRecords）
 builder.Services.AddHostedService<ScriptExecutionRecordCleanupHostedService>();
+
+// MySQL 历史数据自动清理托管服务（每天 3:30 按 History:MySqlRetentionDays 分批清理 VariableHistory，默认 0 关闭）
+builder.Services.AddHostedService<VariableHistoryCleanupHostedService>();
 
 // 遗留未恢复报警启动巡检托管服务（修复 Bug#3：进程重启后内存状态机清零，
 // 对仍处于报警条件中的记录按实时值批量补恢复并补发 SignalR）

@@ -73,11 +73,16 @@ namespace ScadaServer.WebApi.Extensions
             services.AddScoped<IScriptValidationService, ScriptValidationService>();
             services.AddScoped<ISystemUserAppService, SystemUserAppService>();
             services.AddScoped<IHistoryAppService, HistoryAppService>();
+            services.AddScoped<IHistoryMaintenanceAppService, HistoryMaintenanceAppService>();
 
             // 历史数据记录器：采集线程异步入队，后台批量落库（单例 + IHostedService 常驻）。
             services.AddSingleton<HistoryRecorder>();
             services.AddSingleton<IHistoryRecorder>(sp => sp.GetRequiredService<HistoryRecorder>());
+            services.AddSingleton<IHistoryRecorderStats>(sp => sp.GetRequiredService<HistoryRecorder>());
             services.AddHostedService(sp => sp.GetRequiredService<HistoryRecorder>());
+
+            // 历史库客户端启动初始化：服务启动时从 DatabaseConfigs 恢复生效的 InfluxDB 配置（阶段1 P1-1）。
+            services.AddHostedService<HistoryStoreInitializer>();
 
             // 报警记录器：运行时报警事件异步入队，后台批量落库（单例 + IHostedService 常驻）。
             services.AddSingleton<AlarmRecorder>();

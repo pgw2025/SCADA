@@ -43,5 +43,10 @@ namespace ScadaServer.Application.Interfaces
             long? aggregateWindowMs,
             string aggregateFn,
             int limit);
+
+        /// <summary>
+        /// 查询历史库当前生效状态（后端类型 + 生效 InfluxDB 配置概要），供前端展示当前生效后端（阶段1 P1-1）。
+        /// </summary>
+        Task<HistoryStatusDto> GetStatusAsync();
     }
 }

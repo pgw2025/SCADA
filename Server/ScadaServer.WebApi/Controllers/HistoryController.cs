@@ -105,7 +105,8 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         /// <summary>
-        /// 触发一次性历史数据迁移（MySQL 存量 → 当前生效的 InfluxDB 历史库）。管理员权限。
+        /// 触发一次性历史数据迁移（MySQL 存量 → 当前生效的 InfluxDB 历史库），立即返回启动结果。
+        /// 支持断点续传（若上次中断则从断点继续）。管理员权限。
         /// </summary>
         [HttpPost("history/migrate")]
         [Authorize(Policy = "RequireAdmin")]
@@ -113,6 +114,39 @@ namespace ScadaServer.WebApi.Controllers
         {
             var result = await _migrationService.MigrateAsync();
             return Ok(result);
+        }
+
+        /// <summary>
+        /// 查询历史迁移任务状态（Running/Completed/Interrupted/NeverStarted + 进度 + 速率/ETA）。管理员权限。
+        /// </summary>
+        [HttpGet("history/migrate/status")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> MigrateHistoryStatus()
+        {
+            var result = await _migrationService.GetStatusAsync();
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// 请求取消当前历史迁移任务（下一片边界生效，幂等）。管理员权限。
+        /// </summary>
+        [HttpPost("history/migrate/cancel")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> CancelMigrateHistory()
+        {
+            var result = await _migrationService.CancelAsync();
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// 查询历史库当前生效状态（后端类型 + 生效 InfluxDB 配置概要，脱敏）。
+        /// 权限与历史查询一致（无管理员限制）。
+        /// </summary>
+        [HttpGet("history/status")]
+        public async Task<IActionResult> GetHistoryStatus()
+        {
+            var status = await _appService.GetStatusAsync();
+            return Ok(status);
         }
     }
 }
