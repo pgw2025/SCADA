@@ -22,6 +22,7 @@ import {
   AlignEndVertical,
   AlignHorizontalSpaceBetween,
   AlignVerticalSpaceBetween,
+  Hand,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -141,6 +142,19 @@ const dragSnapshot = ref<{ id: string; x: number; y: number }[]>([]);
 const isBoxSelecting = ref<boolean>(false);
 const boxRect = ref<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
 
+// 阶段X：移动端画布手势——交互模式（select=框选 / pan=平移）、单指平移、双指捏合缩放
+const interactionMode = ref<'select' | 'pan'>('select');
+const isPanning = ref<boolean>(false);
+const panStart = ref<{ x: number; y: number }>({ x: 0, y: 0 });
+const panStartScroll = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+// 双指捏合：记录活跃触点与起始距离/缩放/中心
+const activePointers = new Map<number, { x: number; y: number }>();
+const isPinching = ref<boolean>(false);
+const pinchStartDistance = ref<number>(0);
+const pinchStartZoom = ref<number>(1);
+const pinchStartScroll = ref<{ left: number; top: number }>({ left: 0, top: 0 });
+const pinchAnchorCanvas = ref<{ x: number; y: number }>({ x: 0, y: 0 }); // 缩放锚点在画布坐标系（不动点）
+
 // 屏幕坐标 → 画布坐标（按 zoom 反算；拉伸模式下 X/Y 各自按轴缩放反算）
 const toCanvasCoords = (clientX: number, clientY: number) => {
   const rect = canvasRef.value?.getBoundingClientRect();
@@ -212,6 +226,11 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 // Pointer Events callbacks
 const handleDragStart = (e: PointerEvent, component: HMIComponent) => {
+  // 平移模式：按在组件上不选中/不移动组件，事件继续冒泡到工作区触发平移画布
+  if (!props.isActiveMode && interactionMode.value === 'pan') {
+    return;
+  }
+
   if (props.isActiveMode) {
     // ===== 事件系统：优先消费 props.events 配置（共存策略）=====
     // 配置了交互类事件（click/press/release）且含可用动作 → 走事件分发，不再回退 buttonMode；
@@ -359,6 +378,8 @@ const handleDragStart = (e: PointerEvent, component: HMIComponent) => {
 };
 
 const handleResizeStart = (e: PointerEvent, component: HMIComponent, handle: string) => {
+  // 平移模式：不缩放组件，事件冒泡到工作区触发平移
+  if (!props.isActiveMode && interactionMode.value === 'pan') return;
   // 阶段5-2：缩放手柄仅对单选组件生效，锁定或隐藏组件禁止缩放
   if (props.selectedIds.length !== 1 || component.id !== props.selectedId || isComponentLocked(component) || !isComponentVisible(component)) return;
   e.stopPropagation();
@@ -376,6 +397,38 @@ const handleResizeStart = (e: PointerEvent, component: HMIComponent, handle: str
 };
 
 const handleMouseMove = (e: PointerEvent) => {
+  // 双指捏合缩放：围绕双指中点缩放，保持锚点画布坐标不动
+  if (isPinching.value) {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...activePointers.values()];
+    if (pts.length < 2) return;
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    if (pinchStartDistance.value <= 0) return;
+    const ratio = dist / pinchStartDistance.value;
+    const nextZoom = Math.max(0.5, Math.min(1.5, pinchStartZoom.value * ratio));
+    zoom.value = nextZoom;
+    zoomY.value = nextZoom;
+    // 缩放后补偿滚动，使锚点（双指中点对应的画布坐标）在视口中的位置保持不变
+    const el = workspaceRef.value;
+    if (el) {
+      const dZoom = nextZoom - pinchStartZoom.value;
+      el.scrollLeft = pinchStartScroll.value.left + pinchAnchorCanvas.value.x * dZoom;
+      el.scrollTop = pinchStartScroll.value.top + pinchAnchorCanvas.value.y * dZoom;
+    }
+    return;
+  }
+
+  // 平移画布：反向累加滚动位置
+  if (isPanning.value) {
+    const el = workspaceRef.value;
+    if (el) {
+      el.scrollLeft = panStartScroll.value.left - (e.clientX - panStart.value.x);
+      el.scrollTop = panStartScroll.value.top - (e.clientY - panStart.value.y);
+    }
+    return;
+  }
+
   // 阶段5-2：框选（空白区域拖拽橡皮筋）
   if (isBoxSelecting.value) {
     const cur = toCanvasCoords(e.clientX, e.clientY);
@@ -472,14 +525,57 @@ const handleMouseMove = (e: PointerEvent) => {
   }
 };
 
-const handleMouseUp = () => {
+const handleMouseUp = (e?: PointerEvent) => {
   isDragging.value = false;
   activeResizeHandle.value = null;
+  isPanning.value = false;
+  // 触点释放：从活跃集合移除；剩余不足 2 指则退出捏合
+  if (e && e.pointerId != null) {
+    activePointers.delete(e.pointerId);
+  }
+  if (activePointers.size < 2) {
+    isPinching.value = false;
+    pinchStartDistance.value = 0;
+  }
 };
 
-// 阶段5-2：空白区域按下 → 起手框选
+// 阶段5-2：空白区域按下 → 起手框选 / 平移；记录触点用于双指捏合
 const handleStageMouseDown = (e: PointerEvent) => {
   if (props.isActiveMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+
+  // 记录活跃触点（供双指捏合判定）
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  // 捕获指针：平移/捏合时手指移出工作区边界仍持续收到 pointermove/pointerup
+  (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+  if (activePointers.size === 2) {
+    // 第二指落下：进入捏合缩放态，取消平移/框选
+    isPanning.value = false;
+    isBoxSelecting.value = false;
+    boxRect.value = { x: 0, y: 0, w: 0, h: 0 };
+    const pts = [...activePointers.values()];
+    pinchStartDistance.value = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    pinchStartZoom.value = zoom.value;
+    pinchStartScroll.value = { left: workspaceRef.value?.scrollLeft ?? 0, top: workspaceRef.value?.scrollTop ?? 0 };
+    // 记录双指中点对应的画布坐标作为缩放锚点（缩放过程中保持该点不动）
+    const midX = (pts[0].x + pts[1].x) / 2;
+    const midY = (pts[0].y + pts[1].y) / 2;
+    const anchor = toCanvasCoords(midX, midY);
+    pinchAnchorCanvas.value = { x: anchor.x, y: anchor.y };
+    isPinching.value = true;
+    return;
+  }
+
+  // 单指：按交互模式分支
+  if (interactionMode.value === 'pan') {
+    // 平移模式：空白处单指拖动 = 平移画布（用工作区滚动实现）
+    isPanning.value = true;
+    panStart.value = { x: e.clientX, y: e.clientY };
+    panStartScroll.value = { left: workspaceRef.value?.scrollLeft ?? 0, top: workspaceRef.value?.scrollTop ?? 0 };
+    e.preventDefault();
+    return;
+  }
+
+  // 框选模式：起手橡皮筋框选
   const start = toCanvasCoords(e.clientX, e.clientY);
   isBoxSelecting.value = true;
   boxRect.value = { x: start.x, y: start.y, w: 0, h: 0 };
@@ -791,6 +887,17 @@ onUnmounted(() => {
         </div>
 
         <div class="h-5 w-[1px] bg-gray-300 hidden md:block" />
+
+        <!-- 平移/框选交互模式切换：始终显示（手机端需用它切换「平移画布」与「框选」手势） -->
+        <button @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'" :class="[
+          'text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer flex items-center gap-1',
+          interactionMode === 'pan'
+            ? 'bg-white border-[#1890ff] text-[#1890ff]'
+            : 'bg-[#fafafa] border-[#d9d9d9] text-gray-400'
+        ]" :title="interactionMode === 'pan' ? '当前：平移模式（空白拖动平移画布，双指捏合缩放）' : '当前：框选模式（空白拖动框选，双指捏合缩放）'">
+          <Hand class="w-3 h-3" />
+          {{ interactionMode === 'pan' ? '平移' : '框选' }}
+        </button>
 
         <!-- Grid align state options -->
         <div class="hidden md:flex items-center gap-1.5">
