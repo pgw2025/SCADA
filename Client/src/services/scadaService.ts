@@ -154,10 +154,11 @@ export const persistPageDelete = async (page: ScadaPage) => {
  * 页面在夹间/段间移动：立即（非防抖）落库 FolderId，随后的 reorder 才满足后端
  * 「排序项须已在目标父级」的校验（ReorderAsync 只重排、不搬家）。
  */
-export const persistPageMove = async (page: ScadaPage, proj: ScadaScreenProject) => {
-  if (!page.serverId) return;
+export const persistPageMove = async (page: ScadaPage, proj: ScadaScreenProject): Promise<boolean> => {
+  if (!page.serverId) return false;
   clearPageUpdateTimer(page.serverId);
   await withRetry(() => api.updatePage(api.toPageDto(page, proj.serverId ?? 0, buildFolderIdMap(proj))));
+  return true;
 };
 
 export const persistProjectUpdate = async (proj: ScadaScreenProject) => {
@@ -225,8 +226,21 @@ export const ensureFolderSaved = async (folder: ScadaPageFolder, proj: ScadaScre
 
 // 防抖：文件夹重命名/移动（已落库才 PUT）
 const _folderUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
-export const persistFolderUpdate = (folder: ScadaPageFolder, proj: ScadaScreenProject): Promise<void> => {
-  if (!folder.serverId) return Promise.resolve();
+export const persistFolderUpdate = async (folder: ScadaPageFolder, proj: ScadaScreenProject): Promise<void> => {
+  // 新建后立即改名：此时 serverId 可能尚未就绪。若存在在途创建（__creating）则等它完成，
+  // 否则先行创建，随后以最新名字补一次更新，避免刷新后名字回退为默认名。
+  if (!folder.serverId) {
+    const creating = (folder as any).__creating as Promise<number> | undefined;
+    if (creating) await creating.catch(() => { });
+    else await ensureFolderSaved(folder, proj);
+    if (!folder.serverId) return;
+    scheduleFolderPut(folder, proj);
+    return;
+  }
+  scheduleFolderPut(folder, proj);
+};
+
+const scheduleFolderPut = (folder: ScadaPageFolder, proj: ScadaScreenProject) => {
   const key = String(folder.serverId);
   if (_folderUpdateTimers.has(key)) clearTimeout(_folderUpdateTimers.get(key)!);
   _folderUpdateTimers.set(key, setTimeout(() => {
@@ -234,7 +248,6 @@ export const persistFolderUpdate = (folder: ScadaPageFolder, proj: ScadaScreenPr
     withRetry(() => api.updatePageFolder(toFolderDto(folder, proj)))
       .catch(() => { /* toast by interceptor */ });
   }, 600));
-  return Promise.resolve();
 };
 
 /** 清除文件夹防抖定时器：删除前调用，避免残留 PUT 打到已删除文件夹。 */
@@ -252,10 +265,11 @@ export const persistFolderDelete = async (folder: ScadaPageFolder, mode: 'repare
 };
 
 /** 文件夹夹间移动：立即（非防抖）落库 ParentFolderId，供 reorder 校验使用。 */
-export const persistFolderMove = async (folder: ScadaPageFolder, proj: ScadaScreenProject) => {
-  if (!folder.serverId) return;
+export const persistFolderMove = async (folder: ScadaPageFolder, proj: ScadaScreenProject): Promise<boolean> => {
+  if (!folder.serverId) return false;
   clearFolderUpdateTimer(folder.serverId);
   await withRetry(() => api.updatePageFolder(toFolderDto(folder, proj)));
+  return true;
 };
 
 /**

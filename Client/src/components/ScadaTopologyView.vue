@@ -1181,14 +1181,15 @@ const startRenamePage = (pId: string, currentText: string) => {
   renamePageInput.value = currentText;
 };
 
-const savePageRename = (pId: string) => {
+const savePageRename = (pId: string, name?: string) => {
   const proj = currentProject.value;
   if (!proj) return;
 
   const pg = proj.pages.find(p => p.id === pId);
-  if (pg && renamePageInput.value.trim()) {
+  const submitted = name?.trim() ?? renamePageInput.value.trim();
+  if (pg && submitted) {
     const oldName = pg.name;
-    pg.name = renamePageInput.value.trim();
+    pg.name = submitted;
     addLog('组态编辑', `页面更名: [${oldName}] -> [${pg.name}]`, 'normal');
     // 阶段2：落库
     persistPageUpdate(pg).catch(() => { });
@@ -1215,6 +1216,14 @@ const genFolderId = () => {
 
 const normParent = (id: string | undefined): string | undefined =>
   (id && id.trim() ? id : undefined);
+
+// 拖拽换父前确保目标父文件夹已落库（serverId 就绪），保证「画面换父落库的 FolderId」
+// 与「reorder 的 parentFolderId」能解析出同一 serverId，避免后端“排序项与层级不一致”400。
+const ensureParentReady = async (parentId: string | undefined, proj: ScadaScreenProject): Promise<void> => {
+  if (!parentId) return;
+  const f = proj.folders.find(x => x.id === parentId);
+  if (f && !(f.serverId && f.serverId > 0)) await ensureFolderSaved(f, proj).catch(() => { });
+};
 
 const folderSortKey = (a: ScadaPageFolder, b: ScadaPageFolder) =>
   (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
@@ -1304,18 +1313,20 @@ const applyDrop = async (platform: 'Desktop' | 'Mobile', placementParent: string
         showToast('不能把文件夹移动到自身或其子文件夹内', 'warning');
         return;
       }
+      await ensureParentReady(newParent, proj);
       const oldParent = normParent(folder.parentFolderId);
       folder.platform = platform;
       folder.parentFolderId = newParent;
-      if (oldParent !== newParent) await persistFolderMove(folder, proj);
-      else if (orderBeforeId) await persistFolderMove(folder, proj);
+      let moved = false;
+      if (oldParent !== newParent) moved = await persistFolderMove(folder, proj);
+      else if (orderBeforeId) moved = await persistFolderMove(folder, proj);
 
       let order = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === newParent)
         .slice().sort(folderSortKey).map(f => f.id).filter(id => id !== folder.id);
       if (orderBeforeId && order.includes(orderBeforeId)) order.splice(order.indexOf(orderBeforeId), 0, folder.id);
       else order.push(folder.id);
       await reindexAndPersistSegment(proj, platform, newParent, 'folder', order);
-      if (oldParent !== newParent) {
+      if (oldParent !== newParent && moved) {
         const src = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === oldParent)
           .slice().sort(folderSortKey).map(f => f.id).filter(id => id !== folder.id);
         await reindexAndPersistSegment(proj, platform, oldParent, 'folder', src);
@@ -1330,19 +1341,24 @@ const applyDrop = async (platform: 'Desktop' | 'Mobile', placementParent: string
       else if (beforeKind === 'page') { newParent = placeParent; orderBeforeId = beforeNodeId; } // 段内重排/入新层级
       else { newParent = placeParent; }
       const oldParent = normParent(page.folderId);
+      await ensureParentReady(newParent, proj);
+      let moved = true;
       if (oldParent !== newParent) {
         page.folderId = newParent;
-        await persistPageMove(page, proj);
+        moved = await persistPageMove(page, proj);
       }
       let order = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === newParent)
         .slice().sort(pageSortKey).map(p => p.id).filter(id => id !== page.id);
       if (orderBeforeId && order.includes(orderBeforeId)) order.splice(order.indexOf(orderBeforeId), 0, page.id);
       else order.push(page.id);
-      await reindexAndPersistSegment(proj, platform, newParent, 'page', order);
-      if (oldParent !== newParent) {
-        const src = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === oldParent)
-          .slice().sort(pageSortKey).map(p => p.id);
-        await reindexAndPersistSegment(proj, platform, oldParent, 'page', src);
+      // 换父未真正落库（如页面 serverId 缺失）时不发新/旧父段 reorder，避免后端“层级/端不一致”400
+      if (moved) {
+        await reindexAndPersistSegment(proj, platform, newParent, 'page', order);
+        if (oldParent !== newParent) {
+          const src = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === oldParent)
+            .slice().sort(pageSortKey).map(p => p.id);
+          await reindexAndPersistSegment(proj, platform, oldParent, 'page', src);
+        }
       }
       addLog('组态编辑', `画面移动: [${page.name}]`, 'normal');
     }
@@ -1377,7 +1393,8 @@ const handleCreateSubfolder = (platform: 'Desktop' | 'Mobile', parentFolderId?: 
   isRenamingFolderId.value = newFolder.id;
   renameFolderInput.value = '';
   addLog('组态编辑', `新建文件夹: [${newFolder.name}]（工程 [${proj.name}]）`, 'normal');
-  ensureFolderSaved(newFolder, proj).catch(() => { });
+  (newFolder as any).__creating = (newFolder as any).__creating
+    ?? ensureFolderSaved(newFolder, proj).finally(() => { (newFolder as any).__creating = undefined; });
 };
 const handleCreateRootFolder = (platform: 'Desktop' | 'Mobile') => handleCreateSubfolder(platform, undefined);
 
@@ -1385,13 +1402,14 @@ const startRenameFolder = (folderId: string, name: string) => {
   isRenamingFolderId.value = folderId;
   renameFolderInput.value = name;
 };
-const saveRenameFolder = (folderId: string) => {
+const saveRenameFolder = (folderId: string, name?: string) => {
   const proj = currentProject.value;
   if (!proj) return;
   const folder = proj.folders.find(f => f.id === folderId);
-  if (folder && renameFolderInput.value.trim() && renameFolderInput.value.trim() !== folder.name) {
+  const submitted = name?.trim() ?? renameFolderInput.value.trim();
+  if (folder && submitted && submitted !== folder.name) {
     const oldName = folder.name;
-    folder.name = renameFolderInput.value.trim();
+    folder.name = submitted;
     addLog('组态编辑', `文件夹更名: [${oldName}] -> [${folder.name}]`, 'normal');
     persistFolderUpdate(folder, proj).catch(() => { });
   }

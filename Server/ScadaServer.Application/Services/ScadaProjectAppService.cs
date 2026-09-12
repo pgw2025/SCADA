@@ -168,6 +168,21 @@ namespace ScadaServer.Application.Services
                 }
             };
 
+            // 文件架构优先返回文件夹（其下页面以 FolderId 归属，前端组建树时聚合），按父级+排序确定顺序。
+            // 必须在页面循环之外只加入一次，否则每个页面都会把全部文件夹再追加一遍，产生 N×重复。
+            result.Folders.AddRange(
+                folders.OrderBy(f => f.ParentFolderId).ThenBy(f => f.SortOrder).ThenBy(f => f.Id)
+                    .Select(f => new ScadaPageFolderDto
+                    {
+                        Id = f.Id,
+                        ProjectId = f.ProjectId,
+                        ParentFolderId = f.ParentFolderId,
+                        Platform = f.Platform,
+                        Name = f.Name,
+                        SortOrder = f.SortOrder,
+                        CreatedAt = f.CreatedAt
+                    }));
+
             foreach (var page in pages)
             {
                 var pageComponents = allComponents
@@ -191,20 +206,6 @@ namespace ScadaServer.Application.Services
                         PropsJson = c.PropsJson
                     })
                     .ToList();
-
-                // 文件架构优先返回文件夹（其下页面以 FolderId 归属，前端组建树时聚合），按父级+排序确定顺序
-                result.Folders.AddRange(
-                    folders.OrderBy(f => f.ParentFolderId).ThenBy(f => f.SortOrder).ThenBy(f => f.Id)
-                        .Select(f => new ScadaPageFolderDto
-                        {
-                            Id = f.Id,
-                            ProjectId = f.ProjectId,
-                            ParentFolderId = f.ParentFolderId,
-                            Platform = f.Platform,
-                            Name = f.Name,
-                            SortOrder = f.SortOrder,
-                            CreatedAt = f.CreatedAt
-                        }));
 
                 result.Pages.Add(new ScadaPageWithComponentsDto
                 {

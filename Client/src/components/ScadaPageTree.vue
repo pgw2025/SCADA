@@ -12,7 +12,7 @@
         @dragover.prevent="onRowDragover(node, index, $event)"
         @dragleave="clearGuide"
         @drop.prevent="onRowDrop(node, index, $event)"
-        @click="toggleFolder(node.id)">
+        @click="emitToggleFolder(node.id)">
         <div class="flex items-center justify-between w-full gap-1 min-w-0">
           <div class="flex items-center gap-1 min-w-0 flex-1">
             <ChevronRight class="w-3 h-3 shrink-0 text-slate-400 transition-transform"
@@ -80,8 +80,8 @@
         <div class="flex items-center justify-between gap-2 w-full min-w-0">
           <div v-if="isRenamingPageId === node.id" class="flex items-center gap-1 w-full" @click.stop>
             <input :ref="setPageRenameEl" v-model="renamePageInputLocal" type="text" class="rename-input"
-              @keyup.enter="emitSaveRenamePage(node.id)" @click.stop />
-            <button class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700" @click="emitSaveRenamePage(node.id)">
+              @keyup.enter="saveRenamePage(node.id)" @click.stop />
+            <button class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700" @click="saveRenamePage(node.id)">
               <Check class="w-4 h-4" />
             </button>
           </div>
@@ -137,7 +137,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select-page', id: string): void;
   (e: 'start-rename-page', id: string, name: string): void;
-  (e: 'save-rename-page', id: string): void;
+  (e: 'save-rename-page', id: string, name: string): void;
   (e: 'set-home', page: any): void;
   (e: 'duplicate-page', page: any): void;
   (e: 'export-page', page: any): void;
@@ -145,7 +145,7 @@ const emit = defineEmits<{
   (e: 'toggle-folder', id: string): void;
   (e: 'create-subfolder', parentFolderId: string): void;
   (e: 'start-rename-folder', id: string, name: string): void;
-  (e: 'save-rename-folder', id: string): void;
+  (e: 'save-rename-folder', id: string, name: string): void;
   (e: 'delete-folder', folder: any): void;
   (e: 'drag-start', item: DragItem): void;
   (e: 'drag-end'): void;
@@ -155,7 +155,7 @@ const emit = defineEmits<{
 // 事件透传封装（避免模板二元组数组问题）
 const emitSelectPage = (id: string) => emit('select-page', id);
 const emitStartRenamePage = (id: string, name: string) => emit('start-rename-page', id, name);
-const emitSaveRenamePage = (id: string) => emit('save-rename-page', id);
+const emitSaveRenamePage = (id: string, name: string) => emit('save-rename-page', id, name);
 const emitSetHome = (page: any) => emit('set-home', page);
 const emitDuplicatePage = (page: any) => emit('duplicate-page', page);
 const emitExportPage = (page: any) => emit('export-page', page);
@@ -163,7 +163,7 @@ const emitDeletePage = (id: string, name: string) => emit('delete-page', id, nam
 const emitToggleFolder = (id: string) => emit('toggle-folder', id);
 const emitCreateSubfolder = (parentFolderId: string) => emit('create-subfolder', parentFolderId);
 const emitStartRenameFolder = (id: string, name: string) => emit('start-rename-folder', id, name);
-const emitSaveRenameFolder = (id: string) => emit('save-rename-folder', id);
+const emitSaveRenameFolder = (id: string, name: string) => emit('save-rename-folder', id, name);
 const emitDeleteFolder = (folder: any) => emit('delete-folder', folder);
 const emitDragStart = (item: DragItem) => emit('drag-start', item);
 const emitDragEnd = () => emit('drag-end');
@@ -192,7 +192,8 @@ watch(() => props.isRenamingFolderId, async (v, old) => {
   if (v && v !== old) { await nextTick(); folderRenameEl.value?.focus(); }
 });
 
-const saveRenameFolder = (id: string) => emitSaveRenameFolder(id);
+const saveRenamePage = (id: string) => emitSaveRenamePage(id, renamePageInputLocal.value);
+const saveRenameFolder = (id: string) => emitSaveRenameFolder(id, renameFolderInputLocal.value);
 
 // ---- 拖拽 ----
 const guide = ref<{ before: boolean; after: boolean }>({ before: false, after: false });
