@@ -31,3 +31,9 @@ export const testDatabaseConnection = (req: TestConnectionRequest) =>
 // ===== 历史数据迁移（MySQL 存量 → 生效 InfluxDB 历史库）=====
 export const migrateHistoryData = () =>
   http.post<HistoryMigrationResult>(`${systemConfig.value.backendApiUrl}/api/scada/history/migrate`);
+
+export const fetchMigrationStatus = () =>
+  http.get<HistoryMigrationResult>(`${systemConfig.value.backendApiUrl}/api/scada/history/migrate/status`);
+
+export const cancelMigration = () =>
+  http.post<HistoryMigrationResult>(`${systemConfig.value.backendApiUrl}/api/scada/history/migrate/cancel`);

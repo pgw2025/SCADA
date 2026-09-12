@@ -150,3 +150,48 @@ export const exportHistoryCsv = async (params: HistoryExportParams): Promise<Blo
     throw err;
   }
 };
+
+/** 历史库当前生效状态（后端 + 生效 InfluxDB 配置概要 + 写入路径统计） */
+export interface HistoryStatus {
+  backend: 'InfluxDB' | 'MySQL';
+  influxConfigured: boolean;
+  influx?: {
+    name: string;
+    host: string;
+    port: number;
+    bucket: string;
+    org?: string;
+    lastStatus?: string;
+  } | null;
+  /** 历史写入路径运行期统计（阶段2；后端 history/status 返回，前端当前仅后端可见，此处保留类型完整性） */
+  writePath?: {
+    queueDepth: number;
+    enqueuedTotal: number;
+    droppedQueueFull: number;
+    droppedAllBackendFailed: number;
+    invalidValuePoints: number;
+    retryBufferDepth: number;
+    lastFlushAt?: string | null;
+    lastWriteSucceededAt?: string | null;
+  };
+}
+
+/**
+ * 查询历史库当前生效状态（GET /api/scada/history/status）。
+ * 用于库管理页/查询页展示「当前生效后端」，消除配置不生效的歧义（阶段1 P1-1）。
+ */
+export const fetchHistoryStatus = async (): Promise<HistoryStatus> => {
+  if (systemConfig.value.isSimulationActive) {
+    return { backend: 'MySQL', influxConfigured: false, influx: null };
+  }
+
+  try {
+    const res = await http.get<HistoryStatus>(
+      `${systemConfig.value.backendApiUrl}/api/scada/history/status`
+    );
+    return res.data ?? { backend: 'MySQL', influxConfigured: false, influx: null };
+  } catch (err: any) {
+    addLog('历史查询', `查询历史库生效状态失败: ${err.message}`, 'warning');
+    throw err;
+  }
+};

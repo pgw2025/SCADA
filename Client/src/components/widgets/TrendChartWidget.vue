@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { defineProps, computed } from 'vue';
+import { defineProps, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useWidgetBase } from './useWidgetBase';
 import type { HmiWidgetProps } from './useWidgetBase';
 import { getEffectiveTrendSeries } from '../../utils/trendSeries';
 import { niceTicks, relTimeLabel, fmtTick } from '../../utils/axisTicks';
-import type { TrendSample } from '../../utils/trendHistory';
+import { prependTrendHistory, type TrendSample } from '../../utils/trendHistory';
+import { fetchHistoryBatch } from '../../api/historyApi';
+import { devices } from '../../store/deviceStore';
+import { systemConfig } from '../../store/index';
 
 const props = defineProps<HmiWidgetProps>();
 const base = useWidgetBase(props);
@@ -18,6 +21,80 @@ const hasTrendData = computed(() => trendSeriesList.value.length > 0);
 const trendReady = computed(() => {
   const map = props.history ?? {};
   return Object.values(map).some((buf) => (buf?.length ?? 0) >= 2);
+});
+
+// ---- 历史回填（阶段5 P2-8）：挂载时拉取最近 60 分钟历史，避免刷新后曲线从零开始 ----
+const HISTORY_BACKFILL_WINDOW_MS = 60 * 60 * 1000;   // 回填窗口：最近 60 分钟
+const HISTORY_BACKFILL_POINTS = 120;                 // 回填点数（与 MAX_POINTS 对齐）
+let backfillAbort: AbortController | null = null;
+
+const backfillHistory = async () => {
+  // 仅运行态（isActiveMode）且绑定了序列时才回填；编辑态/模拟态不拉取。
+  if (!props.isActiveMode) return;
+  const series = trendSeriesList.value;
+  if (series.length === 0) return;
+  if (systemConfig.value.isSimulationActive) return;
+
+  const componentId = props.component.id;
+  const now = Date.now();
+  const start = new Date(now - HISTORY_BACKFILL_WINDOW_MS).toISOString();
+  const end = new Date(now).toISOString();
+  const aggregateWindowMs = Math.floor(HISTORY_BACKFILL_WINDOW_MS / HISTORY_BACKFILL_POINTS);
+
+  // deviceId → deviceKey 映射（从 devices store 解析）
+  const deviceKeyOf = (deviceId?: number | null): string => {
+    if (deviceId == null) return '';
+    const dev = devices.value.find(d => d.id === deviceId || String(d.id) === String(deviceId));
+    return dev?.key ?? '';
+  };
+
+  // 构造批量查询变量列表（去重）
+  const variables = series
+    .filter(s => s.variableKey)
+    .map(s => ({ deviceKey: deviceKeyOf(s.deviceId ?? props.component.bindDeviceId), variableKey: s.variableKey }))
+    .filter(v => v.variableKey);
+
+  if (variables.length === 0) return;
+
+  backfillAbort = new AbortController();
+  try {
+    const items = await fetchHistoryBatch({
+      variables,
+      limit: HISTORY_BACKFILL_POINTS,
+      start,
+      end,
+      aggregateWindowMs,
+      aggregateFn: 'mean'
+    });
+
+    // 按 series 顺序回填（buffer key = series.id）
+    series.forEach((s, idx) => {
+      const item = items.find(i =>
+        i.deviceKey === (deviceKeyOf(s.deviceId ?? props.component.bindDeviceId)) &&
+        i.variableKey === s.variableKey);
+      if (!item || !item.records?.length) return;
+      const samples: TrendSample[] = item.records.map(r => ({
+        t: new Date(r.timestamp).getTime(),
+        v: r.value
+      }));
+      prependTrendHistory(componentId, s.id, samples);
+    });
+  } catch {
+    // 回填失败静默降级：保持现状（从零开始），不阻塞画面加载、不弹错误框。
+  } finally {
+    backfillAbort = null;
+  }
+};
+
+onMounted(() => {
+  backfillHistory();
+});
+
+onBeforeUnmount(() => {
+  if (backfillAbort) {
+    backfillAbort.abort();
+    backfillAbort = null;
+  }
 });
 
 const numOrNull = (k: string): number | null => {

@@ -38,3 +38,20 @@ export const pushTrendPoint = (
 export const clearTrendHistory = (componentId: string) => {
   delete trendHistory[componentId];
 };
+
+/**
+ * 历史回填：将后端历史序列按时间升序预填充到某序列缓冲头部（阶段5 P2-8）。
+ * 回填点早于当前实时点，直接整体替换缓冲（回填调用发生在挂载期，缓冲尚未有实时点）。
+ * value 为 null/NaN 的点跳过（趋势图无法绘制）。
+ */
+export const prependTrendHistory = (
+  componentId: string,
+  seriesId: string,
+  samples: TrendSample[],
+) => {
+  const valid = samples.filter(s => Number.isFinite(s.v));
+  if (valid.length === 0) return;
+  const comp = trendHistory[componentId] ?? (trendHistory[componentId] = {});
+  comp[seriesId] = valid.slice(-MAX_POINTS);
+};
+

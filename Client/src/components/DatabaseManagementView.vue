@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { onMounted } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 import {
   Database,
   Plus,
@@ -29,13 +29,19 @@ import {
   fetchMainDatabaseConfig,
   saveMainDatabaseConfig,
   testDatabaseConnection,
-  migrateHistoryData
+  migrateHistoryData,
+  fetchMigrationStatus,
+  cancelMigration
 } from '../api/databaseApi';
+import { fetchHistoryStatus, HistoryStatus } from '../api/historyApi';
 
 const loading = ref(false);
 const configs = ref<DatabaseConfig[]>([]);
 const migration = ref<HistoryMigrationResult | null>(null);
 const migrationBusy = ref(false);
+
+// 当前生效后端状态（阶段1 P1-1）
+const historyStatus = ref<HistoryStatus | null>(null);
 
 const testers = ref<Record<number, { loading: boolean; result?: TestConnectionResult }>>({});
 
@@ -114,6 +120,7 @@ const saveConfig = async (db: DatabaseConfig) => {
     }
     addLog('数据库管理', `保存数据库配置 [${db.name}]`, 'normal');
     await loadConfigs();
+    await loadHistoryStatus();
   } catch {
     /* 拦截器已提示 */
   }
@@ -126,6 +133,7 @@ const removeConfig = async (db: DatabaseConfig) => {
     addLog('数据库管理', `删除数据库配置 [${db.name}]`, 'normal');
     showToast('配置已删除', 'success');
     await loadConfigs();
+    await loadHistoryStatus();
   } catch {
     /* 拦截器已提示 */
   }
@@ -194,13 +202,52 @@ const doMigrate = async () => {
   try {
     const res = await migrateHistoryData();
     migration.value = res.data;
-    showToast(res.data.message || (res.data.isRunning ? '迁移任务进行中' : '迁移完成'), res.data.isRunning ? 'warning' : 'success');
+    // 阶段4：后台化迁移，启动后进入轮询，直到 Completed/Interrupted
+    if (res.data?.isRunning || res.data?.status === 'Running') {
+      showToast('迁移任务已启动', 'success');
+      pollMigrationStatus();
+    } else {
+      showToast(res.data?.message || '迁移完成', res.data?.status === 'Interrupted' ? 'warning' : 'success');
+    }
   } catch {
     /* 拦截器已提示 */
   } finally {
     migrationBusy.value = false;
   }
 };
+
+const doCancelMigrate = async () => {
+  try {
+    const res = await cancelMigration();
+    migration.value = res.data;
+    showToast('已请求取消迁移，将在下一片边界生效', 'warning');
+  } catch {
+    /* 拦截器已提示 */
+  }
+};
+
+// 迁移进度轮询（5 秒一次，直到 Completed/Interrupted 或组件卸载）
+let migrationPollTimer: ReturnType<typeof setTimeout> | null = null;
+const pollMigrationStatus = () => {
+  if (migrationPollTimer) clearTimeout(migrationPollTimer);
+  migrationPollTimer = setTimeout(async () => {
+    try {
+      const res = await fetchMigrationStatus();
+      migration.value = res.data;
+      const status = res.data?.status;
+      if (status === 'Running') {
+        pollMigrationStatus();
+      }
+    } catch {
+      /* 拦截器已提示，停止轮询 */
+      migrationPollTimer = null;
+    }
+  }, 5000);
+};
+
+onUnmounted(() => {
+  if (migrationPollTimer) clearTimeout(migrationPollTimer);
+});
 
 const resetNewConfig = () => {
   newConfig.value = {
@@ -210,9 +257,18 @@ const resetNewConfig = () => {
   };
 };
 
+const loadHistoryStatus = async () => {
+  try {
+    historyStatus.value = await fetchHistoryStatus();
+  } catch {
+    historyStatus.value = null;
+  }
+};
+
 onMounted(() => {
   loadConfigs();
   loadMain();
+  loadHistoryStatus();
 });
 </script>
 
@@ -424,26 +480,72 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 历史数据迁移 -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="space-y-1 max-w-2xl text-left">
+      <!-- 当前生效后端状态（阶段1 P1-1） -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex items-center justify-between gap-4">
+        <div class="space-y-1 text-left">
           <h4 class="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-            <Play class="w-4 h-4 text-indigo-500" />
-            历史数据迁移
+            <DatabaseBackup class="w-4 h-4 text-indigo-500" />
+            当前生效后端
           </h4>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            将 MySQL 存量历史数据一次性迁移写入当前生效的 InfluxDB 历史库，供趋势曲线读取旧记录。迁移前会自动将历史库客户端重建到生效配置。
-          </p>
-          <p v-if="migration" class="text-[11px] font-mono mt-1"
-            :class="migration.message.includes('迁移中断') || migration.message.includes('失败') ? 'text-rose-600' : 'text-emerald-600'">
-            {{ migration.message }}
+          <p v-if="historyStatus" class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold mr-1"
+              :class="historyStatus.backend === 'InfluxDB' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'">
+              <span class="w-1.5 h-1.5 rounded-full"
+                :class="historyStatus.backend === 'InfluxDB' ? 'bg-emerald-500' : 'bg-amber-500'" />
+              {{ historyStatus.backend }}
+            </span>
+            <template v-if="historyStatus.backend === 'InfluxDB' && historyStatus.influx">
+              {{ historyStatus.influx.name }} · {{ historyStatus.influx.host }}:{{ historyStatus.influx.port }} · bucket={{ historyStatus.influx.bucket }}
+            </template>
+            <template v-else>
+              未启用时序库，历史数据落 MySQL（配置并激活 InfluxDB 历史库后即时生效）
+            </template>
           </p>
         </div>
-        <button @click="doMigrate" :disabled="migrationBusy"
-          class="px-4 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0">
-          <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': migrationBusy }" />
-          开始迁移
-        </button>
+      </div>
+
+      <!-- 历史数据迁移 -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col gap-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="space-y-1 max-w-2xl text-left">
+            <h4 class="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <Play class="w-4 h-4 text-indigo-500" />
+              历史数据迁移
+            </h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              将 MySQL 存量历史数据迁移写入当前生效的 InfluxDB 历史库，供趋势曲线读取旧记录。支持断点续传：迁移中断后再次点击会从中断位置继续。
+            </p>
+            <p v-if="migration" class="text-[11px] font-mono mt-1"
+              :class="migration.status === 'Interrupted' || migration.message.includes('失败') ? 'text-rose-600' : migration.status === 'Completed' ? 'text-emerald-600' : 'text-indigo-600'">
+              {{ migration.message }}
+            </p>
+            <!-- 进度条 -->
+            <div v-if="migration && (migration.status === 'Running' || migration.status === 'Completed') && migration.total > 0" class="mt-2 max-w-md">
+              <div class="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                <span>已迁移 {{ migration.migrated }} / {{ migration.total }} 条</span>
+                <span v-if="migration.status === 'Running'">
+                  {{ migration.currentSpeedPerSec ? `${Math.round(migration.currentSpeedPerSec)} 条/秒` : '' }}
+                  {{ migration.etaSeconds ? `· 预计剩余 ${Math.round(migration.etaSeconds / 60)} 分钟` : '' }}
+                </span>
+              </div>
+              <div class="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-indigo-500 transition-all"
+                  :style="{ width: `${migration.total > 0 ? Math.min(100, Math.round(migration.migrated / migration.total * 100)) : 0}%` }" />
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button v-if="migration && migration.status === 'Running'" @click="doCancelMigrate"
+              class="px-4 py-2 font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer">
+              取消迁移
+            </button>
+            <button @click="doMigrate" :disabled="migrationBusy || migration?.status === 'Running'"
+              class="px-4 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+              <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': migrationBusy }" />
+              {{ migration?.status === 'Interrupted' ? `从断点继续迁移${migration.lastId ? `（已完成 ${migration.lastId} 条）` : ''}` : '开始迁移' }}
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>

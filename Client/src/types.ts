@@ -1422,6 +1422,13 @@ export interface HistoryMigrationResult {
   total: number;
   migrated: number;
   message: string;
+  // 阶段4 新增字段
+  status?: string;            // NeverStarted / Running / Completed / Interrupted
+  lastId?: number;            // 断点（已迁移到的最后一条 MySQL 历史 Id）
+  startedAt?: string;
+  updatedAt?: string;
+  currentSpeedPerSec?: number;
+  etaSeconds?: number;
 }
 
 export interface SystemConfig {

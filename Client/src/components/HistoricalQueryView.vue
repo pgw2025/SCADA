@@ -7,6 +7,7 @@ import {
   fetchHistoryBatch,
   exportHistoryCsv
 } from '../api/historyApi';
+import { showToast } from '../services/toastService';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
 import { normalizeDevices } from '../utils/deviceStatus';
 import { HistoryVariableOption, HistoricalRecord } from '../types';
@@ -19,17 +20,20 @@ import {
   AlertCircle,
   FileSpreadsheet,
   X,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-vue-next';
 
 // ==================== 常量 ====================
-const MAX_SELECTED = 6;            // 多变量对比上限（D2）
+const MAX_SELECTED = 8;            // 多变量对比上限（阶段3 P3-15：对齐后端 MaxBatchVariables=8）
 const CHART_TARGET_POINTS = 600;   // LTTB 降采样目标点数
+const RAW_SINGLE_LIMIT = 10000;    // 原始数据模式单变量取数上限（阶段3 P2-7：对齐后端 50000 中的前端安全值）
+const AGG_LIMIT = 2000;            // 聚合模式取数上限（聚合后行数少，2000 足够）
 const SVG_W = 800;
 const SVG_H = 240;
 const PAD_X = 50;
 const PAD_Y = 30;
-const CHART_COLORS = ['#38bdf8', '#34d399', '#f59e0b', '#f472b6', '#a78bfa', '#f87171'];
+const CHART_COLORS = ['#38bdf8', '#34d399', '#f59e0b', '#f472b6', '#a78bfa', '#f87171', '#22d3ee', '#a3e635'];
 const PAGE_SIZE = 15;
 
 const AGG_OPTIONS = [
@@ -111,6 +115,7 @@ const currentPageNum = ref(1);
 const isLoading = ref(false);
 const seriesList = ref<HistorySeries[]>([]);
 const visibleKeys = ref<Record<string, boolean>>({});
+const queryError = ref('');   // 阶段5 P3-10：查询失败错误态（空串=无错误）
 const tooltip = ref<{ x: number; y: number; time: string; items: { color: string; label: string; value: string; bad: boolean }[] } | null>(null);
 
 // 后端事件时间为 UTC，统一转成本地时间显示
@@ -242,13 +247,16 @@ const executeHistoryQuery = async () => {
   const range = timeframeToRange();
   isLoading.value = true;
   try {
+    // 原始数据模式 vs 聚合模式：取数上限不同（聚合后行数少，原始模式取更多但总量受控）。
+    const isAggregated = aggregateWindowMs.value > 0;
+    const singleLimit = isAggregated ? AGG_LIMIT : RAW_SINGLE_LIMIT;
     let merged: SeriesInput[];
     if (selectedVars.value.length === 1) {
       const v = selectedVars.value[0];
       const records = await fetchHistoryFromBackend({
         deviceKey: v.deviceKey,
         variableKey: v.variableKey,
-        limit: 2000,
+        limit: singleLimit,
         start: range.start,
         end: range.end,
         aggregateWindowMs: aggregateWindowMs.value,
@@ -256,9 +264,11 @@ const executeHistoryQuery = async () => {
       });
       merged = [{ deviceKey: v.deviceKey, variableKey: v.variableKey, variableName: v.variableName, deviceName: v.deviceName, unit: v.unit, records }];
     } else {
+      // 批量原始模式：每变量 limit 按总量 10000 均摊，避免总量爆内存。
+      const batchLimit = isAggregated ? AGG_LIMIT : Math.floor(RAW_SINGLE_LIMIT / selectedVars.value.length);
       const items = await fetchHistoryBatch({
         variables: selectedVars.value.map(v => ({ deviceKey: v.deviceKey, variableKey: v.variableKey })),
-        limit: 2000,
+        limit: batchLimit,
         start: range.start,
         end: range.end,
         aggregateWindowMs: aggregateWindowMs.value,
@@ -278,10 +288,13 @@ const executeHistoryQuery = async () => {
       });
     }
     applySeries(merged);
-  } catch (err) {
-    // 查询失败：清空序列，避免残留旧数据被误认为当前结果
+    queryError.value = '';
+  } catch (err: any) {
+    // 阶段5 P3-10：区分「查询失败」与「无数据」，失败给出明确错误态 + 重试入口。
+    queryError.value = err?.message || '历史查询失败，请检查后端服务与网络连接';
     seriesList.value = [];
     visibleKeys.value = {};
+    showToast(queryError.value, 'error');
   } finally {
     isLoading.value = false;
   }
@@ -935,18 +948,24 @@ const handleExportCSV = async () => {
               </g>
             </svg>
 
-            <!-- 空态 -->
+            <!-- 空态 / 错误态 -->
             <div
               v-else
               class="py-16 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center justify-center gap-2"
             >
               <Loader2 v-if="isLoading" class="w-8 h-8 text-slate-300 animate-spin" />
-              <AlertCircle v-else class="w-8 h-8 text-slate-300 dark:text-slate-600 animate-bounce" />
-              <span class="text-xs">
+              <AlertCircle v-else class="w-8 h-8 text-slate-300 dark:text-slate-600 animate-bounce"
+                :class="queryError ? 'text-rose-400 dark:text-rose-500' : ''" />
+              <span class="text-xs" :class="queryError ? 'text-rose-500 dark:text-rose-400' : ''">
                 <template v-if="selectedVars.length === 0">请先在左侧选择至少一个变量</template>
                 <template v-else-if="isLoading">正在从时序库拉取数据...</template>
+                <template v-else-if="queryError">{{ queryError }}</template>
                 <template v-else>在选定的时间范围内，未查询到所选变量的任何时序。</template>
               </span>
+              <button v-if="queryError && !isLoading" @click="executeHistoryQuery"
+                class="mt-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer inline-flex items-center gap-1">
+                <RefreshCw class="w-3 h-3" /> 重试
+              </button>
             </div>
 
             <!-- Tooltip 浮层 -->
