@@ -922,8 +922,8 @@ onUnmounted(() => {
 
         <div class="h-5 w-[1px] bg-gray-300" />
 
-        <!-- Actions shortcuts on selection -->
-        <div v-if="selectedIds.length > 0 && !isActiveMode" class="flex items-center gap-1">
+        <!-- Actions shortcuts on selection（手机端改由底部选中操作条承载，此处仅桌面显示） -->
+        <div v-if="selectedIds.length > 0 && !isActiveMode" class="hidden md:flex items-center gap-1">
           <button v-if="selectedIds.length === 1" @click="alignComponents('layer-up')"
             class="p-1.5 hover:bg-gray-100 rounded border border-[#d9d9d9] text-gray-500 hover:text-[#1890ff] cursor-pointer"
             title="置于顶层">
@@ -1142,6 +1142,72 @@ onUnmounted(() => {
             </template>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 阶段X：手机端选中操作条（方案A）——选中组件时底部浮出对齐/层级/复制/删除，横向可滚动 -->
+    <div v-if="!readonly && !isActiveMode && selectedIds.length > 0"
+      class="md:hidden fixed bottom-3 inset-x-0 z-50 flex justify-center px-3 pointer-events-none">
+      <div
+        class="pointer-events-auto flex items-center gap-1 bg-white/95 backdrop-blur rounded-2xl border border-[#d9d9d9] shadow-xl px-2 py-1.5 max-w-full overflow-x-auto select-none">
+        <!-- 层级（仅单选） -->
+        <button v-if="selectedIds.length === 1" @click="alignComponents('layer-up')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="置于顶层">
+          <Layers class="w-4 h-4 text-orange-500" />
+        </button>
+        <button v-if="selectedIds.length === 1" @click="alignComponents('layer-down')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="置于底层">
+          <Layers class="w-4 h-4 text-slate-400" />
+        </button>
+        <div v-if="selectedIds.length === 1" class="w-px h-6 bg-[#e0e0e0] shrink-0" />
+
+        <!-- 水平对齐 -->
+        <button @click="alignComponents('left')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="左对齐">
+          <AlignStartVertical class="w-4 h-4" />
+        </button>
+        <button @click="alignComponents('h-center')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="水平居中">
+          <AlignCenterVertical class="w-4 h-4" />
+        </button>
+        <button @click="alignComponents('right')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="右对齐">
+          <AlignEndVertical class="w-4 h-4" />
+        </button>
+        <button v-if="selectedIds.length > 1" @click="alignComponents('distribute-h')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="水平平均分布">
+          <AlignHorizontalSpaceBetween class="w-4 h-4" />
+        </button>
+        <div class="w-px h-6 bg-[#e0e0e0] shrink-0" />
+
+        <!-- 垂直对齐 -->
+        <button @click="alignComponents('top')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="顶对齐">
+          <AlignStartHorizontal class="w-4 h-4" />
+        </button>
+        <button @click="alignComponents('v-center')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="垂直居中">
+          <AlignCenterHorizontal class="w-4 h-4" />
+        </button>
+        <button @click="alignComponents('bottom')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="底对齐">
+          <AlignEndHorizontal class="w-4 h-4" />
+        </button>
+        <button v-if="selectedIds.length > 1" @click="alignComponents('distribute-v')"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="垂直平均分布">
+          <AlignVerticalSpaceBetween class="w-4 h-4" />
+        </button>
+        <div class="w-px h-6 bg-[#e0e0e0] shrink-0" />
+
+        <!-- 复制 / 删除 -->
+        <button @click="emit('duplicateComponents', [...selectedIds])"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="复制">
+          <Copy class="w-4 h-4 text-cyan-600" />
+        </button>
+        <button @click="emit('deleteComponents', [...selectedIds])"
+          class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-gray-600 active:bg-gray-100" title="删除">
+          <Trash2 class="w-4 h-4 text-red-500" />
+        </button>
       </div>
     </div>
   </div>
