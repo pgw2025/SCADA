@@ -23,7 +23,9 @@ import {
   Loader2,
   RefreshCw,
   Maximize2,
-  Minimize2
+  Minimize2,
+  LayoutList,
+  AlignJustify
 } from 'lucide-vue-next';
 
 // ==================== 常量 ====================
@@ -132,6 +134,24 @@ const isFullscreen = ref(false);
 const mobileView = ref<'chart' | 'table'>('chart');
 // 是否桌面端（≥768px）。桌面端全屏不隐藏无关元素、不旋转图表
 const isDesktop = ref(window.matchMedia('(min-width: 768px)').matches);
+// 移动端数据明细视图模式：card=卡片流，compact=紧凑列表（与系统日志页一致，localStorage 独立记忆）
+const mobileViewMode = ref<'card' | 'compact'>(
+  (localStorage.getItem('scada_history_mobile_view') as 'card' | 'compact') || 'card'
+);
+const setMobileViewMode = (mode: 'card' | 'compact') => {
+  mobileViewMode.value = mode;
+  localStorage.setItem('scada_history_mobile_view', mode);
+};
+// 选中的明细记录（用于移动端底部抽屉详情）
+const selectedRecordDetail = ref<null | {
+  id: string; deviceName: string; deviceKey: string; variableName: string;
+  variableKey: string; value: number; unit?: string; quality?: string; timestamp: string;
+}>(null);
+const openRecordDetail = (rec: {
+  id: string; deviceName: string; deviceKey: string; variableName: string;
+  variableKey: string; value: number; unit?: string; quality?: string; timestamp: string;
+}) => { selectedRecordDetail.value = rec; };
+const closeRecordDetail = () => { selectedRecordDetail.value = null; };
 // 移动端全屏（isFullscreen && !isDesktop）→ 图表旋转 90° 横屏看图
 const isMobileFullscreen = computed(() => isFullscreen.value && !isDesktop.value);
 // 实际视口尺寸（px），用于移动端全屏旋转铺满（避开 100vh 受地址栏影响的问题）
@@ -1635,7 +1655,36 @@ const handleExportCSV = async () => {
     <!-- 明细表格 -->
     <div v-show="mobileView === 'table'" class="px-3 sm:px-6 pb-6 select-none text-left flex-1 min-h-[300px] flex">
       <div class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between transition-colors">
-        <div class="overflow-x-auto flex-1">
+
+        <!-- 移动端视图模式切换（仅手机端显示） -->
+        <div
+          class="md:hidden flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 shrink-0">
+          <span class="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <FileSpreadsheet class="w-3.5 h-3.5" />
+            数据明细（共 {{ totalRecordsCount }} 条）
+          </span>
+          <div class="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+            <button type="button" @click="setMobileViewMode('card')"
+              class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              :class="mobileViewMode === 'card'
+                ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="卡片模式">
+              <LayoutList class="w-3.5 h-3.5" />
+              <span>卡片</span>
+            </button>
+            <button type="button" @click="setMobileViewMode('compact')"
+              class="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              :class="mobileViewMode === 'compact'
+                ? 'bg-white dark:bg-slate-900 text-[#1890ff] shadow-xs'
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'" title="紧凑模式">
+              <AlignJustify class="w-3.5 h-3.5" />
+              <span>紧凑</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= 1. 桌面端表格（>= md） ================= -->
+        <div class="hidden md:block overflow-x-auto flex-1">
           <table class="w-full text-left text-xs font-sans">
             <thead class="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px]">
               <tr>
@@ -1678,6 +1727,83 @@ const handleExportCSV = async () => {
           </table>
         </div>
 
+        <!-- ================= 2. 移动端卡片模式（< md） ================= -->
+        <div v-if="mobileViewMode === 'card'" class="md:hidden flex-1 overflow-y-auto">
+          <div v-if="allTableRecords.length === 0"
+            class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-16 gap-2">
+            <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
+            <p class="text-xs font-sans">没有符合检索过滤条件的物标时序块。</p>
+          </div>
+
+          <div v-else class="p-3 space-y-2.5">
+            <div v-for="rec in paginatedTableRecords" :key="'card-' + rec.id" @click="openRecordDetail(rec)"
+              class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-2xs space-y-2 text-left transition-all active:bg-slate-50 dark:active:bg-slate-800/80 cursor-pointer">
+              <!-- 卡片头：变量名 + 时间 -->
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{{ rec.variableName }}</div>
+                  <div class="text-[10px] text-slate-400 font-mono truncate mt-0.5">{{ rec.variableKey }}</div>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400 shrink-0">{{ fmtTime(rec.timestamp).slice(5) }}</span>
+              </div>
+
+              <!-- 实测值 -->
+              <div class="flex items-end justify-between">
+                <div>
+                  <span class="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">{{ rec.value }}</span>
+                  <span v-if="rec.unit" class="ml-1 text-xs font-sans text-slate-400 dark:text-slate-500">{{ rec.unit }}</span>
+                </div>
+                <span v-if="rec.quality && rec.quality !== 'Good'"
+                  class="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-red-50 dark:bg-red-950/50 text-red-500">
+                  {{ rec.quality }}
+                </span>
+                <span v-else class="text-[9px] text-slate-400 font-mono">Good</span>
+              </div>
+
+              <!-- 卡片底：设备 -->
+              <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                <span class="truncate">{{ rec.deviceName }}<span class="font-mono text-slate-400 ml-1">{{ rec.deviceKey }}</span></span>
+                <ChevronRight class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 3. 移动端紧凑模式（< md） ================= -->
+        <div v-else class="md:hidden flex-1 overflow-y-auto">
+          <div v-if="allTableRecords.length === 0"
+            class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-16 gap-2">
+            <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
+            <p class="text-xs font-sans">没有符合检索过滤条件的物标时序块。</p>
+          </div>
+
+          <div v-else class="p-2 space-y-1.5">
+            <div v-for="rec in paginatedTableRecords" :key="'compact-' + rec.id" @click="openRecordDetail(rec)"
+              class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 shadow-2xs flex items-center justify-between gap-2.5 active:bg-slate-50 dark:active:bg-slate-800/80 cursor-pointer transition-colors text-left">
+              <div class="flex items-center gap-2 min-w-0 flex-1">
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs text-slate-800 dark:text-slate-100 truncate font-medium">
+                    {{ rec.variableName }}
+                    <span v-if="rec.unit" class="text-[9px] text-slate-400 font-sans">{{ rec.unit }}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 flex items-center gap-1.5 truncate mt-0.5">
+                    <span class="text-sky-600 dark:text-sky-400 font-semibold">{{ rec.deviceName }}</span>
+                    <span v-if="rec.quality && rec.quality !== 'Good'" class="text-red-500 font-bold">{{ rec.quality }}</span>
+                    <span v-else>· Good</span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right shrink-0 flex items-center gap-1.5">
+                <div>
+                  <div class="text-sm font-bold font-mono text-indigo-600 dark:text-indigo-400">{{ rec.value }}</div>
+                  <div class="text-[10px] font-mono text-slate-400">{{ fmtTime(rec.timestamp).slice(11, 19) }}</div>
+                </div>
+                <ChevronRight class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 分页 -->
         <div v-if="totalPagesCount > 1" class="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 flex items-center justify-between text-xs font-medium shrink-0">
           <span class="text-slate-400 dark:text-slate-500">
@@ -1701,6 +1827,81 @@ const handleExportCSV = async () => {
               下一页 <ChevronRight class="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 移动端底部详情抽屉 (Bottom Sheet) ================= -->
+    <div v-if="selectedRecordDetail" class="fixed inset-0 z-50 overflow-hidden select-none">
+      <!-- 背景遮罩 -->
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" @click="closeRecordDetail" />
+
+      <!-- 抽屉内容容器 -->
+      <div
+        class="fixed inset-x-0 bottom-0 z-50 max-h-[88vh] bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl flex flex-col overflow-hidden text-left border-t border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom duration-200">
+        <!-- 抽屉顶部拖动条 -->
+        <div class="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-2.5 mb-1" />
+
+        <!-- 抽屉标题栏 -->
+        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-bold text-slate-900 dark:text-white truncate">{{ selectedRecordDetail.variableName }}</span>
+          </div>
+          <button type="button" @click="closeRecordDetail"
+            class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- 抽屉主体内容 -->
+        <div class="p-4 overflow-y-auto space-y-3.5 text-xs">
+          <!-- 实测值高亮 -->
+          <div class="rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-3.5 flex items-end justify-between">
+            <div>
+              <span class="text-slate-400 dark:text-slate-500 block text-[10px]">核算实测值</span>
+              <span class="text-3xl font-bold font-mono text-indigo-600 dark:text-indigo-400">{{ selectedRecordDetail.value }}</span>
+              <span v-if="selectedRecordDetail.unit" class="ml-1.5 text-sm font-sans text-slate-500 dark:text-slate-400">{{ selectedRecordDetail.unit }}</span>
+            </div>
+            <span v-if="selectedRecordDetail.quality && selectedRecordDetail.quality !== 'Good'"
+              class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/50 text-red-500">
+              {{ selectedRecordDetail.quality }}
+            </span>
+            <span v-else class="text-[10px] text-slate-400 font-mono">Good</span>
+          </div>
+
+          <!-- 结构化关键信息 -->
+          <div class="grid grid-cols-2 gap-2.5 bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 text-[11px]">
+            <div>
+              <span class="text-slate-400 block text-[10px]">采集项 ID</span>
+              <span class="font-mono font-medium text-slate-800 dark:text-slate-200">{{ selectedRecordDetail.id }}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">采样时间</span>
+              <span class="font-mono font-medium text-slate-800 dark:text-slate-200">{{ fmtTime(selectedRecordDetail.timestamp) }}</span>
+            </div>
+            <div class="col-span-2">
+              <span class="text-slate-400 block text-[10px]">所属设备</span>
+              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedRecordDetail.deviceName }}
+                <span class="font-mono text-slate-400">({{ selectedRecordDetail.deviceKey }})</span>
+              </span>
+            </div>
+            <div class="col-span-2">
+              <span class="text-slate-400 block text-[10px]">变量键名</span>
+              <span class="font-mono font-medium text-slate-800 dark:text-slate-200">{{ selectedRecordDetail.variableKey }}</span>
+            </div>
+            <div class="col-span-2">
+              <span class="text-slate-400 block text-[10px]">物标测位中文注释</span>
+              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedRecordDetail.variableName }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 抽屉操作底栏 -->
+        <div class="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex gap-2 shrink-0">
+          <button type="button" @click="closeRecordDetail"
+            class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors">
+            关闭
+          </button>
         </div>
       </div>
     </div>
