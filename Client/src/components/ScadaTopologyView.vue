@@ -1281,9 +1281,12 @@ const isFolderDescendant = (targetParent: string | undefined, folderId: string):
  */
 const applyDrop = async (platform: 'Desktop' | 'Mobile', placementParent: string | undefined, beforeNodeId: string | undefined) => {
   const proj = currentProject.value;
-  if (!proj || !dragItem.value) { dragItem.value = null; return; }
+  // 入口同步消费 dragItem：同一次拖放若被重复派发，后续调用在此直接短路，
+  // 避免并发修改 folderId/parentFolderId 与 reorder 撞后端“排序项与目标层级/端不一致”校验
   const item = dragItem.value;
-  if (item.platform !== platform) { showToast('不能跨端拖拽画面/文件夹', 'warning'); dragItem.value = null; return; }
+  dragItem.value = null;
+  if (!proj || !item) return;
+  if (item.platform !== platform) { showToast('不能跨端拖拽画面/文件夹', 'warning'); return; }
   const placeParent = normParent(placementParent);
 
   const kindOf = (id?: string): 'folder' | 'page' | undefined => {
@@ -1419,21 +1422,25 @@ const saveRenameFolder = (folderId: string, name?: string) => {
 const handleDeleteFolder = (folder: ScadaPageFolder) => {
   const proj = currentProject.value;
   if (!proj) return;
-  askConfirm('删除文件夹', `确定删除文件夹「${folder.name}」吗？文件夹中的画面将上移到其上一级，不会删除画面本身。`, () => {
+  askConfirm('删除文件夹', `确定删除文件夹「${folder.name}」吗？文件夹中的画面将上移到其上一级，不会删除画面本身。`, async () => {
     const platform = folder.platform;
     const parentId = normParent(folder.parentFolderId);
     proj.folders.forEach(f => { if (normParent(f.parentFolderId) === folder.id) f.parentFolderId = parentId; });
     proj.pages.forEach(p => { if (normParent(p.folderId) === folder.id) p.folderId = parentId; });
     proj.folders = proj.folders.filter(f => f.id !== folder.id);
+    const s = new Set(expandedFolderIds.value); s.delete(folder.id); expandedFolderIds.value = s;
+    addLog('组态编辑', `删除文件夹: [${folder.name}]（画面上移）`, 'warning');
+    // 先等 reparent 事务提交（画面上提落库 + 服务端重排）再 reorder：
+    // 校验时画面在 DB 仍挂被删文件夹下会必报“排序项与目标层级/端不一致”400
+    try {
+      await persistFolderDelete(folder);
+    } catch { /* 删除失败由拦截器 toast；跳过后续重排，避免拿着未上提的 DB 状态校验 */ }
     const folderOrder = proj.folders.filter(f => f.platform === platform && normParent(f.parentFolderId) === parentId)
       .slice().sort(folderSortKey).map(f => f.id);
     const pageOrder = proj.pages.filter(p => (p.platform ?? 'Desktop') === platform && normParent(p.folderId) === parentId)
       .slice().sort(pageSortKey).map(p => p.id);
-    void reindexAndPersistSegment(proj, platform, parentId, 'folder', folderOrder);
-    void reindexAndPersistSegment(proj, platform, parentId, 'page', pageOrder);
-    persistFolderDelete(folder).catch(() => { });
-    const s = new Set(expandedFolderIds.value); s.delete(folder.id); expandedFolderIds.value = s;
-    addLog('组态编辑', `删除文件夹: [${folder.name}]（画面上移）`, 'warning');
+    void reindexAndPersistSegment(proj, platform, parentId, 'folder', folderOrder).catch(() => { });
+    void reindexAndPersistSegment(proj, platform, parentId, 'page', pageOrder).catch(() => { });
   });
 };
 

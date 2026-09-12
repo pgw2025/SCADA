@@ -48,7 +48,7 @@
         :class="{ 'folder-empty-drop': node.children.length === 0 && canDropHere(node.id) }"
         @dragover.prevent="onContainerDragover(node.id)"
         @dragleave="clearGuide"
-        @drop.prevent="onContainerDrop(node.id)">
+        @drop.prevent="onContainerDrop(node.id, $event)">
         <ScadaPageTree v-if="node.children.length"
           :nodes="node.children" :platform="platform" :parent-folder-id="node.id"
           :expanded-ids="expandedIds" :selected-page-id="selectedPageId"
@@ -234,7 +234,10 @@ const onRowDragover = (node: PageTreeNode, index: number, e: DragEvent) => {
   guide.value = { before, after: !before };
 };
 const onRowDrop = (node: PageTreeNode, index: number, e: DragEvent) => {
-  if (!canDropHere(node.id)) return;
+  const item = props.dragItem;
+  if (item && item.platform !== props.platform) return; // 跨端拖放：放行冒泡，由根级 applyDrop 统一 toast
+  e.stopPropagation(); // 同端 drop 由最内层目标独占处理，阻止冒泡到上层容器/根级重复派发 applyDrop
+  if (!canDropHere(node.id)) return; // 拖到自身行：就地 no-op
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   const before = e.clientY < rect.top + rect.height / 2;
   const beforeId = before ? node.id : props.nodes[index + 1]?.id;
@@ -247,8 +250,11 @@ const onContainerDragover = (parentId: string) => {
   guideId.value = null;
   guide.value = { before: false, after: false };
 };
-const onContainerDrop = (parentId: string) => {
-  if (!canDropHere(parentId)) return;
+const onContainerDrop = (parentId: string, e: DragEvent) => {
+  const item = props.dragItem;
+  if (item && item.platform !== props.platform) return; // 跨端拖放：放行冒泡，由根级 applyDrop 统一 toast
+  e.stopPropagation(); // 同端 drop 由本层独占处理，阻止冒泡重复派发 applyDrop
+  if (!canDropHere(parentId)) return; // 拖到自身子级区：就地 no-op
   emitDropItem(parentId, undefined);
   clearGuide();
 };
