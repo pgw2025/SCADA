@@ -986,6 +986,26 @@ namespace ScadaServer.Runtime
                 _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入后更新实时快照失败。", deviceId, variableKey);
             }
 
+            // 手动写入强制留痕（方案 A-1）：无论变量的 StoreMode 存储策略为何，成功写入一律记录一条历史采样点，
+            // 复用权威历史入口 IHistoryRecorder.Record（异步入队 → 批量落库 → Influx/MySQL 双后端 → 补偿重试）。
+            // 语义：本点为"人工下发的命令值"，与后续轮询回读的"设备真实值"是两条不同意义、不同时间戳的记录。
+            try
+            {
+                _historyRecorder.Record(
+                    deviceId,
+                    runtime.Device.Key,
+                    variableKey,
+                    vr.Name,
+                    ToNumericSnapshotValue(value),
+                    value?.ToString(),
+                    vr.Quality.ToString(),
+                    vr.UpdateTime);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 变量 [{VarKey}] 写入后记录历史采样点失败。", deviceId, variableKey);
+            }
+
             await RecordVariableWriteAuditAsync(deviceId, variableKey, value, writeSource, true, null);
             return (true, null, VariableWriteFailureKind.None);
         }
