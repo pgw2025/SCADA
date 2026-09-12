@@ -116,6 +116,10 @@ const isLoading = ref(false);
 const seriesList = ref<HistorySeries[]>([]);
 const visibleKeys = ref<Record<string, boolean>>({});
 const queryError = ref('');   // 阶段5 P3-10：查询失败错误态（空串=无错误）
+// Y 轴显示模式：percent=百分比归一化（多变量默认）；value=共享数值轴（仅同单位时可用）
+const yAxisMode = ref<'percent' | 'value'>('value');
+// X 轴时间方向：true=最新在左，false=最新在右
+const xNewestFirst = ref(true);
 const tooltip = ref<{ x: number; y: number; time: string; items: { color: string; label: string; value: string; bad: boolean }[] } | null>(null);
 
 // 后端事件时间为 UTC，统一转成本地时间显示
@@ -352,6 +356,23 @@ onMounted(() => {
 // ==================== 趋势图几何 ====================
 const visibleSeries = computed(() => seriesList.value.filter(s => visibleKeys.value[s.key] !== false));
 
+// 所有可见曲线是否可共享数值轴（用于「具体值」判定）
+// 判定：数量 ≥2，且单位「要么全部相同、要么全部为空（均无量纲）」。仅当单位各不相同（有的有、有的无、或值不同）才视为不可共享。
+const isSameUnit = computed(() => {
+  const vs = visibleSeries.value;
+  if (vs.length < 2) return false;
+  const units = vs.map(s => (s.unit || '').trim());
+  const first = units[0];
+  // 全部为空 → 均无量纲，可共享数值轴
+  if (units.every(u => u === '')) return true;
+  // 否则要求所有单位完全一致（且不能有空串混入）
+  if (!first) return false;
+  return units.every(u => u === first);
+});
+
+// 实际生效的 Y 轴模式：value 仅在「同单位 + 用户选了 value」时生效，否则回退 percent
+const effectiveValueMode = computed(() => yAxisMode.value === 'value' && isSameUnit.value);
+
 const toggleSeriesVisible = (key: string) => {
   visibleKeys.value = { ...visibleKeys.value, [key]: visibleKeys.value[key] === false };
 };
@@ -417,18 +438,32 @@ const chartGeometry = computed(() => {
     if (p.t > tMax) tMax = p.t;
   }));
   if (!isFinite(tMin) || ds.length === 0) {
-    return { series: [] as any[], yTicks: [] as any[], xTicks: [] as any[], multi: false, empty: true };
+    return { series: [] as any[], yTicks: [] as any[], xTicks: [] as any[], multi: false, empty: true, useSharedAxis: false, sharedMin: 0, sharedMax: 1 };
   }
   if (tMin === tMax) { tMin -= 1; tMax += 1; }
   const tSpan = tMax - tMin;
-  // X 轴反向：最新数据在最左（tMax 落于 PAD_X），最旧数据在最右
-  const getX = (t: number) => PAD_X + ((tMax - t) / tSpan) * (SVG_W - 2 * PAD_X);
+  // X 轴时间方向：xNewestFirst 时最新在最左（tMax 落于 PAD_X）；否则最新在最右（tMin 落于 PAD_X）
+  const getX = (t: number) => xNewestFirst.value
+    ? PAD_X + ((tMax - t) / tSpan) * (SVG_W - 2 * PAD_X)
+    : PAD_X + ((t - tMin) / tSpan) * (SVG_W - 2 * PAD_X);
   const getYForValue = (v: number, min: number, max: number) => {
     const span = max - min || 1;
     return SVG_H - PAD_Y - ((v - min) / span) * (SVG_H - 2 * PAD_Y);
   };
 
   const multi = ds.length > 1;
+
+  // 共享数值轴模式：全局值域（所有可见曲线的 min/max 并集）
+  const useSharedAxis = multi && effectiveValueMode.value;
+  let sharedMin = Infinity, sharedMax = -Infinity;
+  if (useSharedAxis) {
+    ds.forEach(d => d.pts.forEach(p => {
+      if (p.v < sharedMin) sharedMin = p.v;
+      if (p.v > sharedMax) sharedMax = p.v;
+    }));
+    if (!isFinite(sharedMin)) { sharedMin = 0; sharedMax = 1; }
+    if (sharedMin === sharedMax) { sharedMin -= 1; sharedMax += 1; }
+  }
 
   // 中位间隔：用于数据缺口断线（间隔 > 2×中位间隔 视为断点）
   const buildPath = (pts: ChartPoint[], norm: (v: number) => number): string => {
@@ -460,7 +495,11 @@ const chartGeometry = computed(() => {
     let min = fullVals.length ? Math.min(...fullVals) : 0;
     let max = fullVals.length ? Math.max(...fullVals) : 0;
     if (min === max) { min -= 1; max += 1; }
-    if (!multi) {
+    if (useSharedAxis) {
+      // 共享数值轴：统一用全局值域，各曲线可真实比较高低
+      min = sharedMin;
+      max = sharedMax;
+    } else if (!multi) {
       // 单曲线：沿用 0.9/1.1 留白（与原实现一致）
       min = Math.max(0, min * 0.9);
       max = max * 1.1;
@@ -472,12 +511,23 @@ const chartGeometry = computed(() => {
     const circles = sampled
       .filter((_, i) => i % circleStep === 0 || i === sampled.length - 1)
       .map(p => ({ x: getX(p.t), y: norm(p.v), v: p.v, t: p.t, bad: p.bad }));
-    return { key: d.key, color: d.color, label: d.label, unit: d.unit, path, circles, min, max, norm };
+    // 最新数据点（时间最大）：用于端点高亮标记「哪边是最新」
+    const latest = d.pts.length ? d.pts[d.pts.length - 1] : null;
+    const latestPoint = latest
+      ? { x: getX(latest.t), y: norm(latest.v), v: latest.v, bad: latest.bad }
+      : null;
+    return { key: d.key, color: d.color, label: d.label, unit: d.unit, path, circles, min, max, norm, latestPoint };
   });
 
-  // Y 轴刻度：多曲线归一化为百分比；单曲线显示数值
+  // Y 轴刻度：共享数值轴模式/单曲线显示数值；多曲线独立归一化显示百分比
   let yTicks: { y: number; label: string }[] = [];
-  if (multi) {
+  if (useSharedAxis) {
+    // 共享数值轴：显示真实数值刻度
+    yTicks = [0, 1, 2, 3, 4].map(i => {
+      const val = sharedMin + ((sharedMax - sharedMin) * i) / 4;
+      return { y: getYForValue(val, sharedMin, sharedMax), label: val.toFixed(1) };
+    });
+  } else if (multi) {
     yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => ({
       y: SVG_H - PAD_Y - f * (SVG_H - 2 * PAD_Y),
       label: `${Math.round(f * 100)}%`
@@ -490,13 +540,13 @@ const chartGeometry = computed(() => {
     });
   }
 
-  // X 轴刻度：5 等分时间标签（最新在左 → 最旧在右）
+  // X 轴刻度：5 等分时间标签（方向随 xNewestFirst）
   const xTicks = [0, 1, 2, 3, 4].map(i => {
-    const t = tMax - (tSpan * i) / 4;
+    const t = xNewestFirst.value ? tMax - (tSpan * i) / 4 : tMin + (tSpan * i) / 4;
     return { x: getX(t), label: formatTimeLabel(t) };
   });
 
-  return { series, yTicks, xTicks, multi, empty: false, getX };
+  return { series, yTicks, xTicks, multi, empty: false, getX, useSharedAxis, sharedMin, sharedMax };
 });
 
 // ==================== 统计条 ====================
@@ -524,12 +574,14 @@ const handleChartMouseMove = (ev: MouseEvent) => {
   const px = ((ev.clientX - rect.left) / rect.width) * SVG_W;
   const py = ((ev.clientY - rect.top) / rect.height) * SVG_H;
 
-  // 反算时间域（getX(t) = PAD_X + ((tMax - t)/(tMax - tMin)) * (SVG_W - 2*PAD_X)，最新在左）
+  // 反算时间域（方向随 xNewestFirst）
   const inner = px - PAD_X;
   const scale = SVG_W - 2 * PAD_X;
   const tMin = timeDomainForTooltip.value.min;
   const tMax = timeDomainForTooltip.value.max;
-  const tVal = tMax - (inner / scale) * (tMax - tMin);
+  const tVal = xNewestFirst.value
+    ? tMax - (inner / scale) * (tMax - tMin)
+    : tMin + (inner / scale) * (tMax - tMin);
 
   const items: { color: string; label: string; value: string; bad: boolean }[] = [];
   const allDs = allSeriesPoints.value;
@@ -843,14 +895,64 @@ const handleExportCSV = async () => {
             <TrendingUp class="w-4 h-4 text-emerald-500 animate-pulse" />
             <span class="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-tight">
               趋势图
-              <span v-if="chartGeometry.multi" class="text-amber-500 dark:text-amber-400 text-[10px] font-bold ml-2">
+              <span v-if="chartGeometry.useSharedAxis" class="text-emerald-600 dark:text-emerald-400 text-[10px] font-bold ml-2">
+                共享数值轴{{ chartGeometry.series[0]?.unit ? ` · ${chartGeometry.series[0].unit}` : '' }}
+              </span>
+              <span v-else-if="chartGeometry.multi" class="text-amber-500 dark:text-amber-400 text-[10px] font-bold ml-2">
                 多变量量纲不同，曲线已分别归一化
               </span>
             </span>
           </div>
-          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-medium">
-            {{ isLoading ? '查询中...' : `可见序列 ${chartGeometry.series.length} · 数据点 ${allTableRecords.length} 个` }}
-          </span>
+
+          <div class="flex items-center gap-3">
+            <!-- X 轴时间方向切换 -->
+            <div
+              v-if="chartGeometry.series.length >= 1"
+              class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5"
+              title="切换 X 轴时间方向：最新在左 / 最新在右"
+            >
+              <button
+                @click="xNewestFirst = true"
+                class="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+                :class="xNewestFirst ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'"
+              >
+                最新在左
+              </button>
+              <button
+                @click="xNewestFirst = false"
+                class="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+                :class="!xNewestFirst ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'"
+              >
+                最新在右
+              </button>
+            </div>
+
+            <!-- Y 轴显示模式切换 -->
+            <div
+              v-if="chartGeometry.multi"
+              class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5"
+              title="切换 Y 轴显示：百分比 / 具体数值（仅所选变量单位一致时可用具体值）"
+            >
+              <button
+                @click="yAxisMode = 'percent'"
+                class="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+                :class="yAxisMode === 'percent' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'"
+              >
+                百分比
+              </button>
+              <button
+                @click="yAxisMode = 'value'"
+                class="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+                :class="yAxisMode === 'value' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'"
+              >
+                具体值
+              </button>
+            </div>
+
+            <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-medium">
+              {{ isLoading ? '查询中...' : `可见序列 ${chartGeometry.series.length} · 数据点 ${allTableRecords.length} 个` }}
+            </span>
+          </div>
         </div>
 
         <!-- 统计条 -->
@@ -917,6 +1019,34 @@ const handleExportCSV = async () => {
                 {{ tick.label }}
               </text>
 
+              <!-- 时间方向标签：最新 / 最旧（随 xNewestFirst 自动对调） -->
+              <g font-family="sans-serif" font-size="9" font-weight="bold">
+                <!-- 最新侧：脉冲圆点 + 文字 -->
+                <circle
+                  :cx="xNewestFirst ? PAD_X : SVG_W - PAD_X"
+                  :cy="10"
+                  r="2.5"
+                  fill="#1890ff"
+                />
+                <text
+                  :x="xNewestFirst ? PAD_X + 7 : SVG_W - PAD_X - 7"
+                  y="13"
+                  fill="#1890ff"
+                  :text-anchor="xNewestFirst ? 'start' : 'end'"
+                >
+                  最新
+                </text>
+                <!-- 最旧侧 -->
+                <text
+                  :x="xNewestFirst ? SVG_W - PAD_X : PAD_X"
+                  y="13"
+                  fill="#94a3b8"
+                  :text-anchor="xNewestFirst ? 'end' : 'start'"
+                >
+                  最旧
+                </text>
+              </g>
+
               <!-- 各曲线 -->
               <g v-for="s in chartGeometry.series" :key="s.key">
                 <path
@@ -930,6 +1060,16 @@ const handleExportCSV = async () => {
                 <g v-for="(c, ci) in s.circles" :key="ci">
                   <circle :cx="c.x" :cy="c.y" r="3.5" :fill="c.bad ? '#ef4444' : '#0f172a'" :stroke="s.color" stroke-width="2" />
                 </g>
+                <!-- 最新数据点高亮（标记「哪边是最新」） -->
+                <circle
+                  v-if="s.latestPoint"
+                  :cx="s.latestPoint.x"
+                  :cy="s.latestPoint.y"
+                  r="5.5"
+                  fill="#1890ff"
+                  :stroke="s.color"
+                  stroke-width="2.5"
+                />
               </g>
 
               <!-- 十字线 + 命中高亮 -->
