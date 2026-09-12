@@ -5,21 +5,40 @@ import type { HmiWidgetProps } from './useWidgetBase';
 import { devices } from '../../store/deviceStore';
 import { LayoutDashboard } from 'lucide-vue-next';
 import type { HmiDashboardItem } from '../../types';
+import { useVfdPanelTheme } from './useVfdPanelTheme';
 
 const props = defineProps<HmiWidgetProps>();
 const base = useWidgetBase(props);
 const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, propOr, activeColor, inactiveColor, strokeColor, fillColor, minValue, maxValue, unit, thresholdMin, thresholdMax, fontSize, align, bold, showBorder, showBackground, showInnerLabel, onText, offText, qualityBad, hasExplicitThresholdMax, hasExplicitThresholdMin, isHighAlert, isLowAlert, alertColor, width, height, ticks, timeString } = base;
 
+// ===== 外观风格主题（复用变频电机控制面板同套 8 预设 + 自定义强调色）=====
+const panelStyle = computed(() => propOr('panelStyle', 'slate-dark'));
+const panelAccentColor = computed(() => propOr('panelAccentColor', '#38bdf8'));
+const { themeVars: vfdThemeVars } = useVfdPanelTheme({ panelStyle, panelAccentColor });
+
 const dashboardTitle = computed(() => propOr('dashboardTitle', '实时参数监控看板'));
 const showDashboardTitle = computed(() => propOr('showDashboardTitle', true));
 const dashboardTitleBgColor = computed(() => propOr('dashboardTitleBgColor', ''));
 const dashboardTitleColor = computed(() => propOr('dashboardTitleColor', ''));
+
+// 旧版硬编码的浅色默认值，视为「未自定义」，便于切换主题时正确回退到主题令牌
+const LEGACY_LIGHT_BG = '#ffffff';
+const LEGACY_LIGHT_BORDER = '#cbd5e1';
+const LEGACY_ITEM_BG = '#f8fafc';
+const LEGACY_ITEM_BORDER = '#e2e8f0';
+
+// 归一化：若值为空串或等于旧浅色默认值，则视为未自定义（返回 ''），由模板回退到 var(--vfd-*)
+const normColor = (v: string | undefined | null, legacy: string): string => {
+  if (v == null || v === '' || v === legacy) return '';
+  return v;
+};
 const dashboardLayout = computed<'grid' | 'table' | 'compact'>(() => propOr('dashboardLayout', 'grid'));
 const dashboardColumns = computed(() => Number(propOr('dashboardColumns', 2)));
 const dashboardGap = computed(() => Number(propOr('dashboardGap', 8)));
 const dashboardShowItemBorder = computed(() => propOr('dashboardShowItemBorder', true));
-const dashboardItemBorderColor = computed(() => propOr('dashboardItemBorderColor', '#e2e8f0'));
-const dashboardItemBgColor = computed(() => propOr('dashboardItemBgColor', '#f8fafc'));
+// 归一化：旧浅色默认值视为未自定义，回退主题令牌
+const dashboardItemBorderColor = computed(() => normColor(propOr('dashboardItemBorderColor', ''), LEGACY_ITEM_BORDER));
+const dashboardItemBgColor = computed(() => normColor(propOr('dashboardItemBgColor', ''), LEGACY_ITEM_BG));
 const dashboardValueFontSize = computed(() => Number(propOr('dashboardValueFontSize', 16)));
 const dashboardLabelFontSize = computed(() => Number(propOr('dashboardLabelFontSize', 11)));
 const dashboardZebra = computed(() => propOr('dashboardZebra', false));
@@ -112,10 +131,12 @@ const dashboardContainerStyle = computed(() => {
   const hasBg = p.showBackground !== false;
 
   const borderWidth = hasBorder ? `${p.borderWidth ?? 1.5}px` : '0px';
-  const borderColor = hasBorder ? (p.borderColor || '#cbd5e1') : 'transparent';
+  // 未自定义边框色（空串/旧浅色默认值）时走主题令牌，自定义时优先生效
+  const borderColor = hasBorder ? (normColor(p.borderColor, LEGACY_LIGHT_BORDER) || 'var(--vfd-border)') : 'transparent';
   const borderStyle = hasBorder ? (p.borderStyle || 'solid') : 'none';
   const borderRadius = p.borderRadius !== undefined ? `${p.borderRadius}px` : '8px';
-  const backgroundColor = hasBg ? (p.bgColor || '#ffffff') : 'transparent';
+  // 未自定义背景色（空串/旧浅色默认值）时走主题令牌，自定义时优先生效
+  const backgroundColor = hasBg ? (normColor(p.bgColor, LEGACY_LIGHT_BG) || 'var(--vfd-page)') : 'transparent';
 
   return {
     borderWidth,
@@ -148,23 +169,23 @@ const dashboardGridStyle = computed(() => {
 <template>
 <div
       class="w-full h-full flex flex-col relative overflow-hidden select-none transition-all duration-150"
-      :style="dashboardContainerStyle">
+      :style="[dashboardContainerStyle, vfdThemeVars]">
 
       <!-- 标题栏（可选显示） -->
       <div v-if="showDashboardTitle"
         class="shrink-0 flex items-center justify-between px-3 py-1.5 border-b transition-colors" :style="{
-          backgroundColor: dashboardTitleBgColor || 'rgba(241, 245, 249, 0.75)',
-          borderColor: dashboardShowItemBorder ? dashboardItemBorderColor : 'rgba(226, 232, 240, 0.8)',
-          color: dashboardTitleColor || '#1e293b'
+          backgroundColor: dashboardTitleBgColor || 'var(--vfd-header)',
+          borderColor: dashboardShowItemBorder ? 'var(--vfd-divider)' : 'var(--vfd-divider)',
+          color: dashboardTitleColor || 'var(--vfd-title)'
         }">
         <div class="flex items-center gap-1.5 min-w-0">
-          <div class="w-2 h-2 rounded-full bg-[#1890ff] shadow-sm shadow-sky-400/50" />
+          <div class="w-2 h-2 rounded-full shadow-sm" :style="{ backgroundColor: 'var(--vfd-accent)', boxShadow: '0 0 6px var(--vfd-accent)' }" />
           <span class="text-xs font-bold tracking-wide truncate font-sans">
             {{ dashboardTitle }}
           </span>
         </div>
-        <div class="flex items-center gap-1.5 shrink-0 text-[10px] font-mono opacity-75">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <div class="flex items-center gap-1.5 shrink-0 text-[10px] font-mono" :style="{ color: 'var(--vfd-muted)' }">
+          <span class="w-1.5 h-1.5 rounded-full animate-pulse" :style="{ backgroundColor: 'var(--vfd-ok)' }" />
           <span>{{ dashboardResolvedItems.length }} 点位</span>
         </div>
       </div>
@@ -173,10 +194,11 @@ const dashboardGridStyle = computed(() => {
       <div class="flex-1 p-2.5 overflow-y-auto overflow-x-hidden">
         <!-- 空状态提示 -->
         <div v-if="dashboardResolvedItems.length === 0"
-          class="w-full h-full min-h-[80px] flex flex-col items-center justify-center text-slate-400 gap-1.5 text-center p-3">
-          <LayoutDashboard class="w-6 h-6 stroke-1 text-slate-300 dark:text-slate-600" />
+          class="w-full h-full min-h-[80px] flex flex-col items-center justify-center gap-1.5 text-center p-3"
+          :style="{ color: 'var(--vfd-faint)' }">
+          <LayoutDashboard class="w-6 h-6 stroke-1" :style="{ color: 'var(--vfd-svg-stroke)' }" />
           <span class="text-xs">暂无监控变量点位</span>
-          <span class="text-[10px] text-slate-400 dark:text-slate-500">请在右侧属性面板添加或一键导入变量</span>
+          <span class="text-[10px]" :style="{ color: 'var(--vfd-muted)' }">请在右侧属性面板添加或一键导入变量</span>
         </div>
 
         <!-- 模式1：卡片网格 (grid) -->
@@ -185,8 +207,8 @@ const dashboardGridStyle = computed(() => {
             class="flex flex-col justify-between p-2 rounded transition-all relative overflow-hidden" :style="{
               borderWidth: dashboardShowItemBorder ? '1px' : '0px',
               borderStyle: 'solid',
-              borderColor: item.isAlarm ? item.statusColor : dashboardItemBorderColor,
-              backgroundColor: item.isAlarm ? (item.isHigh ? 'rgba(239, 68, 68, 0.06)' : 'rgba(245, 158, 11, 0.06)') : (dashboardItemBgColor || '#f8fafc'),
+              borderColor: item.isAlarm ? item.statusColor : (dashboardItemBorderColor || 'var(--vfd-well-border)'),
+              backgroundColor: item.isAlarm ? 'var(--vfd-err-soft)' : (dashboardItemBgColor || 'var(--vfd-well)'),
               borderRadius: '6px',
             }">
 
@@ -195,14 +217,14 @@ const dashboardGridStyle = computed(() => {
               <div class="flex items-center gap-1 min-w-0 flex-1">
                 <span v-if="item.showStatusDot" class="w-2 h-2 rounded-full shrink-0 transition-colors"
                   :class="item.isAlarm ? 'animate-pulse' : ''" :style="{ backgroundColor: item.statusColor }" />
-                <span class="font-medium truncate leading-tight text-slate-700 dark:text-slate-200"
-                  :style="{ fontSize: `${dashboardLabelFontSize}px` }" :title="`${item.label} (${item.variableKey})`">
+                <span class="font-medium truncate leading-tight"
+                  :style="{ fontSize: `${dashboardLabelFontSize}px`, color: 'var(--vfd-body)' }" :title="`${item.label} (${item.variableKey})`">
                   {{ item.label }}
                 </span>
               </div>
               <span v-if="item.isAlarm" class="text-[9px] px-1 py-0.2 rounded font-bold shrink-0 font-sans" :style="{
-                backgroundColor: item.isHigh ? '#fee2e2' : '#fef3c7',
-                color: item.isHigh ? '#dc2626' : '#d97706'
+                backgroundColor: item.isHigh ? 'var(--vfd-err-soft)' : 'var(--vfd-warn-soft)',
+                color: item.isHigh ? 'var(--vfd-err)' : 'var(--vfd-warn)'
               }">
                 {{ item.statusText }}
               </span>
@@ -212,11 +234,11 @@ const dashboardGridStyle = computed(() => {
             <div class="flex items-baseline justify-between gap-1 font-mono mt-0.5">
               <span class="font-bold tracking-tight tabular-nums truncate" :style="{
                 fontSize: `${dashboardValueFontSize}px`,
-                color: item.isAlarm ? item.statusColor : (item.isQualityBad ? '#94a3b8' : (activeColor || '#0f172a'))
+                color: item.isAlarm ? item.statusColor : (item.isQualityBad ? 'var(--vfd-faint)' : 'var(--vfd-title)')
               }">
                 {{ item.displayVal }}
               </span>
-              <span v-if="item.unit" class="text-[10px] text-slate-400 font-sans shrink-0 font-normal">
+              <span v-if="item.unit" class="text-[10px] font-sans shrink-0 font-normal" :style="{ color: 'var(--vfd-muted)' }">
                 {{ item.unit }}
               </span>
             </div>
@@ -225,10 +247,10 @@ const dashboardGridStyle = computed(() => {
 
         <!-- 模式2：列表表格 (table) -->
         <div v-else-if="dashboardLayout === 'table'" class="w-full">
-          <table class="w-full text-left border-collapse text-xs">
+          <table class="w-full text-left border-collapse text-xs" :style="{ color: 'var(--vfd-body)' }">
             <thead>
-              <tr class="border-b text-[10px] font-semibold text-slate-400"
-                :style="{ borderColor: dashboardItemBorderColor }">
+              <tr class="border-b text-[10px] font-semibold"
+                :style="{ borderColor: dashboardItemBorderColor || 'var(--vfd-divider)', color: 'var(--vfd-muted)' }">
                 <th class="py-1 px-1.5">变量/点位</th>
                 <th class="py-1 px-1.5 text-right">实时数值</th>
                 <th class="py-1 px-1.5 text-center">单位</th>
@@ -238,32 +260,31 @@ const dashboardGridStyle = computed(() => {
             <tbody>
               <tr v-for="(item, idx) in dashboardResolvedItems" :key="item.id" class="border-b transition-colors"
                 :style="{
-                  borderColor: dashboardItemBorderColor,
-                  backgroundColor: dashboardZebra && idx % 2 === 1 ? 'rgba(0,0,0,0.02)' : 'transparent'
+                  borderColor: dashboardItemBorderColor || 'var(--vfd-divider)',
+                  backgroundColor: dashboardZebra && idx % 2 === 1 ? 'var(--vfd-well-soft)' : 'transparent'
                 }">
                 <td class="py-1 px-1.5 truncate max-w-[120px]">
                   <div class="flex items-center gap-1">
                     <span v-if="item.showStatusDot" class="w-1.5 h-1.5 rounded-full shrink-0"
                       :style="{ backgroundColor: item.statusColor }" />
-                    <span class="font-medium text-slate-700 dark:text-slate-200 truncate"
-                      :style="{ fontSize: `${dashboardLabelFontSize}px` }" :title="item.label">
+                    <span class="font-medium truncate" :style="{ fontSize: `${dashboardLabelFontSize}px`, color: 'var(--vfd-body)' }" :title="item.label">
                       {{ item.label }}
                     </span>
                   </div>
                 </td>
                 <td class="py-1 px-1.5 text-right font-mono font-bold tabular-nums" :style="{
                   fontSize: `${dashboardValueFontSize}px`,
-                  color: item.isAlarm ? item.statusColor : (item.isQualityBad ? '#94a3b8' : '#0f172a')
+                  color: item.isAlarm ? item.statusColor : (item.isQualityBad ? 'var(--vfd-faint)' : 'var(--vfd-title)')
                 }">
                   {{ item.displayVal }}
                 </td>
-                <td class="py-1 px-1.5 text-center text-[10px] text-slate-400 font-sans">
+                <td class="py-1 px-1.5 text-center text-[10px] font-sans" :style="{ color: 'var(--vfd-muted)' }">
                   {{ item.unit || '-' }}
                 </td>
                 <td class="py-1 px-1.5 text-center">
                   <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium" :style="{
-                    backgroundColor: item.isAlarm ? (item.isHigh ? '#fee2e2' : '#fef3c7') : '#dcfce7',
-                    color: item.isAlarm ? (item.isHigh ? '#dc2626' : '#b45309') : '#15803d'
+                    backgroundColor: item.isAlarm ? (item.isHigh ? 'var(--vfd-err-soft)' : 'var(--vfd-warn-soft)') : 'var(--vfd-ok-soft)',
+                    color: item.isAlarm ? (item.isHigh ? 'var(--vfd-err)' : 'var(--vfd-warn)') : 'var(--vfd-ok)'
                   }">
                     {{ item.statusText }}
                   </span>
@@ -277,16 +298,15 @@ const dashboardGridStyle = computed(() => {
         <div v-else-if="dashboardLayout === 'compact'" class="flex flex-wrap gap-1.5">
           <div v-for="item in dashboardResolvedItems" :key="item.id"
             class="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-all border" :style="{
-              borderColor: item.isAlarm ? item.statusColor : dashboardItemBorderColor,
-              backgroundColor: dashboardItemBgColor || '#f8fafc'
+              borderColor: item.isAlarm ? item.statusColor : (dashboardItemBorderColor || 'var(--vfd-well-border)'),
+              backgroundColor: dashboardItemBgColor || 'var(--vfd-well)'
             }">
             <span v-if="item.showStatusDot" class="w-2 h-2 rounded-full shrink-0"
               :style="{ backgroundColor: item.statusColor }" />
-            <span class="text-slate-600 dark:text-slate-300 font-medium"
-              :style="{ fontSize: `${dashboardLabelFontSize}px` }">{{ item.label }}:</span>
+            <span class="font-medium" :style="{ fontSize: `${dashboardLabelFontSize}px`, color: 'var(--vfd-body)' }">{{ item.label }}:</span>
             <span class="font-mono font-bold tabular-nums"
-              :style="{ fontSize: `${dashboardValueFontSize}px`, color: item.statusColor }">{{ item.displayVal }}</span>
-            <span v-if="item.unit" class="text-[10px] text-slate-400">{{ item.unit }}</span>
+              :style="{ fontSize: `${dashboardValueFontSize}px`, color: item.isAlarm ? item.statusColor : (item.isQualityBad ? 'var(--vfd-faint)' : 'var(--vfd-title)') }">{{ item.displayVal }}</span>
+            <span v-if="item.unit" class="text-[10px]" :style="{ color: 'var(--vfd-muted)' }">{{ item.unit }}</span>
           </div>
         </div>
       </div>

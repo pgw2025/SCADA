@@ -4,7 +4,7 @@
 import { computed } from 'vue';
 import { HMIComponent, HmiDashboardItem } from '../../types';
 import { devices } from '../../store/deviceStore';
-import { LayoutDashboard, Grid, Columns, Table, Sparkles, ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-vue-next';
+import { LayoutDashboard, Grid, Columns, Table, Sparkles, ChevronUp, ChevronDown, Trash2, Plus, Palette } from 'lucide-vue-next';
 
 const props = defineProps<{
   component: HMIComponent;
@@ -113,6 +113,49 @@ const getItemVariableOptions = (itemDevId?: number | null) => {
 <template>
   <!-- REAL-TIME MULTI-VARIABLE DASHBOARD CONTROLS (实时多变量监控看板专属配置) -->
   <div class="space-y-4">
+    <!-- 模块零：外观风格主题（复用变频电机控制面板同套 8 预设 + 自定义强调色） -->
+    <div class="space-y-2.5 text-xs border border-violet-200/80 dark:border-violet-900/60 p-3 rounded-lg bg-violet-50/40 dark:bg-violet-950/20">
+      <p class="font-bold text-violet-600 dark:text-violet-400 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+        <Palette class="w-3.5 h-3.5" />
+        外观风格主题 (Style Preset)
+      </p>
+
+      <div>
+        <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题</label>
+        <select :value="componentProps.panelStyle || 'slate-dark'"
+          @change="updateProp('panelStyle', ($event.target as HTMLSelectElement).value)"
+          class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-[#1890ff] dark:focus:border-violet-500 mt-0.5 text-xs text-[#262626] dark:text-white">
+          <optgroup label="☀️ 浅色大方系列">
+            <option value="pure-white">极简亮白 (Pure Crisp White · 浅色)</option>
+            <option value="titanium-light">工业钛灰 (Titanium Light · 浅色)</option>
+          </optgroup>
+          <optgroup label="🌙 深色稳健系列">
+            <option value="slate-dark">经典石板深灰 (Classic Slate · 深色)</option>
+            <option value="navy-midnight">深海商务暗蓝 (Navy Midnight · 深色)</option>
+          </optgroup>
+          <optgroup label="🌿 轻量通透系列">
+            <option value="translucent-frost">悬浮通透胶囊 (Adaptive Frost · 通透)</option>
+          </optgroup>
+          <optgroup label="⚙️ 经典特色预设">
+            <option value="eco-green">生态翡翠绿 (Eco Green)</option>
+            <option value="carbon-orange">机能碳纤橙 (Carbon Orange)</option>
+            <option value="tech-blue">科技蓝 (Tech Blue)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- 主题微调：强调色 -->
+      <div>
+        <label class="text-[10px] text-gray-500 dark:text-slate-400">强调色（标题高亮 / 状态圆点 / 边框高亮）</label>
+        <input type="color" :value="componentProps.panelAccentColor ?? '#38bdf8'"
+          @input="updateProp('panelAccentColor', ($event.target as HTMLInputElement).value)"
+          class="w-full h-7 bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 rounded cursor-pointer" />
+        <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-normal">
+          保持默认色即为各主题推荐强调色；报警红/预警黄/正常绿等安全语义色不随主题与强调色变化。
+        </p>
+      </div>
+    </div>
+
     <!-- 模块一：看板排版与外框设置 -->
     <div
       class="space-y-3 text-xs border border-sky-200/80 dark:border-sky-900/60 p-3 rounded-lg bg-sky-50/40 dark:bg-sky-950/20">

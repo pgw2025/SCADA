@@ -305,7 +305,9 @@ export interface HMIComponent {
     dashboardValueFontSize?: number;    // 数值文字字号大小 (px)
     dashboardLabelFontSize?: number;    // 变量标签字号大小 (px)
     dashboardZebra?: boolean;           // 表格模式隔行交替底色 (斑马纹)
-    dashboardTheme?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost'; // 看板内置快速主题
+    dashboardTheme?: 'pure-white' | 'titanium-light' | 'slate-dark' | 'navy-midnight' | 'translucent-frost'; // 看板内置快速主题（历史字段，已由 panelStyle 取代）
+    panelStyle?: string;                // 外观风格主题预设 key（复用变频电机控制面板同套 8 预设）
+    panelAccentColor?: string;          // 主题自定义强调色（'#38bdf8' 视为未自定义）
 
     // ===== trend-chart 实时波段趋势图专属 props（多变量序列）=====
     trendSeries?: HmiTrendSeries[];     // 绑定的多变量序列（每条含 deviceId/variableKey/color/lineWidth 等）
