@@ -278,7 +278,7 @@ export const persistFolderMove = async (folder: ScadaPageFolder, proj: ScadaScre
  */
 export const persistFolderReorder = async (
   proj: ScadaScreenProject,
-  platform: 'Desktop' | 'Mobile',
+  platform: 'Desktop' | 'Mobile' | 'Popup',
   parentFolderId: string | undefined,
   folderIds: string[],
   pageIds: string[]

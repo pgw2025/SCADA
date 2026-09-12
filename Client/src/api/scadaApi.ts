@@ -305,7 +305,7 @@ export const fromFolderDto = (d: FolderDto): ScadaPageFolder => ({
   id: `srv-${d.id}`,
   serverId: d.id,
   name: d.name,
-  platform: (d.platform === 'Mobile' ? 'Mobile' : 'Desktop'),
+  platform: d.platform === 'Mobile' || d.platform === 'Popup' ? (d.platform as 'Mobile' | 'Popup') : 'Desktop',
   parentFolderId: d.parentFolderId ? `srv-${d.parentFolderId}` : undefined,
   sortOrder: d.sortOrder ?? 0,
 });

@@ -5,7 +5,7 @@ namespace ScadaServer.Domain.Entities
 {
     /// <summary>
     /// SCADA 画面文件夹实体：用于组态画面列表的文件夹分类管理。
-    /// 支持通过 ParentFolderId 自引用实现多级嵌套；仅作用于 Desktop/Mobile 端（Popup 弹窗画面不建文件夹）。
+    /// 支持通过 ParentFolderId 自引用实现多级嵌套；适用于 Desktop/Mobile/Popup 三端。
     /// </summary>
     [Table("ScadaPageFolders")]
     public class ScadaPageFolder
@@ -48,8 +48,7 @@ namespace ScadaServer.Domain.Entities
         public List<ScadaPage> Pages { get; set; } = new();
 
         /// <summary>
-        /// 文件夹归属端：Desktop（桌面端）/ Mobile（移动端）。默认 Desktop。
-        /// Popup 弹窗画面不纳入文件夹，应用服务层保证不写入非 Desktop/Mobile。
+        /// 文件夹归属端：Desktop（桌面端）/ Mobile（移动端）/ Popup（弹窗）。默认 Desktop。
         /// </summary>
         [StringLength(16)]
         public string Platform { get; set; } = "Desktop";

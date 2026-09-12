@@ -7,7 +7,7 @@ namespace ScadaServer.Application.Services
 {
     /// <summary>
     /// SCADA 画面文件夹应用服务：管理画面列表文件夹的分类、移动、删除与排序。
-    /// 仅适用于 Desktop/Mobile 端；Popup 弹窗画面不建文件夹。
+    /// 适用于 Desktop/Mobile/Popup 三端（Popup 为弹窗画面归属端）。
     /// 删除文件夹默认 reparent（内容上提一级），可选 cascade（连同子夹与画面删除）。
     /// </summary>
     public class ScadaPageFolderAppService : IScadaPageFolderAppService
@@ -188,7 +188,7 @@ namespace ScadaServer.Application.Services
             }
 
             await _folderRepository.DeleteAsync(folder);
-            await RenormalizeOrderAsync(parentId, platform);
+            await RenormalizeOrderAsync(folder.ProjectId, parentId, platform);
         }
 
         /// <summary>删除文件夹（cascade）：同一事务内先删画面（含组件），再逆深度删子夹，最后删根夹。</summary>
@@ -239,14 +239,17 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>同父级逐点重排：文件夹段 + 画面段各自按 (SortOrder, Id) 从 1 连续编号。</summary>
-        private async Task RenormalizeOrderAsync(int? parentFolderId, string platform)
+        private async Task RenormalizeOrderAsync(int projectId, int? parentFolderId, string platform)
         {
-            var folders = (await _folderRepository.GetListAsync(f => f.ParentFolderId == parentFolderId))
+            var folders = (await _folderRepository.GetListAsync(f => f.ProjectId == projectId
+                                                                    && f.Platform == platform
+                                                                    && f.ParentFolderId == parentFolderId))
                 .OrderBy(f => f.SortOrder).ThenBy(f => f.Id).ToList();
             for (int i = 0; i < folders.Count; i++)
                 if (folders[i].SortOrder != i + 1) { folders[i].SortOrder = i + 1; await _folderRepository.UpdateAsync(folders[i]); }
 
-            var pages = (await _pageRepository.GetListAsync(p => p.FolderId == parentFolderId
+            var pages = (await _pageRepository.GetListAsync(p => p.ProjectId == projectId
+                                                                 && p.FolderId == parentFolderId
                                                                  && p.Platform == platform))
                 .OrderBy(p => p.SortOrder).ThenBy(p => p.Id).ToList();
             for (int i = 0; i < pages.Count; i++)
@@ -303,14 +306,20 @@ namespace ScadaServer.Application.Services
         }
 
         private static string NormalizePlatform(string? platform)
-            => string.Equals(platform?.Trim(), "Mobile", StringComparison.OrdinalIgnoreCase) ? "Mobile" : "Desktop";
+        {
+            var p = platform?.Trim();
+            if (string.Equals(p, "Popup", StringComparison.OrdinalIgnoreCase)) return "Popup";
+            if (string.Equals(p, "Mobile", StringComparison.OrdinalIgnoreCase)) return "Mobile";
+            return "Desktop";
+        }
 
         private static void ValidatePlatform(string? platform)
         {
             var p = platform?.Trim();
             if (!string.Equals(p, "Desktop", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(p, "Mobile", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Popup 端不支持画面文件夹，仅 Desktop/Mobile 可建文件夹");
+                && !string.Equals(p, "Mobile", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(p, "Popup", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("未知的归属端，仅 Desktop/Mobile/Popup 可建文件夹");
         }
 
         private static ScadaPageFolderDto MapToDto(ScadaPageFolder e) => new()

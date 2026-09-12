@@ -1110,6 +1110,7 @@ const handleNavigate = (pageId: string) => {
 const setHomePage = (page: ScadaPage) => {
   const proj = currentProject.value;
   if (!proj) return;
+  if ((page.platform ?? 'Desktop') === 'Popup') return; // 弹窗无首页概念
   const platform = (page.platform ?? 'Desktop') as 'Desktop' | 'Mobile';
   proj.pages.forEach(pg => {
     if ((pg.platform ?? 'Desktop') === platform) pg.isHome = false;
@@ -1200,6 +1201,7 @@ const savePageRename = (pId: string, name?: string) => {
 // ===== 画面列表文件夹（P6）=====
 const desktopFolderTree = computed(() => buildFolderTree('Desktop'));
 const mobileFolderTree = computed(() => buildFolderTree('Mobile'));
+const popupFolderTree = computed(() => buildFolderTree('Popup'));
 
 const toggleFolder = (folderId: string) => {
   const s = new Set(expandedFolderIds.value);
@@ -1233,7 +1235,7 @@ const pageSortKey = (a: ScadaPage, b: ScadaPage) =>
 // folderIds 顺序即目标段顺序（1..N 递增写入内存再 reorder 落库）
 const reindexAndPersistSegment = async (
   proj: ScadaScreenProject,
-  platform: 'Desktop' | 'Mobile',
+  platform: 'Desktop' | 'Mobile' | 'Popup',
   parentId: string | undefined,
   kind: 'folder' | 'page',
   orderIds: string[]
@@ -1279,7 +1281,7 @@ const isFolderDescendant = (targetParent: string | undefined, folderId: string):
  * beforeNodeId 为目标行（folder 或 page 的 uid）；undefined 表示追加到该层级对应段末尾。
  * 语义：拖到文件夹行→入夹（folder 同级时视为段内重排）；拖到画面行/容器→落在该层级对应段。
  */
-const applyDrop = async (platform: 'Desktop' | 'Mobile', placementParent: string | undefined, beforeNodeId: string | undefined) => {
+const applyDrop = async (platform: 'Desktop' | 'Mobile' | 'Popup', placementParent: string | undefined, beforeNodeId: string | undefined) => {
   const proj = currentProject.value;
   // 入口同步消费 dragItem：同一次拖放若被重复派发，后续调用在此直接短路，
   // 避免并发修改 folderId/parentFolderId 与 reorder 撞后端“排序项与目标层级/端不一致”校验
@@ -1375,7 +1377,7 @@ const onDragStart = (item: { kind: 'page' | 'folder'; id: string; platform: stri
 };
 const onDragEnd = () => { dragItem.value = null; };
 
-const handleCreateSubfolder = (platform: 'Desktop' | 'Mobile', parentFolderId?: string) => {
+const handleCreateSubfolder = (platform: 'Desktop' | 'Mobile' | 'Popup', parentFolderId?: string) => {
   const proj = currentProject.value;
   if (!proj) return;
   const parent = parentFolderId ? proj.folders.find(f => f.id === parentFolderId) : undefined;
@@ -1399,7 +1401,7 @@ const handleCreateSubfolder = (platform: 'Desktop' | 'Mobile', parentFolderId?: 
   (newFolder as any).__creating = (newFolder as any).__creating
     ?? ensureFolderSaved(newFolder, proj).finally(() => { (newFolder as any).__creating = undefined; });
 };
-const handleCreateRootFolder = (platform: 'Desktop' | 'Mobile') => handleCreateSubfolder(platform, undefined);
+const handleCreateRootFolder = (platform: 'Desktop' | 'Mobile' | 'Popup') => handleCreateSubfolder(platform, undefined);
 
 const startRenameFolder = (folderId: string, name: string) => {
   isRenamingFolderId.value = folderId;
@@ -1759,52 +1761,32 @@ const handleExportPage = async (page: ScadaPage) => {
       <div
         class="flex items-center justify-between px-4 py-1.5 bg-slate-50/60 dark:bg-slate-800/40 border-y border-slate-100/60 dark:border-slate-800 mt-1">
         <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">🪟 弹窗 ({{ popupPages.length }})</span>
-        <button @click="handleAddPage('Popup')"
-          class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
-          title="新增弹窗画面">
-          <Plus class="w-3.5 h-3.5" />
-        </button>
+        <div class="flex items-center gap-1">
+          <button @click="handleCreateRootFolder('Popup')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新建弹窗文件夹">
+            <FolderPlus class="w-3.5 h-3.5" />
+          </button>
+          <button @click="handleAddPage('Popup')"
+            class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-pointer"
+            title="新增弹窗画面">
+            <Plus class="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
       <div v-if="currentProject"
-        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans">
-        <div v-for="page in popupPages" :key="page.id" @click="handleSelectPage(page.id)"
-          class="p-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-all space-y-1 relative"
-          :class="selectedPageId === page.id ? 'bg-sky-50/50 dark:bg-sky-950/40 text-[#1890ff] dark:text-sky-400 border-r-4 border-r-[#1890ff] dark:border-r-sky-500' : 'text-slate-700 dark:text-slate-300'">
-          <div class="flex items-center justify-between gap-2 overflow-hidden">
-            <div v-if="isRenamingPageId === page.id" class="flex items-center gap-1 w-full" @click.stopPropagation>
-              <input v-model="renamePageInput" type="text"
-                class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-xs text-slate-800 dark:text-slate-100 outline-none"
-                @keyup.enter="savePageRename(page.id)" />
-              <button @click="savePageRename(page.id)"
-                class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700">
-                <Check class="w-4 h-4" />
-              </button>
-            </div>
-            <span v-else class="font-bold text-xs flex-1 leading-relaxed flex items-center gap-1 min-w-0">
-              <span class="truncate">{{ page.name }}</span>
-            </span>
-            <div v-if="isRenamingPageId !== page.id"
-              class="flex items-center gap-1.5 shrink-0 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-all">
-              <button @click.stop="startRenamePage(page.id, page.name)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名">
-                <Edit class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDuplicatePage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="复制页面">
-                <Copy class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleExportPage(page)"
-                class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="导出画面">
-                <Download class="w-3 h-3" />
-              </button>
-              <button @click.stop="handleDeletePage(page.id, page.name)"
-                class="text-xs text-rose-400 hover:text-rose-600 dark:hover:text-rose-300" title="删除页面">
-                <Trash2 class="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          <p class="text-[9px] font-mono text-slate-400 dark:text-slate-500">组件数: {{ page.components.length }}</p>
-        </div>
+        class="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 max-h-[35vh] md:max-h-none text-left font-sans"
+        @dragover.prevent @drop.prevent="applyDrop('Popup', undefined, undefined)">
+        <ScadaPageTree :nodes="popupFolderTree" platform="Popup" :expanded-ids="expandedFolderIds"
+          :selected-page-id="selectedPageId" :is-renaming-page-id="isRenamingPageId" :rename-page-input="renamePageInput"
+          :is-renaming-folder-id="isRenamingFolderId" :rename-folder-input="renameFolderInput" :drag-item="dragItem"
+          @select-page="handleSelectPage" @start-rename-page="startRenamePage" @save-rename-page="savePageRename"
+          @duplicate-page="handleDuplicatePage" @export-page="handleExportPage"
+          @delete-page="handleDeletePage" @toggle-folder="toggleFolder"
+          @create-subfolder="(pid) => handleCreateSubfolder('Popup', pid)"
+          @start-rename-folder="startRenameFolder" @save-rename-folder="saveRenameFolder" @delete-folder="handleDeleteFolder"
+          @drag-start="onDragStart" @drag-end="onDragEnd"
+          @drop-item="(t, b) => applyDrop('Popup', t, b)" />
       </div>
 
     </div>

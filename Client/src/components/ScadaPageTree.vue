@@ -90,7 +90,7 @@
             <span class="truncate">{{ node.name }}</span>
           </span>
           <div v-if="isRenamingPageId !== node.id" class="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all">
-            <button @click.stop="emitSetHome(node.page)" class="row-action text-slate-400 hover:text-amber-500" :title="node.page.isHome ? '当前已是该端首页' : '设为该端首页'">
+            <button v-if="props.platform !== 'Popup'" @click.stop="emitSetHome(node.page)" class="row-action text-slate-400 hover:text-amber-500" :title="node.page.isHome ? '当前已是该端首页' : '设为该端首页'">
               <Home class="w-3 h-3" :class="node.page.isHome ? 'text-amber-500' : ''" />
             </button>
             <button @click.stop="emitStartRenamePage(node.id, node.name)" class="row-action text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="重命名">
@@ -123,7 +123,7 @@ export type DragItem = { kind: 'page' | 'folder'; id: string; platform: string }
 
 const props = defineProps<{
   nodes: PageTreeNode[];
-  platform: 'Desktop' | 'Mobile';
+  platform: 'Desktop' | 'Mobile' | 'Popup';
   parentFolderId?: string;
   expandedIds: Set<string>;
   selectedPageId: string;

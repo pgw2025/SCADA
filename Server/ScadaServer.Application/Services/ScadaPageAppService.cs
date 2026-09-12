@@ -204,13 +204,11 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
-        /// 校验并解析页面 FolderId：必须存在、同工程、同端；Popup 端恒为 NULL；非法值抛 400。
+        /// 校验并解析页面 FolderId：必须存在、同工程、同端（Desktop/Mobile/Popup 均支持）；非法值抛 400。
         /// </summary>
         private async Task<int?> ResolveFolderIdAsync(int projectId, string platform, int? folderId)
         {
             if (folderId == null) return null;
-            if (string.Equals(platform, "Popup", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Popup 弹窗画面不能放入文件夹");
 
             var folder = await _folderRepository.GetByIdAsync(folderId.Value);
             if (folder == null)

@@ -239,11 +239,11 @@ const _pageSort = (a: ScadaPage, b: ScadaPage) =>
   (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
 
 /**
- * 组装某个端（Desktop/Mobile）的画面文件夹树（Popup 不建夹）。
+ * 组装某个端（Desktop/Mobile/Popup）的画面文件夹树。
  * 每级「文件夹段在前 + 画面段在后」，各段按 SortOrder/Id 稳定排序；
  * 未被放入任何文件夹的画面落在根级。返回根级节点数组。
  */
-export const buildFolderTree = (platform: 'Desktop' | 'Mobile'): PageTreeNode[] => {
+export const buildFolderTree = (platform: 'Desktop' | 'Mobile' | 'Popup'): PageTreeNode[] => {
   const proj = currentProject.value;
   if (!proj) return [];
   const folders = (proj.folders || []).filter(f => f.platform === platform);
