@@ -21,8 +21,9 @@ import {
  * 所有字段显式写全，不做隐式缺省，避免「面板显示值 ≠ 运行生效值」。
  */
 const baseProps = (type: string): Record<string, any> => ({
-  activeColor: type === 'valve' || type === 'led' ? '#10b981' : '#3b82f6',
-  inactiveColor: '#94a3b8',
+  // 激活色回退主题令牌：valve/led 用运行绿(--vfd-ok)，其余用主题强调色(--vfd-accent，默认蓝)
+  activeColor: type === 'valve' || type === 'led' ? 'var(--vfd-ok)' : 'var(--vfd-accent)',
+  inactiveColor: 'var(--vfd-faint)',
   maxValue: type === 'gauge-dial' ? 120 : 100,
   minValue: 0, // 量程下限（百分比类/仪表类归一化基准）
   unit: type === 'gauge-dial' ? '℃' : '',

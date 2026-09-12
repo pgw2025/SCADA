@@ -52,6 +52,8 @@ export interface VfdPanelTheme {
   svgStroke: string;
   svgBase: string;
   svgDeep: string;
+  /** 设备金属灰阶（深→浅 8 档），供设备图形 SVG 渐变/边框精确映射，明暗主题下保持金属质感 */
+  metal: [string, string, string, string, string, string, string, string];
 }
 
 export interface UseVfdPanelThemeOptions {
@@ -87,6 +89,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(15,23,42,0.35)', dialog: '#ffffff', dialogBorder: '#cbd5e1',
         stator: ['#e2e8f0', '#cbd5e1', '#94a3b8'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
         svgStroke: '#94a3b8', svgBase: '#cbd5e1', svgDeep: '#e2e8f0',
+        metal: ['#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b', '#475569', '#334155', '#1e293b', '#0f172a'],
       };
     }
 
@@ -102,6 +105,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(30,41,59,0.35)', dialog: '#f4f7fa', dialogBorder: '#b7c3d2',
         stator: ['#d7dee8', '#b7c3d2', '#8e9cb0'], shaft: ['#b7c3d2', '#e8edf3', '#64748b'],
         svgStroke: '#8e9cb0', svgBase: '#b7c3d2', svgDeep: '#d7dee8',
+        metal: ['#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b', '#475569', '#334155', '#1e293b', '#0f172a'],
       };
     }
 
@@ -117,6 +121,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(4,12,28,0.9)', dialog: '#0b1c36', dialogBorder: '#25466e',
         stator: ['#2a4165', '#1b3153', '#0e1e38'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
         svgStroke: '#3d5a86', svgBase: '#1b3153', svgDeep: '#0e1e38',
+        metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
       };
     }
 
@@ -132,6 +137,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(5,14,32,0.92)', dialog: '#0a1f3f', dialogBorder: '#2563eb',
         stator: ['#2d4a8a', '#1c3266', '#0e1f45'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
         svgStroke: '#3b5a9e', svgBase: '#1c3266', svgDeep: '#0e1f45',
+        metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
       };
     }
 
@@ -147,6 +153,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(2,6,23,0.75)', dialog: 'rgba(15,23,42,0.95)', dialogBorder: 'rgba(255,255,255,0.2)',
         stator: ['#3a4a63', '#26354c', '#141f33'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
         svgStroke: '#4c5e7a', svgBase: '#26354c', svgDeep: '#141f33',
+        metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
       };
     }
 
@@ -162,6 +169,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(2,20,12,0.9)', dialog: '#053023', dialogBorder: '#0a4a33',
         stator: ['#1d5c43', '#0f4531', '#06301f'], shaft: ['#a7d8c2', '#ecfdf5', '#4f9c7d'],
         svgStroke: '#2d7a5a', svgBase: '#0f4531', svgDeep: '#06301f',
+        metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
       };
     }
 
@@ -177,6 +185,7 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
         overlay: 'rgba(20,10,3,0.9)', dialog: '#241505', dialogBorder: '#5c3410',
         stator: ['#5c3a1a', '#3f2810', '#291a08'], shaft: ['#e2c9a8', '#fff7ed', '#9c7a58'],
         svgStroke: '#7a5223', svgBase: '#3f2810', svgDeep: '#291a08',
+        metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
       };
     }
 
@@ -190,10 +199,11 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
       btnBg: '#1e293b', btnBgHover: '#334155', btnBorder: '#334155', btnText: '#cbd5e1', btnDisabledBg: 'rgba(30,41,59,0.6)',
       hover: '#1e293b', ...darkSem, ...darkTag,
       overlay: 'rgba(2,6,23,0.9)', dialog: '#0f172a', dialogBorder: '#334155',
-      stator: ['#334155', '#1e293b', '#0f172a'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
-      svgStroke: '#475569', svgBase: '#1e293b', svgDeep: '#0f172a',
-    };
-  });
+    stator: ['#334155', '#1e293b', '#0f172a'], shaft: ['#cbd5e1', '#f8fafc', '#64748b'],
+    svgStroke: '#475569', svgBase: '#1e293b', svgDeep: '#0f172a',
+    metal: ['#0f172a', '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#f8fafc'],
+  };
+});
 
   // 主题令牌 → CSS 变量（模板与 SVG 通过 var(--vfd-*) 消费，含 hover 等伪类样式）
   const themeVars = computed<Record<string, string>>(() => {
@@ -244,6 +254,14 @@ export function useVfdPanelTheme(options: UseVfdPanelThemeOptions) {
       '--vfd-svg-stroke': t.svgStroke,
       '--vfd-svg-base': t.svgBase,
       '--vfd-svg-deep': t.svgDeep,
+      '--vfd-metal-900': t.metal[0],
+      '--vfd-metal-800': t.metal[1],
+      '--vfd-metal-700': t.metal[2],
+      '--vfd-metal-600': t.metal[3],
+      '--vfd-metal-500': t.metal[4],
+      '--vfd-metal-400': t.metal[5],
+      '--vfd-metal-300': t.metal[6],
+      '--vfd-metal-100': t.metal[7],
       '--vfd-pv-grad': `linear-gradient(90deg, ${hexToRgba(t.accent, 0.55)}, ${t.accent})`,
     };
   });

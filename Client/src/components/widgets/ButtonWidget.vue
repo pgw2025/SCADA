@@ -16,14 +16,14 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
           isActiveMode ? 'active:translate-y-0.5 active:shadow-inner cursor-pointer' : '',
           boolValue ? 'shadow-inner' : 'shadow-md border-t-white border-l-white border-b-slate-900 border-r-slate-900'
         ]" :style="{
-          backgroundColor: boolValue ? activeColor : fillColor || '#cbd5e1',
-          borderColor: boolValue ? (strokeColor || '#0284c7') : '#94a3b8',
-          color: boolValue ? '#ffffff' : '#1e293b'
+          backgroundColor: boolValue ? activeColor : fillColor || 'var(--vfd-metal-300)',
+          borderColor: boolValue ? (strokeColor || '#0284c7') : 'var(--vfd-faint)',
+          color: boolValue ? '#ffffff' : 'var(--vfd-metal-800)'
         }">
         <!-- Led Indicator inside the button -->
         <div class="absolute top-1 right-2 w-1.5 h-1.5 rounded-full border border-slate-600/30" :style="{
-          backgroundColor: boolValue ? '#22c55e' : '#dc2626',
-          boxShadow: boolValue ? '0 0 6px #22c55e' : 'none'
+          backgroundColor: boolValue ? 'var(--vfd-ok)' : 'var(--vfd-err)',
+          boxShadow: boolValue ? '0 0 6px var(--vfd-ok)' : 'none'
         }" />
         <!-- 阶段6-2：运行模式无写权限时，绑定按钮显示只读锁标记 -->
         <span v-if="isLockedControl"

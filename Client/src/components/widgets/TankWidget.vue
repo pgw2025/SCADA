@@ -19,11 +19,11 @@ const wavePath = computed(() => {
 <svg width="100%" height="100%" viewBox="0 0 100 120"
       preserveAspectRatio="none">
       <!-- Leg supports -->
-      <line x1="20" y1="110" x2="15" y2="118" stroke="#475569" stroke-width="4" />
-      <line x1="80" y1="110" x2="85" y2="118" stroke="#475569" stroke-width="4" />
+      <line x1="20" y1="110" x2="15" y2="118" stroke="var(--vfd-metal-600)" stroke-width="4" />
+      <line x1="80" y1="110" x2="85" y2="118" stroke="var(--vfd-metal-600)" stroke-width="4" />
 
       <!-- Main Glass Body container -->
-      <rect x="8" y="8" width="84" height="104" rx="10" ry="10" fill="#1e293b" :stroke="strokeColor" stroke-width="3" />
+      <rect x="8" y="8" width="84" height="104" rx="10" ry="10" fill="var(--vfd-metal-800)" :stroke="strokeColor" stroke-width="3" />
 
       <!-- Wave flow surface -->
       <path v-if="numValue > 0" :d="normalizedPercent >= 99 ? 'M 10 10 L 90 10 L 90 110 L 10 110 Z' : wavePath"

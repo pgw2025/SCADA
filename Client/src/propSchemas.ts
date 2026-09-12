@@ -62,12 +62,26 @@ const TIME_FORMAT_OPTIONS: PropSchemaOption[] = [
   { value: 'YYYY-MM-DD', label: '仅显示日期 (YYYY-MM-DD)' },
 ];
 
+/** 外观风格主题 8 预设（与 VFD 面板/多变量看板同源，供所有组件统一换肤） */
+const PANEL_STYLE_OPTIONS: PropSchemaOption[] = [
+  { value: 'slate-dark', label: '经典石板深灰 (Slate Dark)' },
+  { value: 'navy-midnight', label: '深海商务暗蓝 (Navy Midnight)' },
+  { value: 'tech-blue', label: '科技蓝 (Tech Blue)' },
+  { value: 'eco-green', label: '生态翡翠绿 (Eco Green)' },
+  { value: 'carbon-orange', label: '机能碳纤橙 (Carbon Orange)' },
+  { value: 'pure-white', label: '极简亮白 (Pure White)' },
+  { value: 'titanium-light', label: '工业钛灰 (Titanium Light)' },
+  { value: 'translucent-frost', label: '悬浮通透胶囊 (Adaptive Frost)' },
+];
+
 /**
  * 通用基底：运行激活光效 / 空闲正常底色 + 外框标签（排除本无浮签的内部标签型组件）。
  * 与原 InspectorPanel「showLabel 排除列表 + 颜色块」语义一致。
  */
 const base = (type: string): PropSchemaItem[] => {
   const items: PropSchemaItem[] = [
+    sel('panelStyle', '外观风格主题', PANEL_STYLE_OPTIONS, 'slate-dark'),
+    color('panelAccentColor', '强调色（留默认跟随主题）', '#38bdf8'),
     color('activeColor', '运行激活光效', type === 'valve' || type === 'led' ? '#10b981' : '#3b82f6'),
     color('inactiveColor', '空闲正常底色', '#94a3b8'),
   ];

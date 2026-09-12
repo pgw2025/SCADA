@@ -75,8 +75,8 @@ const roundedBtnState = computed<StateStyleConfig>(() => {
 
         <!-- Status LED dot -->
         <div class="absolute top-1.5 right-2 w-2 h-2 rounded-full border border-black/20" :style="{
-          backgroundColor: boolValue ? '#22c55e' : '#64748b',
-          boxShadow: boolValue ? '0 0 8px #22c55e' : 'none'
+          backgroundColor: boolValue ? 'var(--vfd-ok)' : 'var(--vfd-faint)',
+          boxShadow: boolValue ? '0 0 8px var(--vfd-ok)' : 'none'
         }" />
 
         <!-- 只读锁标记 -->

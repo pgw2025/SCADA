@@ -4,6 +4,7 @@
 import { computed } from 'vue';
 import type { HmiWidgetProps } from './widgets/useWidgetBase';
 import { useWidgetBase } from './widgets/useWidgetBase';
+import { useVfdPanelTheme } from './widgets/useVfdPanelTheme';
 import { builtinRenderers } from '../builtinRenderers';
 import { getWidgetDef } from '../widgetRegistry';
 import SvgTemplateWidget from './widgets/SvgTemplateWidget.vue';
@@ -11,7 +12,13 @@ import SvgTemplateWidget from './widgets/SvgTemplateWidget.vue';
 const props = defineProps<HmiWidgetProps>();
 const base = useWidgetBase(props);
 // 通用浮签需用到的共享派生（与子组件共用同一真相源）
-const { numValue, boolValue, onText, offText, unit } = base;
+const { numValue, boolValue, onText, offText, unit, propOr } = base;
+
+// 外观风格主题：在统一包裹层注入 --vfd-* CSS 变量，供所有子组件（含设备图形）消费。
+// 每个组件实例按自身 panelStyle/panelAccentColor 解析主题，未配置则回退默认暗色工业风。
+const panelStyle = computed(() => propOr('panelStyle', 'slate-dark'));
+const panelAccentColor = computed(() => propOr('panelAccentColor', '#38bdf8'));
+const { themeVars: vfdThemeVars } = useVfdPanelTheme({ panelStyle, panelAccentColor });
 
 const renderComponent = computed(() => {
   const def = getWidgetDef(props.component.type);
@@ -21,7 +28,7 @@ const renderComponent = computed(() => {
 </script>
 
 <template>
-  <div class="relative w-full h-full">
+  <div class="relative w-full h-full" :style="vfdThemeVars">
     <component
       :is="renderComponent"
       v-if="renderComponent"

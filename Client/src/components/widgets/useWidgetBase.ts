@@ -65,10 +65,13 @@ export function useWidgetBase(props: HmiWidgetProps) {
       : ((defDefaults.value[key] as T) ?? hard);
   };
 
-  const activeColor = computed(() => propOr('activeColor', '#10b981'));
-  const inactiveColor = computed(() => propOr('inactiveColor', '#94a3b8'));
-  const strokeColor = computed(() => propOr('strokeColor', '#475569'));
-  const fillColor = computed(() => propOr('fillColor', '#cbd5e1'));
+  // 颜色默认值统一回退到 --vfd-* 主题令牌（由 HMIWidget 包裹层统一注入变量定义），
+  // 用户显式自定义 activeColor/inactiveColor/strokeColor/fillColor 时仍优先生效。
+  // 语义映射：active=运行绿(--vfd-ok) / inactive=离线灰(--vfd-faint) / stroke=描边灰(--vfd-svg-stroke) / fill=填充灰(--vfd-svg-base)
+  const activeColor = computed(() => propOr('activeColor', 'var(--vfd-ok)'));
+  const inactiveColor = computed(() => propOr('inactiveColor', 'var(--vfd-faint)'));
+  const strokeColor = computed(() => propOr('strokeColor', 'var(--vfd-svg-stroke)'));
+  const fillColor = computed(() => propOr('fillColor', 'var(--vfd-svg-base)'));
   const minValue = computed(() => Number(propOr('minValue', 0)));
   const maxValue = computed(() => Number(propOr('maxValue', 100)) || 100); // ||100 防 maxValue=0 除零
   const unit = computed(() => propOr('unit', ''));
@@ -120,7 +123,7 @@ export function useWidgetBase(props: HmiWidgetProps) {
     if (thresholdMin.value === null || thresholdMin.value === undefined) return false;
     return numValue.value <= thresholdMin.value;
   });
-  const alertColor = computed(() => isHighAlert.value ? '#ef4444' : isLowAlert.value ? '#f59e0b' : activeColor.value);
+  const alertColor = computed(() => isHighAlert.value ? 'var(--vfd-err)' : isLowAlert.value ? 'var(--vfd-warn)' : activeColor.value);
 
   // 通用外观尺寸（led 等需要组件自身宽高做圆形直径）
   const width = computed(() => props.component.width);

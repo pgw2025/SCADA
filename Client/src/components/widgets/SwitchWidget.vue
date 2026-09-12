@@ -12,7 +12,8 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
 <div
       class="w-full h-full flex flex-col items-center justify-center p-1 font-mono text-[9px] select-none">
       <div
-        class="w-full h-full bg-[#1e293b] border border-slate-700 rounded p-1.5 flex flex-col items-center justify-between shadow-md relative">
+        class="w-full h-full border rounded p-1.5 flex flex-col items-center justify-between shadow-md relative"
+        :style="{ backgroundColor: 'var(--vfd-metal-800)', borderColor: 'var(--vfd-metal-700)' }">
         <!-- 阶段6-2：运行模式无写权限时，绑定开关显示只读锁标记 -->
         <span v-if="isLockedControl"
           class="absolute top-1 right-1.5 text-[8px] text-amber-500 flex items-center gap-0.5 leading-none"
@@ -24,18 +25,20 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
           只读
         </span>
         <!-- Top State Label -->
-        <span class="text-slate-400 font-bold uppercase text-[8px] tracking-tight text-center truncate max-w-full">
+        <span class="font-bold uppercase text-[8px] tracking-tight text-center truncate max-w-full"
+          :style="{ color: 'var(--vfd-muted)' }">
           {{ boolValue ? onText : offText }}
         </span>
 
         <!-- Slot slider & Lever knob style-->
         <div
-          class="w-6 h-10 bg-slate-950 rounded-full border border-slate-800 relative flex items-center justify-center overflow-hidden shadow-inner cursor-pointer">
+          class="w-6 h-10 rounded-full border relative flex items-center justify-center overflow-hidden shadow-inner cursor-pointer"
+          :style="{ backgroundColor: 'var(--vfd-metal-900)', borderColor: 'var(--vfd-metal-800)' }">
           <div
-            class="w-5 h-5 rounded-full bg-slate-300 border border-slate-500 shadow-md transition-all duration-300 flex items-center justify-center"
+            class="w-5 h-5 rounded-full border shadow-md transition-all duration-300 flex items-center justify-center"
             :style="{
               transform: boolValue ? 'translateY(-10px)' : 'translateY(10px)',
-              backgroundColor: boolValue ? '#10b981' : '#ef4444',
+              backgroundColor: boolValue ? 'var(--vfd-ok)' : 'var(--vfd-err)',
               boxShadow: boolValue ? '0 2px 4px rgba(16,185,129,0.4)' : '0 2px 4px rgba(239,68,68,0.4)',
             }">
             <div class="w-1.5 h-1.5 rounded-full bg-white/60" />
@@ -43,7 +46,8 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
         </div>
 
         <!-- Bottom Label text -->
-        <span class="text-slate-500 text-[8px] font-bold text-center truncate max-w-full">
+        <span class="text-[8px] font-bold text-center truncate max-w-full"
+          :style="{ color: 'var(--vfd-faint)' }">
           {{ component.label }}
         </span>
       </div>

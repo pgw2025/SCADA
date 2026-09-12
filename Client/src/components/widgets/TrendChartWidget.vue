@@ -246,23 +246,25 @@ const trendValFmt = (v: number) => (typeof v === 'number' ? v.toFixed(1) : `${v}
 
 <template>
 <div
-      class="w-full h-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 font-mono text-slate-400 flex flex-col">
-      <div class="flex items-center justify-between mb-1 border-b border-slate-800 pb-1 gap-2">
-        <span class="font-bold text-slate-300 truncate text-[9px]">{{ component.label || component.name || '实时趋势' }}</span>
+      class="w-full h-full border rounded-lg p-1.5 font-mono flex flex-col"
+      :style="{ backgroundColor: 'var(--vfd-metal-900)', borderColor: 'var(--vfd-metal-700)', color: 'var(--vfd-muted)' }">
+      <div class="flex items-center justify-between mb-1 border-b pb-1 gap-2"
+        :style="{ borderColor: 'var(--vfd-metal-700)' }">
+        <span class="font-bold truncate text-[9px]" :style="{ color: 'var(--vfd-body)' }">{{ component.label || component.name || '实时趋势' }}</span>
         <div v-if="trendShowLegend && hasTrendData" class="flex flex-col items-end gap-0.5 min-w-0"
           :style="{ fontSize: trendLegendFontSize + 'px' }">
           <div v-for="s in trendChart.series" :key="s.id" class="flex items-center gap-1 leading-none">
             <span class="w-2 h-0.5 rounded-full" :style="{ background: s.color }" />
-            <span class="truncate max-w-[90px] text-slate-300">{{ s.label }}</span>
-            <span class="font-bold text-slate-100">{{ trendValFmt(s.current) }}<template v-if="s.unit"> {{ s.unit }}</template></span>
+            <span class="truncate max-w-[90px]" :style="{ color: 'var(--vfd-body)' }">{{ s.label }}</span>
+            <span class="font-bold" :style="{ color: 'var(--vfd-title)' }">{{ trendValFmt(s.current) }}<template v-if="s.unit"> {{ s.unit }}</template></span>
           </div>
         </div>
       </div>
       <!-- 占位：未绑定数据源或采样点不足时不绘制伪造曲线 -->
-      <div v-if="!trendReady" class="flex-1 flex flex-col items-center justify-center gap-1 text-slate-500">
-        <span class="w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse" />
+      <div v-if="!trendReady" class="flex-1 flex flex-col items-center justify-center gap-1" :style="{ color: 'var(--vfd-faint)' }">
+        <span class="w-1.5 h-1.5 rounded-full animate-pulse" :style="{ backgroundColor: 'var(--vfd-faint)' }" />
         <span class="text-[9px]">{{ hasTrendData ? '等待采样…' : '暂无数据' }}</span>
-        <span class="text-[8px] text-slate-600">{{ hasTrendData ? '采集 ≥2 点后自动绘制' : '请在编辑器中绑定变量/序列' }}</span>
+        <span class="text-[8px]" :style="{ color: 'var(--vfd-faint)' }">{{ hasTrendData ? '采集 ≥2 点后自动绘制' : '请在编辑器中绑定变量/序列' }}</span>
       </div>
       <div v-else class="flex-1 relative">
         <svg width="100%" height="100%">
@@ -270,16 +272,16 @@ const trendValFmt = (v: number) => (typeof v === 'number' ? v.toFixed(1) : `${v}
           <template v-if="trendChart.showGrid || trendChart.showAxisLabels">
             <g v-for="(gl, i) in trendChart.grid" :key="'g' + i">
               <line v-if="trendChart.showGrid" :x1="trendChart.left" :y1="gl.y" :x2="trendChart.left + trendChart.innerW" :y2="gl.y"
-                stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
+                stroke="var(--vfd-metal-700)" stroke-width="0.5" stroke-dasharray="3" />
               <text v-if="trendChart.showAxisLabels && gl.label" :x="trendChart.left - 3" :y="gl.y + 3" text-anchor="end"
-                :font-size="trendChart.axisLabelFontSize" fill="#64748b">{{ gl.label }}</text>
+                :font-size="trendChart.axisLabelFontSize" fill="var(--vfd-metal-500)">{{ gl.label }}</text>
             </g>
             <!-- X 轴相对时间刻度 -->
             <g v-for="(xt, i) in trendChart.xTicks" :key="'x' + i">
               <line v-if="trendChart.showGrid" :x1="xt.x" :y1="trendChart.top" :x2="xt.x" :y2="trendChart.top + trendChart.innerH"
-                stroke="#334155" stroke-width="0.5" stroke-dasharray="3" />
+                stroke="var(--vfd-metal-700)" stroke-width="0.5" stroke-dasharray="3" />
               <text :x="xt.x" :y="trendChart.top + trendChart.innerH + 11" text-anchor="middle"
-                :font-size="trendChart.axisLabelFontSize" fill="#64748b">{{ xt.label }}</text>
+                :font-size="trendChart.axisLabelFontSize" fill="var(--vfd-metal-500)">{{ xt.label }}</text>
             </g>
           </template>
           <!-- 序列线条 -->

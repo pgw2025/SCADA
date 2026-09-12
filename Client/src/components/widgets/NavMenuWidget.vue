@@ -2,6 +2,7 @@
 import { defineProps, computed } from 'vue';
 import { useWidgetBase } from './useWidgetBase';
 import type { HmiWidgetProps } from './useWidgetBase';
+import { useVfdPanelTheme } from './useVfdPanelTheme';
 import { getWidgetDef, getMenuIcon } from '../../widgetRegistry';
 import { isSamePageRef } from '../../utils/pageId';
 import type { HmiMenuItem } from '../../types';
@@ -28,106 +29,21 @@ const menuFontSize = computed(() => Number(propOr('menuFontSize', 14)));
 const isCurrentMenuItem = (item: HmiMenuItem) =>
   !!item.targetPageId && isSamePageRef(item.targetPageId, props.currentPageId);
 
-// 5 套风格主题计算：桌面顶部导航条 / 移动端底部标签栏
+// 复用共享主题体系（与 VFD 面板/多变量看板同源），收敛掉旧的 navMenuTheme 平行实现
+const { panelTheme } = useVfdPanelTheme({ panelStyle: menuStyle, panelAccentColor: menuAccentColor });
+
+// 供模板消费的导航条主题：字段结构保持不变（background/border/accent/itemText/activeText/isLight/backdropFilter）
 const navMenuTheme = computed(() => {
-  const style = menuStyle.value;
-  const customAccent = menuAccentColor.value;
-
-  if (style === 'pure-white') {
-    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#2563eb';
-    return {
-      background: '#ffffff',
-      border: '1px solid #e2e8f0',
-      backdropFilter: 'none',
-      accent,
-      accentSoft: 'rgba(37,99,235,0.08)',
-      itemText: '#64748b',
-      activeText: accent,
-      isLight: true,
-    };
-  }
-
-  if (style === 'titanium-light') {
-    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#0284c7';
-    return {
-      background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-      border: '1px solid #cbd5e1',
-      backdropFilter: 'none',
-      accent,
-      accentSoft: 'rgba(2,132,199,0.1)',
-      itemText: '#475569',
-      activeText: accent,
-      isLight: true,
-    };
-  }
-
-  if (style === 'slate-dark') {
-    const accent = customAccent || '#38bdf8';
-    return {
-      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-      border: '1px solid #334155',
-      backdropFilter: 'none',
-      accent,
-      accentSoft: 'rgba(56,189,248,0.15)',
-      itemText: '#94a3b8',
-      activeText: accent,
-      isLight: false,
-    };
-  }
-
-  if (style === 'translucent-frost') {
-    const accent = customAccent || '#38bdf8';
-    return {
-      background: 'rgba(15, 23, 42, 0.82)',
-      border: '1px solid rgba(255,255,255,0.15)',
-      backdropFilter: 'blur(8px)',
-      accent,
-      accentSoft: 'rgba(56,189,248,0.18)',
-      itemText: '#cbd5e1',
-      activeText: accent,
-      isLight: false,
-    };
-  }
-
-  if (style === 'eco-green') {
-    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#34d399';
-    return {
-      background: 'linear-gradient(180deg, #073a26 0%, #052c1c 55%, #032015 100%)',
-      border: '1px solid #064e3b',
-      backdropFilter: 'none',
-      accent,
-      accentSoft: 'rgba(52,211,153,0.16)',
-      itemText: '#7fd9b8',
-      activeText: accent,
-      isLight: false,
-    };
-  }
-
-  if (style === 'carbon-orange') {
-    const accent = customAccent && customAccent !== '#38bdf8' ? customAccent : '#f59e0b';
-    return {
-      background: 'linear-gradient(180deg, #2a1b0c 0%, #201407 50%, #170d04 100%)',
-      border: '1px solid #78350f',
-      backdropFilter: 'none',
-      accent,
-      accentSoft: 'rgba(245,158,11,0.14)',
-      itemText: '#cfaa85',
-      activeText: accent,
-      isLight: false,
-    };
-  }
-
-  // 默认：深海商务暗蓝 (Navy Midnight)
-  const accent = customAccent || '#38bdf8';
+  const t = panelTheme.value;
   return {
-    background: 'linear-gradient(180deg, #0b172a 0%, #081a36 60%, #061426 100%)',
-    border: '1px solid #1e293b',
-    backdropFilter: 'none',
-    accent,
-    accentSoft: 'rgba(56,189,248,0.16)',
-    itemText: '#9fb6cc',
-    activeText: accent,
-    isLight: false,
+    background: t.page,
+    border: `1px solid ${t.border}`,
+    backdropFilter: t.blur && t.blur !== 'none' ? t.blur : 'none',
+    accent: t.accent,
+    accentSoft: t.btnBg,
+    itemText: t.muted,
+    activeText: t.accent,
+    isLight: t.isLight,
   };
 });
 </script>

@@ -2,6 +2,7 @@
 import { defineProps, computed } from 'vue';
 import { useWidgetBase } from './useWidgetBase';
 import type { HmiWidgetProps } from './useWidgetBase';
+import { useVfdPanelTheme } from './useVfdPanelTheme';
 
 const props = defineProps<HmiWidgetProps>();
 const base = useWidgetBase(props);
@@ -21,112 +22,22 @@ const headerShowStatus = computed(() => propOr('headerShowStatus', true));
 const headerStatusText = computed(() => propOr('headerStatusText', '系统运行正常'));
 const headerGlowColor = computed(() => propOr('headerGlowColor', '#38bdf8'));
 
-// 5 套风格主题（2 浅色 + 2 深色 + 1 通透悬浮）：极简亮白 / 工业钛灰 / 经典石板深灰 / 深海商务暗蓝 / 悬浮通透胶囊
+// 复用共享主题体系（与 VFD 面板/多变量看板同源），收敛掉旧的 headerTheme 平行实现
+const { panelTheme } = useVfdPanelTheme({ panelStyle: headerStyle, panelAccentColor: headerGlowColor });
+
+// 供模板消费的标题头主题：字段结构保持不变
 const headerTheme = computed(() => {
-  const glow = headerGlowColor.value;
-  const style = headerStyle.value;
-
-  // 1. 浅色系：极简亮白 (Pure Crisp White)
-  if (style === 'pure-white') {
-    return {
-      background: '#ffffff',
-      border: '1px solid #e2e8f0',
-      borderRadius: '2px',
-      backdropFilter: 'none',
-      accent: glow && glow !== '#38bdf8' ? glow : '#2563eb',
-      accentSoft: 'rgba(37,99,235,0.08)',
-      text: '#0f172a',
-      subText: '#64748b',
-      isLight: true,
-    };
-  }
-
-  // 2. 浅色系：工业钛灰浅色 (Titanium Light Grey)
-  if (style === 'titanium-light') {
-    return {
-      background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-      border: '1px solid #cbd5e1',
-      borderRadius: '2px',
-      backdropFilter: 'none',
-      accent: glow && glow !== '#38bdf8' ? glow : '#0284c7',
-      accentSoft: 'rgba(2,132,199,0.1)',
-      text: '#1e293b',
-      subText: '#475569',
-      isLight: true,
-    };
-  }
-
-  // 3. 深色系：经典石板深灰 (Classic Slate Dark)
-  if (style === 'slate-dark') {
-    return {
-      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-      border: '1px solid #334155',
-      borderRadius: '2px',
-      backdropFilter: 'none',
-      accent: glow || '#38bdf8',
-      accentSoft: 'rgba(56,189,248,0.15)',
-      text: '#f8fafc',
-      subText: '#94a3b8',
-      isLight: false,
-    };
-  }
-
-  // 4. 通透系：悬浮通透胶囊 (Adaptive Frost Capsule)
-  if (style === 'translucent-frost') {
-    return {
-      background: 'rgba(15, 23, 42, 0.82)',
-      border: '1px solid rgba(255,255,255,0.15)',
-      borderRadius: '8px',
-      backdropFilter: 'blur(8px)',
-      accent: glow || '#38bdf8',
-      accentSoft: 'rgba(56,189,248,0.18)',
-      text: '#ffffff',
-      subText: '#cbd5e1',
-      isLight: false,
-    };
-  }
-
-  // 兼容旧预设：生态绿 (Eco Green)
-  if (style === 'eco-green') {
-    return {
-      background: 'linear-gradient(180deg, #073a26 0%, #052c1c 55%, #032015 100%)',
-      border: '1px solid #064e3b',
-      borderRadius: '2px',
-      backdropFilter: 'none',
-      accent: glow || '#34d399',
-      accentSoft: 'rgba(52,211,153,0.16)',
-      text: '#eafff5',
-      subText: '#7fd9b8',
-      isLight: false,
-    };
-  }
-
-  // 兼容旧预设：机能碳纤橙 (Carbon Orange)
-  if (style === 'carbon-orange') {
-    return {
-      background: 'linear-gradient(180deg, #2a1b0c 0%, #201407 50%, #170d04 100%)',
-      border: '1px solid #78350f',
-      borderRadius: '2px',
-      backdropFilter: 'none',
-      accent: glow || '#f59e0b',
-      accentSoft: 'rgba(245,158,11,0.14)',
-      text: '#fff3e0',
-      subText: '#cfaa85',
-      isLight: false,
-    };
-  }
-
-  // 默认（第4种）：深海商务暗蓝 (Navy Midnight / tech-blue)
+  const t = panelTheme.value;
   return {
-    background: 'linear-gradient(180deg, #0b172a 0%, #081a36 60%, #061426 100%)',
-    border: '1px solid #1e293b',
-    borderRadius: '2px',
-    backdropFilter: 'none',
-    accent: glow || '#38bdf8',
-    accentSoft: 'rgba(56,189,248,0.16)',
-    text: '#ffffff',
-    subText: '#7dd3fc',
-    isLight: false,
+    background: t.page,
+    border: `1px solid ${t.border}`,
+    borderRadius: headerStyle.value === 'translucent-frost' ? '8px' : '2px',
+    backdropFilter: t.blur && t.blur !== 'none' ? t.blur : 'none',
+    accent: t.accent,
+    accentSoft: t.btnBg,
+    text: t.title,
+    subText: t.muted,
+    isLight: t.isLight,
   };
 });
 </script>

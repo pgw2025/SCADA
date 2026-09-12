@@ -10,19 +10,20 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
 
 <template>
 <div
-      class="w-full h-full bg-slate-950 border-2 rounded-lg flex flex-col justify-center items-center px-2 py-1 shadow-inner relative overflow-hidden"
-      :style="{ borderColor: isHighAlert ? '#ef4444' : '#1e293b' }">
-      <div class="absolute top-1 left-2 text-[8px] text-slate-400 uppercase tracking-widest font-mono">
+      class="w-full h-full border-2 rounded-lg flex flex-col justify-center items-center px-2 py-1 shadow-inner relative overflow-hidden"
+      :style="{ backgroundColor: 'var(--vfd-metal-900)', borderColor: isHighAlert ? 'var(--vfd-err)' : 'var(--vfd-metal-700)' }">
+      <div class="absolute top-1 left-2 text-[8px] uppercase tracking-widest font-mono"
+        :style="{ color: 'var(--vfd-muted)' }">
         {{ component.label || '数字监测' }}
       </div>
       <div class="text-xl md:text-2xl font-black mt-2 font-mono tracking-widest"
-        :style="{ color: isHighAlert ? '#ef4444' : '#34d399' }">
+        :style="{ color: isHighAlert ? 'var(--vfd-err)' : 'var(--vfd-ok)' }">
         {{ typeof value === 'boolean' ? (boolValue ? onText : offText) : `${numValue.toFixed(2)}` }}
-        <span v-if="typeof value !== 'boolean' && unit" class="text-xs text-slate-500 font-normal ml-0.5">{{ unit
+        <span v-if="typeof value !== 'boolean' && unit" class="text-xs font-normal ml-0.5" :style="{ color: 'var(--vfd-faint)' }">{{ unit
         }}</span>
       </div>
       <div class="absolute bottom-1 right-2 w-1.5 h-1.5 rounded-full" :style="{
-        backgroundColor: boolValue ? '#10b981' : '#ef4444',
+        backgroundColor: boolValue ? 'var(--vfd-ok)' : 'var(--vfd-err)',
         animation: boolValue ? 'pulse 1.2s infinite' : 'none',
       }" />
     </div>

@@ -104,51 +104,51 @@ const dialMinorTicks = computed(() => {
 <svg width="100%" height="100%" viewBox="0 0 100 100"
       preserveAspectRatio="xMidYMid meet" class="select-none">
       <!-- Bezel & Face -->
-      <circle cx="50" cy="50" r="47" fill="#1e293b" stroke="#334155" stroke-width="2.5" />
-      <circle cx="50" cy="50" r="43" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+      <circle cx="50" cy="50" r="47" fill="var(--vfd-metal-800)" stroke="var(--vfd-metal-700)" stroke-width="2.5" />
+      <circle cx="50" cy="50" r="43" fill="var(--vfd-metal-900)" stroke="var(--vfd-metal-800)" stroke-width="1" />
 
       <!-- Background Track Arc -->
-      <path v-if="dialTrackArc" :d="dialTrackArc" stroke="#334155" stroke-width="3" fill="none"
+      <path v-if="dialTrackArc" :d="dialTrackArc" stroke="var(--vfd-metal-700)" stroke-width="3" fill="none"
         stroke-linecap="round" />
 
       <!-- Low Warning Zone Yellow Arc -->
-      <path v-if="dialYellowArc" :d="dialYellowArc" stroke="#f59e0b" stroke-width="3" fill="none"
+      <path v-if="dialYellowArc" :d="dialYellowArc" stroke="var(--vfd-warn)" stroke-width="3" fill="none"
         stroke-linecap="round" />
 
       <!-- Normal/Safe Zone Green Arc -->
-      <path v-if="dialGreenArc" :d="dialGreenArc" stroke="#10b981" stroke-width="3" fill="none"
+      <path v-if="dialGreenArc" :d="dialGreenArc" stroke="var(--vfd-ok)" stroke-width="3" fill="none"
         stroke-linecap="round" />
 
       <!-- High Warning/Danger Zone Red Arc -->
-      <path v-if="dialRedArc" :d="dialRedArc" stroke="#ef4444" stroke-width="3" fill="none" stroke-linecap="round" />
+      <path v-if="dialRedArc" :d="dialRedArc" stroke="var(--vfd-err)" stroke-width="3" fill="none" stroke-linecap="round" />
 
       <!-- Minor Ticks -->
-      <g stroke="#475569" stroke-width="1">
+      <g stroke="var(--vfd-metal-600)" stroke-width="1">
         <line v-for="(t, i) in dialMinorTicks" :key="'min-' + i" :x1="t.x1" :y1="t.y1" :x2="t.x2" :y2="t.y2" />
       </g>
 
       <!-- Major Ticks -->
-      <g stroke="#94a3b8" stroke-width="1.5">
+      <g stroke="var(--vfd-metal-400)" stroke-width="1.5">
         <line v-for="(t, i) in dialMajorTicks" :key="'maj-' + i" :x1="t.x1" :y1="t.y1" :x2="t.x2" :y2="t.y2" />
       </g>
 
       <!-- Scale Min/Max labels -->
-      <text x="21" y="74" text-anchor="middle" fill="#64748b" font-size="5.5" font-family="monospace">
+      <text x="21" y="74" text-anchor="middle" fill="var(--vfd-metal-500)" font-size="5.5" font-family="monospace">
         {{ minValue }}
       </text>
-      <text x="79" y="74" text-anchor="middle" fill="#64748b" font-size="5.5" font-family="monospace">
+      <text x="79" y="74" text-anchor="middle" fill="var(--vfd-metal-500)" font-size="5.5" font-family="monospace">
         {{ maxValue }}
       </text>
 
       <!-- Center Label -->
-      <text x="50" y="65" text-anchor="middle" fill="#94a3b8" font-size="7" font-weight="500">
+      <text x="50" y="65" text-anchor="middle" fill="var(--vfd-metal-400)" font-size="7" font-weight="500">
         {{ component.label }}
       </text>
 
       <!-- Value & Unit Text -->
       <text x="50" y="79" text-anchor="middle" :fill="alertColor" font-size="9.5" font-weight="bold"
         font-family="monospace">
-        {{ numValue.toFixed(1) }}<tspan font-size="6.5" fill="#64748b" dx="1">{{ unit || '' }}</tspan>
+        {{ numValue.toFixed(1) }}<tspan font-size="6.5" fill="var(--vfd-metal-500)" dx="1">{{ unit || '' }}</tspan>
       </text>
 
       <!-- Needle -->
@@ -156,10 +156,10 @@ const dialMinorTicks = computed(() => {
         <!-- Shadow -->
         <path d="M -1.5 0 L 0 -34 L 1.5 0 Z" fill="#000000" opacity="0.3" transform="translate(0.5, 0.5)" />
         <!-- Needle Pointer -->
-        <path d="M -2 0 L 0 -34 L 2 0 L 1.2 5 L -1.2 5 Z" :fill="alertColor" stroke="#0f172a" stroke-width="0.4" />
+        <path d="M -2 0 L 0 -34 L 2 0 L 1.2 5 L -1.2 5 Z" :fill="alertColor" stroke="var(--vfd-metal-900)" stroke-width="0.4" />
         <!-- Center Pivot Cap -->
-        <circle cx="0" cy="0" r="4" fill="#334155" stroke="#64748b" stroke-width="1" />
-        <circle cx="0" cy="0" r="1.8" fill="#f8fafc" />
+        <circle cx="0" cy="0" r="4" fill="var(--vfd-metal-700)" stroke="var(--vfd-metal-500)" stroke-width="1" />
+        <circle cx="0" cy="0" r="1.8" fill="var(--vfd-metal-100)" />
       </g>
     </svg>
 </template>
