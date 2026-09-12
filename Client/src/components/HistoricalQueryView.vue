@@ -334,10 +334,6 @@ const loadVariableOptions = async () => {
       });
     });
     dynamicVariables.value = opts;
-    // 默认选中第一个可用变量
-    if (opts.length > 0 && selectedVars.value.length === 0) {
-      handleSelectVariable(opts[0]);
-    }
   } catch (err: any) {
     addLog('历史查询', `加载设备变量列表失败: ${err.message}（已回退演示变量）`, 'warning');
     dynamicVariables.value = [];
@@ -346,7 +342,8 @@ const loadVariableOptions = async () => {
 
 onMounted(() => {
   if (isSimulation.value) {
-    handleSelectVariable(demoVariables[0]);
+    // 模拟模式：仅加载演示变量，不默认选中、不自动查询
+    return;
   } else {
     loadVariableOptions();
   }
