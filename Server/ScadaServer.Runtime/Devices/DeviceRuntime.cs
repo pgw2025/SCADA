@@ -56,8 +56,21 @@ public class DeviceRuntime : IRuntimeDevice
     /// <summary>设备所属连接会话（连接级单例，多设备共享同一条物理连接）。由 RuntimeManager 挂载时赋值、卸载时清空。</summary>
     public ConnectionSession? Session { get; set; }
 
-    // 变量运行时集合（key = DataPointMapping.Id）
-    public Dictionary<int, VariableRuntime> Variables { get; } = new();
+    // 变量运行时集合（key = DataPointMapping.Id），采用"整表替换的快照引用"：
+    // 采集 Worker 每次经 getter 取当前引用进行轮询遍历；变量级热更新（增删设备变量）构造新字典后
+    // 一次性替换引用，使 Worker 下一轮读到最新变量集，且遍历过程中不受写入影响（避免"集合已修改"竞态），
+    // 无需重建 Worker/会话/驱动。
+    private volatile Dictionary<int, VariableRuntime> _variables = new();
+    public Dictionary<int, VariableRuntime> Variables => _variables;
+
+    /// <summary>
+    /// 整表替换变量运行时集合（Retain 已复用既有 <see cref="VariableRuntime"/> 实例时，
+    /// 其采集节奏/内存值得以延续）。仅供变量级热更新（增删设备变量）调用，不触碰 Worker/会话/驱动。
+    /// </summary>
+    public void ReplaceVariables(IReadOnlyDictionary<int, VariableRuntime> newVariables)
+    {
+        _variables = new Dictionary<int, VariableRuntime>(newVariables);
+    }
 
     // 通信状态
     private DeviceConnectionState _connectionState;

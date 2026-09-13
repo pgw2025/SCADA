@@ -131,8 +131,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             // 并发竞态兜底：预检通过但落库时撞 (DeviceId, DataPointId) 唯一索引
             throw new BusinessException($"设备 '{device.Name}' 上已存在变量模板 '{mv.Name}' 的实例");
         }
-        // 设备变量集合变化需热加载设备运行时（重建 Worker 与变量集合）。
-        await _runtimeDeviceManager.ReloadDeviceAsync(dto.DeviceId);
+        // 设备变量集合变化需热更新设备运行时（新增变量不重建 Worker/会话/连接）。
+        await _runtimeDeviceManager.ReloadDeviceVariablesAsync(dto.DeviceId);
         return MapToDto(entity, mv);
     }
 
@@ -151,8 +151,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             return true;
         });
 
-        // 事务提交成功后，设备变量集合变化需热加载设备运行时。
-        await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
+        // 事务提交成功后，设备变量集合变化需热更新设备运行时（删除变量不重建 Worker/会话/连接）。
+        await _runtimeDeviceManager.ReloadDeviceVariablesAsync(entity.DeviceId);
     }
 
     public async Task<DataPointMappingDto> UpdateAsync(DataPointMappingDto dto)
@@ -173,6 +173,10 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             }
             await ValidateSubscriptionCapabilityAsync(device);
         }
+
+        // 记录变更前基线：用于判断是否为"结构性变更"（地址/连接），决定走全量重建或变量级热更。
+        var oldAddressConfigJson = entity.AddressConfigJson;
+        var oldConnectionId = entity.ConnectionId;
 
         // 仅更新设备实例级配置：地址（JSON 权威）+ 展示串、位偏移、轮询间隔、启用状态、缩放/死区覆盖、更新方式。
         if (!string.IsNullOrWhiteSpace(dto.AddressConfigJson))
@@ -209,8 +213,18 @@ public class DataPointMappingAppService : IDataPointMappingAppService
 
         await _repository.UpdateAsync(entity);
 
-        // 采集配置（地址/轮询/启用等）变化需热加载设备运行时。
-        await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
+        // 结构性变更（连接或地址配置变化）走全量重载；否则（仅覆盖类字段变化）走变量级热更，
+        // 避免编辑变量导致 Worker 重建 / 末位会话销毁与重连。
+        var structuralChanged = !string.Equals(oldAddressConfigJson, entity.AddressConfigJson, StringComparison.Ordinal)
+            || oldConnectionId != entity.ConnectionId;
+        if (structuralChanged)
+        {
+            await _runtimeDeviceManager.ReloadDeviceAsync(entity.DeviceId);
+        }
+        else
+        {
+            await _runtimeDeviceManager.ReloadDeviceVariablesAsync(entity.DeviceId);
+        }
 
         var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
         return MapToDto(entity, mv);

@@ -314,6 +314,112 @@ namespace ScadaServer.Runtime
             }
         }
 
+        /// <summary>设备变量增删场景的变量级热更新。</summary>
+        public async Task ReloadDeviceVariablesAsync(int deviceId)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                // 同 ReloadDeviceAsync 容错语义：失败仅记日志、不冒泡，避免反向阻断已落库的业务写操作。
+                try
+                {
+                    if (!DeviceRuntimes.TryGetValue(deviceId, out var runtime))
+                    {
+                        // 设备不在运行时（未运行或占位待重连）：无 Worker 可做变量热更，走完整注册保证最终一致。
+                        _logger.LogInformation("设备 {DeviceId} 不在运行时，变量热更新退化为完整注册。", deviceId);
+                        await RegisterDeviceAsync(deviceId);
+                        return;
+                    }
+
+                    using (var scope = _scopeFactory.CreateScope())
+                    {
+                        var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
+                        var device = await db.Devices
+                            .AsNoTracking()
+                            .Include(d => d.DataPointMappings).ThenInclude(dv => dv.DataPoint)
+                            .FirstOrDefaultAsync(d => d.Id == deviceId);
+                        if (device == null)
+                        {
+                            _logger.LogWarning("设备 {DeviceId} 变量热更新失败：设备不存在。", deviceId);
+                            return;
+                        }
+
+                        var now = DateTime.UtcNow;
+                        var newVariables = new Dictionary<int, VariableRuntime>();
+                        foreach (var dv in device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
+                        {
+                            if (dv.DataPoint == null)
+                            {
+                                continue;
+                            }
+                            // 保留变量：配置与数据库一致时沿用既有运行时实例（维持采集节奏/内存值）；
+                            // 配置已变（编辑变量）则重建实例使新轮询/地址/缩放等立即生效；新增变量亦走重建。
+                            if (runtime.Variables.TryGetValue(dv.Id, out var existing)
+                                && VariableConfigSame(existing.Instance, dv))
+                            {
+                                newVariables[dv.Id] = existing;
+                            }
+                            else
+                            {
+                                newVariables[dv.Id] = new VariableRuntime
+                                {
+                                    DeviceId = device.Id,
+                                    Definition = dv.DataPoint,
+                                    Instance = dv,
+                                    NextPollTime = now // 新增/被编辑变量首轮立即采集
+                                };
+                            }
+                        }
+
+                        runtime.ReplaceVariables(newVariables);
+
+                        // 触发订阅差量同步：新增变量按需订阅、删除变量退订（会话内 100ms 去抖合并）。
+                        runtime.Session?.ScheduleSync();
+
+                        _deviceRegistry.UpdateDevice(device,
+                            (device.DataPointMappings ?? Enumerable.Empty<DataPointMapping>())
+                                .Select(dv => dv.DataPoint)
+                                .Where(mv => mv != null)
+                                .Cast<DataPoint>()
+                                .ToList());
+
+                        _logger.LogInformation(
+                            "设备 {Key} 变量热更新完成，当前 {VarCount} 个变量（Worker/会话/连接保持不变）。",
+                            device.Key, newVariables.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "设备 {DeviceId} 变量热更新失败。", deviceId);
+                }
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.ReloadDeviceVariablesAsync 设备 {DeviceId} 变量热更新耗时 {ElapsedMs} ms",
+                    deviceId, sw.ElapsedMilliseconds);
+            }
+        }
+
+        /// <summary>
+        /// 判断两台设备变量（<see cref="DataPointMapping"/>）的采集相关配置是否一致。
+        /// 一致时热更新可复用既有 <see cref="VariableRuntime"/>（延续采集节奏/内存值）；
+        /// 任一采集字段变化则需重建实例，使编辑后的配置立即生效。
+        /// </summary>
+        private static bool VariableConfigSame(DataPointMapping a, DataPointMapping b)
+        {
+            return a.UpdateMode == b.UpdateMode
+                && a.PollingIntervalMs == b.PollingIntervalMs
+                && a.IsEnabled == b.IsEnabled
+                && a.BitOffset == b.BitOffset
+                && a.ConnectionId == b.ConnectionId
+                && a.DeadBandOverride == b.DeadBandOverride
+                && string.Equals(a.AddressConfigJson, b.AddressConfigJson, StringComparison.Ordinal)
+                && string.Equals(a.Address, b.Address, StringComparison.Ordinal)
+                && string.Equals(a.ScaleExpressionOverride, b.ScaleExpressionOverride, StringComparison.Ordinal)
+                && string.Equals(a.AccessModeOverride, b.AccessModeOverride, StringComparison.Ordinal)
+                && string.Equals(a.RawDataType, b.RawDataType, StringComparison.Ordinal);
+        }
+
         /// <summary>
         /// 连接配置热更新归口（DeviceConnectionAppService.UpdateAsync 接线）。
         /// <para>

@@ -29,6 +29,15 @@ namespace ScadaServer.Application.Interfaces
         Task ReloadDeviceAsync(int deviceId);
 
         /// <summary>
+        /// 变量级热更新（设备变量新增/删除场景）：在不重建 Worker/会话/连接的前提下，
+        /// 仅替换该设备运行时内的变量集合，使采集 Worker 下一轮即消费最新变量集，
+        /// 从而避免末位设备离场销毁会话/驱动导致的断采与重连（单点设备场景收益显著）。
+        /// 设备当前不在运行时（未运行或占位待重连）时退化为完整注册，保证最终一致。
+        /// 失败仅记日志、不冒泡（与 <see cref="ReloadDeviceAsync"/> 同容错语义）。
+        /// </summary>
+        Task ReloadDeviceVariablesAsync(int deviceId);
+
+        /// <summary>
         /// 连接配置热更新归口（DeviceConnectionAppService.UpdateAsync 接线）：
         /// 重新加载连接配置，按 IsEnabled 与会话现状执行会话重建/销毁/创建。
         /// 连接配置表变更即时生效，无需重启服务（区别于主数据库连接串，后者仍需重启）。
