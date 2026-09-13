@@ -72,7 +72,7 @@ const copyVarDetail = (v: any) => {
 量程范围: ${v.min} ~ ${v.max}
 读写权限: ${v.isReadOnly ? '只读 (Read)' : '可读写 (Read/Write)'}
 通讯质量: ${qualityLabel(v.quality) || '正常 (Good)'}
-更新时间: ${v.updatedAt}`;
+更新时间: ${fmtTime(v.updatedAt)}`;
   navigator.clipboard?.writeText?.(text);
   addLog('实时监控', `已复制点位 [${v.key}] 的完整参数`, 'normal');
 };
@@ -643,7 +643,7 @@ onUnmounted(() => {
                   <td class="px-4 py-3.5 text-slate-500 dark:text-slate-400 text-[11px] font-mono leading-none">
                     <span class="flex items-center gap-1.5 matches">
                       <Clock class="w-3.5 h-3.5 text-slate-400" />
-                      {{ v.updatedAt }}
+                      {{ fmtTime(v.updatedAt) }}
                     </span>
                   </td>
 
@@ -1085,7 +1085,7 @@ onUnmounted(() => {
             <Clock class="w-3.5 h-3.5" />
             最近采集时间
           </span>
-          <span class="text-slate-600 dark:text-slate-300 font-bold">{{ selectedVarDetail.updatedAt || '--' }}</span>
+          <span class="text-slate-600 dark:text-slate-300 font-bold">{{ selectedVarDetail.updatedAt ? fmtTime(selectedVarDetail.updatedAt) : '--' }}</span>
         </div>
       </div>
 

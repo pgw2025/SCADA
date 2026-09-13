@@ -154,9 +154,11 @@ namespace ScadaServer.Runtime.Devices
                     {
                         batch = await driver.ReadBatchAsync(due);
                     }
-                    catch
+                    catch (Exception ex)
                     {
                         batch = null;
+                        _logger.LogError(ex, "ReadBatchAsync {VariableCount} failed.", due.Count);
+
                     }
 
                     foreach (var vr in due)
