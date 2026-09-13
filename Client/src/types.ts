@@ -457,6 +457,10 @@ export interface DataPointMapping {
   rawDataType?: string | null;
   /** 回显：模板定义的访问模式（只出不进） */
   templateAccessMode?: AccessMode;
+  /** 回显：模板定义的换算表达式（只出不进，供"继承模板"时浅色展示） */
+  templateScaleExpression?: string | null;
+  /** 回显：模板定义的死区（只出不进，供"继承模板"时浅色展示） */
+  templateDeadBand?: number | null;
   /** 回显：有效访问模式 = 实例覆盖 ?? 模板（只出不进，==='Read' 即只读，用于可写门控） */
   effectiveAccessMode?: AccessMode;
   /** 变量更新方式：Polling=自主轮询 / Subscription=订阅推送（缺省 undefined 视为 Polling；Subscription 仅 OPC UA） */

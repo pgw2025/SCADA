@@ -294,6 +294,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             ConnectionId = dv.ConnectionId,
             RawDataType = dv.RawDataType,
             UpdateMode = dv.UpdateMode,
+            TemplateScaleExpression = mv?.ScaleExpression,
+            TemplateDeadBand = mv?.DeadBand,
             TemplateAccessMode = templateAccessMode,
             EffectiveAccessMode = effectiveAccessMode
         };

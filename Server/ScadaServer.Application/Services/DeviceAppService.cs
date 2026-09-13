@@ -323,6 +323,8 @@ namespace ScadaServer.Application.Services
                 DeadBandOverride = dv.DeadBandOverride,
                 AccessModeOverride = dv.AccessModeOverride,
                 // 权限回显：实例覆盖优先，空则继承模板 AccessMode（供前端实时监控可写门控）。
+                TemplateScaleExpression = mv?.ScaleExpression,
+                TemplateDeadBand = mv?.DeadBand,
                 TemplateAccessMode = templateAccessMode,
                 EffectiveAccessMode = string.IsNullOrWhiteSpace(dv.AccessModeOverride)
                     ? templateAccessMode

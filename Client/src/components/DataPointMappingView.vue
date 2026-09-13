@@ -201,6 +201,30 @@ const displayPreview = computed(() =>
 const isStructuredOpcua = computed(() =>
   !!editingCfg.value && (editingCfg.value.protocol || '').toUpperCase() === 'OPCUA');
 
+// 换算表达式（覆盖）输入框占位三态：有覆盖=提示可清空继承；无覆盖但模板有=浅色显示模板表达式；都无=留空提示
+const scaleExpressionPlaceholder = computed(() => {
+  const ov = editingForm.value?.scaleExpressionOverride;
+  const tpl = editingForm.value?.templateScaleExpression;
+  if (ov) return '已设置覆盖，清空则继承模板';
+  if (tpl) return `继承模板：${tpl}`;
+  return '留空=继承模板（模型未配置）';
+});
+
+// 采样/轮询间隔输入框占位：实例未显式指定间隔时浅色提示运行时默认值 1000ms
+const intervalPlaceholder = computed(() => {
+  const v = editingForm.value?.pollingIntervalMs;
+  return v ? '已设置间隔，清空则回退默认' : '默认 1000ms（留空=继承）';
+});
+
+// 死区覆盖输入框占位三态：有覆盖=提示可清空继承；无覆盖但模板有=浅色显示模板死区；都无=留空提示
+const deadBandPlaceholder = computed(() => {
+  const ov = editingForm.value?.deadBandOverride;
+  const tpl = editingForm.value?.templateDeadBand;
+  if (ov) return '已设置死区，清空则继承模板';
+  if (tpl != null && tpl !== 0) return `继承模板：${tpl}`;
+  return '留空=继承模板（模型未配置）';
+});
+
 /** 校验编辑表单，返回错误文案；空串表示通过。 */
 const validateEditForm = (): string => {
   const cfg = editingCfg.value;
@@ -1036,7 +1060,7 @@ onMounted(async () => {
         class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
         <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 class="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-            <Settings class="w-4 h-4 text-[#1890ff]" /> 编辑变量实例 — <span class="font-mono">{{ editingForm.key }}</span>
+            <Settings class="w-4 h-4 text-[#1890ff]" /> 编辑变量实例 — {{ editingForm.name || editingForm.key }}
           </h3>
           <button @click="showEditModal = false" class="text-slate-400 hover:text-slate-600 cursor-pointer">
             <X class="w-4 h-4" />
@@ -1103,7 +1127,7 @@ onMounted(async () => {
             </select>
             <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed"
               v-if="!supportsSubscription">当前协议驱动不支持订阅更新（仅 OPC UA 支持）。</p>
-            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed" v-else>订阅模式由服务器在值变化时推送；下方间隔语义变为服务端采样/发布间隔。</p>
+            <p class="mt-1 text-[9px] text-slate-400 dark:text-slate-500 font-sans leading-relaxed" v-else>订阅模式由服务器在值变化时推送，无需配置轮询/采样间隔。</p>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div v-if="needsBitOffset && !structuredHasBit">
@@ -1112,22 +1136,24 @@ onMounted(async () => {
                 :disabled="!isBitType(editingForm.dataType)"
                 class="w-full disabled:opacity-40 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
-            <div :class="needsBitOffset && !structuredHasBit ? '' : 'col-span-2'">
+            <div v-if="editingForm.updateMode !== 'Subscription'"
+              :class="needsBitOffset && !structuredHasBit ? '' : 'col-span-2'">
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{
                 editingForm.updateMode === 'Subscription' ? '采样间隔（ms）' : '轮询间隔（ms）' }}</label>
-              <input v-model.number="editingForm.pollingIntervalMs" type="number" min="100"
+              <input v-model.number="editingForm.pollingIntervalMs" type="number" min="100" :placeholder="intervalPlaceholder"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">换算表达式（覆盖）</label>
-              <input v-model="editingForm.scaleExpressionOverride" type="text" placeholder="留空=继承模板；例：x*0.1"
+              <input v-model="editingForm.scaleExpressionOverride" type="text" :placeholder="scaleExpressionPlaceholder"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
             <div>
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">死区</label>
               <input v-model.number="editingForm.deadBandOverride" type="number" step="0.1"
+                :placeholder="deadBandPlaceholder"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
           </div>

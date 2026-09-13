@@ -94,6 +94,12 @@ public class DataPointMappingDto
 
     // ===== 回显字段（来自 DataPoint 模板，只出不进）=====
 
+    /// <summary>模板定义的换算表达式（只出不进，用于前端展示"继承模板"时的模板当前值）。</summary>
+    public string? TemplateScaleExpression { get; set; }
+
+    /// <summary>模板定义的死区（只出不进，用于前端展示"继承模板"时的模板当前值）。</summary>
+    public double? TemplateDeadBand { get; set; }
+
     /// <summary>模板定义的读写模式（只出不进，用于前端展示"继承"时的模板当前值）。</summary>
     public string TemplateAccessMode { get; set; } = "Read";
 
