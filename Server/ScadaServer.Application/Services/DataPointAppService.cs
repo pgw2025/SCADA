@@ -326,14 +326,14 @@ namespace ScadaServer.Application.Services
             await ReloadDevicesAsync(dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList());
         }
 
-        private Task ReloadDevicesAsync(List<int> deviceIds)
+        private async Task ReloadDevicesAsync(List<int> deviceIds)
         {
-            // 运行时重载内部对异常做吞并记录，不会向上抛出，避免业务写操作失败被误判。
+            // 逐台 await 热重载：ReloadDeviceAsync 内部对异常吞并记录、不冒泡，
+            // 此处 await 确保重载完成且不产生未观察任务异常，也不阻断业务写操作。
             foreach (var deviceId in deviceIds)
             {
-                _ = _runtimeDeviceManager.ReloadDeviceAsync(deviceId);
+                await _runtimeDeviceManager.ReloadDeviceAsync(deviceId);
             }
-            return Task.CompletedTask;
         }
 
         private async Task<DataModel> EnsureModelAsync(int modelId)

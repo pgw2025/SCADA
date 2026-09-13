@@ -283,7 +283,16 @@ namespace ScadaServer.Runtime
         /// <inheritdoc/>
         public async Task ReloadDeviceAsync(int deviceId)
         {
-            await RegisterDeviceAsync(deviceId);
+            // 热重载语义：失败仅记日志、不冒泡，避免设备采集重建失败反向阻断已落库的业务写操作
+            // （Application 层多处 await 本方法且无局部兜底，期望"尽力而为不抛"）。
+            try
+            {
+                await RegisterDeviceAsync(deviceId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "设备 {DeviceId} 运行时热重载失败。", deviceId);
+            }
         }
 
         /// <summary>

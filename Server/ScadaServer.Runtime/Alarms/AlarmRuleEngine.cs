@@ -101,7 +101,14 @@ namespace ScadaServer.Runtime.Alarms
         /// </summary>
         private async Task ReloadSilentAsync()
         {
-            await ReloadAsync();
+            try
+            {
+                await ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "报警规则静默加载失败（下个刷新周期自动重试）。");
+            }
         }
     }
 }
