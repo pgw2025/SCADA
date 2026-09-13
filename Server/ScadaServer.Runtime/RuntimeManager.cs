@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -256,6 +257,9 @@ namespace ScadaServer.Runtime
         /// <inheritdoc/>
         public async Task RegisterDeviceAsync(int deviceId)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             // 幂等：若已存在同 ID 运行时则先注销，避免残留旧 Worker / 旧驱动。
             await RemoveDeviceAsync(deviceId);
 
@@ -278,20 +282,35 @@ namespace ScadaServer.Runtime
                 // 设备就绪：去抖重载绑定索引，补加载此前因设备未运行被跳过（pending）的规则（根因 B1）。
                 _bindingEngine.ScheduleReload();
             }
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.RegisterDeviceAsync 设备 {DeviceId} 注册总耗时 {ElapsedMs} ms",
+                    deviceId, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <inheritdoc/>
         public async Task ReloadDeviceAsync(int deviceId)
         {
-            // 热重载语义：失败仅记日志、不冒泡，避免设备采集重建失败反向阻断已落库的业务写操作
-            // （Application 层多处 await 本方法且无局部兜底，期望"尽力而为不抛"）。
+            var sw = Stopwatch.StartNew();
             try
             {
-                await RegisterDeviceAsync(deviceId);
+                // 热重载语义：失败仅记日志、不冒泡，避免设备采集重建失败反向阻断已落库的业务写操作
+                // （Application 层多处 await 本方法且无局部兜底，期望"尽力而为不抛"）。
+                try
+                {
+                    await RegisterDeviceAsync(deviceId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "设备 {DeviceId} 运行时热重载失败。", deviceId);
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.LogWarning(ex, "设备 {DeviceId} 运行时热重载失败。", deviceId);
+                _logger.LogInformation("###Timer### RuntimeManager.ReloadDeviceAsync 设备 {DeviceId} 热重载总计耗时 {ElapsedMs} ms",
+                    deviceId, sw.ElapsedMilliseconds);
             }
         }
 
@@ -427,6 +446,9 @@ namespace ScadaServer.Runtime
         /// <inheritdoc/>
         public async Task RemoveDeviceAsync(int deviceId)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             if (!DeviceRuntimes.TryRemove(deviceId, out var runtime))
             {
                 return;
@@ -455,6 +477,12 @@ namespace ScadaServer.Runtime
             {
                 _logger.LogWarning(ex, "设备 {DeviceId} 注销状态通知推送失败。", deviceId);
             }
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.RemoveDeviceAsync 设备 {DeviceId} 拆除旧运行时耗时 {ElapsedMs} ms",
+                    deviceId, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -472,6 +500,9 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task StopWorkerAndUnmountDeviceAsync(Devices.DeviceRuntime runtime)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             Task? workerTask;
             lock (runtime.DispatchSync)
             {
@@ -492,6 +523,12 @@ namespace ScadaServer.Runtime
             }
 
             await UnmountFromSessionAsync(runtime);
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.StopWorkerAndUnmountDeviceAsync 设备 {DeviceId} 停Worker并卸载耗时 {ElapsedMs} ms",
+                    runtime.Device.Id, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -504,6 +541,9 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task UnmountFromSessionAsync(Devices.DeviceRuntime runtime)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             var session = runtime.Session;
             if (session == null) return;
 
@@ -513,6 +553,12 @@ namespace ScadaServer.Runtime
             {
                 await DisposeSessionAsync(session);
             }
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.UnmountFromSessionAsync 设备 {DeviceId} 从会话卸载耗时 {ElapsedMs} ms",
+                    runtime.Device.Id, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -520,6 +566,9 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task DisposeSessionAsync(ConnectionSession session)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             if (!ConnectionSessions.TryRemove(session.ConnectionId, out _))
             {
                 return;
@@ -527,6 +576,12 @@ namespace ScadaServer.Runtime
 
             _logger.LogInformation("连接 {ConnKey}(#{ConnId}) 末位设备离场，会话销毁。", session.Key, session.ConnectionId);
             await session.DisposeAsync();
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.DisposeSessionAsync 连接 {ConnId} 销毁会话耗时 {ElapsedMs} ms",
+                    session.ConnectionId, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -536,6 +591,9 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task<Device?> LoadDeviceGraphByIdAsync(int deviceId)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
             return await db.Devices
@@ -544,6 +602,12 @@ namespace ScadaServer.Runtime
                 .Include(d => d.Model)
                 .Include(d => d.DataPointMappings).ThenInclude(dv => dv.DataPoint)
                 .FirstOrDefaultAsync(d => d.Id == deviceId);
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.LoadDeviceGraphByIdAsync 设备 {DeviceId} 加载对象图耗时 {ElapsedMs} ms",
+                    deviceId, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -570,6 +634,7 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task<bool> BuildAndRegisterDeviceAsync(Device device)
         {
+            var sw = Stopwatch.StartNew();
             try
             {
                 var model = device.Model;
@@ -681,6 +746,11 @@ namespace ScadaServer.Runtime
                 _logger.LogError(ex, "设备 {Key} 初始化失败。", device.Key);
                 return false;
             }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.BuildAndRegisterDeviceAsync 设备 {Key} 构建并注册运行时耗时 {ElapsedMs} ms",
+                    device.Key, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <summary>
@@ -693,6 +763,9 @@ namespace ScadaServer.Runtime
         /// </summary>
         private async Task<ConnectionSession?> GetOrCreateSessionAsync(DeviceConnection connection, string protocolKey, string protocolLabel)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             if (ConnectionSessions.TryGetValue(connection.Id, out var existing))
             {
                 return existing;
@@ -724,6 +797,12 @@ namespace ScadaServer.Runtime
             _logger.LogInformation("连接 {ConnKey}(#{ConnId}) ({Protocol}) 共享会话建立，其下设备共享一条物理连接。",
                 connection.Name, connection.Id, protocolLabel);
             return session;
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### RuntimeManager.GetOrCreateSessionAsync 连接 {ConnId} 获取/建连会话耗时 {ElapsedMs} ms",
+                    connection.Id, sw.ElapsedMilliseconds);
+            }
         }
 
         /// <inheritdoc/>

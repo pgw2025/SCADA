@@ -6,7 +6,9 @@ using ScadaServer.Domain.Interfaces.Repositories;
 using ScadaServer.Domain.Exceptions;
 using ScadaServer.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MySqlConnector;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace ScadaServer.Application.Services
@@ -44,6 +46,8 @@ namespace ScadaServer.Application.Services
         private readonly IVariableImportParser _importParser;
         /// <summary>导出服务，用于将变量模板导出为 CSV/XLSX。</summary>
         private readonly VariableExportService _exportService;
+        /// <summary>日志记录器，用于输出执行耗时等诊断信息。</summary>
+        private readonly ILogger<DataPointAppService> _logger;
 
         /// <summary>构造函数：注入变量、模型、设备、脚本仓储及运行时、导入导出等服务。</summary>
         public DataPointAppService(
@@ -55,7 +59,8 @@ namespace ScadaServer.Application.Services
             IRuntimeDeviceManager runtimeDeviceManager,
             IUnitOfWork uow,
             IVariableImportParser importParser,
-            VariableExportService exportService)
+            VariableExportService exportService,
+            ILogger<DataPointAppService> logger)
         {
             _repository = repository;
             _modelRepository = modelRepository;
@@ -66,6 +71,7 @@ namespace ScadaServer.Application.Services
             _uow = uow;
             _importParser = importParser;
             _exportService = exportService;
+            _logger = logger;
         }
 
         public async Task<DataPointDto?> GetByIdAsync(int id)
@@ -128,6 +134,9 @@ namespace ScadaServer.Application.Services
 
         public async Task<DataPointDto> UpdateAsync(DataPointDto dto)
         {
+            var sw = Stopwatch.StartNew();
+            try
+            {
             // 0. 规范化
             dto.Key = dto.Key.Trim();
             dto.Name = dto.Name.Trim();
@@ -162,6 +171,7 @@ namespace ScadaServer.Application.Services
             }
 
             MapToEntity(dto, entity);
+            var saveSw = Stopwatch.StartNew();
             try
             {
                 await _repository.UpdateAsync(entity);
@@ -170,11 +180,20 @@ namespace ScadaServer.Application.Services
             {
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
             }
+            finally
+            {
+                _logger.LogInformation("###Timer### DataPointAppService.UpdateAsync 调仓储落库耗时 {SaveMs} ms", saveSw.ElapsedMilliseconds);
+            }
 
             // 5. 变量模板配置（存储模式/周期/缩放/死区/只读）变更影响运行中的设备变量，热加载这些设备。
             await ReloadDevicesOfVariableAsync(dto.Id);
 
             return dto;
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### DataPointAppService.UpdateAsync 总耗时 {TotalMs} ms", sw.ElapsedMilliseconds);
+            }
         }
 
         public async Task DeleteAsync(int id)
@@ -322,17 +341,34 @@ namespace ScadaServer.Application.Services
         /// </summary>
         private async Task ReloadDevicesOfVariableAsync(int dataPointId)
         {
-            var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DataPointId == dataPointId);
-            await ReloadDevicesAsync(dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList());
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DataPointId == dataPointId);
+                await ReloadDevicesAsync(dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList());
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### DataPointAppService.ReloadDevicesOfVariableAsync 变量 {DataPointId} 查找并重载引用设备耗时 {ElapsedMs} ms", dataPointId, sw.ElapsedMilliseconds);
+            }
         }
 
         private async Task ReloadDevicesAsync(List<int> deviceIds)
         {
-            // 逐台 await 热重载：ReloadDeviceAsync 内部对异常吞并记录、不冒泡，
-            // 此处 await 确保重载完成且不产生未观察任务异常，也不阻断业务写操作。
-            foreach (var deviceId in deviceIds)
+            var sw = Stopwatch.StartNew();
+            try
             {
-                await _runtimeDeviceManager.ReloadDeviceAsync(deviceId);
+                // 逐台 await 热重载：ReloadDeviceAsync 内部对异常吞并记录、不冒泡，
+                // 此处 await 确保重载完成且不产生未观察任务异常，也不阻断业务写操作。
+                foreach (var deviceId in deviceIds)
+                {
+                    await _runtimeDeviceManager.ReloadDeviceAsync(deviceId);
+                }
+            }
+            finally
+            {
+                _logger.LogInformation("###Timer### DataPointAppService.ReloadDevicesAsync 热重载 {Count} 台设备总耗时 {ElapsedMs} ms",
+                    deviceIds.Count, sw.ElapsedMilliseconds);
             }
         }
 
