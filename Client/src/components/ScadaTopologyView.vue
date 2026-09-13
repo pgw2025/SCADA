@@ -295,6 +295,7 @@ onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', handleScreenResize);
   }
+  stopTrendSampler();
   isScadaFullscreen.value = false;
 });
 
@@ -379,8 +380,11 @@ const componentValues = computed(() => {
   return result;
 });
 
-// 趋势图真实数据源：把当前页 trend-chart 各序列实时值推入滚动缓冲（支持多变量序列）
-watch(componentValues, () => {
+// 趋势图真实数据源：把当前页 trend-chart 各序列实时值推入滚动缓冲（支持多变量序列）。
+// 改为定时采样（1s）：恒定信号（值不变）也按周期推点，保证相对时间轴持续推进、曲线不冻结。
+let trendSampler: ReturnType<typeof setInterval> | null = null;
+
+const sampleTrendPoints = () => {
   (currentPageSafe.value.components ?? []).forEach((c: any) => {
     if (c.type !== 'trend-chart') return;
     for (const s of getEffectiveTrendSeries(c)) {
@@ -388,7 +392,26 @@ watch(componentValues, () => {
       pushTrendPoint(c.id, s.id, v);
     }
   });
-}, { immediate: true });
+};
+
+const startTrendSampler = () => {
+  if (trendSampler) return;
+  sampleTrendPoints(); // 进入运行态立即采一次
+  trendSampler = setInterval(sampleTrendPoints, 1000);
+};
+
+const stopTrendSampler = () => {
+  if (trendSampler) {
+    clearInterval(trendSampler);
+    trendSampler = null;
+  }
+};
+
+// 运行态启动/停止采样定时器（编辑态不采样）
+watch(isActiveMode, (active) => {
+  if (active) startTrendSampler();
+  else stopTrendSampler();
+});
 
 // 页面切换时清理趋势缓冲，防止跨页残留
 watch(() => currentPageSafe.value.id, () => {
@@ -2000,7 +2023,7 @@ const handleExportPage = async (page: ScadaPage) => {
                     :isActiveMode="isActiveMode" :component-values="componentValues" :canvas-width="pageWidth"
                     :canvas-height="pageHeight" :can-control-write="canControlWrite"
                     :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
-                    :layers="currentPage.layers" :current-page-id="currentPage.id" @select-components="handleSelectComponents"
+                    :layers="currentPage.layers" :current-page-id="currentPage.id" :platform="currentPlatform" @select-components="handleSelectComponents"
                     @updateComponent="handleUpdateComponent" @update-components="handleUpdateComponents"
                     @toggleMode="isActiveMode = !isActiveMode" @triggerToggleValue="handleTriggerToggleValue"
                     @delete-components="handleDeleteComponents" @duplicate-components="handleDuplicateComponents"
@@ -2015,7 +2038,7 @@ const handleExportPage = async (page: ScadaPage) => {
                 :selectedIds="selectedIds" :isActiveMode="isActiveMode" :component-values="componentValues"
                 :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite"
                 :background="currentPage.background" :adapt-mode="currentPage.adaptMode" :layers="currentPage.layers"
-                :current-page-id="currentPage.id"
+                :current-page-id="currentPage.id" :platform="currentPlatform"
                 @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
                 @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
                 @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
@@ -2097,8 +2120,8 @@ const handleExportPage = async (page: ScadaPage) => {
 
             <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 my-auto mx-0.5"></div>
 
-            <!-- 平移/框选交互模式切换（移动端画布手势：平移模式空白拖动=平移画布，框选模式=橡皮筋框选） -->
-            <button @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'"
+            <!-- 平移/框选交互模式切换（仅移动端画布 + 真机窄屏 dock 栏） -->
+            <button v-if="currentPlatform === 'Mobile'" @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'"
               class="p-1.5 rounded-full transition-colors cursor-pointer relative"
               :class="interactionMode === 'pan' ? 'text-[#1890ff] dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'"
               :title="interactionMode === 'pan' ? '平移模式（空白拖动平移画布，双指捏合缩放）' : '框选模式（空白拖动框选，双指捏合缩放）'">

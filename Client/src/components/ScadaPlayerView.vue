@@ -176,8 +176,11 @@ const componentValues = computed(() => {
   return result;
 });
 
-// 趋势图真实数据源：把当前页 trend-chart 各序列实时值推入滚动缓冲（支持多变量序列）
-watch(componentValues, () => {
+// 趋势图真实数据源：把当前页 trend-chart 各序列实时值推入滚动缓冲（支持多变量序列）。
+// 播放器常驻运行态，用定时采样（1s）推进相对时间轴，恒定信号曲线不冻结。
+let trendSampler: ReturnType<typeof setInterval> | null = null;
+
+const sampleTrendPoints = () => {
   (currentPage.value?.components ?? []).forEach((c: any) => {
     if (c.type !== 'trend-chart') return;
     for (const s of getEffectiveTrendSeries(c)) {
@@ -185,7 +188,7 @@ watch(componentValues, () => {
       pushTrendPoint(c.id, s.id, v);
     }
   });
-}, { immediate: true });
+};
 
 // 页面切换时清理趋势缓冲，防止跨页残留
 watch(() => currentPage.value?.id, () => {
@@ -462,6 +465,16 @@ useHmiDataEvents({
 // 报警事件校准：进入播放器时拉取一次当前未恢复报警（SignalR 实时增量由全局连接推送）
 onMounted(() => {
   refreshActiveAlarms().catch(() => { });
+  // 播放器常驻运行态：启动趋势采样定时器（1s）
+  sampleTrendPoints();
+  trendSampler = setInterval(sampleTrendPoints, 1000);
+});
+
+onUnmounted(() => {
+  if (trendSampler) {
+    clearInterval(trendSampler);
+    trendSampler = null;
+  }
 });
 </script>
 

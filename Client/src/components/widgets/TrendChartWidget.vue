@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineProps, computed, onMounted, onBeforeUnmount } from 'vue';
+import { defineProps, computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useWidgetBase } from './useWidgetBase';
 import type { HmiWidgetProps } from './useWidgetBase';
 import { getEffectiveTrendSeries } from '../../utils/trendSeries';
@@ -95,6 +95,7 @@ onBeforeUnmount(() => {
     backfillAbort.abort();
     backfillAbort = null;
   }
+  stopClockTick();
 });
 
 const numOrNull = (k: string): number | null => {
@@ -110,8 +111,30 @@ const showAxisLabels = computed(() => propOr('trendShowAxisLabels', true) === tr
 const axisLabelFontSize = computed(() => Number(propOr('trendAxisLabelFontSize', 8)));
 const showPointValues = computed(() => propOr('trendShowPointValues', false) === true);
 const pointValueFontSize = computed(() => Number(propOr('trendPointValueFontSize', 8)));
-const pointValueColor = computed(() => propOr('trendPointValueColor', 'auto'));
 const pointEveryN = computed(() => numOrNull('trendPointValueEveryN'));
+
+// 秒级刷新时钟：运行态驱动 trendChart 每秒重算一次，保证相对时间轴实时滚动（问题3）。
+// 编辑态/静态预览不启动，避免无谓重算。
+const clockTick = ref(0);
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+const startClockTick = () => {
+  if (clockTimer || !props.isActiveMode) return;
+  clockTimer = setInterval(() => { clockTick.value++; }, 1000);
+};
+const stopClockTick = () => {
+  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+};
+// 挂载时若已处于运行态则启动；运行态切换由 watch 驱动
+startClockTick();
+watch(() => props.isActiveMode, (active) => { active ? startClockTick() : stopClockTick(); });
+
+// 点位值颜色合法性校验（问题5）：非 auto 时校验是否合法 CSS 颜色，非法回退 auto（跟随序列色）
+const CSS_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|rgba?\(.+\)|hsla?\(.+\))$/;
+const trendPointColor = computed(() => {
+  const c = propOr('trendPointValueColor', 'auto');
+  if (c === 'auto') return c;
+  return CSS_COLOR_RE.test(String(c).trim()) ? String(c).trim() : 'auto';
+});
 
 const trendChart = computed(() => {
   const series = trendSeriesList.value;
@@ -180,7 +203,10 @@ const trendChart = computed(() => {
     if (p.t > winTMax) winTMax = p.t;
   }
   const winSpan = Number.isFinite(winTMin) && winTMax > winTMin ? winTMax - winTMin : 0;
-  const nowMs = Number.isFinite(winTMax) ? winTMax : Date.now();
+  // X 轴相对时间基准：运行态用真时钟（配合秒级 clockTick 实时滚动）；编辑/静态用窗口最后采样时间。
+  // 修复：此前统一用 winTMax，恒定信号下最后采样时间不前进，时间轴标签冻结。
+  void clockTick.value; // 建立响应式依赖：clockTick 变化时 trendChart 重算，时间标签每秒刷新
+  const nowMs = props.isActiveMode ? Date.now() : (Number.isFinite(winTMax) ? winTMax : Date.now());
 
   const xTicks: { x: number; label: string }[] = [];
   if (showAxisLabels.value && winSpan > 0) {
@@ -209,8 +235,12 @@ const trendChart = computed(() => {
       const ratio = Math.max(0, Math.min(1, (v - lo) / r));
       return top + (innerH - ratio * innerH);
     };
+    // 单序列采样点不足 2 个时不生成路径（画不出线），d 留空由模板 v-if 跳过；
+    // 图例仍显示其当前值，与空态提示「采集 ≥2 点后自动绘制」口径一致（问题1）。
     let d = '';
-    window.forEach((p, i) => { const x = xOf(p); const y = yNorm(p.v); d += `${i === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`; });
+    if (window.length >= 2) {
+      window.forEach((p, i) => { const x = xOf(p); const y = yNorm(p.v); d += `${i === 0 ? 'M' : ' L'} ${x.toFixed(1)} ${y.toFixed(1)}`; });
+    }
 
     const current = buf.length ? buf[buf.length - 1].v : 0;
     const alert = (s.thresholdMax != null && current >= s.thresholdMax) ? 'high'
@@ -236,7 +266,7 @@ const trendChart = computed(() => {
   return {
     left, top, innerW, innerH, padB, hasShared, grid, xTicks, series: seriesOut, isRel,
     showGrid: showGrid.value, showAxisLabels: showAxisLabels.value,
-    axisLabelFontSize: axisLabelFontSize.value, pointColor: pointValueColor.value, pointFontSize: pointValueFontSize.value,
+    axisLabelFontSize: axisLabelFontSize.value, pointColor: trendPointColor.value, pointFontSize: pointValueFontSize.value,
   };
 });
 
@@ -284,9 +314,12 @@ const trendValFmt = (v: number) => (typeof v === 'number' ? v.toFixed(1) : `${v}
                 :font-size="trendChart.axisLabelFontSize" fill="var(--vfd-metal-500)">{{ xt.label }}</text>
             </g>
           </template>
-          <!-- 序列线条 -->
-          <path v-for="s in trendChart.series" :key="s.id" :d="s.d" fill="none" :stroke="s.color"
-            :stroke-width="s.lineWidth" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- 序列线条（单序列采样点不足 2 个时不渲染，图例仍显示当前值） -->
+          <!-- 修复：v-if 优先级高于 v-for，原写法在 s 未定义时求值 s.d 抛 undefined.d；改用 template 包裹使 v-for 先执行 -->
+          <template v-for="s in trendChart.series" :key="s.id">
+            <path v-if="s.d" :d="s.d" fill="none" :stroke="s.color"
+              :stroke-width="s.lineWidth" stroke-linecap="round" stroke-linejoin="round" />
+          </template>
           <!-- 点位值标签（自动抽稀，始终保留最新点） -->
           <g v-for="(s, si) in trendChart.series" :key="'pv' + si">
             <text v-for="(pt, pi) in s.points" :key="pi" :x="pt.x" :y="pt.y" text-anchor="middle"

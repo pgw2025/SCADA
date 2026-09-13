@@ -6,6 +6,9 @@ export interface TrendSample { t: number; v: number; }
 /** 每序列趋势缓冲区最大点数（约对应运行态 ~2 分钟 @1s 采样） */
 const MAX_POINTS = 120;
 
+/** 值未变化时的最小补点间隔（ms）：恒定信号也按此间隔推点，推进 X 轴相对时间 */
+const MIN_SAMPLE_GAP_MS = 1000;
+
 /**
  * 趋势缓冲：组件 id → (序列 id → 采样点滚动窗口)
  * 每个 trend-chart 可含多条序列（trendSeries），各自独立缓冲、独立 buffer key。
@@ -28,9 +31,14 @@ export const pushTrendPoint = (
   const comp = trendHistory[componentId] ?? (trendHistory[componentId] = {});
   const buf = comp[seriesId] ?? (comp[seriesId] = []);
   const last = buf.length ? buf[buf.length - 1].v : undefined;
-  // 值未变化不推点（趋势曲线静止），避免同值刷屏
-  if (last === num && buf.length > 0) return;
-  buf.push({ t: timestamp ?? Date.now(), v: num });
+  const t = timestamp ?? Date.now();
+  // 值未变化：仅当距上一点超过最小采样间隔才补点（推进相对时间轴），否则跳过避免同值刷屏。
+  // 修复：此前「值不变一律不推」导致恒定信号（恒温/开关稳态）曲线停滞、时间冻结。
+  if (last === num && buf.length > 0) {
+    const lastT = buf[buf.length - 1].t;
+    if (t - lastT < MIN_SAMPLE_GAP_MS) return;
+  }
+  buf.push({ t, v: num });
   if (buf.length > MAX_POINTS) buf.shift();
 };
 
@@ -52,6 +60,13 @@ export const prependTrendHistory = (
   const valid = samples.filter(s => Number.isFinite(s.v));
   if (valid.length === 0) return;
   const comp = trendHistory[componentId] ?? (trendHistory[componentId] = {});
-  comp[seriesId] = valid.slice(-MAX_POINTS);
+  const existing = comp[seriesId] ?? [];
+  // 合并历史点 + 已有实时点，按时间升序去重（同时间戳保留后写入者 = 实时点），
+  // 避免回填异步晚到时「整体替换」顶掉已推入的实时点（竞态）。
+  const merged = new Map<number, TrendSample>();
+  valid.forEach(s => merged.set(s.t, s));     // 先放历史点
+  existing.forEach(s => merged.set(s.t, s));  // 后放实时点（覆盖同时间戳）
+  const sorted = [...merged.values()].sort((a, b) => a.t - b.t);
+  comp[seriesId] = sorted.slice(-MAX_POINTS);
 };
 

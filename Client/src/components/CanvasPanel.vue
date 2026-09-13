@@ -46,6 +46,8 @@ const props = defineProps<{
   layers?: HMILayer[];
   /** 当前页面 id：nav-menu 运行态高亮“当前画面”菜单项 */
   currentPageId?: string;
+  /** 画布目标平台：Desktop / Mobile / Popup。仅 Mobile 启用框选/平移/双指捏合等移动端手势 */
+  platform?: 'Desktop' | 'Mobile' | 'Popup';
 }>();
 
 const emit = defineEmits<{
@@ -70,6 +72,8 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLDivElement | null>(null);
 const workspaceRef = ref<HTMLDivElement | null>(null);
+// 移动端画布（目标平台 Mobile）才启用框选/平移/双指捏合等手势；桌面端/弹窗不启用
+const isMobileCanvas = computed(() => props.platform === 'Mobile');
 const zoom = ref<number>(1);
 // 双轴缩放：设计模式恒等（等比）；运行端 Stretch（拉伸填满）模式下 X/Y 独立
 const zoomY = ref<number>(1);
@@ -229,8 +233,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 // Pointer Events callbacks
 const handleDragStart = (e: PointerEvent, component: HMIComponent) => {
-  // 平移模式：按在组件上不选中/不移动组件，事件继续冒泡到工作区触发平移画布
-  if (!props.isActiveMode && interactionMode.value === 'pan') {
+  // 平移模式（仅移动端画布）：按在组件上不选中/不移动组件，事件继续冒泡到工作区触发平移画布
+  if (isMobileCanvas.value && !props.isActiveMode && interactionMode.value === 'pan') {
     return;
   }
 
@@ -381,8 +385,8 @@ const handleDragStart = (e: PointerEvent, component: HMIComponent) => {
 };
 
 const handleResizeStart = (e: PointerEvent, component: HMIComponent, handle: string) => {
-  // 平移模式：不缩放组件，事件冒泡到工作区触发平移
-  if (!props.isActiveMode && interactionMode.value === 'pan') return;
+  // 平移模式（仅移动端画布）：不缩放组件，事件冒泡到工作区触发平移
+  if (isMobileCanvas.value && !props.isActiveMode && interactionMode.value === 'pan') return;
   // 阶段5-2：缩放手柄仅对单选组件生效，锁定或隐藏组件禁止缩放
   if (props.selectedIds.length !== 1 || component.id !== props.selectedId || isComponentLocked(component) || !isComponentVisible(component)) return;
   e.stopPropagation();
@@ -542,6 +546,8 @@ const handleMouseUp = (e?: PointerEvent) => {
 // 阶段5-2：空白区域按下 → 起手框选 / 平移；记录触点用于双指捏合
 const handleStageMouseDown = (e: PointerEvent) => {
   if (props.isActiveMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  // 桌面端/弹窗画布：空白处拖动不做框选/平移/捏合（仅移动端画布启用手势）
+  if (!isMobileCanvas.value) return;
 
   // 记录活跃触点（供双指捏合判定）
   activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -888,8 +894,8 @@ onUnmounted(() => {
 
         <div class="h-5 w-[1px] bg-gray-300 hidden md:block" />
 
-        <!-- 平移/框选交互模式切换（桌面端显示；手机端改由底部 dock 栏承载） -->
-        <button @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'" :class="[
+        <!-- 平移/框选交互模式切换（仅移动端画布显示；桌面端无框选/平移手势） -->
+        <button v-if="isMobileCanvas" @click="interactionMode = interactionMode === 'pan' ? 'select' : 'pan'" :class="[
           'hidden md:flex text-[10px] h-7 font-semibold px-2 rounded border transition-colors cursor-pointer items-center gap-1',
           interactionMode === 'pan'
             ? 'bg-white border-[#1890ff] text-[#1890ff]'
@@ -1146,9 +1152,10 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 阶段X：手机端选中操作条（方案A）——选中组件时底部浮出对齐/层级/复制/删除，横向可滚动 -->
+    <!-- 阶段X：手机端选中操作条（方案A）——选中组件时底部浮出对齐/层级/复制/删除，横向可滚动。
+         上移至 bottom-20 避让底部 dock 工具栏（ScadaTopologyView 的 fixed bottom-4 z-30），避免遮挡。 -->
     <div v-if="!readonly && !isActiveMode && selectedIds.length > 0"
-      class="md:hidden fixed bottom-3 inset-x-0 z-50 flex justify-center px-3 pointer-events-none">
+      class="md:hidden fixed bottom-20 inset-x-0 z-50 flex justify-center px-3 pointer-events-none">
       <div
         class="pointer-events-auto flex items-center gap-1 bg-white/95 backdrop-blur rounded-2xl border border-[#d9d9d9] shadow-xl px-2 py-1.5 max-w-full overflow-x-auto select-none">
         <!-- 层级（仅单选） -->
