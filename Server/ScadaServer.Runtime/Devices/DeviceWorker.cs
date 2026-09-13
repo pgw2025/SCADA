@@ -152,7 +152,11 @@ namespace ScadaServer.Runtime.Devices
                     IDictionary<string, object>? batch = null;
                     try
                     {
-                        batch = await driver.ReadBatchAsync(due);
+                        batch = await driver.ReadBatchAsync(due, cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw; // 收到上方取消信号，交由循环级 catch 优雅退出，不误记通讯失败
                     }
                     catch (Exception ex)
                     {
@@ -175,7 +179,7 @@ namespace ScadaServer.Runtime.Devices
                             }
                             else
                             {
-                                newValue = await driver.ReadAsync(vr);
+                                newValue = await driver.ReadAsync(vr, cancellationToken);
                             }
 
                             // 值处理统一交管线（工程换算/质量/锁内更新/事件发布/通知入队/历史/实时/报警），
@@ -188,6 +192,10 @@ namespace ScadaServer.Runtime.Devices
                             {
                                 anySuccess = true;
                             }
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            throw; // 收到上方取消信号，交由循环级 catch 优雅退出，不误记通讯失败
                         }
                         catch (Exception ex)
                         {
@@ -285,6 +293,10 @@ namespace ScadaServer.Runtime.Devices
                             break;
                         }
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break; // 收到取消信号：优雅退出采集循环，不进入错误态、不误记通讯失败
                 }
                 catch (Exception ex)
                 {

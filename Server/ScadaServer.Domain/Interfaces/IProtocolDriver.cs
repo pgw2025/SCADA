@@ -32,15 +32,17 @@ namespace ScadaServer.Domain.Interfaces
         /// 读取单个变量值
         /// </summary>
         /// <param name="variable">变量运行时（地址来自 DataPointMapping）</param>
+        /// <param name="cancellationToken">取消令牌，用于中止阻塞中的底层读取（如采集循环关闭）</param>
         /// <returns>变量值；无可用值 / 设备未连接时返回 null（调用方视作本次读取无效）</returns>
-        Task<object?> ReadAsync(IRuntimeVariable variable);
+        Task<object?> ReadAsync(IRuntimeVariable variable, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// 批量读取多个变量值
         /// </summary>
         /// <param name="variables">变量运行时列表</param>
+        /// <param name="cancellationToken">取消令牌，用于中止阻塞中的底层读取（如采集循环关闭）</param>
         /// <returns>变量键值对字典</returns>
-        Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables);
+        Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// 探测物理连接是否仍存活。

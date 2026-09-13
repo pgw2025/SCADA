@@ -265,7 +265,7 @@ namespace ScadaServer.Infrastructure.Communication
         /// <summary>点表诊断用：OPC UA 批量读取中单个变量读取失败/质量异常的标记（与 S7Driver 的 READ_ERROR 约定一致）。</summary>
         private const string ReadError = "READ_ERROR";
 
-        public async Task<object?> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable, CancellationToken cancellationToken = default)
         {
             // 获取 Session 快照并登记 IO 引用计数；不可用（未连接/正在断开或重连/已释放）返回 null
             var session = await AcquireSessionForIoAsync();
@@ -274,8 +274,9 @@ namespace ScadaServer.Infrastructure.Communication
             try
             {
                 // 节点地址来源：RuntimeVariable.Address（DataPointMapping.Address）
-                // IO 引用计数归零前 Session 不会被关闭或替换，此处使用是安全的
-                var result = await session.ReadValueAsync(variable.Address);
+                // IO 引用计数归零前 Session 不会被关闭或替换，此处使用是安全的。
+                // 传入调用方取消令牌：Worker 卸载/重连/关闭时中止阻塞中的读取。
+                var result = await session.ReadValueAsync(variable.Address, cancellationToken);
 
                 // StatusCode 质量：OPC UA DataValue 即使读取完成也可能携带 Bad/Uncertain
                 // （节点不存在、访问被拒绝、服务器端质量降级等）。忽略它会把无效值
@@ -350,7 +351,7 @@ namespace ScadaServer.Infrastructure.Communication
             }
         }
 
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables, CancellationToken cancellationToken = default)
         {
             var results = new Dictionary<string, object>();
             var session = await AcquireSessionForIoAsync();
@@ -370,7 +371,7 @@ namespace ScadaServer.Infrastructure.Communication
                     0,
                     TimestampsToReturn.Both,
                     nodesToRead,
-                    default);
+                    cancellationToken);
 
                 var values = response.Results;
 

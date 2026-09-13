@@ -65,7 +65,7 @@ namespace ScadaServer.Infrastructure.Communication
             return true;
         }
 
-        public async Task<object?> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable, CancellationToken cancellationToken = default)
         {
             if (!_connected) return null;
             // 写入过的变量优先返回最后一次写入值，否则生成模拟值。
@@ -85,7 +85,7 @@ namespace ScadaServer.Infrastructure.Communication
             await Task.CompletedTask;
         }
 
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables, CancellationToken cancellationToken = default)
         {
             var results = new Dictionary<string, object>();
             if (!_connected) return results;

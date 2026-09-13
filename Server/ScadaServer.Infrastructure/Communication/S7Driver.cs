@@ -278,12 +278,12 @@ namespace ScadaServer.Infrastructure.Communication
 
         #region 读取
 
-        public async Task<object?> ReadAsync(IRuntimeVariable variable)
+        public async Task<object?> ReadAsync(IRuntimeVariable variable, CancellationToken cancellationToken = default)
         {
             if (Volatile.Read(ref _state) != StateActive || variable == null)
                 return null;
 
-            await _plcLock.WaitAsync();
+            await _plcLock.WaitAsync(cancellationToken);
             try
             {
                 // 锁内复检：DisposeAsync 可能已在入口检查与获锁之间迁移状态
@@ -316,10 +316,13 @@ namespace ScadaServer.Infrastructure.Communication
                     return null;
                 }
 
-                // 读操作超时封顶：防止 PLC 无响应（半开连接/网络分区）时 ReadBytesAsync 无限挂起，
-                // 长期占用 _plcLock 使该设备采集停摆。取消 NetworkStream 异步读会中止连接，
+                // 读操作超时封顶（同单点读取相同，见批次路径注释）：防止 PLC 无响应
+                // （半开连接/网络分区）时 ReadBytesAsync 无限挂起，长期占用 _plcLock 使该设备采集停摆。
+                // 链接源同时纳入调用方取消令牌（Worker 卸载/重连/关闭时立即中止阻塞中的读取），
+                // 且保持原有 _ioTimeoutMs 超时封顶语义不变。取消 NetworkStream 异步读会中止连接，
                 // 由 catch 通路反馈失败 + 重连机制恢复。
-                using var readCts = new CancellationTokenSource(_ioTimeoutMs);
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                readCts.CancelAfter(_ioTimeoutMs);
                 var buffer = await _plc.ReadBytesAsync(info.S7Area, info.DbNumber, info.ByteOffset, info.ByteLength, readCts.Token);
                 if (buffer == null || buffer.Length < info.ByteLength)
                 {
@@ -332,6 +335,10 @@ namespace ScadaServer.Infrastructure.Communication
                     NoteCommRecovered();
 
                 return value;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw; // 上层取消（Worker 卸载/重连/关闭）：交由调用方优雅退出
             }
             catch (Exception ex)
             {
@@ -355,13 +362,13 @@ namespace ScadaServer.Infrastructure.Communication
         /// 调用方应先比对标记再做类型转换；该约定与接口 <c>ReadAsync</c> 以 null 表示失败的语义不同
         /// （接口签名共享于所有驱动，统一需接口级变更）。
         /// </remarks>
-        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables)
+        public async Task<IDictionary<string, object>> ReadBatchAsync(IEnumerable<IRuntimeVariable> variables, CancellationToken cancellationToken = default)
         {
             var results = new Dictionary<string, object>();
             if (Volatile.Read(ref _state) != StateActive || variables == null)
                 return results;
 
-            await _plcLock.WaitAsync();
+            await _plcLock.WaitAsync(cancellationToken);
             try
             {
                 // 锁内复检：DisposeAsync 可能已在入口检查与获锁之间迁移状态
@@ -450,10 +457,17 @@ namespace ScadaServer.Infrastructure.Communication
                         try
                         {
                             // 读操作超时封顶（同单点读取）：防 PLC 无响应时挂起占锁、采集停摆。
-                            using (var cts = new CancellationTokenSource(_ioTimeoutMs))
+                            // 链接源纳入调用方取消令牌（Worker 卸载/重连/关闭时立即中止阻塞读取），
+                            // 保持原有 _ioTimeoutMs 超时封顶不变。
+                            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                             {
+                                cts.CancelAfter(_ioTimeoutMs);
                                 buffer = await _plc.ReadBytesAsync(group.Key.S7Area, dbNumber, minOffset, length, cts.Token);
                             }
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            throw; // 上层取消（Worker 卸载/重连/关闭）：交由调用方优雅退出
                         }
                         catch (Exception ex)
                         {
