@@ -1016,7 +1016,7 @@ onMounted(async () => {
 
     <!-- ADD Modal -->
     <div v-if="showAddModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      @click.self="showAddModal = false">
+      @mousedown.self="showAddModal = false">
       <div
         class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
         <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -1055,7 +1055,7 @@ onMounted(async () => {
 
     <!-- EDIT Modal -->
     <div v-if="showEditModal && editingForm" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      @click.self="showEditModal = false">
+      @mousedown.self="showEditModal = false">
       <div
         class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
         <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
