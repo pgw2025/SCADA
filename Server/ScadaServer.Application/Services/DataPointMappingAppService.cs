@@ -183,6 +183,8 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         {
             entity.AddressConfigJson = NormalizeAddressConfig(dto.AddressConfigJson, out var display);
             entity.Address = display; // 展示串由 JSON 权威生成
+            // S7 强校验：访问宽度必须等于数据类型推导值，拒绝手工错配（前端已自动且只读，此处兜底防篡改/旧客户端）
+            await ValidateS7WidthConsistencyAsync(entity);
         }
         else
         {
@@ -356,6 +358,42 @@ public class DataPointMappingAppService : IDataPointMappingAppService
 
             default:
                 throw new BusinessException($"协议 '{config.Protocol}' 不支持结构化地址配置（仅支持 S7 / OPC UA / Modbus）");
+        }
+    }
+
+    /// <summary>S7 访问宽度类型映射（与前端 s7WidthForDataType 语义一致）：数据类型唯一决定访问宽度。</summary>
+    private static readonly Dictionary<DataTypeEnum, string> S7DataTypeWidthMap = new()
+    {
+        { DataTypeEnum.BOOL, "BIT" },
+        { DataTypeEnum.BIT, "BIT" },
+        { DataTypeEnum.BYTE, "BYTE" },
+        { DataTypeEnum.CHAR, "BYTE" },
+        { DataTypeEnum.INT, "WORD" },
+        { DataTypeEnum.WORD, "WORD" },
+        { DataTypeEnum.UINT16, "WORD" },
+        { DataTypeEnum.DINT, "DWORD" },
+        { DataTypeEnum.REAL, "DWORD" },
+        { DataTypeEnum.FLOAT, "DWORD" },
+        { DataTypeEnum.UINT32, "DWORD" }
+    };
+
+    /// <summary>
+    /// S7 访问宽度强校验：访问宽度必须与模板 DataType 推导值一致，杜绝手工错配。
+    /// 未知类型（DOUBLE/STRING/INT64/UINT64 等）不在映射内，不强制，保持宽松。
+    /// </summary>
+    private async Task ValidateS7WidthConsistencyAsync(DataPointMapping entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity.AddressConfigJson)) return;
+        var config = AddressConfigSerializer.Deserialize(entity.AddressConfigJson);
+        if (config == null || !string.Equals(config.Protocol, "S7", StringComparison.OrdinalIgnoreCase)) return;
+        var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
+        if (mv == null) return;
+        if (!S7DataTypeWidthMap.TryGetValue(mv.DataType, out var expected)) return;
+        if (!string.Equals(config.Width, expected, StringComparison.OrdinalIgnoreCase))
+        {
+            var got = string.IsNullOrWhiteSpace(config.Width) ? "空" : config.Width;
+            throw new BusinessException(
+                $"S7 访问宽度与数据类型不匹配：{mv.DataType} 应使用 [{expected}]（收到 [{got}]）。访问宽度由数据类型自动确定，请刷新编辑框重试。");
         }
     }
 }

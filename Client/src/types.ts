@@ -735,6 +735,22 @@ const s7Prefix = (area: string, w: string) =>
   : area === 'Q' ? (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B')
   : (w === 'WORD' ? 'W' : w === 'DWORD' ? 'D' : 'B');
 
+/** S7 访问宽度类型（与 PROTOCOL_FIELD_CONFIG.S7.width 选项一致） */
+export type S7Width = 'BIT' | 'BYTE' | 'WORD' | 'DWORD';
+
+/** S7 访问宽度由数据类型权威推导，杜绝"宽度与数据类型不匹配"。
+  * 覆盖 S7 常用类型；不支持的（DOUBLE/STRING/INT64/UINT64 等）返回 undefined，走手工兜底。 */
+const S7_DATA_TYPE_TO_WIDTH: Partial<Record<DataTypeEnum, S7Width>> = {
+  BOOL: 'BIT', BIT: 'BIT',
+  BYTE: 'BYTE', CHAR: 'BYTE',
+  INT: 'WORD', WORD: 'WORD', UINT16: 'WORD',
+  DINT: 'DWORD', REAL: 'DWORD', FLOAT: 'DWORD', UINT32: 'DWORD'
+};
+
+/** 返回 S7 数据类型推导出的访问宽度；不支持的类型返回 undefined（退回手工配置）。 */
+export const s7WidthForDataType = (t?: string): S7Width | undefined =>
+  S7_DATA_TYPE_TO_WIDTH[String(t || '').toUpperCase() as DataTypeEnum];
+
 /** 协议字段配置表：新增协议只需在此补一行，页面自动适配 */
 export const PROTOCOL_FIELD_CONFIG: Record<DeviceType, ProtocolFieldConfig> = {
   S7: {

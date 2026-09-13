@@ -22,7 +22,7 @@ import {
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
-import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DataPointMapping, DataPoint, DeviceModelBinding, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay } from '../types';
+import { DEVICE_TYPES, PROTOCOL_FIELD_CONFIG, ProtocolFieldConfig, DataPointMapping, DataPoint, DeviceModelBinding, AddressConfig, newAddressConfig, parseAddressConfig, stringifyAddressConfig, buildAddressDisplay, s7WidthForDataType, S7Width } from '../types';
 import { syncDevices } from '../services/deviceService';
 import { fetchDataModelsFromBackend } from '../api/modelApi';
 import { extractApiError } from '../api/http';
@@ -159,6 +159,14 @@ const openEditModal = (v: DataPointMapping) => {
   editingForm.value = { ...v, accessModeOverride: v.accessModeOverride ?? null, updateMode: v.updateMode ?? 'Polling' };
   // 结构化地址（JSON 权威）：优先解析已有 JSON，否则按当前设备协议给默认骨架。
   editingCfg.value = parseAddressConfig(v.addressConfigJson) ?? newAddressConfig(selectedDevice.value?.type || 'Virtual');
+  // S7：访问宽度由数据类型权威推导并强制回填（不可手工修改），同时联动位偏移
+  if ((editingCfg.value?.protocol || '').toUpperCase() === 'S7') {
+    const aw = s7WidthForDataType(v.dataType);
+    if (aw) {
+      editingCfg.value.width = aw;
+      onAddressFieldWidthChange();
+    }
+  }
   showEditModal.value = true;
 };
 
@@ -200,6 +208,15 @@ const displayPreview = computed(() =>
 // OPC UA 结构化地址仅一个 nodeId 字段：预览串即节点本身，只读框改为加粗标签展示，且输入框占满整行
 const isStructuredOpcua = computed(() =>
   !!editingCfg.value && (editingCfg.value.protocol || '').toUpperCase() === 'OPCUA');
+
+// -------- S7 访问宽度：由数据类型权威自动推导，禁止手工修改 --------
+const isEditS7 = computed(() =>
+  (editingCfg.value?.protocol || '').toUpperCase() === 'S7');
+const s7AutoWidth = computed<S7Width | undefined>(() =>
+  isEditS7.value ? s7WidthForDataType(editingForm.value?.dataType) : undefined);
+// 宽度字段是否处于"由数据类型自动确定"的只读态（仅 S7 且当前类型可推导）
+const isAutoWidthField = (f: { key: string }) =>
+  f.key === 'width' && isEditS7.value && s7AutoWidth.value != null;
 
 // 换算表达式（覆盖）输入框占位三态：有覆盖=提示可清空继承；无覆盖但模板有=浅色显示模板表达式；都无=留空提示
 const scaleExpressionPlaceholder = computed(() => {
@@ -261,6 +278,9 @@ const saveEdit = async () => {
   if ((fieldConfig.value.addressFields?.length ?? 0) > 0 && editingCfg.value) {
     // ---- 结构化地址非必填数字字段：空串回填语义默认值（位地址 sentinel -1 / 寄存器数 1 / DB 号 0）----
     const cfg = editingCfg.value as any;
+    // S7：访问宽度以数据类型权威推导为准，提交前强制覆盖，杜绝宽度与类型不匹配
+    const aw = isEditS7.value ? s7WidthForDataType(editingForm.value?.dataType) : undefined;
+    if (aw) cfg.width = aw;
     for (const f of fieldConfig.value.addressFields || []) {
       if (f.type === 'number' && !f.required && cfg[f.key] === '') {
         cfg[f.key] = f.key === 'bitOffset' || f.key === 'bitIndex' ? -1
@@ -1098,9 +1118,12 @@ onMounted(async () => {
                   }}<span class="text-rose-400" v-if="f.required"> *</span></label>
                 <select v-if="f.type === 'select'" v-model="(editingCfg as any)[f.key]"
                   @change="onAddressFieldWidthChange"
-                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+                  :disabled="isAutoWidthField(f)"
+                  class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none disabled:cursor-not-allowed disabled:opacity-70">
                   <option v-for="opt in f.options" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</option>
                 </select>
+                <p v-if="isAutoWidthField(f)"
+                  class="mt-0.5 text-[9px] text-emerald-600 dark:text-emerald-400">访问宽度由数据类型 {{ editingForm.dataType }} 自动推导（不可修改）</p>
                 <input v-else :type="f.type === 'number' ? 'number' : 'text'"
                   v-model.number="(editingCfg as any)[f.key]" :min="f.min" :max="f.max"
                   :placeholder="f.placeholder" :disabled="f.key === 'dbNumber' && editingCfg.area !== 'DB'"
