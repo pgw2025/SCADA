@@ -5,6 +5,7 @@ import { devices } from '../store/deviceStore';
 import { desktopPages, mobilePages, currentPlatform } from '../store/scadaStore';
 import { getWidgetDef } from '../widgetRegistry';
 import { BUILTIN_SCHEMAS } from '../propSchemas';
+import { isSamePageRef } from '../utils/pageId';
 import { Settings, Tag, Sliders, Layout, Hash, ChevronRight, Eye, EyeOff, Lock, Unlock, Sparkles } from 'lucide-vue-next';
 import ImageLibraryDialog from './ImageLibraryDialog.vue';
 import PageBackgroundInspector from './inspector/PageBackgroundInspector.vue';
@@ -108,8 +109,9 @@ const onBindVariableChange = (val: string) => {
 const navTargetOptions = computed(() => {
   const list = currentPlatform.value === 'Mobile' ? mobilePages.value : desktopPages.value;
   return list
-    // 排除「当前页面」本身：页面 id 与组件 id 不可比，须用父级传入的 currentPageId
-    .filter(p => p.id !== props.currentPageId)
+    // 排除「当前页面」本身：页面 id 与组件 id 不可比，须用父级传入的 currentPageId。
+    // 口径与跳转/高亮侧一致（isSamePageRef 归一化 srv-N ↔ N），避免未落库页面时精确 !== 漏排自身。
+    .filter(p => !isSamePageRef(p.id, props.currentPageId))
     .map(p => ({ id: p.serverId ? `srv-${p.serverId}` : p.id, name: p.name }));
 });
 

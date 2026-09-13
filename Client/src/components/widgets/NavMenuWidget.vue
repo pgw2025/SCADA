@@ -24,7 +24,8 @@ const menuItems = computed<HmiMenuItem[]>(() => {
     : (getWidgetDef('nav-menu')?.defaultProps().menuItems as HmiMenuItem[]);
 });
 const menuAccentColor = computed(() => propOr('menuAccentColor', '#38bdf8'));
-const menuFontSize = computed(() => Number(propOr('menuFontSize', 14)));
+// 字号硬兜底按端型区分：移动端底部标签栏文字更小，清空配置时不回退到桌面偏大的 14px
+const menuFontSize = computed(() => Number(propOr('menuFontSize', menuDevice.value === 'mobile' ? 12 : 14)));
 // 归一化比较：targetPageId 可能是 srv-{serverId}（新配置）或本地 id，currentPageId 亦随会话双轨
 const isCurrentMenuItem = (item: HmiMenuItem) =>
   !!item.targetPageId && isSamePageRef(item.targetPageId, props.currentPageId);
@@ -64,7 +65,7 @@ const navMenuTheme = computed(() => {
 
       <!-- 桌面端：横向均分导航项（图标+文字水平排列，当前项底部高亮条） -->
       <div v-if="menuDevice === 'desktop'" class="relative z-10 flex w-full h-full">
-        <div v-for="item in menuItems" :key="item.text + item.targetPageId"
+        <div v-for="(item, idx) in menuItems" :key="idx"
           class="relative flex-1 flex items-center justify-center gap-2 h-full transition-colors duration-200"
           :class="isActiveMode && item.targetPageId ? (navMenuTheme.isLight ? 'cursor-pointer hover:bg-black/5' : 'cursor-pointer hover:bg-white/5') : ''"
           :data-nav-page="item.targetPageId || undefined" :style="{
@@ -89,7 +90,7 @@ const navMenuTheme = computed(() => {
 
       <!-- 移动端：底部 Tab 栏（图标在上文字在下，当前项整体提亮） -->
       <div v-else class="relative z-10 flex w-full h-full">
-        <div v-for="item in menuItems" :key="item.text + item.targetPageId"
+        <div v-for="(item, idx) in menuItems" :key="idx"
           class="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-0 transition-colors duration-200"
           :class="isActiveMode && item.targetPageId ? (navMenuTheme.isLight ? 'cursor-pointer active:bg-black/5' : 'cursor-pointer active:bg-white/10') : ''"
           :data-nav-page="item.targetPageId || undefined" :style="{

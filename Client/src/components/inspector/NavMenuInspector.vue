@@ -19,6 +19,8 @@ const emit = defineEmits<{
 
 const componentProps = computed(() => props.component.props ?? {});
 
+const menuDevice = computed(() => componentProps.value.menuDevice ?? 'desktop');
+
 const updateProp = (key: string, value: any) => emit('updateProp', key, value);
 
 // 解析数值输入：合法（含 0）原样写入，非法（NaN/空）回退缺省值
@@ -72,10 +74,28 @@ const openIconPickerIndex = ref(-1);
     class="space-y-2.5 text-xs border border-sky-200/80 dark:border-sky-900/60 p-3 rounded-lg bg-sky-50/40 dark:bg-sky-950/20">
     <p class="font-bold text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-wider">导航菜单配置</p>
     <p class="text-[9px] text-gray-400 dark:text-slate-500 leading-snug">
-      端型：{{ componentProps.menuDevice === 'mobile' ? '移动端·底部标签栏' : '桌面端·顶部导航条' }}；
       菜单项 {{ menuItems.length }}/{{ MENU_ITEM_MAX }}，跳转目标仅限「{{ currentPlatform === 'Mobile' ? '移动端' : '桌面端'
       }}」画面（不含当前页）。
     </p>
+
+    <!-- 端型切换：底部标签栏 / 顶部导航条（跨端错位时无需重拖图元） -->
+    <div class="flex items-center justify-between">
+      <label class="text-[10px] text-gray-500 dark:text-slate-400">端型</label>
+      <div class="flex rounded overflow-hidden border border-[#d9d9d9] dark:border-slate-700">
+        <button type="button" @click="updateProp('menuDevice', 'desktop')" :class="menuDevice === 'desktop'
+          ? 'bg-[#1890ff] text-white'
+          : 'bg-white dark:bg-slate-950 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'"
+          class="px-2.5 py-1 text-[10px] font-medium transition-colors cursor-pointer" title="桌面端·顶部导航条">
+          顶部导航条
+        </button>
+        <button type="button" @click="updateProp('menuDevice', 'mobile')" :class="menuDevice === 'mobile'
+          ? 'bg-[#1890ff] text-white'
+          : 'bg-white dark:bg-slate-950 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'"
+          class="px-2.5 py-1 text-[10px] font-medium transition-colors cursor-pointer" title="移动端·底部标签栏">
+          底部标签栏
+        </button>
+      </div>
+    </div>
 
     <div>
       <label class="text-[10px] text-gray-500 dark:text-slate-400">风格主题 (Style Preset)</label>
