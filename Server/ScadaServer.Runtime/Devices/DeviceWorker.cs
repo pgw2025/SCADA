@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -34,6 +36,14 @@ namespace ScadaServer.Runtime.Devices
         /// N=3：按默认 1s 轮询约 3s 检测延迟，兼顾对短暂网络抖动的容忍与故障发现速度。
         /// </summary>
         private const int ReconnectAfterConsecutiveFailures = 3;
+
+        /// <summary>
+        /// 单变量回落（Single Read Fallback）上限：
+        /// Batch 出现<b>非通信</b>异常、且如期变量数未超过该阈值时，才允许逐变量 ReadAsync 补读；
+        /// 超过该阈值的非通信异常同样直接按本轮失败处理，避免几百/几千个变量全部单读形成请求放大。
+        /// 通信异常则无条件禁止任何 Single Read（见 WorkerAsync 内 batchFallbackBlocked）。
+        /// </summary>
+        private const int MaxIndividualFallbackVariables = 50;
 
         /// <summary>
         /// 初始化设备工作器
@@ -148,8 +158,10 @@ namespace ScadaServer.Runtime.Devices
 
                     // P5 批读（性能补偿，连接共享驱动串行化下的吞吐优化）：
                     // 到期变量集合一次 ReadBatchAsync 取回，减少网络往返与驱动内锁竞争。
-                    // 整体抛异常 → batch=null，回退逐变量 ReadAsync（保留故障隔离与 LastError）。
+                    // P1-修复：整体抛异常不再简单置 batch=null 逐变量回退——必须保留异常并分类，
+                    // 通信异常时禁止对 due 逐个 ReadAsync（防止一次故障被放大为 N 次单变量请求风暴）。
                     IDictionary<string, object>? batch = null;
+                    Exception? batchException = null;
                     try
                     {
                         batch = await driver.ReadBatchAsync(due, cancellationToken);
@@ -160,9 +172,30 @@ namespace ScadaServer.Runtime.Devices
                     }
                     catch (Exception ex)
                     {
-                        batch = null;
-                        _logger.LogError(ex, "ReadBatchAsync {VariableCount} failed.", due.Count);
+                        batchException = ex;
+                        _logger.LogWarning(ex,
+                            "Device {DeviceKey} batch read failed. VariableCount={VariableCount}",
+                            _runtime.Device.Key, due.Count);
+                    }
 
+                    // 通信异常：本轮禁止任何单变量回落读取（All failure → 0 Single Read），
+                    // 整轮按失败处理并由下方轮次级判定递增失败计数 / 触发重连。
+                    // 非通信异常仅在变量数未超过回落上限时才允许 Single Read Fallback。
+                    var batchFallbackBlocked = false;
+                    if (batchException != null)
+                    {
+                        if (IsCommunicationFailure(batchException))
+                        {
+                            batchFallbackBlocked = true;
+                        }
+                        else if (due.Count > MaxIndividualFallbackVariables)
+                        {
+                            batchFallbackBlocked = true;
+                            _logger.LogError(
+                                "Device {DeviceKey} batch read failed and variable count {Count} " +
+                                "exceeds individual fallback limit {Limit}. Skip individual fallback.",
+                                _runtime.Device.Key, due.Count, MaxIndividualFallbackVariables);
+                        }
                     }
 
                     foreach (var vr in due)
@@ -172,8 +205,14 @@ namespace ScadaServer.Runtime.Devices
                             // P5：优先取批读结果；缺项（整体降级/驱动未返回/错误标记）走单变量补读。
                             // 批读错误标记（S7 READ_ERROR / INVALID_ADDRESS、OPC UA READ_ERROR）——由
                             // IsErrorMarker 识别为 null（走无效值路径），保证"单变量失败不拖垮整轮"语义不变。
+                            // P1-修复：batchFallbackBlocked（通信异常 / 超限）时不执行 ReadAsync，
+                            // 直接取 null（复用无效值路径），由下方轮次级判定整轮失败。
                             object? newValue;
-                            if (batch != null && batch.TryGetValue(vr.Key, out var batched))
+                            if (batchFallbackBlocked)
+                            {
+                                newValue = null;
+                            }
+                            else if (batch != null && batch.TryGetValue(vr.Key, out var batched))
                             {
                                 newValue = IsErrorMarker(batched) ? null : batched;
                             }
@@ -199,6 +238,18 @@ namespace ScadaServer.Runtime.Devices
                         }
                         catch (Exception ex)
                         {
+                            // 整轮 Batch 通信失败被禁止 Single Read 时，逐变量的 ApplyPolledAsync(null)
+                            // 属降解路径、理论上不应抛错；若仍意外抛出则仅记 Debug，避免产生 N 条重复错误日志，
+                            // 保留其余变量推进与轮次级失败判定的完整性。
+                            if (batchFallbackBlocked)
+                            {
+                                _logger.LogDebug(ex,
+                                    "Device {DeviceKey} batch read failed (fallback blocked), " +
+                                    "degradation for variable {VariableName} threw (ignored).",
+                                    _runtime.Device.Key, vr.Name);
+                                continue;
+                            }
+
                             // 单个变量读取失败（驱动读取异常；管线未兜底的意外异常）：标记通信错误。
                             // 质量降级通知（好→坏跃迁推送一次）由管线以 null 值重入触发——
                             // 读取异常发生在管线执行前，vr.Quality 未被管线改写，语义与改造前一致。
@@ -450,7 +501,33 @@ namespace ScadaServer.Runtime.Devices
         }
 
         /// <summary>
-        /// 批读错误标记判定：S7Driver / OpcUaDriver 以<b>非 null 字符串</b>标记单变量失败
+        /// 协议通信异常判定（P1-修复）。
+        /// 项目暂无统一 <c>DriverCommunicationException</c> 类型，此处以异常类型族识别通信故障：
+        /// 超时、Socket、IO、连接中断类异常视为通信异常；参数/解析/业务类异常不在此列。
+        /// 递归检查一层 InnerException，覆盖驱动对底层库异常（如 S7netplus / OPC UA SDK
+        /// 包装后的 SocketException / IOException）的包装场景。
+        /// </summary>
+        private static bool IsCommunicationFailure(Exception ex)
+        {
+            switch (ex)
+            {
+                case TimeoutException:
+                case SocketException:
+                case IOException:
+                    return true;
+            }
+
+            if (ex.InnerException is SocketException or IOException or TimeoutException)
+                return true;
+
+            // PLC/OPC UA 连接断开类自定义异常（如 ServiceResultException/DisconnectedException
+            // 异常类型名含 "Connection"）：不依赖异常消息字符串，以类型特征兜底识别。
+            return ex is not OperationCanceledException
+                && ex.GetType().Name.Contains("Connection", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 批读错误标记判定：S7Driver / OpcUaDriver以<b>非 null 字符串</b>标记单变量失败
         /// （S7 的 <c>READ_ERROR</c> / <c>INVALID_ADDRESS</c>、OPC UA 的 <c>READ_ERROR</c>，见各自驱动 ReadBatchAsync 契约）。
         /// Worker 据此将标记映射为 null（走无效值路径），保证「单变量失败不拖垮整轮」语义与逐变量路径一致。
         /// 仅识别约定标记字符串，真实字符串变量值不受影响。
