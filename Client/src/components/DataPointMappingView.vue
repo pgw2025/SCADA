@@ -197,6 +197,9 @@ const displayPreview = computed(() =>
   editingForm.value && (fieldConfig.value.addressFields?.length ?? 0) > 0
     ? buildAddressDisplay(editingCfg.value)
     : editingForm.value?.address || '');
+// OPC UA 结构化地址仅一个 nodeId 字段：预览串即节点本身，只读框改为加粗标签展示，且输入框占满整行
+const isStructuredOpcua = computed(() =>
+  !!editingCfg.value && (editingCfg.value.protocol || '').toUpperCase() === 'OPCUA');
 
 /** 校验编辑表单，返回错误文案；空串表示通过。 */
 const validateEditForm = (): string => {
@@ -1057,13 +1060,16 @@ onMounted(async () => {
               {{ fieldConfig.addressLabel }} <span class="text-rose-400"
                 v-if="fieldConfig.addressRequired && !displayPreview">（必填，空地址采集失败）</span>
             </label>
-            <!-- 展示串预览（只读，最终由后端权威生成） -->
-            <input :value="displayPreview" disabled
+            <!-- 展示串预览：OPC UA 仅一个 nodeId（预览即节点本身），只读框改加粗标签；其余协议保留只读预览输入框 -->
+            <p v-if="isStructuredOpcua" class="text-xs font-bold font-mono text-slate-700 dark:text-slate-200 break-all">
+              {{ displayPreview || '未配置' }}</p>
+            <input v-else :value="displayPreview" disabled
               :placeholder="fieldConfig.addressPlaceholder"
               class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-600 dark:text-slate-300" />
             <!-- 结构化地址字段（按协议渲染，JSON 权威） -->
             <div class="mt-2 grid grid-cols-2 gap-2">
-              <div v-for="f in visibleAddressFields" :key="f.key">
+              <div v-for="f in visibleAddressFields" :key="f.key"
+                :class="(isStructuredOpcua && f.key === 'nodeId') ? 'col-span-2' : ''">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{ f.label
                   }}<span class="text-rose-400" v-if="f.required"> *</span></label>
                 <select v-if="f.type === 'select'" v-model="(editingCfg as any)[f.key]"
