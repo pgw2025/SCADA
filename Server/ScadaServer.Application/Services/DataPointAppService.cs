@@ -170,6 +170,8 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
             }
 
+            // 记录模板变更前的运行期影响字段基线，用于判断保存后是否需要热重载引用设备。
+            var runtimeBefore = DataPointRuntimeAffecting.From(entity);
             MapToEntity(dto, entity);
             var saveSw = Stopwatch.StartNew();
             try
@@ -185,8 +187,13 @@ namespace ScadaServer.Application.Services
                 _logger.LogInformation("###Timer### DataPointAppService.UpdateAsync 调仓储落库耗时 {SaveMs} ms", saveSw.ElapsedMilliseconds);
             }
 
-            // 5. 变量模板配置（存储模式/周期/缩放/死区/只读）变更影响运行中的设备变量，热加载这些设备。
-            await ReloadDevicesOfVariableAsync(dto.Id);
+            // 5. 模板运行期相关字段（数据类型/量程/存储/缩放/死区/读写/启用等）变更才影响运行中的设备变量，
+            //    对引用设备走变量级热更（不销毁 Worker/不断连/不重建会话）；
+            //    仅改名称/标识/单位/描述等元数据 → 不进运行时，完全跳过重载。
+            if (!runtimeBefore.Same(DataPointRuntimeAffecting.From(entity)))
+            {
+                await ReloadDevicesOfVariableAsync(dto.Id);
+            }
 
             return dto;
             }
@@ -336,8 +343,29 @@ namespace ScadaServer.Application.Services
             };
         }
 
+        /// <summary>模板变更前/后运行期影响字段快照：只有这些字段变化才需要热重载引用设备。</summary>
+        private sealed record DataPointRuntimeAffecting(
+            DataTypeEnum DataType, double? Min, double? Max, StoreModeEnum StoreMode,
+            int StoreIntervalMs, string? ScaleExpression, double? DeadBand, string AccessMode,
+            bool IsEnabled, bool IsRequired)
+        {
+            public static DataPointRuntimeAffecting From(DataPoint dp) => new(
+                dp.DataType, dp.Min, dp.Max, dp.StoreMode, dp.StoreIntervalMs,
+                dp.ScaleExpression, dp.DeadBand, dp.AccessMode, dp.IsEnabled, dp.IsRequired);
+
+            public bool Same(DataPointRuntimeAffecting other) =>
+                DataType == other.DataType
+                && Min == other.Min && Max == other.Max
+                && StoreMode == other.StoreMode && StoreIntervalMs == other.StoreIntervalMs
+                && DeadBand == other.DeadBand
+                && IsEnabled == other.IsEnabled && IsRequired == other.IsRequired
+                && string.Equals(ScaleExpression, other.ScaleExpression, StringComparison.Ordinal)
+                && string.Equals(AccessMode, other.AccessMode, StringComparison.Ordinal);
+        }
+
         /// <summary>
-        /// 查询引用该模板变量的所有设备并热重载其运行时（模板配置变更需重建设备 Worker）。
+        /// 模板运行期字段变更后，对引用该模板变量的所有设备做变量级热更。
+        /// 热更仅在原运行时上增量重建变量集合，不销毁 Worker、不销毁会话、不重连。
         /// </summary>
         private async Task ReloadDevicesOfVariableAsync(int dataPointId)
         {
@@ -345,11 +373,14 @@ namespace ScadaServer.Application.Services
             try
             {
                 var dataPointMappings = await _dataPointMappingRepository.GetListAsync(dv => dv.DataPointId == dataPointId);
-                await ReloadDevicesAsync(dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList());
+                foreach (var deviceId in dataPointMappings.Select(dv => dv.DeviceId).Distinct().ToList())
+                {
+                    await _runtimeDeviceManager.ReloadDeviceVariablesAsync(deviceId);
+                }
             }
             finally
             {
-                _logger.LogInformation("###Timer### DataPointAppService.ReloadDevicesOfVariableAsync 变量 {DataPointId} 查找并重载引用设备耗时 {ElapsedMs} ms", dataPointId, sw.ElapsedMilliseconds);
+                _logger.LogInformation("###Timer### DataPointAppService.ReloadDevicesOfVariableAsync 变量 {DataPointId} 查找并热更引用设备耗时 {ElapsedMs} ms", dataPointId, sw.ElapsedMilliseconds);
             }
         }
 

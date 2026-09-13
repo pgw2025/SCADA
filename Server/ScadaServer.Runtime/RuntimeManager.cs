@@ -352,10 +352,12 @@ namespace ScadaServer.Runtime
                             {
                                 continue;
                             }
-                            // 保留变量：配置与数据库一致时沿用既有运行时实例（维持采集节奏/内存值）；
-                            // 配置已变（编辑变量）则重建实例使新轮询/地址/缩放等立即生效；新增变量亦走重建。
+                            // 保留变量：实例配置与模板定义均与数据库一致时沿用既有运行时实例（维持采集节奏/内存值）；
+                            // 任一采集相关字段变化（含模板 DataType/量程/缩放/存储等）则重建实例，使编辑立即生效；
+                            // 新增变量亦走重建。
                             if (runtime.Variables.TryGetValue(dv.Id, out var existing)
-                                && VariableConfigSame(existing.Instance, dv))
+                                && VariableConfigSame(existing.Instance, dv)
+                                && VariableDefinitionSame(existing.Definition, dv.DataPoint))
                             {
                                 newVariables[dv.Id] = existing;
                             }
@@ -418,6 +420,27 @@ namespace ScadaServer.Runtime
                 && string.Equals(a.ScaleExpressionOverride, b.ScaleExpressionOverride, StringComparison.Ordinal)
                 && string.Equals(a.AccessModeOverride, b.AccessModeOverride, StringComparison.Ordinal)
                 && string.Equals(a.RawDataType, b.RawDataType, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// 判断两台设备变量所引用的模板定义（<see cref="DataPoint"/>）采集相关字段是否一致。
+        /// 模板编辑（DataType/量程/缩放/存储/死区/读写/启用等）会影响运行时解释，须强制重建该变量；
+        /// 仅名称/标识/单位/描述等元数据变更不进运行时，可沿用。
+        /// </summary>
+        private static bool VariableDefinitionSame(DataPoint? a, DataPoint? b)
+        {
+            if (a == null || b == null) return a == null && b == null;
+            return a.Key == b.Key
+                && a.DataType == b.DataType
+                && a.Min == b.Min
+                && a.Max == b.Max
+                && a.StoreMode == b.StoreMode
+                && a.StoreIntervalMs == b.StoreIntervalMs
+                && a.DeadBand == b.DeadBand
+                && a.IsEnabled == b.IsEnabled
+                && a.IsRequired == b.IsRequired
+                && string.Equals(a.ScaleExpression, b.ScaleExpression, StringComparison.Ordinal)
+                && string.Equals(a.AccessMode, b.AccessMode, StringComparison.Ordinal);
         }
 
         /// <summary>
