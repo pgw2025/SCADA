@@ -15,6 +15,12 @@ const { isLockedControl, numValue, boolValue, normalizedPercent, defDefaults, pr
 
 const trendSeriesList = computed(() => getEffectiveTrendSeries(props.component));
 const trendShowLegend = computed(() => propOr('trendShowLegend', true));
+const trendTitleFontSize = computed(() => {
+  const custom = numOrNull('trendTitleFontSize');
+  if (custom != null && custom >= 9) return custom;
+  // 回退组件通用 fontSize，或默认 13px 保证清晰可读
+  return fontSize.value && fontSize.value >= 10 ? fontSize.value : 13;
+});
 const trendLegendFontSize = computed(() => Number(propOr('trendLegendFontSize', 9)));
 const hasTrendData = computed(() => trendSeriesList.value.length > 0);
 // 是否任一序列已采到 ≥2 个真实采样点可绘制
@@ -99,17 +105,17 @@ onBeforeUnmount(() => {
 });
 
 const numOrNull = (k: string): number | null => {
-  const v = props.component.props[k as keyof HMIComponent['props']];
+  const v = props.component.props[k];
   return (v === undefined || v === null || v === '') ? null : Number(v);
 };
-const trendAxisMode = computed(() => (propOr('trendAxisMode', 'absolute') === 'relative' ? 'relative' : 'absolute'));
+const trendAxisMode = computed(() => (String(propOr('trendAxisMode', 'absolute')) === 'relative' ? 'relative' : 'absolute'));
 const manualAxisMin = computed(() => numOrNull('trendAxisMin'));
 const manualAxisMax = computed(() => numOrNull('trendAxisMax'));
-const useGlobalRange = computed(() => propOr('trendUseGlobalRange', true));
-const showGrid = computed(() => propOr('trendShowGrid', true) === true);
-const showAxisLabels = computed(() => propOr('trendShowAxisLabels', true) === true);
+const useGlobalRange = computed(() => Boolean(propOr('trendUseGlobalRange', true)));
+const showGrid = computed(() => Boolean(propOr('trendShowGrid', true)));
+const showAxisLabels = computed(() => Boolean(propOr('trendShowAxisLabels', true)));
 const axisLabelFontSize = computed(() => Number(propOr('trendAxisLabelFontSize', 8)));
-const showPointValues = computed(() => propOr('trendShowPointValues', false) === true);
+const showPointValues = computed(() => Boolean(propOr('trendShowPointValues', false)));
 const pointValueFontSize = computed(() => Number(propOr('trendPointValueFontSize', 8)));
 const pointEveryN = computed(() => numOrNull('trendPointValueEveryN'));
 
@@ -140,11 +146,6 @@ const trendChart = computed(() => {
   const series = trendSeriesList.value;
   const map = (props.history ?? {}) as Record<string, TrendSample[]>;
   const W = width.value, H = height.value;
-  const padL = 32, padR = 8, padT = 6, padB = 16; // 左留 Y 刻度，下留 X 刻度
-  const innerW = Math.max(1, W - padL - padR);
-  const innerH = Math.max(1, H - padT - padB);
-  const left = padL, top = padT;
-
   // 共享轴参考范围 mapLo/mapHi（数值归一化用）；yTickVals 为刻度数值
   let mapLo = 0, mapHi = 1, hasShared = false, yTickVals: number[] = [];
   const mMin = manualAxisMin.value, mMax = manualAxisMax.value;
@@ -162,7 +163,7 @@ const trendChart = computed(() => {
     mapLo = rMin; mapHi = rMax; hasShared = true;
     yTickVals = niceTicks(0, 100, 4);
   } else if (useGlobalRange.value) {
-    // 绝对 + 全局共享自适应
+    // 绝对 + 全局共享自适应（严格显示真实绝对值）
     let gMin = Infinity, gMax = -Infinity;
     series.forEach((s) => {
       const buf = map[s.id] ?? [];
@@ -176,12 +177,23 @@ const trendChart = computed(() => {
     yTickVals = niceTicks(gMin, gMax, 4);
   }
 
+  // 绝对坐标时根据刻度最大字符长度动态计算左留白，避免大数值（如 1000、25.4）被裁切
+  let maxTickLen = 3;
+  if (hasShared && yTickVals.length > 0) {
+    maxTickLen = Math.max(...yTickVals.map(v => fmtTick(v).length));
+  }
+  const padL = isRel ? 34 : Math.min(56, Math.max(34, maxTickLen * 7 + 10));
+  const padR = 8, padT = 6, padB = 16; // 左留 Y 刻度，下留 X 刻度
+  const innerW = Math.max(1, W - padL - padR);
+  const innerH = Math.max(1, H - padT - padB);
+  const left = padL, top = padT;
+
   const yTicks = yTickVals.map((v) => {
     const r = (mapHi - mapLo) || 1;
     const ratio = Math.max(0, Math.min(1, (v - mapLo) / r));
     return { value: v, y: top + (innerH - ratio * innerH) };
   });
-  // 无共享轴（绝对 + 逐序列独立）时仍画 3 条默认网格线
+  // 绝对坐标模式仅显示绝对数值，严禁拼接百分号；相对模式才附加 %
   const grid: { y: number; label?: string }[] = hasShared
     ? yTicks.map((t) => ({ y: t.y, label: fmtTick(t.value) + (isRel ? '%' : '') }))
     : [0.25, 0.5, 0.75].map((f) => ({ y: top + innerH - f * innerH }));
@@ -278,9 +290,9 @@ const trendValFmt = (v: number) => (typeof v === 'number' ? v.toFixed(1) : `${v}
 <div
       class="w-full h-full border rounded-lg p-1.5 font-mono flex flex-col"
       :style="{ backgroundColor: 'var(--vfd-metal-900)', borderColor: 'var(--vfd-metal-700)', color: 'var(--vfd-muted)' }">
-      <div class="flex items-center justify-between mb-1 border-b pb-1 gap-2"
+      <div class="flex items-center justify-between mb-1.5 border-b pb-1.5 gap-2"
         :style="{ borderColor: 'var(--vfd-metal-700)' }">
-        <span class="font-bold truncate text-[9px]" :style="{ color: 'var(--vfd-body)' }">{{ component.label || component.name || '实时趋势' }}</span>
+        <span class="font-bold truncate tracking-wide" :style="{ color: 'var(--vfd-body)', fontSize: trendTitleFontSize + 'px' }">{{ component.label || component.name || '实时趋势' }}</span>
         <div v-if="trendShowLegend && hasTrendData" class="flex flex-col items-end gap-0.5 min-w-0"
           :style="{ fontSize: trendLegendFontSize + 'px' }">
           <div v-for="s in trendChart.series" :key="s.id" class="flex items-center gap-1 leading-none">

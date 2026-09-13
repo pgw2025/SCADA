@@ -304,8 +304,8 @@ watch(
         <select :value="componentProps.trendAxisMode ?? 'absolute'"
           @change="updateProp('trendAxisMode', ($event.target as HTMLSelectElement).value)"
           class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
-          <option value="absolute">绝对坐标（工程量值）</option>
-          <option value="relative">相对坐标（0–100%）</option>
+          <option value="absolute">绝对坐标（显示真实工程量绝对值）</option>
+          <option value="relative">相对坐标（归一化 0–100%）</option>
         </select>
       </div>
 
@@ -343,17 +343,24 @@ watch(
         </label>
       </div>
 
-      <!-- 字号 -->
-      <div class="grid grid-cols-2 gap-1.5">
+      <!-- 字号配置：标题字号 / 刻度字号 / 点位值字号 -->
+      <div class="space-y-1.5">
         <div>
-          <label class="text-[9px] text-slate-400">刻度字号: {{ componentProps.trendAxisLabelFontSize ?? 8 }}px</label>
-          <input type="range" min="6" max="16" step="1" :value="componentProps.trendAxisLabelFontSize ?? 8"
-            @input="updateProp('trendAxisLabelFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+          <label class="text-[9px] text-slate-400">标题字号: {{ componentProps.trendTitleFontSize ?? 13 }}px</label>
+          <input type="range" min="9" max="22" step="1" :value="componentProps.trendTitleFontSize ?? 13"
+            @input="updateProp('trendTitleFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
         </div>
-        <div>
-          <label class="text-[9px] text-slate-400">点位值字号: {{ componentProps.trendPointValueFontSize ?? 8 }}px</label>
-          <input type="range" min="6" max="16" step="1" :value="componentProps.trendPointValueFontSize ?? 8"
-            @input="updateProp('trendPointValueFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+        <div class="grid grid-cols-2 gap-1.5">
+          <div>
+            <label class="text-[9px] text-slate-400">刻度字号: {{ componentProps.trendAxisLabelFontSize ?? 8 }}px</label>
+            <input type="range" min="6" max="16" step="1" :value="componentProps.trendAxisLabelFontSize ?? 8"
+              @input="updateProp('trendAxisLabelFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+          </div>
+          <div>
+            <label class="text-[9px] text-slate-400">点位值字号: {{ componentProps.trendPointValueFontSize ?? 8 }}px</label>
+            <input type="range" min="6" max="16" step="1" :value="componentProps.trendPointValueFontSize ?? 8"
+              @input="updateProp('trendPointValueFontSize', Number(($event.target as HTMLInputElement).value))" class="w-full accent-[#1890ff]" />
+          </div>
         </div>
       </div>
 

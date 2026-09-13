@@ -48,6 +48,8 @@ const props = defineProps<{
   currentPageId?: string;
   /** 画布目标平台：Desktop / Mobile / Popup。仅 Mobile 启用框选/平移/双指捏合等移动端手势 */
   platform?: 'Desktop' | 'Mobile' | 'Popup';
+  /** 是否选中了画布背景（进入页面属性配置态） */
+  isBackgroundSelected?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -169,14 +171,32 @@ const toCanvasCoords = (clientX: number, clientY: number) => {
   return { x: (clientX - rect.left) / zoom.value, y: (clientY - rect.top) / zoomY.value };
 };
 
-// Handle arrow keys for micro-adjustments in Edit Mode
+// Handle arrow keys for micro-adjustments and Escape key in Edit Mode
 const handleKeyDown = (e: KeyboardEvent) => {
-  if (props.isActiveMode || props.selectedIds.length === 0) return;
+  if (props.isActiveMode) return;
 
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
     return; // Avoid intercepting input typings
   }
+
+  // 快捷键 Escape：若有组件选中则清空组件选中并选中画布背景；若已无组件选中且未中背景，则选中背景
+  if (e.key === 'Escape') {
+    if (props.selectedIds.length > 0) {
+      e.preventDefault();
+      emit('selectComponents', []);
+      if (!props.readonly) {
+        emit('selectBackground');
+      }
+      return;
+    } else if (!props.isBackgroundSelected && !props.readonly) {
+      e.preventDefault();
+      emit('selectBackground');
+      return;
+    }
+  }
+
+  if (props.selectedIds.length === 0) return;
 
   const step = e.shiftKey ? 10 : 1;
   const snap = snapToGrid.value && !e.shiftKey ? 10 : step;
@@ -619,6 +639,17 @@ const handleStageMouseUp = () => {
   boxRect.value = { x: 0, y: 0, w: 0, h: 0 };
 };
 
+// 方案A：DOM 级画布空白点击处理器，解耦移动端手势判断，确保桌面端/移动端均可稳定进入背景属性编辑
+const handleCanvasClick = (e: MouseEvent) => {
+  // 运行态、拖拽或缩放操作中、或非鼠标左键点击不触发
+  if (props.readonly || props.isActiveMode || isDragging.value || activeResizeHandle.value != null || isPanning.value) {
+    return;
+  }
+  // 清空组件选中，并触发背景选中
+  emit('selectComponents', []);
+  emit('selectBackground');
+};
+
 // 阶段5-2：组件对齐（相对画布边缘/中心；多选≥2 时相对选区包围盒；含等距分布）
 const alignComponents = (direction: string) => {
   const sel = props.components.filter((c) => props.selectedIds.includes(c.id));
@@ -1031,8 +1062,12 @@ onUnmounted(() => {
       }">
         <!-- 边框/圆角/阴影仅设计态显示：运行态（readonly）纯净铺满，无边框卡片感 -->
         <div ref="canvasRef"
-          :class="readonly ? 'border-none rounded-none shadow-none' : 'border border-[#d9d9d9] rounded shadow-lg'"
-          class="relative transition-shadow duration-150"
+          :class="[
+            readonly ? 'border-none rounded-none shadow-none' : 'border border-[#d9d9d9] rounded shadow-lg',
+            !readonly && !isActiveMode && isBackgroundSelected ? 'ring-2 ring-[#1890ff] ring-offset-2 ring-offset-[#f0f2f5]' : ''
+          ]"
+          class="relative transition-all duration-150"
+          @click="handleCanvasClick"
           @dragover.prevent @drop="onDrop" :style="{
             width: canvasWidth + 'px',
             height: canvasHeight + 'px',

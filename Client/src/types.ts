@@ -208,6 +208,7 @@ export interface HMIComponent {
   visible?: boolean;
   locked?: boolean;
   props: {
+    [key: string]: any;
     // 外观风格主题（全组件通用：复用变频电机控制面板同套 8 预设 + 自定义强调色）
     panelStyle?: string;
     panelAccentColor?: string;
@@ -313,6 +314,7 @@ export interface HMIComponent {
     // ===== trend-chart 实时波段趋势图专属 props（多变量序列）=====
     trendSeries?: HmiTrendSeries[];     // 绑定的多变量序列（每条含 deviceId/variableKey/color/lineWidth 等）
     trendShowLegend?: boolean;         // 是否显示图例（色块+名称+当前值）
+    trendTitleFontSize?: number;       // 标题字号 (px，默认 13)
     trendLegendFontSize?: number;      // 图例字号 (px，默认 9)
     trendUseGlobalRange?: boolean;     // 多序列是否共用同一 Y 轴量程（默认 true，便于对比）
 

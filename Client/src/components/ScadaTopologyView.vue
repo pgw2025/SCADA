@@ -233,9 +233,26 @@ const toggleFullscreen = (targetVal?: boolean) => {
 };
 
 const handleGlobalKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && isScadaFullscreen.value) {
-    toggleFullscreen(false);
-    return;
+  if (e.key === 'Escape') {
+    if (isScadaFullscreen.value) {
+      toggleFullscreen(false);
+      return;
+    }
+    // 快捷键 Escape：非全屏时若处于设计模式，用于取消组件选中并进入画布背景配置
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      if (!isActiveMode.value) {
+        if (selectedIds.value.length > 0) {
+          e.preventDefault();
+          handleSelectBackground();
+          return;
+        } else if (!isBackgroundSelected.value) {
+          e.preventDefault();
+          handleSelectBackground();
+          return;
+        }
+      }
+    }
   }
   onHistoryKey(e);
 };
@@ -530,7 +547,7 @@ watch(popupPageToShow, (page, oldPage) => {
   const newIds = collectPageDeviceRefs(page);
   newIds.forEach((id) => { if (!pageIds.has(id)) subscribeDeviceTelemetry(id); });
   oldIds.forEach((id) => {
-    if (!pageIds.has(id) && !newIds.has(id)) unsubscribeDeviceTelemetry(id);
+    if (!pageIds.has(id) && !newIds.includes(id)) unsubscribeDeviceTelemetry(id);
   });
 });
 
@@ -648,6 +665,8 @@ const handleSelectComponents = (ids: string[]) => {
 const handleSelectBackground = () => {
   selectedIds.value = [];
   isBackgroundSelected.value = true;
+  rightActiveTab.value = 'inspector';
+  isRightSidebarOpen.value = true;
 };
 
 // 页面属性：背景/自适应配置变更 → 本地更新 + 落库
@@ -725,7 +744,7 @@ const handleAddWidget = (type: ComponentType, defaultW: number, defaultH: number
 
 // 阶段5-4：组件库拖拽投放落点（由 CanvasPanel 反算坐标后调用，x/y 为画布内坐标）
 const handleAddWidgetAt = (type: string, w: number, h: number, name: string, x: number, y: number, extraProps?: Record<string, any>) => {
-  handleAddWidget(type, w, h, name, x, y, extraProps);
+  handleAddWidget(type as any, w, h, name, x, y, extraProps);
 };
 
 // ===== 图片图元：图库选图 → 按原图宽高比落布 =====
@@ -2023,7 +2042,9 @@ const handleExportPage = async (page: ScadaPage) => {
                     :isActiveMode="isActiveMode" :component-values="componentValues" :canvas-width="pageWidth"
                     :canvas-height="pageHeight" :can-control-write="canControlWrite"
                     :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
-                    :layers="currentPage.layers" :current-page-id="currentPage.id" :platform="currentPlatform" @select-components="handleSelectComponents"
+                    :layers="currentPage.layers" :current-page-id="currentPage.id" :platform="currentPlatform"
+                    :is-background-selected="isBackgroundSelected"
+                    @select-components="handleSelectComponents"
                     @updateComponent="handleUpdateComponent" @update-components="handleUpdateComponents"
                     @toggleMode="isActiveMode = !isActiveMode" @triggerToggleValue="handleTriggerToggleValue"
                     @delete-components="handleDeleteComponents" @duplicate-components="handleDuplicateComponents"
@@ -2039,6 +2060,7 @@ const handleExportPage = async (page: ScadaPage) => {
                 :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite"
                 :background="currentPage.background" :adapt-mode="currentPage.adaptMode" :layers="currentPage.layers"
                 :current-page-id="currentPage.id" :platform="currentPlatform"
+                :is-background-selected="isBackgroundSelected"
                 @select-components="handleSelectComponents" @updateComponent="handleUpdateComponent"
                 @update-components="handleUpdateComponents" @toggleMode="isActiveMode = !isActiveMode"
                 @triggerToggleValue="handleTriggerToggleValue" @delete-components="handleDeleteComponents"
