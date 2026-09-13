@@ -16,4 +16,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- 供单元测试直接断言 internal 逻辑（如 DeviceWorker.ComputeIdleWaitMs），与 Infrastructure 项目同口径 -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ScadaServer.Runtime.Tests" />
+  </ItemGroup>
+
 </Project>

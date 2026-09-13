@@ -80,6 +80,27 @@ namespace ScadaServer.Runtime.Devices
                 // Kind=Utc 时为 no-op；跨时区部署 / 系统时区变更时不会产生偏移）。
                 var now = DateTime.UtcNow;
 
+                // 循环内快照并判空驱动（空指针修复）：连接级共享架构下 Driver 为 Session?.Driver
+                // 转发快照，会话重连/销毁、设备重载/卸载窗口内可能瞬时为 null；循环入口（WorkerAsync
+                // 开头）的一次性判空无法覆盖该窗口。快照后批读与单读统一引用本变量，顺带消除
+                // 批读与单读两次取值之间的 TOCTOU（两次之间驱动被替换导致读到 null）。
+                var driver = _runtime.Driver;
+                if (driver == null)
+                {
+                    // 驱动未就绪（重连在途 / 连接失败）：短暂让步后重试，不进入采集。
+                    // 取消信号由 while 条件或下方 Task.Delay 抛出的 OperationCanceledException
+                    // 统一退出（重连/卸载路径都会先 CancelWorker），不会空转。
+                    try
+                    {
+                        await Task.Delay(200, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    continue;
+                }
+
                 // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）。
                 // Step 4.5：跳过 UpdateMode == Subscription 的变量——订阅变量由驱动推送（OPC UA），
                 // 不再轮询读取；混合设备中轮询变量照常按各自间隔读取，纯订阅设备 due 恒空（由下方看门狗接管空转分支）。
@@ -101,18 +122,12 @@ namespace ScadaServer.Runtime.Devices
                     //    OPC UA 仅在值变化时发布数据通知，静态值长时间无回调是正常行为（D5 附注）。
                     await WatchdogAsync(now);
 
-                    // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性
-                    var soonest = DateTime.MaxValue;
-                    foreach (var vr in _runtime.Variables.Values)
-                    {
-                        if (vr.IsEnabled && vr.NextPollTime < soonest) soonest = vr.NextPollTime;
-                    }
-
-                    var waitMs = soonest == DateTime.MaxValue
-                        ? _runtime.Device.PollingInterval
-                        : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
-                    // 上限 2000ms：避免长时间阻塞导致配置变更 / 取消信号响应不及时
-                    waitMs = Math.Min(waitMs, 2000);
+                    // 无到期变量：休眠至最近一次下次轮询时间，兼顾调度精度与退出响应性。
+                    // 等待时长统一经 <see cref="ComputeIdleWaitMs"/> 计算：排除订阅变量并收敛到
+                    // [下限, 上限] 区间，杜绝"订阅变量残留的过去时刻 NextPollTime 把等待钳成 0，
+                    // 空转分支退化为无休眠忙循环打满单核"的缺陷（纯订阅设备永久忙等、
+                    // 混合设备在轮询间隙忙等——添加 OPC UA 订阅设备后 CPU 飙升的根因）。
+                    var waitMs = ComputeIdleWaitMs(_runtime, now);
 
                     if (waitMs > 0)
                     {
@@ -137,7 +152,7 @@ namespace ScadaServer.Runtime.Devices
                     IDictionary<string, object>? batch = null;
                     try
                     {
-                        batch = await _runtime.Driver.ReadBatchAsync(due);
+                        batch = await driver.ReadBatchAsync(due);
                     }
                     catch
                     {
@@ -158,7 +173,7 @@ namespace ScadaServer.Runtime.Devices
                             }
                             else
                             {
-                                newValue = await _runtime.Driver.ReadAsync(vr);
+                                newValue = await driver.ReadAsync(vr);
                             }
 
                             // 值处理统一交管线（工程换算/质量/锁内更新/事件发布/通知入队/历史/实时/报警），
@@ -296,6 +311,56 @@ namespace ScadaServer.Runtime.Devices
             // 循环结束，标记设备断开
             _runtime.ConnectionState = DeviceConnectionState.Disconnected;
             _logger.LogInformation("DeviceWorker {DeviceKey} stopped.", _runtime.Device.Key);
+        }
+
+        // ===================== 空转等待计算（CPU 忙循环缺陷修复） =====================
+
+        /// <summary>
+        /// 空转休眠下限（毫秒）。防异常配置把等待钳成 0 使空转分支退化为忙循环：
+        /// 下限保证至多每秒 10 次空转检查（看门狗另有 5s 节流，不受影响）。
+        /// </summary>
+        private const int IdleWaitFloorMs = 100;
+
+        /// <summary>
+        /// 空转休眠上限（毫秒）。避免长时间阻塞导致配置变更 / 取消信号响应不及时
+        /// （沿用修复前既有上限语义）。
+        /// </summary>
+        private const int IdleWaitCeilingMs = 2000;
+
+        /// <summary>
+        /// 计算空转分支的休眠时长（毫秒）。
+        /// <para>
+        /// soonest 取「已启用的<b>轮询变量</b>」中最小的 NextPollTime：
+        /// 订阅变量（<see cref="UpdateModeEnum.Subscription"/>）被排除——它不参与轮询调度，
+        /// 其 NextPollTime 停留在注册时刻不再推进（注册时被设为 now，due 收集与订阅回调
+        /// 路径都不会推进它），若计入会把 (soonest - now) 钳成 0，使空转分支退化为
+        /// 打满单个 CPU 核心的忙循环（纯订阅设备永久忙等、混合设备在轮询间隙忙等）。
+        /// </para>
+        /// <para>
+        /// 无有效轮询变量（空设备 / 全禁用 / 纯订阅）时回退设备级
+        /// <c>Device.PollingInterval</c>；结果收敛到
+        /// [ <see cref="IdleWaitFloorMs"/>, <see cref="IdleWaitCeilingMs"/> ]：
+        /// 下限兜底设备级 PollingInterval 被配置为 0/负值等异常场景，上限保证关停/重载响应性。
+        /// </para>
+        /// </summary>
+        /// <param name="runtime">设备运行时（读取变量集合与设备级轮询间隔）。</param>
+        /// <param name="now">当前 UTC 时刻（与调用方循环内的取值保持一致）。</param>
+        /// <returns>本轮空转应休眠的毫秒数（恒 ≥ 下限，无忙循环风险）。</returns>
+        internal static int ComputeIdleWaitMs(DeviceRuntime runtime, DateTime now)
+        {
+            var soonest = DateTime.MaxValue;
+            foreach (var vr in runtime.Variables.Values)
+            {
+                // 仅轮询变量参与空转调度：与 due 收集口径对齐（跳过禁用与订阅）。
+                if (!vr.IsEnabled || vr.UpdateMode == UpdateModeEnum.Subscription) continue;
+                if (vr.NextPollTime < soonest) soonest = vr.NextPollTime;
+            }
+
+            var waitMs = soonest == DateTime.MaxValue
+                ? runtime.Device.PollingInterval
+                : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
+
+            return Math.Clamp(waitMs, IdleWaitFloorMs, IdleWaitCeilingMs);
         }
 
         /// <summary>失败原因截断（上限 500 字符），防止异常消息超长撑爆快照/日志。</summary>

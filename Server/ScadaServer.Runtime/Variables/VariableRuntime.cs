@@ -55,8 +55,15 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>位偏移。来源：DataPointMapping.BitOffset（设备实例级权威；模板层已移除该字段）。</summary>
     public int? BitOffset => Instance?.BitOffset;
 
-    /// <summary>轮询间隔(ms)。来源：DataPointMapping.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。</summary>
-    public int PollingIntervalMs => Instance?.PollingIntervalMs ?? 1000;
+    /// <summary>
+    /// 轮询间隔(ms)。来源：DataPointMapping.PollingIntervalMs，缺省回退 1000ms（模板层已移除该字段）。
+    /// <para>
+    /// 运行时安全下限 10ms：显式配置 0/负值（清空表单被序列化为 0 等场景）会使采集循环
+    /// 每轮变量都到期（NextPollTime 推进 0ms），退化为高频忙循环打满 CPU，统一收敛到 10ms
+    /// （与 VirtualDriver.IntervalMs 的兜底下限同口径）。仅运行时收敛，落库值与 DTO 回显不受影响。
+    /// </para>
+    /// </summary>
+    public int PollingIntervalMs => Math.Max(Instance?.PollingIntervalMs ?? 1000, 10);
 
     /// <summary>
     /// 工程换算表达式（原始值 → 工程值，以 x 代表原始值）。
