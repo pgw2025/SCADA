@@ -1381,6 +1381,18 @@ const handleImportDone = async () => {
                   <option value="ReadWrite">读写</option>
                 </select>
               </div>
+              <div>
+                <label class="text-slate-500 dark:text-slate-400 font-bold block mb-0.5">换算表达式（选填）</label>
+                <input
+                  v-model="varScaleExpression"
+                  type="text"
+                  maxlength="200"
+                  placeholder="例如: (x - 4) / 20 * 100"
+                  title="以 x 代表原始值；支持 Math 函数(abs/min/max/pow/sqrt/exp/log/round/floor/ceil/sign/sin/cos/tan/asin/acos/atan)与运算符 + - * / % ()；留空表示恒等变换，最长200字符"
+                  class="w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-700 rounded p-1.5 focus:outline-none text-xs font-mono text-slate-800 dark:text-white placeholder:text-slate-400"
+                />
+                <p v-if="varScaleExpression.trim()" class="text-[9px] text-orange-600 dark:text-orange-400 mt-0.5">x 为原始值，留空表示恒等变换</p>
+              </div>
             </div>
           </div>
 
