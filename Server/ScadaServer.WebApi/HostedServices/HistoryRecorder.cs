@@ -1,9 +1,17 @@
+using System.IO;
+using System.Diagnostics;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using ScadaServer.Application.Interfaces;
+using ScadaServer.Application.Options;
+using ScadaServer.Application.Services;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Infrastructure.Persistence;
 
@@ -13,7 +21,7 @@ namespace ScadaServer.WebApi.HostedServices
     /// 历史数据记录器（单例 + IHostedService）。
     /// <para>
     /// 采集线程通过 <see cref="IHistoryRecorder.Record"/> 非阻塞入队采样点，
-    /// 本服务在后台按批次（满 100 条或每 500ms）批量写库，避免高频单条插入拖慢采集循环。
+    /// 本服务在后台按批次（满 FlushBatchSize 条或每 FlushIntervalMs）批量写库，避免高频单条插入拖慢采集循环。
     /// 队列满时（BoundedChannelFullMode.DropWrite）丢弃并计数告警，保证采集不受背压阻塞。
     /// </para>
     /// <para>
@@ -24,18 +32,21 @@ namespace ScadaServer.WebApi.HostedServices
     /// 写入可靠性（阶段2）：Influx 失败回退 MySQL，MySQL 指数退避重试；双后端均失败的批次进入
     /// 内存补偿队列周期性重放；NaN/Infinity 采样点剥离改道 MySQL，避免整批 Influx 写入失败。
     /// </para>
+    /// <para>
+    /// 补偿落盘（WAL，阶段2增强）：内存补偿队列溢出、或进程停止时仍滞留的批次暂存磁盘
+    /// （HistoryRecorderOptions.RetrySpillDirectory），进程重启后扫描重放，避免双后端故障期间
+    /// 的历史数据随进程退出丢失。批次以 JSON Lines 单文件一个批次存储，写盘经 .tmp 原子 rename。
+    /// </para>
     /// </summary>
     public class HistoryRecorder : IHistoryRecorder, IHistoryRecorderStats, IHostedService
     {
-        private const int ChannelCapacity = 20000;
-        private const int FlushBatchSize = 100;
-        private const int FlushIntervalMs = 500;
+        private const long DefaultSpillMaxBytes = 512L * 1024 * 1024;
 
-        /// <summary>补偿队列容量上限（条）。</summary>
-        private const int RetryBufferCapacity = 50000;
+        /// <summary>停止排空预算（毫秒）：停止时刷空队列的整体时限，防止数据库持续故障拖死关闭流程。</summary>
+        private const int StopDrainTimeoutMs = 25000;
 
-        /// <summary>补偿批次连续失败放弃轮数上限（防毒丸批次永久占用）。</summary>
-        private const int MaxRetryRounds = 10;
+        /// <summary>主队列满载丢弃的日志闸门跨度（条）：首次丢弃记 Warning，之后每累积该跨度再记一次。</summary>
+        private const int DropNotifyInterval = 1000;
 
         /// <summary>MySQL 回退写入重试延迟序列（毫秒）：500/1000/2000。</summary>
         private static readonly int[] MySqlRetryDelays = { 500, 1000, 2000 };
@@ -47,17 +58,32 @@ namespace ScadaServer.WebApi.HostedServices
         private readonly IInfluxStore _influxStore;
         private readonly CancellationTokenSource _cts = new();
 
+        // ---- 采集/落库参数（来自 HistoryRecorderOptions） ----
+        private readonly int _channelCapacity;
+        private readonly int _flushBatchSize;
+        private readonly int _flushIntervalMs;
+        private readonly int _retryBufferCapacity;
+        private readonly int _maxRetryRounds;
+
+        // ---- 补偿落盘（WAL） ----
+        private readonly bool _spillEnabled;
+        private readonly string? _spillDir;
+        private readonly long _spillMaxBytes;
+
         private Task? _processTask;
 
         // ---- 运行期统计（Interlocked 零锁读取） ----
         private long _droppedCount;                 // 队列满丢弃
+        private long _dropNotifiedCount;            // 已告警的累计丢弃数（日志闸门用）
         private long _enqueuedTotal;                // 累计入队
-        private long _droppedAllBackendFailed;      // 双后端穷尽 + 补偿溢出丢弃
+        private long _droppedAllBackendFailed;      // 双后端穷尽 + 补偿溢出丢弃 + 落盘失败丢弃
         private long _influxWriteBatches;           // Influx 成功批次数
         private long _influxWriteFailedBatches;     // Influx 失败批次数
         private long _mysqlWriteBatches;            // MySQL 成功批次数
         private long _mysqlRetriedBatches;          // MySQL 重试批次数
         private long _invalidValuePoints;           // NaN/Infinity 分流计数
+        private int _maxQueueDepth;                 // 队列深度高水位（评估容量）
+        private double _lastFlushDurationMs;        // 最近一次落库耗时（毫秒）
         private DateTime? _lastFlushAt;
         private DateTime? _lastWriteSucceededAt;
 
@@ -70,13 +96,34 @@ namespace ScadaServer.WebApi.HostedServices
             IServiceScopeFactory scopeFactory,
             ILogger<HistoryRecorder> logger,
             DatabaseInitializationStatus dbReady,
-            IInfluxStore influxStore)
+            IInfluxStore influxStore,
+            IOptions<HistoryRecorderOptions> options,
+            IWebHostEnvironment environment)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
             _dbReady = dbReady;
             _influxStore = influxStore;
-            _channel = Channel.CreateBounded<VariableHistory>(new BoundedChannelOptions(ChannelCapacity)
+
+            var opt = options.Value ?? new HistoryRecorderOptions();
+            _channelCapacity = opt.ChannelCapacity > 0 ? opt.ChannelCapacity : 20000;
+            _flushBatchSize = opt.FlushBatchSize > 0 ? opt.FlushBatchSize : 100;
+            _flushIntervalMs = opt.FlushIntervalMs > 0 ? opt.FlushIntervalMs : 500;
+            _retryBufferCapacity = opt.RetryBufferCapacity > 0 ? opt.RetryBufferCapacity : 50000;
+            _maxRetryRounds = opt.MaxRetryRounds > 0 ? opt.MaxRetryRounds : 10;
+
+            // 落盘目录：RetrySpillDirectory 可绝对或相对 ContentRoot；空或未启用则为 null（不落盘）。
+            var spillEnabled = opt.RetrySpillEnabled;
+            var spillRel = opt.RetrySpillDirectory ?? string.Empty;
+            _spillEnabled = spillEnabled && !string.IsNullOrWhiteSpace(spillRel);
+            _spillDir = _spillEnabled
+                ? (Path.IsPathRooted(spillRel)
+                    ? spillRel
+                    : Path.Combine(environment.ContentRootPath, spillRel))
+                : null;
+            _spillMaxBytes = opt.RetrySpillMaxBytes > 0 ? opt.RetrySpillMaxBytes : DefaultSpillMaxBytes;
+
+            _channel = Channel.CreateBounded<VariableHistory>(new BoundedChannelOptions(_channelCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropWrite,
                 SingleReader = true
@@ -110,7 +157,31 @@ namespace ScadaServer.WebApi.HostedServices
 
             if (!_channel.Writer.TryWrite(point))
             {
-                Interlocked.Increment(ref _droppedCount);
+                // 运行期丢弃告警（日志闸门）：首次丢弃记 Warning，之后每累积 DropNotifyInterval 条再记一次，
+                // 避免高频满载期间每一条都刷日志（原实现仅在进程停止时才打一条总告警，运行期丢数无感知）。
+                var dropped = Interlocked.Increment(ref _droppedCount);
+                var notified = Interlocked.Read(ref _dropNotifiedCount);
+                if (dropped == 1 || dropped - notified >= DropNotifyInterval)
+                {
+                    Interlocked.Exchange(ref _dropNotifiedCount, dropped);
+                    _logger.LogWarning(
+                        "历史记录主队列满载丢弃（累计 {Dropped} 条）。请排查 Influx/MySQL 写入情况或调大队列容量。",
+                        dropped);
+                }
+            }
+            else
+            {
+                // 记录队列深度高水位（评估容量是否需要调大，随 GetStats 暴露）
+                var depth = _channel.Reader.Count;
+                var currentMax = Volatile.Read(ref _maxQueueDepth);
+                while (depth > currentMax)
+                {
+                    if (Interlocked.CompareExchange(ref _maxQueueDepth, depth, currentMax) == currentMax)
+                    {
+                        break;
+                    }
+                    currentMax = Volatile.Read(ref _maxQueueDepth);
+                }
             }
         }
 
@@ -129,6 +200,8 @@ namespace ScadaServer.WebApi.HostedServices
             return new HistoryRecorderStats
             {
                 QueueDepth = _channel.Reader.Count,
+                MaxQueueDepth = Volatile.Read(ref _maxQueueDepth),
+                LastFlushDurationMs = Volatile.Read(ref _lastFlushDurationMs),
                 EnqueuedTotal = Interlocked.Read(ref _enqueuedTotal),
                 DroppedQueueFull = Interlocked.Read(ref _droppedCount),
                 DroppedAllBackendFailed = Interlocked.Read(ref _droppedAllBackendFailed),
@@ -173,6 +246,10 @@ namespace ScadaServer.WebApi.HostedServices
                     _logger.LogError(ex, "历史记录服务后台循环退出异常。");
                 }
             }
+
+            // 停止阶段：把仍滞留内存补偿队列的批次落盘（WAL），保证进程退出后不随内存丢失；
+            // 下次启动 ReplaySpillDirectoryAsync 会补写。
+            DrainRetryBufferToSpill();
         }
 
         private async Task ProcessAsync(CancellationToken token)
@@ -191,7 +268,7 @@ namespace ScadaServer.WebApi.HostedServices
                 return;
             }
 
-            var batch = new List<VariableHistory>(FlushBatchSize);
+            var batch = new List<VariableHistory>(_flushBatchSize);
 
             try
             {
@@ -210,19 +287,19 @@ namespace ScadaServer.WebApi.HostedServices
                     batch.Add(item);
 
                     // 顺带把已排队的项尽量捞进本批
-                    while (batch.Count < FlushBatchSize && _channel.Reader.TryRead(out var next))
+                    while (batch.Count < _flushBatchSize && _channel.Reader.TryRead(out var next))
                     {
                         batch.Add(next);
                     }
 
-                    if (batch.Count >= FlushBatchSize)
+                    if (batch.Count >= _flushBatchSize)
                     {
                         await FlushAsync(batch, token);
                     }
                     else
                     {
                         // 等待累积窗口，把未满批次也按时落库
-                        await Task.Delay(FlushIntervalMs, token);
+                        await Task.Delay(_flushIntervalMs, token);
                         if (batch.Count > 0)
                         {
                             await FlushAsync(batch, token);
@@ -243,16 +320,34 @@ namespace ScadaServer.WebApi.HostedServices
                 _logger.LogError(ex, "历史记录服务后台循环因未预期异常退出。");
             }
 
-            // 停止前排空剩余数据（不因取消而丢失）
+            // 停止前排空剩余数据（不因取消而丢失）：
+            // 循环逐个捞取队列剩余项，凑满一批即落库，直到队列排空——
+            // 修复原先只刷一次（上限 FlushBatchSize）导致积压超一批时其余被静默丢弃的问题。
+            // 整体受停止排空预算约束，防止数据库持续故障时长期占用关闭流程。
             try
             {
-                while (batch.Count < FlushBatchSize && _channel.Reader.TryRead(out var rest))
+                using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
+                drainCts.CancelAfter(StopDrainTimeoutMs);
+                try
                 {
-                    batch.Add(rest);
+                    while (_channel.Reader.TryRead(out var rest))
+                    {
+                        batch.Add(rest);
+                        if (batch.Count >= _flushBatchSize)
+                        {
+                            await FlushAsync(batch, drainCts.Token);
+                        }
+                    }
+                    if (batch.Count > 0)
+                    {
+                        await FlushAsync(batch, drainCts.Token);
+                    }
                 }
-                if (batch.Count > 0)
+                catch (OperationCanceledException)
                 {
-                    await FlushAsync(batch, CancellationToken.None);
+                    _logger.LogWarning(
+                        "历史记录服务停止排空超时（>{TimeoutMs}ms），剩余数据可能未完全落库。",
+                        StopDrainTimeoutMs);
                 }
             }
             catch (Exception ex)
@@ -275,6 +370,7 @@ namespace ScadaServer.WebApi.HostedServices
             if (batch.Count == 0) return;
 
             _lastFlushAt = DateTime.UtcNow;
+            var sw = Stopwatch.StartNew();
 
             try
             {
@@ -333,6 +429,7 @@ namespace ScadaServer.WebApi.HostedServices
             }
             finally
             {
+                _lastFlushDurationMs = sw.Elapsed.TotalMilliseconds;
                 batch.Clear();
             }
         }
@@ -411,6 +508,16 @@ namespace ScadaServer.WebApi.HostedServices
                 }
                 catch (Exception ex)
                 {
+                    // 幂等兜底：若为唯一键冲突（1062），说明本批在上一轮"已提交但客户端判定失败"时已落库，
+                    // 直接视为成功返回，避免重复入库再触发重试/补偿。（配合 (VariableKey, Timestamp) 唯一索引）
+                    if (ex is DbUpdateException due && DbExceptionClassifier.IsUniqueIndexConflict(due))
+                    {
+                        Interlocked.Increment(ref _mysqlWriteBatches);
+                        _lastWriteSucceededAt = DateTime.UtcNow;
+                        _logger.LogDebug("历史批次命中唯一键冲突，视为已入库（{Count} 条）。", points.Count);
+                        return;
+                    }
+
                     if (attempt < MySqlRetryDelays.Length)
                     {
                         attempt++;
@@ -444,16 +551,22 @@ namespace ScadaServer.WebApi.HostedServices
             }
         }
 
-        /// <summary>补偿批次入队；溢出则丢弃并计数。</summary>
+        /// <summary>补偿批次入队；内存溢出时落盘（WAL），落盘失败才丢弃并计数。</summary>
         private void EnqueueRetryBatch(List<VariableHistory> points)
         {
             lock (_retryLock)
             {
-                if (_retryBufferCount + points.Count > RetryBufferCapacity)
+                if (_retryBufferCount + points.Count > _retryBufferCapacity)
                 {
+                    // 内存补偿队列满：优先落盘暂存，避免数据直接丢弃。
+                    if (TrySpillBatch(points))
+                    {
+                        return;
+                    }
+
                     Interlocked.Add(ref _droppedAllBackendFailed, points.Count);
                     _logger.LogWarning(
-                        "补偿队列溢出，丢弃 {Count} 条采样点。",
+                        "补偿队列溢出且落盘失败，丢弃 {Count} 条采样点。",
                         points.Count);
                     return;
                 }
@@ -467,16 +580,14 @@ namespace ScadaServer.WebApi.HostedServices
         private async Task ReplayRetryBufferAsync(CancellationToken token)
         {
             RetryBatch? head = null;
+            LinkedListNode<RetryBatch>? headNode = null;
             lock (_retryLock)
             {
-                var node = _retryBuffer.First;
-                if (node != null)
-                {
-                    head = node.Value;
-                }
+                headNode = _retryBuffer.First;
+                head = headNode?.Value;
             }
 
-            if (head == null)
+            if (head == null || headNode == null)
             {
                 return;
             }
@@ -518,42 +629,292 @@ namespace ScadaServer.WebApi.HostedServices
                 }
             }
 
-            if (!success)
+            if (success)
             {
-                head.FailedRounds++;
-                if (head.FailedRounds >= MaxRetryRounds)
+                // 成功：出队
+                lock (_retryLock)
                 {
-                    // 毒丸批次：放弃并计数
-                    lock (_retryLock)
+                    if (headNode.List != null)
                     {
-                        var node = _retryBuffer.First;
-                        if (node != null && ReferenceEquals(node.Value, head))
-                        {
-                            _retryBuffer.RemoveFirst();
-                            _retryBufferCount -= head.Points.Count;
-                        }
+                        _retryBuffer.Remove(headNode);
+                        _retryBufferCount -= head.Points.Count;
                     }
+                }
+                _lastWriteSucceededAt = DateTime.UtcNow;
+                _logger.LogInformation("补偿批次重放成功（{Count} 条）。", head.Points.Count);
+                return;
+            }
+
+            // 失败：毒丸隔离
+            head.FailedRounds++;
+            if (head.FailedRounds >= _maxRetryRounds)
+            {
+                // 连续失败达到上限：移出队列并落盘暂存（WAL），避免毒丸批次永久占用队头导致数据硬丢失；
+                // 落盘失败才丢弃并计数（下次启动 ReplaySpillDirectoryAsync 会补写）。
+                lock (_retryLock)
+                {
+                    if (headNode.List != null)
+                    {
+                        _retryBuffer.Remove(headNode);
+                        _retryBufferCount -= head.Points.Count;
+                    }
+                }
+                if (TrySpillBatch(head.Points))
+                {
+                    _logger.LogWarning(
+                        "补偿批次连续失败 {Rounds} 轮，已落盘暂存 {Count} 条。",
+                        _maxRetryRounds,
+                        head.Points.Count);
+                }
+                else
+                {
                     Interlocked.Add(ref _droppedAllBackendFailed, head.Points.Count);
                     _logger.LogWarning(
-                        "补偿批次连续失败 {Rounds} 轮，放弃并丢弃 {Count} 条。",
-                        MaxRetryRounds,
+                        "补偿批次连续失败 {Rounds} 轮，落盘失败，丢弃 {Count} 条。",
+                        _maxRetryRounds,
                         head.Points.Count);
                 }
                 return;
             }
 
-            // 成功：出队
+            // 未到放弃轮数：把当前批次轮转到队尾（round-robin），
+            // 避免毒丸队头长期阻塞其后正常批次（每个失败批次轮流重试、各自计轮）。
             lock (_retryLock)
             {
-                var node = _retryBuffer.First;
-                if (node != null && ReferenceEquals(node.Value, head))
+                if (headNode.List != null)
                 {
-                    _retryBuffer.RemoveFirst();
-                    _retryBufferCount -= head.Points.Count;
+                    _retryBuffer.Remove(headNode);
+                    _retryBuffer.AddLast(headNode);
                 }
             }
-            _lastWriteSucceededAt = DateTime.UtcNow;
-            _logger.LogInformation("补偿批次重放成功（{Count} 条）。", head.Points.Count);
+        }
+
+        // ===================== 补偿落盘（WAL） =====================
+
+        /// <summary>把补偿批次落盘暂存（单文件一个批次，JSON 数组；写 .tmp 后原子 rename 防半文件）。</summary>
+        private bool TrySpillBatch(IReadOnlyList<VariableHistory> points)
+        {
+            if (!_spillEnabled || string.IsNullOrEmpty(_spillDir))
+            {
+                return false;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(_spillDir);
+                var file = Path.Combine(
+                    _spillDir,
+                    $"retry_{DateTime.UtcNow:yyyyMMddHHmmssfff}_{Guid.NewGuid():N}.json");
+                var tmp = file + ".tmp";
+                var json = JsonSerializer.Serialize(points);
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, file); // 原子 rename：重放扫描时不会读到半文件
+
+                EnforceSpillBudget();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "历史补偿批次落盘失败（{Count} 条）。", points.Count);
+                return false;
+            }
+        }
+
+        /// <summary>落盘目录预算：总大小超上限时从最旧文件开始清理，防止磁盘无限增长。</summary>
+        private void EnforceSpillBudget()
+        {
+            if (string.IsNullOrEmpty(_spillDir))
+            {
+                return;
+            }
+
+            try
+            {
+                var files = Directory.GetFiles(_spillDir, "retry_*.json")
+                    .Select(f => new FileInfo(f))
+                    .OrderBy(fi => fi.LastWriteTimeUtc)
+                    .ToList();
+
+                var total = 0L;
+                foreach (var fi in files)
+                {
+                    total += fi.Length;
+                }
+
+                foreach (var fi in files)
+                {
+                    if (total <= _spillMaxBytes)
+                    {
+                        break;
+                    }
+                    total -= fi.Length;
+                    try
+                    {
+                        File.Delete(fi.FullName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "清理历史补偿落盘文件失败：{File}", fi.FullName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "历史补偿落盘预算检查失败。");
+            }
+        }
+
+        /// <summary>
+        /// 停止阶段：把仍滞留内存补偿队列的批次全部落盘并清空内存，保证进程退出后不丢。
+        /// 落盘失败的批次只能丢弃（进程即将退出，无更可靠去处）。
+        /// </summary>
+        private void DrainRetryBufferToSpill()
+        {
+            if (!_spillEnabled)
+            {
+                return;
+            }
+
+            List<RetryBatch> toSpill;
+            lock (_retryLock)
+            {
+                if (_retryBuffer.Count == 0)
+                {
+                    return;
+                }
+                toSpill = _retryBuffer.ToList();
+                _retryBuffer.Clear();
+                _retryBufferCount = 0;
+            }
+
+            foreach (var b in toSpill)
+            {
+                if (!TrySpillBatch(b.Points))
+                {
+                    Interlocked.Add(ref _droppedAllBackendFailed, b.Points.Count);
+                    _logger.LogWarning("停止时补偿批次落盘失败，丢弃 {Count} 条。", b.Points.Count);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 扫描历史补偿落盘目录并重放：后端恢复后把上次滞留的批次补写，成功后删除文件。
+        /// 遇到后端仍故障的批次则停止扫描（文件保留，下一轮再试），避免每轮重试所有文件。
+        /// </summary>
+        private async Task ReplaySpillDirectoryAsync(CancellationToken token)
+        {
+            if (!_spillEnabled || string.IsNullOrEmpty(_spillDir) || !Directory.Exists(_spillDir))
+            {
+                return;
+            }
+
+            string[] files;
+            try
+            {
+                // 文件名带时间戳前缀，字典序即写入顺序
+                files = Directory.GetFiles(_spillDir, "retry_*.json").OrderBy(f => f).ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "历史补偿落盘目录扫描失败。");
+                return;
+            }
+
+            foreach (var file in files)
+            {
+                token.ThrowIfCancellationRequested();
+
+                List<VariableHistory>? batch;
+                try
+                {
+                    batch = JsonSerializer.Deserialize<List<VariableHistory>>(File.ReadAllText(file));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "历史补偿落盘文件解析失败，删除：{File}", file);
+                    TryDeleteSpillFile(file);
+                    continue;
+                }
+
+                if (batch == null || batch.Count == 0)
+                {
+                    TryDeleteSpillFile(file);
+                    continue;
+                }
+
+                var ok = false;
+                try
+                {
+                    ok = await TryWriteInfluxAsync(batch, token);
+                    if (!ok)
+                    {
+                        ok = await TryWriteMySqlOnce(batch, token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return; // 退出扫描，文件保留，下次再试
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "历史补偿落盘重放异常，留待下一轮。");
+                }
+
+                if (!ok)
+                {
+                    // 后端仍故障：本批次保留，停止扫描，下一轮再试
+                    return;
+                }
+
+                TryDeleteSpillFile(file);
+                _lastWriteSucceededAt = DateTime.UtcNow;
+                _logger.LogInformation("历史补偿落盘批次重放成功（{Count} 条）。", batch.Count);
+            }
+        }
+
+        /// <summary>MySQL 单次写入（供落盘重放使用，不在此处耗尽重试）。</summary>
+        private async Task<bool> TryWriteMySqlOnce(List<VariableHistory> points, CancellationToken token)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
+                db.VariableHistories.AddRange(points);
+                await db.SaveChangesAsync(token);
+                Interlocked.Increment(ref _mysqlWriteBatches);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // 幂等兜底：唯一键冲突（1062）说明上一轮已入库，视为成功（重放成功 → 删除落盘文件）。
+                if (ex is DbUpdateException due && DbExceptionClassifier.IsUniqueIndexConflict(due))
+                {
+                    Interlocked.Increment(ref _mysqlWriteBatches);
+                    return true;
+                }
+                _logger.LogDebug(ex, "历史补偿 MySQL 单次写入失败。");
+                return false;
+            }
+        }
+
+        /// <summary>删除历史补偿落盘文件（失败不抛出）。</summary>
+        private void TryDeleteSpillFile(string file)
+        {
+            try
+            {
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "删除历史补偿落盘文件失败：{File}", file);
+            }
         }
 
         /// <summary>补偿批次（持有采样点与失败轮数）。</summary>

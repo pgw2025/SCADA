@@ -32,6 +32,9 @@ builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection
 // 配置历史数据保留选项（MySQL 历史保留期，默认 0 关闭）
 builder.Services.Configure<HistoryRetentionOptions>(builder.Configuration.GetSection(HistoryRetentionOptions.SectionName));
 
+// 配置历史记录器选项（主队列容量 / 补偿落盘目录与上限等）
+builder.Services.Configure<HistoryRecorderOptions>(builder.Configuration.GetSection(HistoryRecorderOptions.SectionName));
+
 // 将 ILogger 运行日志写入数据库的 Provider：
 // 以单例注册（不经 builder.Logging.AddProvider），由 LoggerFactory 延迟解析，
 // 保证依赖链（SystemLogRecorder 单例）完整后再实例化，避免 Host 构建期提前创建导致解析失败。

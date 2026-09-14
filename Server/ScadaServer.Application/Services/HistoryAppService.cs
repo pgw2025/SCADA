@@ -153,15 +153,36 @@ namespace ScadaServer.Application.Services
             var normalizedKey = variableKey.Trim();
             var normalizedDevice = string.IsNullOrWhiteSpace(deviceKey) ? string.Empty : deviceKey.Trim();
 
+            // 单变量查询：
+            // - 原始点（无聚合窗口）：Influx 已配置时，并行查询 Influx 与 MySQL 同窗口数据并合并去重（Influx 优先），
+            //   补齐 Influx 故障期回退写入 MySQL 而导致的曲线空洞；两者皆空再走下方统一 MySQL 回退。
+            // - 聚合路径（aggregateWindowMs > 0）：保持 InfluxDB 优先（聚合降采样是 Influx 强项），
+            //   Influx 无结果再回退 MySQL 聚合，不做跨源混点（两种聚合域的降采样点语义不可简单合并）。
             if (_influxStore.IsConfigured)
             {
-                var influxRecords = await _influxStore.QueryLatestAsync(
+                var influxTask = _influxStore.QueryLatestAsync(
                     normalizedDevice, normalizedKey, limit, start, end, aggregateWindowMs, aggregateFn);
-                if (influxRecords.Count > 0)
+
+                var isAggregated = aggregateWindowMs.HasValue && aggregateWindowMs.Value > 0;
+                List<VariableHistory> mysqlRaw = new();
+                if (!isAggregated)
                 {
-                    return influxRecords
-                        .OrderBy(r => r.Timestamp)
-                        .ToList();
+                    mysqlRaw = await _repository.GetLatestAsync(normalizedDevice, normalizedKey, limit, start, end);
+                }
+
+                var influxRecords = await influxTask;
+                if (isAggregated)
+                {
+                    if (influxRecords.Count > 0)
+                    {
+                        return influxRecords
+                            .OrderBy(r => r.Timestamp)
+                            .ToList();
+                    }
+                }
+                else if (influxRecords.Count > 0 || mysqlRaw.Count > 0)
+                {
+                    return MergeDedup(influxRecords, mysqlRaw, limit);
                 }
             }
 
@@ -181,20 +202,59 @@ namespace ScadaServer.Application.Services
 
             return records
                 .OrderBy(r => r.Timestamp)
-                .Select(r => new HistoryRecordDto
-                {
-                    Id = r.Id,
-                    DeviceId = r.DeviceId,
-                    DeviceKey = r.DeviceKey,
-                    VariableKey = r.VariableKey,
-                    VariableName = r.VariableName,
-                    Value = r.Value,
-                    RawValue = r.RawValue,
-                    Timestamp = r.Timestamp,
-                    Quality = r.Quality
-                })
+                .Select(ToDto)
                 .ToList();
         }
+
+        /// <summary>
+        /// 合并 Influx + MySQL 原始点并去重（Influx 优先覆盖同时间戳的 MySQL 副本），
+        /// 按"最近 limit 条"截断后升序返回。修复 Influx 故障期回退到 MySQL 的数据在恢复后不可见的问题。
+        /// </summary>
+        private static List<HistoryRecordDto> MergeDedup(
+            IReadOnlyList<HistoryRecordDto> influx,
+            IReadOnlyList<VariableHistory> mysql,
+            int limit)
+        {
+            var seen = new Dictionary<string, HistoryRecordDto>(influx.Count + mysql.Count, StringComparer.Ordinal);
+            foreach (var m in mysql)
+            {
+                var dto = ToDto(m);
+                seen[MergeKey(dto)] = dto;
+            }
+            foreach (var r in influx)
+            {
+                // Influx 为权威时序源，同时间戳覆盖 MySQL 副本
+                seen[MergeKey(r)] = r;
+            }
+
+            return seen.Values
+                .OrderByDescending(r => r.Timestamp)
+                .Take(limit)
+                .OrderBy(r => r.Timestamp)
+                .ToList();
+        }
+
+        /// <summary>合并去重键：VariableKey + Timestamp（截断到毫秒对齐 Influx(ns)/MySQL(ms) 两库精度）。</summary>
+        private static string MergeKey(HistoryRecordDto r)
+        {
+            var ts = r.Timestamp.Kind == DateTimeKind.Utc ? r.Timestamp : r.Timestamp.ToUniversalTime();
+            var ms = new DateTime(ts.Year, ts.Month, ts.Day, ts.Hour, ts.Minute, ts.Second, ts.Millisecond, DateTimeKind.Utc);
+            return r.VariableKey + "|" + ms.Ticks;
+        }
+
+        /// <summary>实体转查询 DTO。</summary>
+        private static HistoryRecordDto ToDto(VariableHistory r) => new()
+        {
+            Id = r.Id,
+            DeviceId = r.DeviceId,
+            DeviceKey = r.DeviceKey,
+            VariableKey = r.VariableKey,
+            VariableName = r.VariableName,
+            Value = r.Value,
+            RawValue = r.RawValue,
+            Timestamp = r.Timestamp,
+            Quality = r.Quality
+        };
 
         /// <summary>CSV 字段转义：包裹双引号、内部引号翻倍、换行/制表符归一（保证单行结构，阶段5 P3-13）。</summary>
         private static string EscapeCsv(string value)
@@ -242,6 +302,8 @@ namespace ScadaServer.Application.Services
             status.WritePath = new HistoryWritePathDto
             {
                 QueueDepth = stats.QueueDepth,
+                MaxQueueDepth = stats.MaxQueueDepth,
+                LastFlushDurationMs = stats.LastFlushDurationMs,
                 EnqueuedTotal = stats.EnqueuedTotal,
                 DroppedQueueFull = stats.DroppedQueueFull,
                 DroppedAllBackendFailed = stats.DroppedAllBackendFailed,

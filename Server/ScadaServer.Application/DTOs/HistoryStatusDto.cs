@@ -27,6 +27,12 @@ public class HistoryWritePathDto
     /// <summary>当前队列剩余容量（待写条目数）</summary>
     public int QueueDepth { get; set; }
 
+    /// <summary>队列深度达到的最大值（高水位，评估容量是否需要调大）</summary>
+    public int MaxQueueDepth { get; set; }
+
+    /// <summary>最近一次落库耗时（毫秒）</summary>
+    public double LastFlushDurationMs { get; set; }
+
     /// <summary>累计入队采样点数</summary>
     public long EnqueuedTotal { get; set; }
 
