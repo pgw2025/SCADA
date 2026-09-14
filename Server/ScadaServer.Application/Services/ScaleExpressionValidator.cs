@@ -29,7 +29,8 @@ public static class ScaleExpressionValidator
     private static readonly HashSet<string> AllowedFunctions = new(StringComparer.Ordinal)
     {
         "abs", "min", "max", "pow", "sqrt", "exp", "log", "log10",
-        "round", "floor", "ceil", "sign", "sin", "cos", "tan", "asin", "acos", "atan"
+        "round", "floor", "ceil", "sign", "sin", "cos", "tan", "asin", "acos", "atan",
+        "rounddec"
     };
 
     /// <summary>标识符提取：形如 <c>Math.foo(</c> 或 <c>foo(</c> 的调用，捕获函数名。</summary>

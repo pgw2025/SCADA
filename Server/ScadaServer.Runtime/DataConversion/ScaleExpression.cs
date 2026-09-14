@@ -105,6 +105,14 @@ public static class ScaleExpression
                 .MaxStatements(64)
                 .TimeoutInterval(TimeSpan.FromMilliseconds(EvaluateTimeoutMs)));
 
+            // 内置 rounddec(value, n)：对任意换算结果保留 n 位小数（四舍五入，负数远离零方向舍入）。
+            // 表达式里可写成 rounddec(x, 2) 或将任意算式包在里面，如 rounddec(x * 3 + 5, 2)。
+            engine.SetValue("rounddec", new Func<double, double, double>((value, digits) =>
+            {
+                var p = Math.Pow(10, (int)digits);
+                return Math.Round(value * p, MidpointRounding.AwayFromZero) / p;
+            }));
+
             // 包成函数体：只定义不调用，编译期即可捕获语法错误，且天然隔离语句级副作用。
             const string fnName = "__scale";
             engine.Execute($"function {fnName}({InputVariable}) {{ return ({expression}); }}");
