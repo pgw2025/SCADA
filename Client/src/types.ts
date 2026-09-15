@@ -90,14 +90,26 @@ export interface HmiTrendSeries {
   thresholdMax?: number | null; // 高限预警阈值（超限线条标红）
 }
 
+/** 二级菜单项（nav-menu 一级项 children 中的元素） */
+export interface HmiSubMenuItem {
+  /** lucide 图标名（可选，不配则二级菜单仅显示文字） */
+  icon?: string;
+  /** 显示文字 */
+  text: string;
+  /** 跳转目标页面 id（同端；null=未配置） */
+  targetPageId: string | null;
+}
+
 /** 导航菜单项（存于 HMIComponent.props.menuItems，随 PropsJson 落库） */
 export interface HmiMenuItem {
   /** lucide 图标名（MENU_ICON_OPTIONS 内置集合中的 name） */
   icon: string;
   /** 显示文字 */
   text: string;
-  /** 跳转目标页面 id（同端；null=未配置） */
+  /** 跳转目标页面 id（同端；null=未配置）。有 children 的一级项为纯文件夹，此字段不生效 */
   targetPageId: string | null;
+  /** 二级菜单（可选）：配置后一级项作为纯文件夹，点击仅展开二级菜单，自身不跳转 */
+  children?: HmiSubMenuItem[];
 }
 
 export interface HMILayer {

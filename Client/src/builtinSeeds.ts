@@ -381,7 +381,13 @@ export const BUILTIN_SEEDS: WidgetDef[] = [
       menuDevice: 'desktop' as const,
       menuItems: [
         { icon: 'home', text: '总览', targetPageId: null },
-        { icon: 'factory', text: '工艺监控', targetPageId: null },
+        {
+          icon: 'factory', text: '工艺监控', targetPageId: null,
+          children: [
+            { text: '锅炉系统', targetPageId: null },
+            { text: '空压机组', targetPageId: null },
+          ],
+        },
         { icon: 'bell', text: '报警中心', targetPageId: null },
       ] as HmiMenuItem[],
       menuAccentColor: '#38bdf8',
@@ -399,7 +405,13 @@ export const BUILTIN_SEEDS: WidgetDef[] = [
       menuDevice: 'mobile' as const,
       menuItems: [
         { icon: 'home', text: '首页', targetPageId: null },
-        { icon: 'line-chart', text: '趋势', targetPageId: null },
+        {
+          icon: 'line-chart', text: '趋势', targetPageId: null,
+          children: [
+            { text: '实时趋势', targetPageId: null },
+            { text: '历史曲线', targetPageId: null },
+          ],
+        },
         { icon: 'bell', text: '报警', targetPageId: null },
       ] as HmiMenuItem[],
       menuAccentColor: '#38bdf8',
