@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using System.Data;
+using System.Data.Common;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +26,9 @@ namespace ScadaServer.WebApi.HostedServices
     public class RealtimeSnapshotService : IRealtimeSnapshotService, IHostedService
     {
         private const int FlushIntervalMs = 1000;
+
+        /// <summary>单条多值 Upsert 的行数上限（每行 8 列，500 行约 4000 参数，避免超长 SQL 与 max_allowed_packet）。</summary>
+        private const int UpsertBatchSize = 500;
 
         private readonly ConcurrentDictionary<string, VariableRealtime> _snapshots = new();
         private readonly IServiceScopeFactory _scopeFactory;
@@ -152,7 +158,8 @@ namespace ScadaServer.WebApi.HostedServices
                 return;
             }
 
-            // 取出当前全部快照（最新的覆盖结果），清空待写集合。
+            // 取出当前全部快照（最新的覆盖结果）。快照仅做内存覆盖，不在此清空；
+            // 同一 key 下轮刷新会再次覆盖，配合 upsert 幂等语义无需清空。
             var toWrite = new List<VariableRealtime>(_snapshots.Count);
             foreach (var pair in _snapshots)
             {
@@ -164,67 +171,88 @@ namespace ScadaServer.WebApi.HostedServices
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
 
-                // 批量取已存在键（复合主键），一次性区分新增与更新。
-                var deviceIds = toWrite.Select(s => s.DeviceId).Distinct().ToList();
-                var existingKeys = new HashSet<(int DeviceId, string VariableKey)>(
-                    await db.VariableRealtimes
-                        .Where(r => deviceIds.Contains(r.DeviceId))
-                        .Select(r => new { r.DeviceId, r.VariableKey })
-                        .ToListAsync(token)
-                        .ContinueWith(t => t.Result.Select(r => (r.DeviceId, r.VariableKey)), token));
-
-                var inserts = new List<VariableRealtime>();
-                var updates = new List<VariableRealtime>();
-                foreach (var snapshot in toWrite)
+                // 直接用底层 ADO.NET 连接执行参数化多值 upsert，依赖 (DeviceId, VariableKey)
+                // 复合主键判定新增/更新，避免逐条 FindAsync 造成的 N+1 查询。
+                var conn = db.Database.GetDbConnection();
+                if (conn.State != ConnectionState.Open)
                 {
-                    if (existingKeys.Contains((snapshot.DeviceId, snapshot.VariableKey)))
-                    {
-                        updates.Add(snapshot);
-                    }
-                    else
-                    {
-                        inserts.Add(snapshot);
-                    }
+                    await conn.OpenAsync(token);
                 }
 
-                if (updates.Count > 0)
+                var written = 0;
+                for (var i = 0; i < toWrite.Count; i += UpsertBatchSize)
                 {
-                    foreach (var snapshot in updates)
-                    {
-                        var entity = await db.VariableRealtimes.FindAsync(
-                            new object[] { snapshot.DeviceId, snapshot.VariableKey }, token);
-                        if (entity == null)
-                        {
-                            inserts.Add(snapshot);
-                            continue;
-                        }
-
-                        entity.DeviceKey = snapshot.DeviceKey;
-                        entity.VariableName = snapshot.VariableName;
-                        entity.Value = snapshot.Value;
-                        entity.RawValue = snapshot.RawValue;
-                        entity.Quality = snapshot.Quality;
-                        entity.Timestamp = snapshot.Timestamp;
-                    }
+                    var batch = toWrite.GetRange(i, Math.Min(UpsertBatchSize, toWrite.Count - i));
+                    written += await UpsertBatchAsync(conn, batch, token);
                 }
 
-                if (inserts.Count > 0)
-                {
-                    db.VariableRealtimes.AddRange(inserts);
-                }
-
-                if (updates.Count > 0 || inserts.Count > 0)
-                {
-                    await db.SaveChangesAsync(token);
-                    _logger.LogDebug("已刷新实时快照 {Total} 行（新增 {Inserts} / 更新 {Updates}）。",
-                        toWrite.Count, inserts.Count, updates.Count);
-                }
+                _logger.LogDebug("已刷新实时快照 {Total} 行。", written);
             }
             catch (Exception ex)
             {
                 // 写入失败不重试，避免阻塞；下轮 Flush 会重写全部快照。
                 _logger.LogWarning(ex, "实时快照批量写入失败（{Count} 行，下轮重试）。", toWrite.Count);
             }
+        }
+
+        /// <summary>
+        /// 单批多值 Upsert：INSERT ... ON DUPLICATE KEY UPDATE，参数化（无字符串拼接值）。
+        /// 返回受影响行数（新增 1 / 更新 2），仅用于日志观测。
+        /// </summary>
+        private static async Task<int> UpsertBatchAsync(DbConnection conn, List<VariableRealtime> batch, CancellationToken token)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = BuildUpsertSql(batch.Count);
+
+            for (var i = 0; i < batch.Count; i++)
+            {
+                var s = batch[i];
+                var o = i * 8;
+                AddParam(cmd, $"@p{o}", s.DeviceId);
+                AddParam(cmd, $"@p{o + 1}", s.DeviceKey);
+                AddParam(cmd, $"@p{o + 2}", s.VariableKey);
+                AddParam(cmd, $"@p{o + 3}", s.VariableName);
+                AddParam(cmd, $"@p{o + 4}", s.Value);
+                AddParam(cmd, $"@p{o + 5}", s.RawValue);
+                AddParam(cmd, $"@p{o + 6}", s.Quality);
+                AddParam(cmd, $"@p{o + 7}", s.Timestamp);
+            }
+
+            return await cmd.ExecuteNonQueryAsync(token);
+        }
+
+        /// <summary>构造多值 upsert 语句（仅拼接参数占位符，不含任何数据值，杜绝注入）。</summary>
+        private static string BuildUpsertSql(int count)
+        {
+            var sb = new StringBuilder();
+            sb.Append("INSERT INTO VariableRealtime ");
+            sb.Append("(DeviceId, DeviceKey, VariableKey, VariableName, `Value`, RawValue, Quality, Timestamp) VALUES ");
+
+            for (var i = 0; i < count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                var o = i * 8;
+                sb.Append($"(@p{o},@p{o + 1},@p{o + 2},@p{o + 3},@p{o + 4},@p{o + 5},@p{o + 6},@p{o + 7})");
+            }
+
+            sb.Append(" ON DUPLICATE KEY UPDATE ");
+            sb.Append("DeviceKey=VALUES(DeviceKey),VariableName=VALUES(VariableName),");
+            sb.Append("`Value`=VALUES(`Value`),RawValue=VALUES(RawValue),");
+            sb.Append("Quality=VALUES(Quality),Timestamp=VALUES(Timestamp)");
+            return sb.ToString();
+        }
+
+        /// <summary>添加单个命令参数（null 转为 DBNull）。</summary>
+        private static void AddParam(DbCommand cmd, string name, object? value)
+        {
+            var p = cmd.CreateParameter();
+            p.ParameterName = name;
+            p.Value = value ?? DBNull.Value;
+            cmd.Parameters.Add(p);
         }
 
         private static string BuildKey(int deviceId, string variableKey) => $"{deviceId}:{variableKey}";
