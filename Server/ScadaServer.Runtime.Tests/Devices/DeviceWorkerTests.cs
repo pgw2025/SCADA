@@ -33,7 +33,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             subscribed.NextPollTime = DateTime.UtcNow.AddHours(-1); // 注册时刻残留（过去）
             runtime.Variables[subscribed.Instance!.Id] = subscribed;
 
-            var waitMs = DeviceWorker.ComputeIdleWaitMs(runtime, DateTime.UtcNow);
+            var waitMs = ComputeIdleWaitMsViaCollect(runtime, DateTime.UtcNow);
 
             Assert.Equal(1000, waitMs); // 正常休眠 1s，而不是 0（忙循环）
         }
@@ -55,7 +55,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             polled.NextPollTime = now.AddMilliseconds(500); // 500ms 后到期
             runtime.Variables[polled.Instance!.Id] = polled;
 
-            var waitMs = DeviceWorker.ComputeIdleWaitMs(runtime, now);
+            var waitMs = ComputeIdleWaitMsViaCollect(runtime, now);
 
             Assert.Equal(500, waitMs); // 轮询变量的真实到期间隔，不被订阅变量钳成 0
         }
@@ -68,7 +68,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             // 无任何变量（新设备未配变量）：回退设备级 PollingInterval（修复前后语义一致）。
             var runtime = CreateRuntime(pollingInterval: 1000);
 
-            Assert.Equal(1000, DeviceWorker.ComputeIdleWaitMs(runtime, DateTime.UtcNow));
+            Assert.Equal(1000, ComputeIdleWaitMsViaCollect(runtime, DateTime.UtcNow));
         }
 
         [Fact]
@@ -82,7 +82,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             disabled.NextPollTime = now.AddHours(-1);
             runtime.Variables[disabled.Instance!.Id] = disabled;
 
-            Assert.Equal(1500, DeviceWorker.ComputeIdleWaitMs(runtime, now));
+            Assert.Equal(1500, ComputeIdleWaitMsViaCollect(runtime, now));
         }
 
         [Fact]
@@ -96,7 +96,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             polled.NextPollTime = now.AddSeconds(5);
             runtime.Variables[polled.Instance!.Id] = polled;
 
-            Assert.Equal(2000, DeviceWorker.ComputeIdleWaitMs(runtime, now));
+            Assert.Equal(2000, ComputeIdleWaitMsViaCollect(runtime, now));
         }
 
         // ===================== 防御下限：异常配置不得退化为忙循环 =====================
@@ -108,7 +108,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             // 修复前空设备/纯订阅设备 waitMs = 0 → 忙循环；修复后收敛到下限 100ms。
             var runtime = CreateRuntime(pollingInterval: 0);
 
-            Assert.Equal(100, DeviceWorker.ComputeIdleWaitMs(runtime, DateTime.UtcNow));
+            Assert.Equal(100, ComputeIdleWaitMsViaCollect(runtime, DateTime.UtcNow));
         }
 
         [Fact]
@@ -117,7 +117,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             // 负值同型防御。
             var runtime = CreateRuntime(pollingInterval: -1000);
 
-            Assert.Equal(100, DeviceWorker.ComputeIdleWaitMs(runtime, DateTime.UtcNow));
+            Assert.Equal(100, ComputeIdleWaitMsViaCollect(runtime, DateTime.UtcNow));
         }
 
         [Fact]
@@ -132,7 +132,7 @@ namespace ScadaServer.Runtime.Tests.Devices
             polled.NextPollTime = now; // 恰好到期
             runtime.Variables[polled.Instance!.Id] = polled;
 
-            Assert.Equal(100, DeviceWorker.ComputeIdleWaitMs(runtime, now));
+            Assert.Equal(100, ComputeIdleWaitMsViaCollect(runtime, now));
         }
 
         // ===================== 变量级轮询间隔的运行时安全下限 =====================
@@ -155,6 +155,17 @@ namespace ScadaServer.Runtime.Tests.Devices
         }
 
         // ===================== 测试工具 =====================
+
+        /// <summary>
+        /// 组合调用 <see cref="DeviceWorker.CollectDueAndSoonest"/> 与
+        /// <see cref="DeviceWorker.ComputeIdleWaitMs"/>，等价于改造前的单方法入口，
+        /// 使既有用例断言无需改动即可继续回归（排除订阅变量 / clamp 上下限）。
+        /// </summary>
+        private static int ComputeIdleWaitMsViaCollect(DeviceRuntime runtime, DateTime now)
+            => DeviceWorker.ComputeIdleWaitMs(
+                DeviceWorker.CollectDueAndSoonest(runtime.Variables, now).Soonest,
+                runtime.Device.PollingInterval,
+                now);
 
         private static DeviceRuntime CreateRuntime(int pollingInterval)
             => new(new Device { Id = 1, Key = "D1", PollingInterval = pollingInterval });

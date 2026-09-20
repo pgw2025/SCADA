@@ -28,8 +28,11 @@ namespace ScadaServer.Runtime.Alarms
         private readonly ILogger<AlarmRuleEngine> _logger;
         private readonly object _snapshotLock = new();
 
-        /// <summary>当前加载的全部活跃规则快照（不可变列表，引用替换原子）。</summary>
-        private IReadOnlyList<AlarmRuleSnapshot> _all = Array.Empty<AlarmRuleSnapshot>();
+        /// <summary>
+        /// 规则索引：(deviceId, variableKey) → 该变量名下的活跃规则（不可变，引用替换原子）。
+        /// 一次 O(R) 分组建好，GetRules 改为 O(1) 命中，消除每变量每轮的 O(R) 全量扫描与 List 分配。
+        /// </summary>
+        private Dictionary<(int DeviceId, string VariableKey), IReadOnlyList<AlarmRuleSnapshot>> _index = new();
 
         /// <summary>去重后的规则数（诊断用）。</summary>
         private int _loadedRuleCount;
@@ -52,8 +55,10 @@ namespace ScadaServer.Runtime.Alarms
         /// <inheritdoc/>
         public IReadOnlyList<AlarmRuleSnapshot> GetRules(int deviceId, string variableKey)
         {
-            var all = _all; // 读本地引用，后续遍历操作的是同一份不可变快照
-            return all.Where(r => r.DeviceId == deviceId && string.Equals(r.VariableKey, variableKey, StringComparison.Ordinal)).ToList();
+            var index = _index; // 读本地引用，后续访问同一份不可变快照
+            return index.TryGetValue((deviceId, variableKey), out var list)
+                ? list
+                : Array.Empty<AlarmRuleSnapshot>();
         }
 
         /// <inheritdoc/>
@@ -80,9 +85,14 @@ namespace ScadaServer.Runtime.Alarms
                     })
                     .ToList();
 
+                // 构建索引：一次 O(R) 分组，替代每次 GetRules 的 O(R) 扫描 + ToList 分配。
+                var index = rules
+                    .GroupBy(r => (r.DeviceId, r.VariableKey))
+                    .ToDictionary(g => g.Key, g => (IReadOnlyList<AlarmRuleSnapshot>)g.ToList());
+
                 lock (_snapshotLock)
                 {
-                    _all = rules;
+                    _index = index;
                     Volatile.Write(ref _loadedRuleCount, rules.Count);
                 }
 

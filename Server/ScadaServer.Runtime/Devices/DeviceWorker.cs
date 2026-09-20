@@ -114,13 +114,9 @@ namespace ScadaServer.Runtime.Devices
                 // 收集本轮到期的变量（按各自 PollingIntervalMs 调度）。
                 // Step 4.5：跳过 UpdateMode == Subscription 的变量——订阅变量由驱动推送（OPC UA），
                 // 不再轮询读取；混合设备中轮询变量照常按各自间隔读取，纯订阅设备 due 恒空（由下方看门狗接管空转分支）。
-                var due = new List<VariableRuntime>();
-                foreach (var vr in _runtime.Variables.Values)
-                {
-                    if (!vr.IsEnabled) continue;
-                    if (vr.UpdateMode == UpdateModeEnum.Subscription) continue;
-                    if (now >= vr.NextPollTime) due.Add(vr);
-                }
+                // 单趟遍历：同时收集本轮到期的轮询变量（due）与最小 NextPollTime（soonest），
+                // 供空转分支复用——消除空转分支对变量集合的第二次全量扫描（每轮 2×O(V) → 1×O(V)）。
+                var (due, soonest) = CollectDueAndSoonest(_runtime.Variables, now);
 
                 if (due.Count == 0)
                 {
@@ -137,7 +133,7 @@ namespace ScadaServer.Runtime.Devices
                     // [下限, 上限] 区间，杜绝"订阅变量残留的过去时刻 NextPollTime 把等待钳成 0，
                     // 空转分支退化为无休眠忙循环打满单核"的缺陷（纯订阅设备永久忙等、
                     // 混合设备在轮询间隙忙等——添加 OPC UA 订阅设备后 CPU 飙升的根因）。
-                    var waitMs = ComputeIdleWaitMs(_runtime, now);
+                    var waitMs = ComputeIdleWaitMs(soonest, _runtime.Device.PollingInterval, now);
 
                     if (waitMs > 0)
                     {
@@ -393,36 +389,54 @@ namespace ScadaServer.Runtime.Devices
         private const int IdleWaitCeilingMs = 2000;
 
         /// <summary>
-        /// 计算空转分支的休眠时长（毫秒）。
+        /// 单趟遍历变量集合，同时收集「本轮到期的轮询变量（due）」与「最小 NextPollTime（soonest）」。
+        /// 供主采集循环复用，消除空转分支原先对变量集合的第二次全量扫描。
         /// <para>
-        /// soonest 取「已启用的<b>轮询变量</b>」中最小的 NextPollTime：
-        /// 订阅变量（<see cref="UpdateModeEnum.Subscription"/>）被排除——它不参与轮询调度，
-        /// 其 NextPollTime 停留在注册时刻不再推进（注册时被设为 now，due 收集与订阅回调
-        /// 路径都不会推进它），若计入会把 (soonest - now) 钳成 0，使空转分支退化为
-        /// 打满单个 CPU 核心的忙循环（纯订阅设备永久忙等、混合设备在轮询间隙忙等）。
+        /// 两个口径与改造前完全一致：跳过禁用变量与订阅变量（订阅由驱动推送，不参与轮询调度；
+        /// 其 NextPollTime 停留在注册时刻不再推进，若计入会把空转等待钳成 0 而退化为忙循环）。
+        /// </para>
+        /// </summary>
+        /// <param name="variables">设备变量集合（key = DataPointMapping.Id）。</param>
+        /// <param name="now">当前 UTC 时刻（与调用方循环内的取值保持一致）。</param>
+        /// <returns>(due=本轮到期变量列表, soonest=有效轮询变量的最小 NextPollTime；无有效轮询变量时为 DateTime.MaxValue)。</returns>
+        internal static (List<VariableRuntime> Due, DateTime Soonest) CollectDueAndSoonest(
+            IDictionary<int, VariableRuntime> variables, DateTime now)
+        {
+            var due = new List<VariableRuntime>();
+            var soonest = DateTime.MaxValue;
+            foreach (var vr in variables.Values)
+            {
+                // 仅轮询变量参与：跳过禁用与订阅（与 due 收集、空转调度口径对齐）。
+                if (!vr.IsEnabled) continue;
+                if (vr.UpdateMode == UpdateModeEnum.Subscription) continue;
+                if (vr.NextPollTime < soonest) soonest = vr.NextPollTime;
+                if (now >= vr.NextPollTime) due.Add(vr);
+            }
+            return (due, soonest);
+        }
+
+        /// <summary>
+        /// 计算空转分支的休眠时长（毫秒）。soonest 已由 <see cref="CollectDueAndSoonest"/>
+        /// 单趟遍历得到，本方法仅做纯计算（不再遍历变量集合）。
+        /// <para>
+        /// soonest 取「已启用的<b>轮询变量</b>」中最小的 NextPollTime；订阅变量已在收集阶段排除，
+        /// 不会被计入（否则会把 (soonest - now) 钳成 0，使空转分支退化为打满单核的忙循环）。
         /// </para>
         /// <para>
-        /// 无有效轮询变量（空设备 / 全禁用 / 纯订阅）时回退设备级
-        /// <c>Device.PollingInterval</c>；结果收敛到
+        /// 无有效轮询变量（空设备 / 全禁用 / 纯订阅）时回退设备级轮询间隔
+        /// <paramref name="devicePollingIntervalMs"/>；结果收敛到
         /// [ <see cref="IdleWaitFloorMs"/>, <see cref="IdleWaitCeilingMs"/> ]：
         /// 下限兜底设备级 PollingInterval 被配置为 0/负值等异常场景，上限保证关停/重载响应性。
         /// </para>
         /// </summary>
-        /// <param name="runtime">设备运行时（读取变量集合与设备级轮询间隔）。</param>
+        /// <param name="soonest">已启用轮询变量的最小 NextPollTime（<see cref="DateTime.MaxValue"/> 表示无有效轮询变量）。</param>
+        /// <param name="devicePollingIntervalMs">设备级轮询间隔（毫秒），无有效轮询变量时回退使用。</param>
         /// <param name="now">当前 UTC 时刻（与调用方循环内的取值保持一致）。</param>
         /// <returns>本轮空转应休眠的毫秒数（恒 ≥ 下限，无忙循环风险）。</returns>
-        internal static int ComputeIdleWaitMs(DeviceRuntime runtime, DateTime now)
+        internal static int ComputeIdleWaitMs(DateTime soonest, int devicePollingIntervalMs, DateTime now)
         {
-            var soonest = DateTime.MaxValue;
-            foreach (var vr in runtime.Variables.Values)
-            {
-                // 仅轮询变量参与空转调度：与 due 收集口径对齐（跳过禁用与订阅）。
-                if (!vr.IsEnabled || vr.UpdateMode == UpdateModeEnum.Subscription) continue;
-                if (vr.NextPollTime < soonest) soonest = vr.NextPollTime;
-            }
-
             var waitMs = soonest == DateTime.MaxValue
-                ? runtime.Device.PollingInterval
+                ? devicePollingIntervalMs
                 : (int)Math.Max(0, (soonest - now).TotalMilliseconds);
 
             return Math.Clamp(waitMs, IdleWaitFloorMs, IdleWaitCeilingMs);
