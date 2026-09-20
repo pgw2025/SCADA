@@ -27,11 +27,15 @@ import {
   Search,
   ArrowUpDown,
   LayoutGrid,
-  List
+  List,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-vue-next';
 
 // Mobile Drawer state
 const isMobileModelDrawerOpen = ref<boolean>(false);
+// 桌面端数据模型列表展开/收起（默认展开，收起态为一次级窄条把手）
+const isModelListOpen = ref<boolean>(true);
 
 // Active selection
 const selectedModelId = ref<string>(dataModels.value[0]?.id || '');
@@ -585,7 +589,7 @@ const handleImportDone = async () => {
     </div>
 
     <!-- LEFT LIST: Models directories (md 及以上桌面端侧边栏) -->
-    <div class="hidden md:flex w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col shrink-0 transition-colors">
+    <div v-if="isModelListOpen" class="hidden md:flex w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col shrink-0 transition-colors">
       
       <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-1.5 font-bold text-sm text-slate-900 dark:text-white">
@@ -593,13 +597,23 @@ const handleImportDone = async () => {
           <span>数据模型 ({{ dataModels.length }})</span>
         </div>
 
-        <button 
-          @click="showModelModal = true"
-          class="p-1 rounded bg-[#1890ff] hover:bg-sky-600 text-white cursor-pointer transition-all"
-          title="新建模型"
-        >
-          <Plus class="w-4 h-4" />
-        </button>
+        <div class="flex items-center gap-1">
+          <button
+            @click="isModelListOpen = false"
+            class="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="收起数据模型列表"
+          >
+            <ChevronLeft class="w-4 h-4" />
+          </button>
+
+          <button 
+            @click="showModelModal = true"
+            class="p-1 rounded bg-[#1890ff] hover:bg-sky-600 text-white cursor-pointer transition-all"
+            title="新建模型"
+          >
+            <Plus class="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div class="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-left">
@@ -630,6 +644,15 @@ const handleImportDone = async () => {
           </p>
         </div>
       </div>
+    </div>
+
+    <!-- LEFT LIST: 收起态把手 (桌面端) -->
+    <div v-if="!isModelListOpen" @click="isModelListOpen = true"
+      class="hidden md:flex flex-col items-center justify-center w-7 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 shrink-0 select-none py-4 gap-2.5 z-10 group shadow-xs"
+      title="点击展开数据模型列表">
+      <ChevronRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+      <span
+        class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-violet-600 dark:group-hover:text-violet-400">数据模型</span>
     </div>
 
     <!-- RIGHT PANEL: Schema detail table and live append -->

@@ -18,7 +18,9 @@ import {
   LayoutGrid,
   List,
   Sliders,
-  Filter
+  Filter,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-vue-next';
 import { devices } from '../store/deviceStore';
 import { dataModels, addLog, systemConfig } from '../store/index';
@@ -37,6 +39,8 @@ const route = useRoute();
 
 // ---------- 设备列表（左栏） ----------
 const isMobileDeviceDrawerOpen = ref<boolean>(false);
+// 桌面端设备列表展开/收起（默认展开，收起态为一次级窄条把手）
+const isDeviceListOpen = ref<boolean>(true);
 const selectedDevId = ref<number>(Number(route.query.deviceId) || devices.value[0]?.id || 0);
 const searchQuery = ref<string>('');
 const selectedTypeFilter = ref<string>('ALL');
@@ -503,12 +507,20 @@ onMounted(async () => {
     </div>
 
     <!-- LEFT PANEL: Desktop Devices list (md 以上屏幕显示) -->
-    <div
+    <div v-if="isDeviceListOpen"
       class="hidden md:flex w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col shrink-0 transition-colors">
       <div class="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
-        <div class="flex items-center gap-1.5 font-bold text-sm text-[#0f172a] dark:text-white">
-          <Database class="w-4 h-4 text-[#1890ff]" />
-          <span>设备列表</span>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5 font-bold text-sm text-[#0f172a] dark:text-white">
+            <Database class="w-4 h-4 text-[#1890ff]" />
+            <span>设备列表</span>
+          </div>
+
+          <button @click="isDeviceListOpen = false"
+            class="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="收起设备列表">
+            <ChevronLeft class="w-4 h-4" />
+          </button>
         </div>
         <div class="relative">
           <Search class="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
@@ -544,6 +556,15 @@ onMounted(async () => {
         </div>
         <div v-if="filteredDevices.length === 0" class="p-8 text-center text-xs text-slate-400 font-mono">未找到匹配的设备</div>
       </div>
+    </div>
+
+    <!-- LEFT PANEL: 收起态把手 (桌面端) -->
+    <div v-if="!isDeviceListOpen" @click="isDeviceListOpen = true"
+      class="hidden md:flex flex-col items-center justify-center w-7 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-400 hover:text-[#1890ff] dark:hover:text-sky-400 shrink-0 select-none py-4 gap-2.5 z-10 group shadow-xs"
+      title="点击展开设备列表">
+      <ChevronRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+      <span
+        class="text-[11px] font-bold [writing-mode:vertical-rl] tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-[#1890ff] dark:group-hover:text-sky-400">设备列表</span>
     </div>
 
     <!-- RIGHT PANEL: Variable instances -->
