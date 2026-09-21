@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { devices } from '../store/deviceStore';
@@ -686,7 +686,7 @@ const activeAreaLabel = computed(() => {
         </div>
 
         <!-- Desktop Devices Container (Table or Cards) -->
-        <div class="hidden md:flex flex-col flex-1 overflow-y-auto">
+        <div class="hidden md:block flex-1 overflow-y-auto">
           <DeviceTableView
             v-if="viewMode === 'table'"
             :devices="filteredDevices"
