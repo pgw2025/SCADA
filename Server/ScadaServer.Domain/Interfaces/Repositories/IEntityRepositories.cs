@@ -322,6 +322,17 @@ namespace ScadaServer.Domain.Interfaces.Repositories
             long windowMs,
             string fn,
             int limit);
+
+        /// <summary>
+        /// 幂等批量插入历史采样点：依赖 (VariableKey, Timestamp, DeviceId) 唯一索引，
+        /// 冲突时（同设备同变量同刻重复）不抛 1062，静默跳过（保留首条语义，S1）。
+        /// <para>用于历史记录器（HistoryRecorder）的 MySQL 写入路径，替代 AddRange + SaveChanges，
+        /// 避免唯一键冲突异常导致同批其余未入库点被丢弃。</para>
+        /// </summary>
+        /// <param name="points">待插入采样点集合。</param>
+        /// <param name="token">取消令牌。</param>
+        /// <returns>受影响行数（以 MySQL affected-rows 语义为准）。</returns>
+        Task<int> InsertIdempotentAsync(IReadOnlyList<VariableHistory> points, CancellationToken token);
     }
 
     /// <summary>

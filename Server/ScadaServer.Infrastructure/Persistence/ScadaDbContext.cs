@@ -427,12 +427,14 @@ namespace ScadaServer.Infrastructure.Persistence
 
             // 变量历史数据表：按 变量键 + 时间 建复合索引，支撑历史趋势查询。
             // 历史数据量大，暂不建外键，避免级联删除/迁移开销影响运行时写入性能。
-            // 阶段6：改为 (VariableKey, Timestamp) 唯一索引，配合 1062 幂等写入，防止重试/补偿落盘重放造成重复入库。
+            // 阶段6：改为 (VariableKey, Timestamp, DeviceId) 唯一索引（原二列索引缺设备维度，导致跨设备
+            // 同名变量同刻采样撞键），配合 1062 幂等写入防止重试/补偿落盘重放造成重复入库。
+            // 列顺序 VariableKey 在前：所有查询最左等值列均为 VariableKey，无设备查询走前缀有序不退化。
             modelBuilder.Entity<VariableHistory>().ToTable("VariableHistory");
             modelBuilder.Entity<VariableHistory>()
-                .HasIndex(h => new { h.VariableKey, h.Timestamp })
+                .HasIndex(h => new { h.VariableKey, h.Timestamp, h.DeviceId })
                 .IsUnique()
-                .HasDatabaseName("ix_variablehistory_key_timestamp");
+                .HasDatabaseName("ux_variablehistory_key_timestamp_deviceid");
             // 阶段2：按 Timestamp 单列索引，支撑保留期清理的 DELETE ... WHERE Timestamp < cutoff。
             modelBuilder.Entity<VariableHistory>()
                 .HasIndex(h => h.Timestamp)

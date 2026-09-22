@@ -8,12 +8,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.EntityFrameworkCore;
 using ScadaServer.Application.Interfaces;
 using ScadaServer.Application.Options;
-using ScadaServer.Application.Services;
 using ScadaServer.Domain.Entities;
-using ScadaServer.Infrastructure.Persistence;
+using ScadaServer.Domain.Interfaces.Repositories;
 
 namespace ScadaServer.WebApi.HostedServices
 {
@@ -369,6 +367,10 @@ namespace ScadaServer.WebApi.HostedServices
         {
             if (batch.Count == 0) return;
 
+            // SF-3 批内去重：按 (DeviceId, VariableKey, Timestamp) 保留首条，防批内自重复引发整批异常。
+            DeduplicateBatch(batch);
+            if (batch.Count == 0) return;
+
             _lastFlushAt = DateTime.UtcNow;
             var sw = Stopwatch.StartNew();
 
@@ -448,6 +450,21 @@ namespace ScadaServer.WebApi.HostedServices
             return count;
         }
 
+        /// <summary>
+        /// 批内去重（SF-3）：按 (DeviceId, VariableKey, Timestamp) 保留首条，删除后续重复项，
+        /// 防止同一批内自重复触发唯一索引冲突整批失败。
+        /// </summary>
+        private static void DeduplicateBatch(List<VariableHistory> batch)
+        {
+            if (batch.Count < 2)
+            {
+                return;
+            }
+
+            var seen = new HashSet<(int DeviceId, string VariableKey, DateTime Timestamp)>();
+            batch.RemoveAll(p => !seen.Add((p.DeviceId, p.VariableKey, p.Timestamp)));
+        }
+
         /// <summary>Influx 优先写入；未配置或失败返回 false（调用方回退 MySQL）。</summary>
         private async Task<bool> TryWriteInfluxAsync(List<VariableHistory> points, CancellationToken token)
         {
@@ -487,9 +504,8 @@ namespace ScadaServer.WebApi.HostedServices
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
-                    db.VariableHistories.AddRange(points);
-                    await db.SaveChangesAsync(token);
+                    var repo = scope.ServiceProvider.GetRequiredService<IVariableHistoryRepository>();
+                    await repo.InsertIdempotentAsync(points, token);
 
                     Interlocked.Increment(ref _mysqlWriteBatches);
                     if (attempt > 0)
@@ -508,16 +524,6 @@ namespace ScadaServer.WebApi.HostedServices
                 }
                 catch (Exception ex)
                 {
-                    // 幂等兜底：若为唯一键冲突（1062），说明本批在上一轮"已提交但客户端判定失败"时已落库，
-                    // 直接视为成功返回，避免重复入库再触发重试/补偿。（配合 (VariableKey, Timestamp) 唯一索引）
-                    if (ex is DbUpdateException due && DbExceptionClassifier.IsUniqueIndexConflict(due))
-                    {
-                        Interlocked.Increment(ref _mysqlWriteBatches);
-                        _lastWriteSucceededAt = DateTime.UtcNow;
-                        _logger.LogDebug("历史批次命中唯一键冲突，视为已入库（{Count} 条）。", points.Count);
-                        return;
-                    }
-
                     if (attempt < MySqlRetryDelays.Length)
                     {
                         attempt++;
@@ -613,9 +619,8 @@ namespace ScadaServer.WebApi.HostedServices
                 {
                     // 回退 MySQL（单次尝试，不在此处耗尽重试，留给下一轮）
                     using var scope = _scopeFactory.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
-                    db.VariableHistories.AddRange(head.Points);
-                    await db.SaveChangesAsync(token);
+                    var repo = scope.ServiceProvider.GetRequiredService<IVariableHistoryRepository>();
+                    await repo.InsertIdempotentAsync(head.Points, token);
                     Interlocked.Increment(ref _mysqlWriteBatches);
                     success = true;
                 }
@@ -878,9 +883,8 @@ namespace ScadaServer.WebApi.HostedServices
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ScadaDbContext>();
-                db.VariableHistories.AddRange(points);
-                await db.SaveChangesAsync(token);
+                var repo = scope.ServiceProvider.GetRequiredService<IVariableHistoryRepository>();
+                await repo.InsertIdempotentAsync(points, token);
                 Interlocked.Increment(ref _mysqlWriteBatches);
                 return true;
             }
@@ -890,12 +894,6 @@ namespace ScadaServer.WebApi.HostedServices
             }
             catch (Exception ex)
             {
-                // 幂等兜底：唯一键冲突（1062）说明上一轮已入库，视为成功（重放成功 → 删除落盘文件）。
-                if (ex is DbUpdateException due && DbExceptionClassifier.IsUniqueIndexConflict(due))
-                {
-                    Interlocked.Increment(ref _mysqlWriteBatches);
-                    return true;
-                }
                 _logger.LogDebug(ex, "历史补偿 MySQL 单次写入失败。");
                 return false;
             }

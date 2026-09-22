@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ScadaServer.Domain.Entities;
 using ScadaServer.Domain.Interfaces.Repositories;
@@ -54,6 +55,56 @@ namespace ScadaServer.Infrastructure.Repositories
                 .OrderByDescending(h => h.Timestamp)
                 .Take(limit)
                 .ToListAsync();
+        }
+
+        /// <summary>
+        /// 幂等批量插入历史采样点：INSERT ... ON DUPLICATE KEY UPDATE Id=Id（保留首条，S1）。
+        /// 依赖 (VariableKey, Timestamp, DeviceId) 唯一索引，同设备同变量同刻重复不抛 1062、静默跳过。
+        /// </summary>
+        public async Task<int> InsertIdempotentAsync(IReadOnlyList<VariableHistory> points, CancellationToken token)
+        {
+            if (points == null || points.Count == 0)
+            {
+                return 0;
+            }
+
+            const int colCount = 8;
+            var sb = new StringBuilder();
+            sb.Append("INSERT INTO `VariableHistory` (`DeviceId`, `DeviceKey`, `VariableKey`, `VariableName`, `Value`, `RawValue`, `Timestamp`, `Quality`) VALUES ");
+
+            var parameters = new object[points.Count * colCount];
+            for (var i = 0; i < points.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(", ");
+                }
+
+                var p = points[i];
+                var baseIdx = i * colCount;
+                parameters[baseIdx] = p.DeviceId;
+                parameters[baseIdx + 1] = p.DeviceKey;
+                parameters[baseIdx + 2] = p.VariableKey;
+                parameters[baseIdx + 3] = p.VariableName;
+                parameters[baseIdx + 4] = p.Value;
+                parameters[baseIdx + 5] = (object?)p.RawValue ?? DBNull.Value;
+                parameters[baseIdx + 6] = p.Timestamp;
+                parameters[baseIdx + 7] = (object?)p.Quality ?? DBNull.Value;
+
+                sb.Append("({")
+                  .Append(baseIdx).Append("}, {")
+                  .Append(baseIdx + 1).Append("}, {")
+                  .Append(baseIdx + 2).Append("}, {")
+                  .Append(baseIdx + 3).Append("}, {")
+                  .Append(baseIdx + 4).Append("}, {")
+                  .Append(baseIdx + 5).Append("}, {")
+                  .Append(baseIdx + 6).Append("}, {")
+                  .Append(baseIdx + 7).Append("})");
+            }
+
+            sb.Append(" ON DUPLICATE KEY UPDATE `Id` = `Id`");
+
+            return await Db.Database.ExecuteSqlRawAsync(sb.ToString(), (IEnumerable<object>)parameters, token);
         }
 
         /// <summary>
