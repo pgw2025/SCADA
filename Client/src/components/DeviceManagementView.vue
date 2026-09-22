@@ -18,7 +18,9 @@ import {
   createDeviceAndSync,
   updateDeviceAndSync,
   deleteDeviceAndSync,
-  setDeviceEnabledAndSync
+  setDeviceEnabledAndSync,
+  batchSetDeviceEnabledAndSync,
+  precheckBatchSetDeviceEnabled
 } from '../services/deviceService';
 import { fetchControllerOptions } from '../api/controllerApi';
 import { fetchDeviceConnections } from '../api/connectionApi';
@@ -261,23 +263,64 @@ const clearSelection = () => {
 };
 
 // Batch Operations
+
+/** 批量启用/停用的统一入口：启用先预检，执行后展示汇总；覆盖"表格多选"与"区域树"两个入口。 */
+const runBatchSetEnabled = async (req: { areaId?: number; includeSubAreas?: boolean; deviceIds?: number[]; enabled: boolean }) => {
+  // 启用：先预检，把"可启动数 + 阻塞清单"在点击前告诉用户。
+  if (req.enabled) {
+    const precheck = await precheckBatchSetDeviceEnabled(req);
+    if (!precheck.success || !precheck.data) {
+      alert(precheck.error?.message || '预检失败，请稍后重试');
+      return;
+    }
+    const { total, startable, blocked } = precheck.data;
+    if (blocked.length > 0) {
+      const lines = blocked.slice(0, 5).map(b => `• ${b.name}：${b.reason}`).join('\n');
+      const more = blocked.length > 5 ? `\n… 等共 ${blocked.length} 台被阻塞` : '';
+      const msg = `共 ${total} 台设备：${startable} 台可启动，${blocked.length} 台因地址未配置被阻塞。\n\n${lines}${more}\n\n仅启动可启动的 ${startable} 台？`;
+      if (!confirm(msg)) return;
+    } else if (!confirm(`确认启用 ${total} 台设备的采集？`)) {
+      return;
+    }
+  }
+
+  const result = await batchSetDeviceEnabledAndSync({ ...req, skipInvalid: true });
+  if (!result.success || !result.data) {
+    alert(`批量操作失败：${result.error?.message || '未知错误'}`);
+    return;
+  }
+  showBatchResult(result.data);
+  clearSelection();
+};
+
+/** 批量结果汇总（成功/跳过/失败 + 失败明细）。 */
+const showBatchResult = (data: { succeeded: number; skipped: number; failed: number; items: Array<{ name?: string | null; result: string; reason?: string | null }> }) => {
+  let msg = `完成：成功 ${data.succeeded} 台，跳过 ${data.skipped} 台，失败 ${data.failed} 台。`;
+  const failedItems = (data.items || []).filter(i => i.result === 'Failed');
+  if (failedItems.length > 0) {
+    const lines = failedItems.slice(0, 8).map(i => `• ${i.name}：${i.reason}`).join('\n');
+    const more = failedItems.length > 8 ? `\n… 等共 ${failedItems.length} 台失败` : '';
+    msg += `\n\n失败明细：\n${lines}${more}`;
+  }
+  alert(msg);
+};
+
 const batchEnable = async () => {
   const ids = Array.from(selectedDeviceIds.value);
-  for (const id of ids) {
-    await setDeviceEnabledAndSync(id, true);
-  }
-  addLog('设备管理', `批量启用了 ${ids.length} 台设备的采集`, 'normal');
-  clearSelection();
+  if (ids.length === 0) return;
+  await runBatchSetEnabled({ deviceIds: ids, enabled: true });
 };
 
 const batchDisable = async () => {
   if (!confirm(`确认停用选中的 ${selectedDeviceIds.value.size} 台设备采集？`)) return;
   const ids = Array.from(selectedDeviceIds.value);
-  for (const id of ids) {
-    await setDeviceEnabledAndSync(id, false);
-  }
-  addLog('设备管理', `批量停用了 ${ids.length} 台设备的采集`, 'warning');
-  clearSelection();
+  if (ids.length === 0) return;
+  await runBatchSetEnabled({ deviceIds: ids, enabled: false });
+};
+
+/** 区域树节点批量启停入口（DeviceTopologySidebar / MobileAreaDrawer 触发）。 */
+const handleBatchToggleArea = async (node: AreaTreeNode, enabled: boolean) => {
+  await runBatchSetEnabled({ areaId: node.id, includeSubAreas: includeSubareas.value, enabled });
 };
 
 const batchDelete = async () => {
@@ -552,6 +595,7 @@ const activeAreaLabel = computed(() => {
         @addArea="openAddArea"
         @editArea="openEditArea"
         @deleteArea="handleDeleteArea"
+        @batchToggle="handleBatchToggleArea"
       />
 
       <!-- Right: Main Workbench Area -->
@@ -909,6 +953,7 @@ const activeAreaLabel = computed(() => {
       @addArea="openAddArea"
       @editArea="openEditArea"
       @deleteArea="handleDeleteArea"
+      @batchToggle="handleBatchToggleArea"
     />
 
     <!-- Device Create / Edit Modal -->

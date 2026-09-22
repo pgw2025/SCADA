@@ -20,6 +20,8 @@ namespace ScadaServer.Application.Services
         private readonly IDeviceRepository _repository;
         /// <summary>区域仓储，用于校验区域是否存在。</summary>
         private readonly IAreaRepository _areaRepository;
+        /// <summary>区域应用服务，用于解析区域子树设备集合（批量启停目标定位）。</summary>
+        private readonly IAreaAppService _areaAppService;
         /// <summary>数据模型仓储，用于校验模型是否存在并推导协议。</summary>
         private readonly IDataModelRepository _modelRepository;
         /// <summary>变量模板仓储，用于生成设备变量实例。</summary>
@@ -45,6 +47,7 @@ namespace ScadaServer.Application.Services
         public DeviceAppService(
             IDeviceRepository repository,
             IAreaRepository areaRepository,
+            IAreaAppService areaAppService,
             IDataModelRepository modelRepository,
             IDataPointRepository dataPointRepository,
             IDataPointMappingRepository dataPointMappingRepository,
@@ -58,6 +61,7 @@ namespace ScadaServer.Application.Services
         {
             _repository = repository;
             _areaRepository = areaRepository;
+            _areaAppService = areaAppService;
             _modelRepository = modelRepository;
             _dataPointRepository = dataPointRepository;
             _dataPointMappingRepository = dataPointMappingRepository;
@@ -890,15 +894,27 @@ namespace ScadaServer.Application.Services
                 throw new BusinessException($"ID 为 {id} 的设备不存在");
             }
 
-            // 启用状态无变化：直接返回当前设备，不触发运行时注册/注销（天然幂等）。
+            // 单设备核心逻辑（幂等 + 启动闸门 + 单行更新 + 注册/注销），与批量共用，避免逻辑漂移。
+            await SetEnabledCoreAsync(entity, enabled);
+
+            return await GetByIdAsync(id)
+                ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+        }
+
+        /// <summary>
+        /// 启用/停用单台设备的核心逻辑，供单设备 <see cref="SetEnabledAsync"/> 与批量
+        /// <see cref="BatchSetEnabledAsync"/> 共用。返回 (Result, Reason)：
+        /// Result=Skipped（状态未变化，幂等）或 Succeeded；失败由调用方捕获 <see cref="BusinessException"/> 归为 Failed。
+        /// </summary>
+        private async Task<(string Result, string? Reason)> SetEnabledCoreAsync(Device entity, bool enabled)
+        {
+            // 启用状态无变化：不触发运行时注册/注销（天然幂等）。
             if (entity.IsEnabled == enabled)
             {
-                return await GetByIdAsync(id)
-                    ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+                return ("Skipped", enabled ? "已是启用状态" : "已是停用状态");
             }
 
-            // 启动闸门（置于状态提交之前）：所有已启用变量的采集地址必须已配置，否则拒绝启用，
-            // 保证"数据库 IsEnabled 与运行时注册"始终一致，不会出现"已启用但运行时未加载"的中间态。
+            // 启动闸门（置于状态提交之前）：所有已启用变量的采集地址必须已配置，否则拒绝启用。
             if (enabled)
             {
                 await ValidateVariablesConfiguredForStartAsync(entity);
@@ -911,15 +927,14 @@ namespace ScadaServer.Application.Services
             // 状态变化提交成功后，与运行时交互：启用 → 注册；停用 → 注销（断开驱动、推送 Offline）。
             if (enabled)
             {
-                await _runtimeDeviceManager.RegisterDeviceAsync(id);
+                await _runtimeDeviceManager.RegisterDeviceAsync(entity.Id);
             }
             else
             {
-                await _runtimeDeviceManager.RemoveDeviceAsync(id);
+                await _runtimeDeviceManager.RemoveDeviceAsync(entity.Id);
             }
 
-            return await GetByIdAsync(id)
-                ?? throw new BusinessException($"ID 为 {id} 的设备不存在");
+            return ("Succeeded", null);
         }
 
         /// <summary>
@@ -943,22 +958,21 @@ namespace ScadaServer.Application.Services
         }
 
         /// <summary>
-        /// 启动采集前校验：设备的所有<strong>已启用</strong>变量必须已配置采集地址（寄存器/节点 ID/主题）。
-        /// 仅对依赖地址的协议（S7、ModbusTcp、OpcUa、Mqtt）校验；虚拟设备（Virtual，无地址概念）与未知协议豁免。
-        /// 任一已启用变量的地址缺失即抛 <see cref="BusinessException"/> 拒绝启动，由 SetEnabledAsync 在状态提交前调用。
+        /// 计算设备启动阻塞原因（启用前地址校验）。返回 null 表示可启动；非空为阻塞原因（含缺失变量展示串）。
+        /// 供单设备校验与批量预检共用，避免"预检"与"执行"两套校验逻辑漂移。
         /// </summary>
-        private async Task ValidateVariablesConfiguredForStartAsync(Device entity)
+        private async Task<string?> GetStartBlockReasonAsync(Device entity)
         {
             var kind = ResolveDriverKind(await ResolveProtocolKeyAsync(entity));
             if (kind == DriverKind.Virtual || kind == DriverKind.Unknown)
             {
-                return;
+                return null;
             }
 
             var mappings = await _dataPointMappingRepository.GetListAsync(m => m.DeviceId == entity.Id && m.IsEnabled);
             if (mappings.Count == 0)
             {
-                return;
+                return null;
             }
 
             // 地址权威形态为 AddressConfigJson（前端编辑），Address 为其展示串；两者任一非空即视为已配置。
@@ -974,7 +988,7 @@ namespace ScadaServer.Application.Services
 
             if (missing.Count == 0)
             {
-                return;
+                return null;
             }
 
             var shown = string.Join("、", missing.Take(5));
@@ -983,8 +997,165 @@ namespace ScadaServer.Application.Services
                 shown += $" 等共 {missing.Count} 个变量";
             }
 
-            throw new BusinessException(
-                $"设备 [{entity.Name}] 有 {missing.Count} 个已启用变量的采集地址未配置，无法启动。请先在设备变量的地址配置中补齐：{shown}");
+            return $"有 {missing.Count} 个已启用变量的采集地址未配置，无法启动。请先在设备变量的地址配置中补齐：{shown}";
+        }
+
+        /// <summary>
+        /// 启动采集前校验：设备的所有<strong>已启用</strong>变量必须已配置采集地址（寄存器/节点 ID/主题）。
+        /// 仅对依赖地址的协议（S7、ModbusTcp、OpcUa、Mqtt）校验；虚拟设备（Virtual，无地址概念）与未知协议豁免。
+        /// 任一已启用变量的地址缺失即抛 <see cref="BusinessException"/> 拒绝启动，由 SetEnabledCoreAsync 在状态提交前调用。
+        /// </summary>
+        private async Task ValidateVariablesConfiguredForStartAsync(Device entity)
+        {
+            var reason = await GetStartBlockReasonAsync(entity);
+            if (reason != null)
+            {
+                throw new BusinessException($"设备 [{entity.Name}] {reason}");
+            }
+        }
+
+        /// <summary>
+        /// 批量启用/停用设备采集。目标二选一（显式设备 ID 列表优先，否则按区域子树解析）；
+        /// 串行执行、逐台隔离、部分成功——单台失败仅记为 Failed，不中断整批。
+        /// </summary>
+        public async Task<BatchSetEnabledResultDto> BatchSetEnabledAsync(BatchSetEnabledRequest request)
+        {
+            var result = new BatchSetEnabledResultDto
+            {
+                OperationId = Guid.NewGuid().ToString("N")
+            };
+
+            var ids = await ResolveTargetDeviceIdsAsync(request);
+            if (ids.Count == 0)
+            {
+                return result;
+            }
+
+            // 一次性加载目标设备本体（跟踪查询，不含导航），循环内不再逐台查询（避免 N+1）；
+            // 启动校验所需协议键经 ResolveProtocolKeyAsync 回退到连接仓储解析（与单设备启用路径一致）。
+            var entities = await _repository.GetByIdsForUpdateAsync(ids);
+            result.Total = entities.Count;
+
+            foreach (var entity in entities)
+            {
+                var item = await ProcessBatchItemAsync(entity, request);
+                result.Items.Add(item);
+
+                switch (item.Result)
+                {
+                    case "Succeeded": result.Succeeded++; break;
+                    case "Skipped": result.Skipped++; break;
+                    case "Failed": result.Failed++; break;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>批量启用前预检：只校验不执行，返回可启动数与被阻塞（如变量地址未配置）设备清单。</summary>
+        public async Task<BatchSetEnabledPrecheckDto> PrecheckBatchSetEnabledAsync(BatchSetEnabledRequest request)
+        {
+            var dto = new BatchSetEnabledPrecheckDto();
+
+            var ids = await ResolveTargetDeviceIdsAsync(request);
+            dto.Total = ids.Count;
+
+            // 停用不涉及地址校验：全部可执行，无阻塞项。
+            if (!request.Enabled || ids.Count == 0)
+            {
+                dto.Startable = ids.Count;
+                return dto;
+            }
+
+            var entities = await _repository.GetByIdsForUpdateAsync(ids);
+            var startable = 0;
+            foreach (var entity in entities)
+            {
+                var reason = await GetStartBlockReasonAsync(entity);
+                if (reason == null)
+                {
+                    startable++;
+                }
+                else
+                {
+                    dto.Blocked.Add(new BatchSetEnabledBlockedDto
+                    {
+                        DeviceId = entity.Id,
+                        Name = entity.Name,
+                        Reason = reason
+                    });
+                }
+            }
+
+            dto.Startable = startable;
+            return dto;
+        }
+
+        /// <summary>解析批量目标设备 ID：显式列表优先，否则按区域子树（复用 AreaAppService）或当前区域直接挂载。</summary>
+        private async Task<List<int>> ResolveTargetDeviceIdsAsync(BatchSetEnabledRequest request)
+        {
+            if (request.DeviceIds != null && request.DeviceIds.Count > 0)
+            {
+                return request.DeviceIds.Distinct().ToList();
+            }
+
+            if (request.AreaId is int areaId)
+            {
+                if (request.IncludeSubAreas)
+                {
+                    return await _areaAppService.GetDeviceIdsInSubtreeAsync(areaId);
+                }
+
+                var direct = await _repository.GetListAsync(d => d.AreaId == areaId);
+                return direct.Select(d => d.Id).ToList();
+            }
+
+            return new List<int>();
+        }
+
+        /// <summary>
+        /// 处理单台批量项：启用且 skipInvalid 时先预检（阻塞项记为 Skipped，不进入注册流程），
+        /// 否则执行核心逻辑并把异常（地址未配置、设备不存在等）归为 Failed。
+        /// </summary>
+        private async Task<BatchSetEnabledItemDto> ProcessBatchItemAsync(Device entity, BatchSetEnabledRequest request)
+        {
+            var item = new BatchSetEnabledItemDto
+            {
+                DeviceId = entity.Id,
+                Name = entity.Name
+            };
+
+            // 启用 + skipInvalid：预检阻塞的设备直接跳过，避免"点完一半报错"。
+            if (request.Enabled && request.SkipInvalid)
+            {
+                var blockReason = await GetStartBlockReasonAsync(entity);
+                if (blockReason != null)
+                {
+                    item.Result = "Skipped";
+                    item.Reason = blockReason;
+                    return item;
+                }
+            }
+
+            try
+            {
+                var (res, reason) = await SetEnabledCoreAsync(entity, request.Enabled);
+                item.Result = res;
+                item.Reason = reason;
+            }
+            catch (BusinessException ex)
+            {
+                item.Result = "Failed";
+                item.Reason = ex.Message;
+            }
+            catch (Exception ex)
+            {
+                // 兜底：单台的非业务异常（如运行时注册期间的 DB 查询失败）不应拖垮整批。
+                item.Result = "Failed";
+                item.Reason = $"操作失败：{ex.Message}";
+            }
+
+            return item;
         }
 
         /// <summary>

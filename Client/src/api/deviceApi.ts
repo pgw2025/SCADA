@@ -34,6 +34,56 @@ export const setDeviceEnabled = async (id: number, enabled: boolean) => {
   return response;
 };
 
+// ---- 批量启停（区域子树 或 显式设备 ID 列表）----
+
+export interface BatchSetEnabledRequest {
+  areaId?: number | null;
+  includeSubAreas?: boolean;
+  deviceIds?: number[] | null;
+  enabled: boolean;
+  skipInvalid?: boolean;
+}
+
+export interface BatchSetEnabledItem {
+  deviceId: number;
+  name?: string | null;
+  result: string;
+  reason?: string | null;
+}
+
+export interface BatchSetEnabledResult {
+  operationId?: string | null;
+  total: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  items: BatchSetEnabledItem[];
+}
+
+export interface BatchSetEnabledBlocked {
+  deviceId: number;
+  name?: string | null;
+  reason?: string | null;
+}
+
+export interface BatchSetEnabledPrecheck {
+  total: number;
+  startable: number;
+  blocked: BatchSetEnabledBlocked[];
+}
+
+// POST /api/Device/batch/enabled - 批量启用/停用设备采集（串行、逐台隔离、部分成功）
+export const batchSetDeviceEnabled = async (req: BatchSetEnabledRequest) => {
+  const response = await http.post<BatchSetEnabledResult>(`${getBaseUrl()}/api/Device/batch/enabled`, req);
+  return response;
+};
+
+// POST /api/Device/batch/enabled/precheck - 批量启用前预检（只校验不执行）
+export const precheckBatchSetDeviceEnabled = async (req: BatchSetEnabledRequest) => {
+  const response = await http.post<BatchSetEnabledPrecheck>(`${getBaseUrl()}/api/Device/batch/enabled/precheck`, req);
+  return response;
+};
+
 // DELETE /api/Device/{id} - 删除设备
 export const deleteDeviceOnBackend = async (id: number) => {
   const response = await http.delete(`${getBaseUrl()}/api/Device/${id}`);

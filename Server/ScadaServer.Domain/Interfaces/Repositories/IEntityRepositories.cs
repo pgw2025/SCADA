@@ -81,6 +81,13 @@ namespace ScadaServer.Domain.Interfaces.Repositories
         Task<Device?> GetByIdForUpdateAsync(int id);
 
         /// <summary>
+        /// 按主键集合加载设备本体（跟踪查询，不含导航），专供批量启停使用。
+        /// 不 Include 导航，避免 UpdateAsync 的 graph update 把导航一并标记 Modified；
+        /// 启动前校验所需协议键由 DeviceAppService 经连接仓储回退解析（与单设备启用路径一致）。
+        /// </summary>
+        Task<List<Device>> GetByIdsForUpdateAsync(IEnumerable<int> ids);
+
+        /// <summary>
         /// 按区域统计设备数量（AreaId → 数量），供区域树展示各节点直接挂载的设备数。
         /// </summary>
         Task<Dictionary<int, int>> GetCountByAreaAsync();

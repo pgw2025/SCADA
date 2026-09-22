@@ -34,6 +34,17 @@ namespace ScadaServer.Application.Interfaces
         /// <param name="enabled">是否启用采集</param>
         Task<DeviceDto> SetEnabledAsync(int id, bool enabled);
 
+        /// <summary>
+        /// 批量启用/停用设备采集（按区域子树或显式设备 ID 列表定位）。
+        /// 串行执行、逐台隔离、部分成功：单台失败仅记为 Failed，不中断整批。
+        /// </summary>
+        Task<BatchSetEnabledResultDto> BatchSetEnabledAsync(BatchSetEnabledRequest request);
+
+        /// <summary>
+        /// 批量启用前预检（只校验不执行）：返回可启动数与被阻塞（如变量地址未配置）的设备清单。
+        /// </summary>
+        Task<BatchSetEnabledPrecheckDto> PrecheckBatchSetEnabledAsync(BatchSetEnabledRequest request);
+
         /// <summary>删除一个设备。</summary>
         Task DeleteAsync(int id);
 

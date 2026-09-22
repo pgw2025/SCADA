@@ -47,6 +47,19 @@ namespace ScadaServer.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// 按主键集合加载设备本体（跟踪查询，不含导航），供批量启停使用。
+        /// 不 Include 导航，避免 <see cref="RepositoryBase{TEntity,TKey}.UpdateAsync"/> 的 graph update
+        /// 把 Connection/Protocol 导航一并标记为 Modified 引发无谓 UPDATE 与跟踪冲突；
+        /// 启动前校验所需的协议键由 DeviceAppService 经连接仓储回退解析（与单设备启用路径一致）。
+        /// </summary>
+        public async Task<List<Device>> GetByIdsForUpdateAsync(IEnumerable<int> ids)
+        {
+            return await Db.Devices
+                .Where(d => ids.Contains(d.Id))
+                .ToListAsync();
+        }
+
+        /// <summary>
         /// 显式加载与 <see cref="GetByIdAsync"/> 一致的导航属性。
         /// </summary>
         public override async Task<List<Device>> GetListAsync()

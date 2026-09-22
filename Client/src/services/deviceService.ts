@@ -217,6 +217,59 @@ export const setDeviceEnabledAndSync = async (deviceId: number, enabled: boolean
   }
 };
 
+/** 批量启用/停用（区域子树 或 显式设备 ID 列表），完成后统一同步一次设备列表。 */
+export const batchSetDeviceEnabledAndSync = async (
+  req: api.BatchSetEnabledRequest
+): Promise<DeviceOperationResult<api.BatchSetEnabledResult>> => {
+  if (systemConfig.value.isSimulationActive) {
+    const ids = req.deviceIds ?? [];
+    ids.forEach(id => {
+      const idx = store.devices.value.findIndex(d => d.id === id);
+      if (idx !== -1) {
+        store.devices.value[idx] = { ...store.devices.value[idx], isEnabled: req.enabled };
+      }
+    });
+    return {
+      success: true,
+      data: { total: ids.length, succeeded: ids.length, skipped: 0, failed: 0, items: [] }
+    };
+  }
+
+  try {
+    const response = await api.batchSetDeviceEnabled(req);
+    const data = response.data;
+    await syncDevices();
+    addLog(
+      '设备管理',
+      `批量${req.enabled ? '启用' : '停用'}：成功 ${data.succeeded} / 跳过 ${data.skipped} / 失败 ${data.failed}`,
+      req.enabled ? 'normal' : 'warning'
+    );
+    return { success: true, data };
+  } catch (err: any) {
+    const errorResult = parseApiError(err);
+    addLog('设备管理', `批量${req.enabled ? '启用' : '停用'}失败: ${errorResult.message}`, 'warning');
+    return { success: false, error: errorResult };
+  }
+};
+
+/** 批量启用前预检（只校验不执行），返回可启动数与被阻塞设备清单。 */
+export const precheckBatchSetDeviceEnabled = async (
+  req: api.BatchSetEnabledRequest
+): Promise<DeviceOperationResult<api.BatchSetEnabledPrecheck>> => {
+  if (systemConfig.value.isSimulationActive) {
+    return { success: true, data: { total: req.deviceIds?.length ?? 0, startable: req.deviceIds?.length ?? 0, blocked: [] } };
+  }
+
+  try {
+    const response = await api.precheckBatchSetDeviceEnabled(req);
+    return { success: true, data: response.data };
+  } catch (err: any) {
+    const errorResult = parseApiError(err);
+    addLog('设备管理', `批量预检失败: ${errorResult.message}`, 'warning');
+    return { success: false, error: errorResult };
+  }
+};
+
 export const getDeviceById = async (id: number): Promise<Device | null> => {
   if (systemConfig.value.isSimulationActive) {
     return store.devices.value.find(d => d.id === id) || null;

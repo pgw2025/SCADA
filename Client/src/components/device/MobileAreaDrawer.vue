@@ -9,7 +9,9 @@ import {
   Boxes,
   MapPin,
   Edit3,
-  Trash2
+  Trash2,
+  Play,
+  Pause
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -26,6 +28,7 @@ const emit = defineEmits<{
   (e: 'addArea', parentId?: number | null): void;
   (e: 'editArea', node: AreaTreeNode): void;
   (e: 'deleteArea', node: AreaTreeNode): void;
+  (e: 'batchToggle', node: AreaTreeNode, enabled: boolean): void;
 }>();
 
 const areaTypeMeta: Record<number, { icon: any; cls: string; label: string }> = {
@@ -134,6 +137,22 @@ const flattenNodes = (list: AreaTreeNode[], depth = 0, out: { node: AreaTreeNode
             <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 mr-1">
               {{ node.deviceCount }} 台
             </span>
+            <button
+              type="button"
+              @click.stop="emit('batchToggle', node, true); emit('close')"
+              class="p-1 rounded text-emerald-500 hover:text-emerald-600"
+              title="批量启用该区域采集"
+            >
+              <Play class="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              @click.stop="emit('batchToggle', node, false); emit('close')"
+              class="p-1 rounded text-amber-500 hover:text-amber-600"
+              title="批量停用该区域采集"
+            >
+              <Pause class="w-3.5 h-3.5" />
+            </button>
             <button
               type="button"
               @click.stop="emit('editArea', node)"

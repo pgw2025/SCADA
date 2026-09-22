@@ -13,7 +13,9 @@ import {
   Trash2,
   FolderTree,
   ChevronLeft,
-  Filter
+  Filter,
+  Play,
+  Pause
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -31,6 +33,7 @@ const emit = defineEmits<{
   (e: 'addArea', parentId?: number | null): void;
   (e: 'editArea', node: AreaTreeNode): void;
   (e: 'deleteArea', node: AreaTreeNode): void;
+  (e: 'batchToggle', node: AreaTreeNode, enabled: boolean): void;
 }>();
 
 // Type meta mapping
@@ -183,6 +186,22 @@ const treeSearch = ref<string>('');
             <div class="hidden group-hover:flex items-center gap-0.5 mr-0.5">
               <button
                 type="button"
+                @click.stop="emit('batchToggle', node, true)"
+                class="w-5 h-5 rounded hover:bg-emerald-100 dark:hover:bg-emerald-950 text-emerald-600 flex items-center justify-center cursor-pointer"
+                title="批量启用该区域采集"
+              >
+                <Play class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click.stop="emit('batchToggle', node, false)"
+                class="w-5 h-5 rounded hover:bg-amber-100 dark:hover:bg-amber-950 text-amber-600 flex items-center justify-center cursor-pointer"
+                title="批量停用该区域采集"
+              >
+                <Pause class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
                 @click.stop="emit('addArea', node.id)"
                 class="w-5 h-5 rounded hover:bg-sky-100 dark:hover:bg-sky-950 text-[#1890ff] flex items-center justify-center cursor-pointer"
                 title="添加子区域"
@@ -237,6 +256,22 @@ const treeSearch = ref<string>('');
             </div>
             <div class="flex items-center gap-1 shrink-0 ml-1">
               <div class="hidden group-hover:flex items-center gap-0.5 mr-0.5">
+                <button
+                  type="button"
+                  @click.stop="emit('batchToggle', sub, true)"
+                  class="w-5 h-5 rounded hover:bg-emerald-100 dark:hover:bg-emerald-950 text-emerald-600 flex items-center justify-center cursor-pointer"
+                  title="批量启用该区域采集"
+                >
+                  <Play class="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  @click.stop="emit('batchToggle', sub, false)"
+                  class="w-5 h-5 rounded hover:bg-amber-100 dark:hover:bg-amber-950 text-amber-600 flex items-center justify-center cursor-pointer"
+                  title="批量停用该区域采集"
+                >
+                  <Pause class="w-3 h-3" />
+                </button>
                 <button
                   type="button"
                   @click.stop="emit('addArea', sub.id)"

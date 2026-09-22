@@ -118,6 +118,31 @@ namespace ScadaServer.WebApi.Controllers
         }
 
         /// <summary>
+        /// 批量启用/停用设备采集（按区域子树或显式设备 ID 列表定位）。
+        /// 串行执行、逐台隔离、部分成功；单台失败仅记为 Failed，不中断整批。
+        /// </summary>
+        [HttpPost("batch/enabled")]
+        [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "BATCH_SET_ENABLED")]
+        public async Task<IActionResult> BatchSetEnabled([FromBody] BatchSetEnabledRequest request)
+        {
+            var result = await _deviceAppService.BatchSetEnabledAsync(request);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// 批量启用前预检（只校验不执行）：返回可启动数与被阻塞（如变量地址未配置）的设备清单。
+        /// </summary>
+        [HttpPost("batch/enabled/precheck")]
+        [Authorize(Policy = "RequireAdmin")]
+        [AuditLog("设备管理", "BATCH_SET_ENABLED_PRECHECK")]
+        public async Task<IActionResult> PrecheckBatchSetEnabled([FromBody] BatchSetEnabledRequest request)
+        {
+            var result = await _deviceAppService.PrecheckBatchSetEnabledAsync(request);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// 删除设备
         /// </summary>
         /// <param name="id">设备ID</param>
