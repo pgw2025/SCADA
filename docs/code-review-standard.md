@@ -59,7 +59,7 @@
 
 | # | 规则 | 证据（本仓库现状） | Before → After |
 |---|------|--------------------|----------------|
-| S1 | **禁止任何凭据/密钥入库**（含 `appsettings*.json`、编译产物 `bin/`） | `WebApi/appsettings.json:7` 明文 `"Password":"Pgw15221236646"`；`:13` JWT `dev-only` 开发密钥；`bin/Debug/.../appsettings.json` 同样明文 | `Before: "Password":"Pgw15221236646"` → `After: "Password":"${SCADA_DB_PASSWORD}"`（环境变量 / Secret 注入，且 `.gitignore` 覆盖 `appsettings*.secret.json`） |
+| S1 | **禁止任何凭据/密钥入库**（含 `appsettings*.json`、编译产物 `bin/`） | 历史版本 `WebApi/appsettings.json:7` 曾明文写入 DB 密码、`:13` 曾为 JWT `dev-only` 占位密钥；现已清空改走环境变量注入 | `Before: "Password":"<明文>"` → `After: "Password":""`（环境变量 `SystemDbConfig__Password` / `Jwt__Key` 注入，且 `.gitignore` 覆盖 `appsettings.dboverride.json`） |
 | S2 | **默认管理员必须强口令**，禁止硬编码弱口令 | `Infrastructure/Persistence/DatabaseInitializer.cs:157` 硬编码 `"123456"`，`:163` 仅 `LogWarning` | 改为从环境变量读取，首次登录强制改密；无变量则启动失败（fail-fast） |
 | S3 | **敏感实体落库前必须加密**：`MqttServer.Password`、`DatabaseConfig.Password` 等 | `Domain/Entities/MqttServer.cs:40`、`DatabaseConfig.cs:45` 为明文字符串列；`Domain/Readme.md:270` 已自告警 | 存储侧增加 `SecretEncrypt`/`SecretDecrypt`，回显继续走 `SecretMask` |
 | S4 | **开放接口必须校验凭证 + 限速**：`ExposedApiMiddleware` 的 `ExposedKey` 须作为密钥校验，而非仅定位变量 | `WebApi/Middlewares/ExposedApiMiddleware.cs:28-93`：`dto.ExposedKey` 只用于定位，无 `[Authorize]`、无速率限制 | 命中后先校验 `ExposedKey` 签名/白名单，叠加 `RateLimiter`，失败返回 401 |

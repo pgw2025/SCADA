@@ -273,10 +273,10 @@ ScheduledTaskScheduler（1s Tick，Cronos 解析，10min 兜底重载）
 
 ### 必须修复（阻断 / 高危）
 
-1. **数据库明文密码硬编码**（已确认）：`ScadaServer.WebApi/appsettings.json` 与 `appsettings.dboverride.json` 都明文写了 MySQL `root` 密码（`Pgw15221236646`）。`dboverride` 文件位于内容根目录，可能随打包/备份扩散；`.bin/Debug` 编译产物也拷贝了 `appsettings*.json`。\
-   ➜ 生产必须移除明文，改用环境变量/密钥管理系统注入 `SystemDbConfig__Password`，并把 `dboverride`/密钥排除出发布包。
-2. **JWT 密钥为占位硬编码**（已确认）：`appsettings.json` 的 `Jwt:Key` 是 `dev-only-jwt-signing-key-do-not-use-in-production-*`，且该默认值就在配置里。代码已做“缺失即抛”防护，但**只要不主动用** **`Jwt__Key`** **覆盖就会用这个公开占位密钥签名**（等于可伪造任意用户 Token）。\
-   ➜ 生产必须用环境变量 `Jwt__Key` 覆盖，并设置足够强度的随机会话密钥；`ExpireHours=8` 可评估收紧。
+1. **数据库明文密码硬编码**（已修复）：历史版本中 `ScadaServer.WebApi/appsettings.json` 曾明文写入 MySQL `root` 密码，现已清空，密码一律通过环境变量 `SystemDbConfig__Password` 注入；`.gitignore` 已排除 `appsettings.dboverride.json`，`bin/` 编译产物不入库。\
+   ➜ 生产部署时通过环境变量/密钥管理系统注入 `SystemDbConfig__Password`，禁止回填明文。
+2. **JWT 密钥为占位硬编码**（已修复）：历史版本中 `appsettings.json` 的 `Jwt:Key` 曾为 `dev-only` 占位密钥，现已清空，并在启动期强制校验密钥长度 ≥32，缺失或过短即快速失败。\
+   ➜ 生产必须通过环境变量 `Jwt__Key` 注入足够强度的随机密钥；`ExpireHours=8` 可评估收紧。
 3. **无权联合数据库开放接口**（设计权衡）：`/open/*` 网关分支挂载在认证之前，可匿名读取已启用变量的实时值。若这些变量含敏感工艺数据，属数据暴露面。\
    ➜ 至少对 `/open` 增加可选的白名单 key/签名校验，或对敏感变量禁止暴露。
 4. **协议缺口导致运行时跳过**（边界）：配置 `MODBUSTCP`/`MQTT('DriverKey')` 时 `ProtocolDriverFactory` 抛 `NotSupportedException`；`RuntimeManager` 的建驱动/连接已 catch 成失败重连占位。若生产有计划变成现实会有未知行为。\

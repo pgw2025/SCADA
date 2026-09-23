@@ -72,11 +72,15 @@ namespace ScadaServer.WebApi.Extensions
                 });
             });
 
-            // JWT 签名密钥：仅来自配置（appsettings.json 开发占位 / 生产环境变量 Jwt__Key 覆盖）。
-            // 严禁代码内硬编码默认密钥——缺失时快速失败，防止弱密钥或默认密钥上线。
-            var jwtKey = configuration["Jwt:Key"]
-                ?? throw new InvalidOperationException(
-                    "未配置 Jwt:Key 签名密钥。开发环境使用 appsettings.json 的 Jwt:Key，生产环境必须通过环境变量 Jwt__Key 注入。");
+            // JWT 签名密钥：仅来自配置（appsettings.json 留空占位 / 环境变量 Jwt__Key 注入）。
+            // 严禁代码内硬编码默认密钥；缺失或长度 <32 时快速失败，防止弱密钥/默认密钥上线导致可伪造 Token。
+            var jwtKey = configuration["Jwt:Key"];
+
+            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+            {
+                throw new InvalidOperationException(
+                    "Jwt:Key 签名密钥未配置或长度不足 32 字符。密钥必须通过环境变量 Jwt__Key 注入（禁止在 appsettings.json 明文填写或使用占位密钥）。");
+            }
 
             services.AddAuthentication(options =>
             {
