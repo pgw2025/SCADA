@@ -18,6 +18,13 @@ const componentProps = computed(() => props.component.props ?? {});
 
 const updateProp = (key: string, value: any) => emit('updateProp', key, value);
 
+// 组件级「默认绑定设备」名称，用于子项设备下拉的「跟随主设备」选项展示
+const mainDeviceName = computed(() => {
+  const devId = props.component.bindDeviceId;
+  if (devId == null) return '未设置';
+  return devices.value.find(d => String(d.id) === String(devId))?.name || '未设置';
+});
+
 // 解析数值输入：合法（含 0）原样写入，非法（NaN/空）回退缺省值
 const numInput = (raw: string, fallback: number): number => {
   const n = parseFloat(raw);
@@ -47,7 +54,7 @@ const addDashboardItem = () => {
 
   const newItem: HmiDashboardItem = {
     id: `item-${Date.now()}-${dashboardItems.value.length + 1}`,
-    deviceId: dev?.id ?? null,
+    deviceId: null, // 默认继承组件级「默认绑定设备」，保持与顶部设备强一致
     variableKey: unusedKey,
     label: meta?.name || unusedKey,
     unit: meta?.unit || '',
@@ -82,7 +89,7 @@ const importAllVariablesFromDevice = (targetDevId?: number | null) => {
     const isNum = typeof dev.variables[k] === 'number';
     return {
       id: `item-${dev.id}-${k}-${Date.now()}-${idx}`,
-      deviceId: dev.id,
+      deviceId: null, // 默认继承组件级「默认绑定设备」，保持与顶部设备强一致
       variableKey: k,
       label: meta?.name || k,
       unit: meta?.unit || '',
@@ -490,9 +497,10 @@ const getItemVariableOptions = (itemDevId?: number | null) => {
           <div class="grid grid-cols-2 gap-1.5">
             <div>
               <label class="text-[9px] text-slate-400">所属设备</label>
-              <select :value="item.deviceId ?? component.bindDeviceId ?? devices[0]?.id ?? ''"
-                @change="updateDashboardItem(idx, { deviceId: ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null })"
+              <select :value="item.deviceId ?? ''"
+                @change="updateDashboardItem(idx, { deviceId: ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value) })"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#1890ff]">
+                <option value="">跟随主设备（{{ mainDeviceName }}）</option>
                 <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.name }}</option>
               </select>
             </div>

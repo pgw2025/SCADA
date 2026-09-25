@@ -227,12 +227,9 @@ export const BUILTIN_SEEDS: WidgetDef[] = [
       dashboardZebra: false,
       panelStyle: 'slate-dark',
       panelAccentColor: '#38bdf8',
-      dashboardItems: [
-        { id: 'item-1', variableKey: 'boiler_temp', label: '锅炉温度', unit: '℃', precision: 1, showStatusDot: true, thresholdMin: 20, thresholdMax: 90 },
-        { id: 'item-2', variableKey: 'boiler_press', label: '主管道压力', unit: 'MPa', precision: 2, showStatusDot: true, thresholdMin: null, thresholdMax: 8.5 },
-        { id: 'item-3', variableKey: 'tank_level', label: '储罐液位', unit: '%', precision: 1, showStatusDot: true, thresholdMin: 15, thresholdMax: 95 },
-        { id: 'item-4', variableKey: 'pump_state', label: '主循环泵', unit: '', precision: null, showStatusDot: true, thresholdMin: null, thresholdMax: null },
-      ],
+      // 默认为空：避免硬编码不存在的变量键与缺失 deviceId 导致新建看板即显示 --。
+      // 用户通过检查器「添加单项变量」或「一键导入全部变量」创建子项时，会自动写入正确的 deviceId。
+      dashboardItems: [],
     }),
   },
   {

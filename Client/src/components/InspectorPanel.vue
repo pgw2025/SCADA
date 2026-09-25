@@ -95,6 +95,15 @@ const onBindDeviceChange = (val: string) => {
   updateComponentField('bindDeviceId', id);
   updateComponentField('bindVariableKey', ''); // 设备变更后清空变量
   updateComponentField('bindField', ''); // 同时清除遗留 bindField，防止运行态拿旧值下发写指令
+
+  // 多变量看板：主设备变更时级联将所有子项 deviceId 置为 null（继承主设备），
+  // 保证顶部「默认绑定设备」与下方变量「所属设备」强一致；子项仍可单独 override 到其他设备。
+  if (props.selectedComponent?.type === 'multi-var-dashboard') {
+    const items = componentProps.value.dashboardItems;
+    if (Array.isArray(items) && items.length > 0) {
+      updateProp('dashboardItems', items.map((it: any) => ({ ...it, deviceId: null })));
+    }
+  }
 };
 
 const onBindVariableChange = (val: string) => {
