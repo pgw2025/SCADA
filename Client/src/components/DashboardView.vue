@@ -7,9 +7,9 @@ import {
   dataModels, 
   serverStatus, 
   logs,
-  scadaProjects,
   setDevices
 } from '../store/index';
+import { projectSummaries, initializeProjectSummaries } from '../store/scadaStore';
 import { startSystemResourceMonitoring, stopSystemResourceMonitoring } from '../services/systemService';
 import { fetchDevicesFromBackend } from '../api/deviceApi';
 import { normalizeDevices } from '../utils/deviceStatus';
@@ -31,7 +31,7 @@ const router = useRouter();
 
 onMounted(async () => {
   startSystemResourceMonitoring();
-  
+
   // 挂载时获取一次设备列表
   try {
     const response = await fetchDevicesFromBackend();
@@ -41,6 +41,9 @@ onMounted(async () => {
   } catch (error: any) {
     console.error('仪表盘加载设备列表失败:', error.message);
   }
+
+  // 轻量加载组态工程摘要（含 pageCount，供「组态画面」统计使用）
+  initializeProjectSummaries();
 });
 
 onUnmounted(() => {
@@ -70,7 +73,7 @@ const totalVars = computed(() => {
 const totalAreas = computed(() => areas.value.length);
 const totalModels = computed(() => dataModels.value.length);
 const totalScreens = computed(() => {
-  return scadaProjects.value.reduce((acc, current) => acc + current.pages.length, 0);
+  return projectSummaries.value.reduce((acc, current) => acc + (current.pageCount || 0), 0);
 });
 
 // Calculate percentages
