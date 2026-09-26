@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable, updateVariable, deleteVariable, exportVariables } from '../store/index';
+import { dataModels, devices, addLog, createDataModelOnBackend, updateDataModelOnBackend, deleteDataModelOnBackend, fetchDataModelsFromBackend, createVariable, updateVariable, deleteVariable, reorderVariables, exportVariables } from '../store/index';
 import { DataModel, DataPoint, DataTypeEnum } from '../types';
 import VariableImportDialog from './VariableImportDialog.vue';
 
@@ -29,7 +29,9 @@ import {
   LayoutGrid,
   List,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  GripVertical,
+  ChevronUp
 } from 'lucide-vue-next';
 
 // Mobile Drawer state
@@ -222,7 +224,10 @@ const filteredVariables = computed(() => {
   }
 
   // 排序
-  if (varSortBy.value === 'key') {
+  if (varSortBy.value === 'default') {
+    // 默认排序即模板排序：Sort 升序（缺省 0），同值按 Id 兜底，保证拖拽重排后的展示与落库一致。
+    list = [...list].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.id - b.id);
+  } else if (varSortBy.value === 'key') {
     list = [...list].sort((a, b) => a.key.localeCompare(b.key));
   } else if (varSortBy.value === 'name') {
     list = [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -232,6 +237,72 @@ const filteredVariables = computed(() => {
 
   return list;
 });
+
+// ---------- 模板变量排序（拖拽 + 上移/下移按钮，Sort 落库） ----------
+// 拖拽仅调整"当前展示顺序"，落库前按该顺序重建全量模型变量数组并归一化为连续 1..N。
+const draggingVarKey = ref<string | null>(null);
+const dragOverVarKey = ref<string | null>(null);
+const displayedVarKeys = computed(() => filteredVariables.value.map(v => v.key));
+
+/** 按给定顺序重建全量模型变量数组，并赋连续 1..N 排序值。 */
+const applyOrderKeys = (orderKeys: string[]): boolean => {
+  if (!currentModel.value || orderKeys.length !== currentModel.value.variables.length) return false;
+  const arr = [...currentModel.value.variables];
+  arr.sort((a, b) => orderKeys.indexOf(a.key) - orderKeys.indexOf(b.key));
+  arr.forEach((x, i) => { x.sort = i + 1; });
+  currentModel.value.variables = arr;
+  return true;
+};
+
+/** 提交排序：落库 reorder API 后以服务端为权威重拉（失败时保留本地重排，便于重试）。 */
+const commitTemplateOrder = async (orderKeys: string[]) => {
+  if (!applyOrderKeys(orderKeys) || !currentModel.value) return;
+  const modelId = Number(currentModel.value.id);
+  const items = currentModel.value.variables.map((v, i) => ({ id: v.id, sort: i + 1 }));
+  try {
+    await reorderVariables(modelId, items);
+    await fetchDataModelsFromBackend();
+  } catch {
+    /* 失败日志已由 reorderVariables 记录，本地顺序保留 */
+  }
+};
+
+const onVarDragStart = (v: DataPoint) => {
+  draggingVarKey.value = v.key;
+  dragOverVarKey.value = null;
+};
+const onVarDragOver = (v: DataPoint) => {
+  if (draggingVarKey.value && draggingVarKey.value !== v.key) dragOverVarKey.value = v.key;
+};
+const onVarDrop = async (over: DataPoint) => {
+  const dragKey = draggingVarKey.value;
+  const overKey = dragOverVarKey.value || over.key;
+  draggingVarKey.value = null;
+  dragOverVarKey.value = null;
+  if (!dragKey || dragKey === overKey) return;
+  const keys = [...displayedVarKeys.value];
+  const from = keys.indexOf(dragKey);
+  const to = keys.indexOf(overKey);
+  if (from < 0 || to < 0) return;
+  keys.splice(from, 1);
+  keys.splice(to, 0, dragKey);
+  await commitTemplateOrder(keys);
+};
+const onVarDragEnd = () => {
+  draggingVarKey.value = null;
+  dragOverVarKey.value = null;
+};
+
+/** 按钮方式移动（移动端/无障碍兜底），dir=-1 上移 / 1 下移。 */
+const moveTemplateVar = async (v: DataPoint, dir: -1 | 1) => {
+  const keys = [...displayedVarKeys.value];
+  const idx = keys.indexOf(v.key);
+  const to = idx + dir;
+  if (idx < 0 || to < 0 || to >= keys.length) return;
+  keys.splice(idx, 1);
+  keys.splice(to, 0, v.key);
+  await commitTemplateOrder(keys);
+};
 
 // 打开编辑弹窗：回填模型元数据（复用「新建」弹窗表单）
 const openEditModel = (model: DataModel) => {
@@ -849,6 +920,7 @@ const handleImportDone = async () => {
               <table class="w-full text-xs font-mono divide-y divide-slate-100 dark:divide-slate-800">
                 <thead class="sticky top-0 bg-slate-50 dark:bg-slate-950/90 backdrop-blur-xs z-10">
                   <tr class="text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+                    <th class="px-2 py-3.5 text-left w-12" title="拖拽行手柄或按钮调整模板变量顺序">排序</th>
                     <th class="px-4 py-3.5 text-left">标识</th>
                     <th class="px-4 py-3.5 text-left">名称</th>
                     <th class="px-4 py-3.5 text-left">类型</th>
@@ -862,8 +934,21 @@ const handleImportDone = async () => {
                   <tr 
                     v-for="v in filteredVariables" 
                     :key="v.key"
-                    class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all text-left"
+                    draggable="true"
+                    :class="[
+                      'hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-all text-left cursor-grab active:cursor-grabbing',
+                      dragOverVarKey === v.key ? 'ring-2 ring-violet-400/60 bg-violet-50/60 dark:bg-violet-950/40' : ''
+                    ]"
+                    @dragstart="onVarDragStart(v)"
+                    @dragover.prevent="onVarDragOver(v)"
+                    @drop.prevent="onVarDrop(v)"
+                    @dragend="onVarDragEnd"
                   >
+                    <td class="px-2 py-3.5 w-12">
+                      <span class="flex items-center justify-center text-slate-400 dark:text-slate-500" title="拖拽调整顺序">
+                        <GripVertical class="w-3.5 h-3.5" />
+                      </span>
+                    </td>
                     <td class="px-4 py-3.5 font-bold text-violet-700 dark:text-violet-400">
                       <span class="flex items-center gap-1">
                         <Binary class="w-3.5 h-3.5 text-violet-400" />
@@ -910,6 +995,22 @@ const handleImportDone = async () => {
                     <td class="px-4 py-3.5 text-right">
                       <div class="inline-flex items-center gap-1">
                         <button
+                          @click="moveTemplateVar(v, -1)"
+                          class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer disabled:opacity-30"
+                          title="上移"
+                          :disabled="varSortBy !== 'default'"
+                        >
+                          <ChevronUp class="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          @click="moveTemplateVar(v, 1)"
+                          class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer disabled:opacity-30"
+                          title="下移"
+                          :disabled="varSortBy !== 'default'"
+                        >
+                          <ChevronDown class="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           @click="openEditVariable(v)"
                           class="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all cursor-pointer"
                           title="编辑此字段"
@@ -928,7 +1029,7 @@ const handleImportDone = async () => {
                   </tr>
 
                   <tr v-if="filteredVariables.length === 0">
-                    <td colspan="7" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
+                    <td colspan="8" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">
                       {{ varSearchQuery || varCategoryFilter !== 'ALL' ? '未找到匹配的变量' : '暂无变量，点击"添加变量"创建' }}
                     </td>
                   </tr>
@@ -979,6 +1080,22 @@ const handleImportDone = async () => {
                   </div>
 
                   <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      @click="moveTemplateVar(v, -1)"
+                      class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-md text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors cursor-pointer disabled:opacity-30"
+                      title="上移"
+                      :disabled="varSortBy !== 'default'"
+                    >
+                      <ChevronUp class="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      @click="moveTemplateVar(v, 1)"
+                      class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-md text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors cursor-pointer disabled:opacity-30"
+                      title="下移"
+                      :disabled="varSortBy !== 'default'"
+                    >
+                      <ChevronDown class="w-3.5 h-3.5" />
+                    </button>
                     <button
                       @click="openEditVariable(v)"
                       class="p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-md text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors cursor-pointer"
@@ -1048,6 +1165,22 @@ const handleImportDone = async () => {
                 </div>
 
                 <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    @click="moveTemplateVar(v, -1)"
+                    class="p-1.5 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-30"
+                    title="上移"
+                    :disabled="varSortBy !== 'default'"
+                  >
+                    <ChevronUp class="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    @click="moveTemplateVar(v, 1)"
+                    class="p-1.5 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-30"
+                    title="下移"
+                    :disabled="varSortBy !== 'default'"
+                  >
+                    <ChevronDown class="w-3.5 h-3.5" />
+                  </button>
                   <button
                     @click="openEditVariable(v)"
                     class="p-1.5 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"

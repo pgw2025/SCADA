@@ -84,13 +84,50 @@ namespace ScadaServer.Application.Services
         public async Task<List<DataPointDto>> GetListAsync()
         {
             var list = await _repository.GetListAsync();
-            return list.Select(DataPointMapper.ToDto).ToList();
+            // 模型内展示顺序以 Sort 为权威（缺省 0），同值按 Id 稳定兜底。
+            return list.OrderBy(v => v.Sort).ThenBy(v => v.Id).Select(DataPointMapper.ToDto).ToList();
         }
 
         public async Task<List<DataPointDto>> GetByModelIdAsync(int modelId)
         {
             var list = await _repository.GetListAsync(mv => mv.ModelId == modelId);
-            return list.Select(DataPointMapper.ToDto).ToList();
+            // 与 GetListAsync 一致：Sort 优先、Id 兜底，保证前端"默认排序"即模板排序。
+            return list.OrderBy(v => v.Sort).ThenBy(v => v.Id).Select(DataPointMapper.ToDto).ToList();
+        }
+
+        /// <summary>
+        /// 重排模型内模板变量展示顺序（纯展示序，不影响采集/换算/历史，无需热加载运行时）。
+        /// 契约：按该模型全量提交；服务端校验 Id 集合与库内一致后，按提交的 Sort 值落库。
+        /// </summary>
+        public async Task ReorderAsync(DataPointReorderDto dto)
+        {
+            var items = dto.Items ?? new List<DataPointOrderItemDto>();
+            var submittedIds = items.Select(i => i.Id).ToList();
+            if (submittedIds.Count == 0) return;
+
+            // 1. 重复 ID 防御
+            if (submittedIds.Distinct().Count() != submittedIds.Count)
+            {
+                throw new BusinessException("排序项存在重复 ID");
+            }
+
+            // 2. 按模型全量比对：排序项集合必须与库内该模型变量集合完全一致，防止漏提交/跨模型错排。
+            var variables = await _repository.GetListAsync(v => v.ModelId == dto.ModelId);
+            if (variables.Count == 0) return;
+            var existingIds = variables.Select(v => v.Id).ToHashSet();
+            if (submittedIds.Count != existingIds.Count || !submittedIds.All(existingIds.Contains))
+            {
+                throw new BusinessException("排序项与模型内变量集合不一致，请全量提交");
+            }
+
+            // 3. 按提交顺序赋 Sort 值并落库
+            var order = new Dictionary<int, int>();
+            foreach (var item in items) order[item.Id] = item.Sort;
+            foreach (var v in variables)
+            {
+                if (order.TryGetValue(v.Id, out var sort)) v.Sort = sort;
+            }
+            await _repository.UpdateRangeAsync(variables);
         }
 
         public async Task<DataPointDto> CreateAsync(DataPointDto dto)
@@ -114,6 +151,13 @@ namespace ScadaServer.Application.Services
             if (keyExists)
             {
                 throw new BusinessException($"模型内已存在标识为 '{dto.Key}' 的变量");
+            }
+
+            // 3.5 新建变量未显式指定排序时，排到该模型末尾（Max(Sort)+1），保持展示顺序连续。
+            if (dto.Sort <= 0)
+            {
+                var modelVariables = await _repository.GetListAsync(v => v.ModelId == dto.ModelId);
+                dto.Sort = modelVariables.Count == 0 ? 1 : modelVariables.Max(v => v.Sort) + 1;
             }
 
             var entity = MapToEntity(dto);

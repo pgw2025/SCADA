@@ -17,6 +17,9 @@ namespace ScadaServer.Application.Interfaces
         /// <summary>按模型ID查询该模型下的全部变量。</summary>
         Task<List<DataPointDto>> GetByModelIdAsync(int modelId);
 
+        /// <summary>重排模型内模板变量展示顺序（全量提交，归一化连续 Sort 值）。</summary>
+        Task ReorderAsync(DataPointReorderDto dto);
+
         /// <summary>新增一个模型变量，返回创建后的 DTO。</summary>
         Task<DataPointDto> CreateAsync(DataPointDto dto);
 

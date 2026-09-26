@@ -61,6 +61,20 @@ export const updateVariable = async (variable: DataPoint): Promise<DataPoint> =>
   }
 };
 
+// POST /api/DataPoint/reorder - 重排模型内模板变量顺序（全量提交，Sort 归一化 1..N）
+export const reorderVariables = async (
+  modelId: number,
+  items: { id: number; sort: number }[]
+): Promise<void> => {
+  try {
+    await http.post(`${BASE_URL()}/reorder`, { modelId, items });
+    addLog('变量管理', '已更新变量排序', 'normal');
+  } catch (error: any) {
+    addLog('变量管理', `更新变量排序失败: ${error.message}`, 'warning');
+    throw error;
+  }
+};
+
 // DELETE /api/DataPoint/{id} - 删除变量
 export const deleteVariable = async (id: number): Promise<void> => {
   try {

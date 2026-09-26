@@ -54,6 +54,16 @@ namespace ScadaServer.WebApi.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// 重排模型内模板变量展示顺序（字面量段 reorder 与 by-model 同模式，不与 {id} 路由冲突）。
+        /// </summary>
+        [HttpPost("reorder")]
+        public async Task<IActionResult> Reorder([FromBody] DataPointReorderDto dto)
+        {
+            await _appService.ReorderAsync(dto);
+            return Ok(new { success = true, message = "变量排序已更新" });
+        }
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {

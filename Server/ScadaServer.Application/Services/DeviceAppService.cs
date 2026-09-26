@@ -101,7 +101,11 @@ namespace ScadaServer.Application.Services
                     .GroupBy(dv => dv.DeviceId)
                     .ToDictionary(
                         g => g.Key,
-                        g => g.Select(dv => MapDataPointMappingDto(dv, mvMap)).ToList());
+                        g => g
+                            .OrderBy(dv => mvMap.TryGetValue(dv.DataPointId, out var mv) ? mv.Sort : 0)
+                            .ThenBy(dv => dv.Id)
+                            .Select(dv => MapDataPointMappingDto(dv, mvMap))
+                            .ToList());
             }
 
             return list.Select(entity =>
@@ -350,7 +354,12 @@ namespace ScadaServer.Application.Services
             var dataPoints = await _dataPointRepository.GetListAsync(mv => mv.ModelId == modelId);
             var mvMap = dataPoints.ToDictionary(mv => mv.Id);
 
-            return dataPointMappings.Select(dv => MapDataPointMappingDto(dv, mvMap)).ToList();
+            // 与 GetListAsync 一致：按模板 Sort 排序（缺省 0，Id 兜底），保证"导入设备全部变量"跟随模板排序。
+            return dataPointMappings
+                .OrderBy(dv => mvMap.TryGetValue(dv.DataPointId, out var mv) ? mv.Sort : 0)
+                .ThenBy(dv => dv.Id)
+                .Select(dv => MapDataPointMappingDto(dv, mvMap))
+                .ToList();
         }
 
         /// <summary>
