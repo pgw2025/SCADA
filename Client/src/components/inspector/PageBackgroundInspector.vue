@@ -2,7 +2,7 @@
 // 页面属性检查器：点击画布背景后显示（背景设置 + 自适应屏幕设置）
 // 从 InspectorPanel.vue 抽出（Phase 1）；通信：props 下行 / emit 上行，与父组件 updatePage 链路同构
 import { computed, ref, watch } from 'vue';
-import { ScadaPage, PageBackground, PageBackgroundType } from '../../types';
+import { ScadaPage, PageBackground, PageBackgroundType, PageAdaptMode, PageAdaptConfig, PageViewportType, PageHAlign, PageVAlign } from '../../types';
 import { Palette, Layout, ChevronRight, Expand } from 'lucide-vue-next';
 import ImageLibraryDialog from '../ImageLibraryDialog.vue';
 
@@ -71,8 +71,25 @@ const onBackgroundTypeChange = (val: string) => {
 };
 
 const onAdaptModeChange = (val: string) => {
-  emit('updatePage', { adaptMode: val === 'FitScaleUp' || val === 'Stretch' ? val : null });
+  const validModes: PageAdaptMode[] = ['Contain', 'ContainScaleUp', 'Cover', 'Stretch', 'FitWidth', 'FitHeight', 'Actual'];
+  const mode = validModes.includes(val as PageAdaptMode) ? (val as PageAdaptMode) : null;
+  emit('updatePage', { adaptMode: mode });
 };
+
+// ===== 自适应扩展配置（显示区域 / 对齐 / 留白）=====
+const adaptConfig = computed<PageAdaptConfig>(() => props.backgroundPage?.adaptConfig ?? {});
+
+const updateAdaptConfig = (patch: Partial<PageAdaptConfig>) => {
+  emit('updatePage', { adaptConfig: { ...adaptConfig.value, ...patch } });
+};
+
+const VIEWPORT_PRESETS = [
+  { id: '1920x1080', label: '1920×1080' },
+  { id: '1366x768', label: '1366×768' },
+  { id: '1280x720', label: '1280×720' },
+  { id: '1100x700', label: '1100×700' },
+  { id: '375x812', label: '375×812 (Mobile)' },
+];
 
 // 背景选图（updateBackground 整体提交，父级落库）
 const showBgImagePicker = ref(false);
@@ -442,12 +459,109 @@ const applyThemePreset = (preset: typeof THEME_CANVAS_PRESETS[0]) => {
             @change="onAdaptModeChange(($event.target as HTMLSelectElement).value)"
             class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
             <option value="">默认（等比缩小，不放大）</option>
-            <option value="FitScaleUp">等比缩放（允许放大填满）</option>
+            <option value="Contain">完整显示（等比，不放大）</option>
+            <option value="ContainScaleUp">等比缩放（允许放大填满）</option>
+            <option value="Cover">等比铺满（裁切边缘）</option>
             <option value="Stretch">拉伸填满（非等比，可能变形）</option>
+            <option value="FitWidth">宽度适配（高度溢出滚动）</option>
+            <option value="FitHeight">高度适配（宽度溢出滚动）</option>
+            <option value="Actual">1:1 原始尺寸（溢出滚动）</option>
           </select>
           <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1.5 leading-relaxed">
-            仅作用于运行端全屏查看：画面按所选模式缩放适配视口。<br />
-            设计端画布不受影响，可随时用工具栏缩放查看。
+            仅作用于运行端全屏查看：画面按所选模式缩放适配显示区域。<br />
+            设计端画布不受影响，可随时用工具栏「一键适配」查看效果。
+          </p>
+        </div>
+
+        <div class="border-t border-dashed border-gray-200 dark:border-slate-800 my-1" />
+
+        <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">显示区域类型</label>
+          <select :value="adaptConfig.viewportType ?? 'Workspace'"
+            @change="updateAdaptConfig({ viewportType: ($event.target as HTMLSelectElement).value as PageViewportType })"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+            <option value="Workspace">工作区容器（默认）</option>
+            <option value="Viewport">浏览器视口</option>
+            <option value="Screen">物理屏幕</option>
+            <option value="Preset">预设分辨率</option>
+            <option value="Custom">自定义尺寸</option>
+          </select>
+        </div>
+
+        <!-- 预设分辨率 -->
+        <div v-if="adaptConfig.viewportType === 'Preset'">
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">预设分辨率</label>
+          <select :value="adaptConfig.viewportPreset ?? '1920x1080'"
+            @change="updateAdaptConfig({ viewportPreset: ($event.target as HTMLSelectElement).value })"
+            class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2.5 py-1.5 mt-0.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+            <option v-for="p in VIEWPORT_PRESETS" :key="p.id" :value="p.id">{{ p.label }}</option>
+          </select>
+        </div>
+
+        <!-- 自定义尺寸 -->
+        <div v-if="adaptConfig.viewportType === 'Custom'" class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">宽度 (px)</label>
+            <input type="number" min="200" max="10000" step="10"
+              :value="adaptConfig.viewportWidth ?? 1920"
+              @change="updateAdaptConfig({ viewportWidth: Number(($event.target as HTMLInputElement).value) || 1920 })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 font-mono text-[10px] text-[#262626] dark:text-white focus:outline-none mt-0.5" />
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">高度 (px)</label>
+            <input type="number" min="200" max="10000" step="10"
+              :value="adaptConfig.viewportHeight ?? 1080"
+              @change="updateAdaptConfig({ viewportHeight: Number(($event.target as HTMLInputElement).value) || 1080 })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 font-mono text-[10px] text-[#262626] dark:text-white focus:outline-none mt-0.5" />
+          </div>
+        </div>
+
+        <div class="border-t border-dashed border-gray-200 dark:border-slate-800 my-1" />
+
+        <!-- 对齐方式 -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">水平对齐</label>
+            <select :value="adaptConfig.hAlign ?? 'center'"
+              @change="updateAdaptConfig({ hAlign: ($event.target as HTMLSelectElement).value as PageHAlign })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 text-[#262626] dark:text-white focus:outline-none text-xs mt-0.5">
+              <option value="left">左对齐</option>
+              <option value="center">居中</option>
+              <option value="right">右对齐</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-500 dark:text-slate-400">垂直对齐</label>
+            <select :value="adaptConfig.vAlign ?? 'center'"
+              @change="updateAdaptConfig({ vAlign: ($event.target as HTMLSelectElement).value as PageVAlign })"
+              class="w-full bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 text-[#262626] dark:text-white focus:outline-none text-xs mt-0.5">
+              <option value="top">顶对齐</option>
+              <option value="center">居中</option>
+              <option value="bottom">底对齐</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 留白颜色 -->
+        <div>
+          <label class="text-[10px] text-gray-500 dark:text-slate-400">留白颜色</label>
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <select :value="adaptConfig.paddingColor ?? 'background'"
+              @change="updateAdaptConfig({ paddingColor: ($event.target as HTMLSelectElement).value })"
+              class="flex-1 bg-white dark:bg-slate-950 border border-[#d9d9d9] dark:border-slate-700 hover:border-[#1890ff] focus:border-[#1890ff] dark:focus:border-sky-500 rounded px-2 py-1.5 text-[#262626] dark:text-white focus:outline-none text-xs">
+              <option value="background">页面背景色延伸</option>
+              <option value="transparent">透明</option>
+              <option value="#000000">纯黑</option>
+              <option value="#ffffff">纯白</option>
+              <option value="custom">自定义颜色…</option>
+            </select>
+            <input v-if="adaptConfig.paddingColor === 'custom'" type="color"
+              :value="'#000000'"
+              @input="updateAdaptConfig({ paddingColor: ($event.target as HTMLInputElement).value })"
+              class="w-7 h-7 bg-transparent border-0 cursor-pointer rounded overflow-hidden shrink-0" />
+          </div>
+          <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-relaxed">
+            画布未铺满显示区域时，剩余空间的填充颜色。
           </p>
         </div>
       </section>

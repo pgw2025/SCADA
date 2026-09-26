@@ -1021,6 +1021,8 @@ export interface ScadaPage {
   background?: PageBackground | null;
   /** 运行端自适应屏幕模式（后端持久化；null/undefined=未配置回退兼容行为：等比缩小不放大） */
   adaptMode?: PageAdaptMode | null;
+  /** 自适应屏幕扩展配置（显示区域类型、对齐、留白颜色等；null=未配置回退默认） */
+  adaptConfig?: PageAdaptConfig | null;
   /** 所在画面文件夹的 uid（前端内联 id）。未放入文件夹=undefined（该端根级）。 */
   folderId?: string;
   /** 同级「画面段」内排序（后端持久化；缺省 0，由后端搬迁/前端 reorder 写入连续值） */
@@ -1065,8 +1067,46 @@ export interface PageBackground {
   imageFit?: 'fill' | 'contain' | 'cover' | 'tile';
 }
 
-/** 运行端自适应屏幕模式：FitScaleUp=等比缩放（允许放大）；Stretch=拉伸填满（非等比） */
-export type PageAdaptMode = 'FitScaleUp' | 'Stretch';
+/**
+ * 运行端自适应屏幕模式：
+ * - Contain：等比完整显示，不放大（留白）—— 默认兼容行为
+ * - ContainScaleUp：等比完整显示，允许放大填满（历史值 FitScaleUp 归一化为此）
+ * - Cover：等比铺满，溢出裁切
+ * - Stretch：X/Y 双轴独立拉伸填满（非等比，可能变形）
+ * - FitWidth：宽度适配，高度溢出可滚动
+ * - FitHeight：高度适配，宽度溢出可滚动
+ * - Actual：1:1 原始尺寸，溢出滚动
+ */
+export type PageAdaptMode = 'Contain' | 'ContainScaleUp' | 'Cover' | 'Stretch' | 'FitWidth' | 'FitHeight' | 'Actual';
+
+/** 显示区域类型：画布适配的目标矩形区域 */
+export type PageViewportType = 'Workspace' | 'Viewport' | 'Screen' | 'Preset' | 'Custom';
+
+/** 水平对齐方式 */
+export type PageHAlign = 'left' | 'center' | 'right';
+/** 垂直对齐方式 */
+export type PageVAlign = 'top' | 'center' | 'bottom';
+
+/**
+ * 自适应屏幕扩展配置（序列化为 JSON 存后端 ScadaPage.AdaptConfigJson）。
+ * null/undefined=未配置，前端回退默认：显示区域=Workspace、水平居中、垂直居中、留白=页面背景色延伸。
+ */
+export interface PageAdaptConfig {
+  /** 显示区域类型，默认 Workspace（工作区容器） */
+  viewportType?: PageViewportType;
+  /** 预设分辨率 ID（viewportType=Preset 时生效，如 '1920x1080'） */
+  viewportPreset?: string;
+  /** 自定义显示区域宽度（viewportType=Custom 时生效，px） */
+  viewportWidth?: number;
+  /** 自定义显示区域高度（viewportType=Custom 时生效，px） */
+  viewportHeight?: number;
+  /** 水平对齐，默认 center */
+  hAlign?: PageHAlign;
+  /** 垂直对齐，默认 center */
+  vAlign?: PageVAlign;
+  /** 留白颜色：'transparent'=透明、'background'=页面背景色延伸、或具体 CSS 颜色值；默认 'background' */
+  paddingColor?: string;
+}
 
 export interface ScadaScreenProject {
   id: string;

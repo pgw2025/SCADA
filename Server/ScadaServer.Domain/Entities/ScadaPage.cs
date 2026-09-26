@@ -71,10 +71,19 @@ namespace ScadaServer.Domain.Entities
         public string? BackgroundJson { get; set; }
 
         /// <summary>
-        /// 运行端自适应屏幕模式：FitScaleUp（等比缩放-允许放大）/ Stretch（拉伸填满）。
-        /// NULL/空 表示未配置，前端回退兼容行为（等比缩小不放大）。
+        /// 运行端自适应屏幕模式：
+        /// Contain（等比完整显示-不放大）/ ContainScaleUp（等比完整显示-允许放大）/
+        /// Cover（等比铺满裁切）/ Stretch（拉伸填满）/ FitWidth（宽度适配）/ FitHeight（高度适配）/ Actual（原始尺寸）。
+        /// NULL/空 表示未配置，前端回退兼容行为（等比缩小不放大，等同 Contain）。
+        /// 兼容历史值 FitScaleUp → 归一化为 ContainScaleUp。
         /// </summary>
         public string? AdaptMode { get; set; }
+
+        /// <summary>
+        /// 自适应屏幕扩展配置（JSON，前端序列化）：显示区域类型、水平/垂直对齐、留白颜色等。
+        /// NULL 表示未配置，前端回退默认（显示区域=工作区容器、居中对齐、页面背景色延伸）。
+        /// </summary>
+        public string? AdaptConfigJson { get; set; }
 
         /// <summary>
         /// 页面图层配置（JSON 数组，前端序列化）：[{id,name,visible,locked,opacity,colorBadge},...]。

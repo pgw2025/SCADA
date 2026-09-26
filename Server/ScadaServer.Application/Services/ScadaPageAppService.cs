@@ -85,6 +85,7 @@ namespace ScadaServer.Application.Services
                 Height = dto.Height > 0 ? dto.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson),
                 AdaptMode = NormalizeAdaptMode(dto.AdaptMode),
+                AdaptConfigJson = NormalizeAdaptConfigJson(dto.AdaptConfigJson),
                 LayersJson = ScadaLayerJson.Normalize(dto.LayersJson)
             };
             await _repository.InsertAsync(entity);
@@ -114,6 +115,7 @@ namespace ScadaServer.Application.Services
             entity.Height = dto.Height > 0 ? dto.Height : entity.Height;
             entity.BackgroundJson = NormalizeBackgroundJson(dto.BackgroundJson);
             entity.AdaptMode = NormalizeAdaptMode(dto.AdaptMode);
+            entity.AdaptConfigJson = NormalizeAdaptConfigJson(dto.AdaptConfigJson);
             entity.LayersJson = ScadaLayerJson.Normalize(dto.LayersJson);
 
             // 落入新父级（文件夹/根级）时重排 SortOrder 到画面段末尾；
@@ -157,6 +159,7 @@ namespace ScadaServer.Application.Services
             Height = entity.Height,
             BackgroundJson = entity.BackgroundJson,
             AdaptMode = entity.AdaptMode,
+            AdaptConfigJson = entity.AdaptConfigJson,
             LayersJson = entity.LayersJson
         };
 
@@ -176,17 +179,33 @@ namespace ScadaServer.Application.Services
         private static string? NormalizeBackgroundJson(string? json)
             => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
 
-        /// <summary>归一化自适应模式：仅允许 FitScaleUp / Stretch，其余（含空）归一化为 NULL。</summary>
+        /// <summary>
+        /// 归一化自适应模式：允许 Contain / ContainScaleUp / Cover / Stretch / FitWidth / FitHeight / Actual，
+        /// 兼容历史值 FitScaleUp → 归一化为 ContainScaleUp；其余（含空）归一化为 NULL。
+        /// </summary>
         private static string? NormalizeAdaptMode(string? mode)
         {
             if (string.IsNullOrWhiteSpace(mode)) return null;
             return mode.Trim() switch
             {
-                "FitScaleUp" => "FitScaleUp",
+                "Contain" => "Contain",
+                "ContainScaleUp" => "ContainScaleUp",
+                "FitScaleUp" => "ContainScaleUp", // 历史值兼容
+                "Cover" => "Cover",
                 "Stretch" => "Stretch",
+                "FitWidth" => "FitWidth",
+                "FitHeight" => "FitHeight",
+                "Actual" => "Actual",
                 _ => null
             };
         }
+
+        /// <summary>
+        /// 归一化自适应扩展配置 JSON：空白串归一化为 NULL（未配置）。
+        /// 内容结构由前端负责序列化/校验，后端仅透传存储。
+        /// </summary>
+        private static string? NormalizeAdaptConfigJson(string? json)
+            => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
 
         /// <summary>
         /// 保证同一 (ProjectId, Platform) 范围内至多一个首页：将除 excludeId 外的其它首页置否。

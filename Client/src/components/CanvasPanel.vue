@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { HMIComponent, PageBackground, PageAdaptMode, HMILayer } from '../types';
+import { HMIComponent, PageBackground, PageAdaptMode, HMILayer, PageAdaptConfig, PageViewportType, PageHAlign, PageVAlign } from '../types';
 import HMIWidget from './HMIWidget.vue';
 import { isControlWidget } from '../widgetRegistry';
 import { trendHistory } from '../utils/trendHistory';
@@ -23,6 +23,10 @@ import {
   AlignHorizontalSpaceBetween,
   AlignVerticalSpaceBetween,
   Hand,
+  Fullscreen,
+  Scan,
+  Maximize2,
+  Minimize2,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -42,6 +46,8 @@ const props = defineProps<{
   background?: PageBackground | null;
   /** 运行端自适应屏幕模式（null=兼容行为：等比缩小不放大） */
   adaptMode?: PageAdaptMode | null;
+  /** 自适应屏幕扩展配置（显示区域/对齐/留白等；null=未配置回退默认） */
+  adaptConfig?: PageAdaptConfig | null;
   /** 页面图层列表 */
   layers?: HMILayer[];
   /** 当前页面 id：nav-menu 运行态高亮“当前画面”菜单项 */
@@ -776,39 +782,202 @@ const onDrop = (e: DragEvent) => {
   emit('addComponentAt', parsed.type, parsed.w, parsed.h, parsed.name, x, y, parsed.extraProps);
 };
 
-// 阶段5-7：运行端响应式——只读（运行时）模式自动缩放画布以适配可视区。
-// 页面属性-自适应屏幕模式：
-//  - null（未配置，兼容默认）：等比缩小适配，上限 100%（不放大）
-//  - FitScaleUp：等比缩放完整可见，允许放大填满
-//  - Stretch：X/Y 双轴独立拉伸填满（非等比，可能变形）
+// ===== 自适应屏幕系统 =====
+// 适配配置：合并默认值（显示区域=工作区容器、居中对齐、留白=页面背景色延伸）
+const adaptCfg = computed<Required<Pick<PageAdaptConfig, 'viewportType' | 'hAlign' | 'vAlign' | 'paddingColor'>>>(() => {
+  const c = props.adaptConfig ?? {};
+  return {
+    viewportType: (c.viewportType ?? 'Workspace') as PageViewportType,
+    hAlign: (c.hAlign ?? 'center') as PageHAlign,
+    vAlign: (c.vAlign ?? 'center') as PageVAlign,
+    paddingColor: c.paddingColor ?? 'background',
+  };
+});
+
+// 预设分辨率表（显示区域类型=Preset 时选用）
+const VIEWPORT_PRESETS: Record<string, { w: number; h: number; label: string }> = {
+  '1920x1080': { w: 1920, h: 1080, label: '1920×1080' },
+  '1366x768': { w: 1366, h: 768, label: '1366×768' },
+  '1280x720': { w: 1280, h: 720, label: '1280×720' },
+  '1100x700': { w: 1100, h: 700, label: '1100×700' },
+  '375x812': { w: 375, h: 812, label: '375×812 (Mobile)' },
+};
+
+// 显示区域矩形：根据 viewportType 计算目标适配宽高
+const viewportRect = computed<{ w: number; h: number }>(() => {
+  const el = workspaceRef.value;
+  const workspaceW = el?.clientWidth ?? 0;
+  const workspaceH = el?.clientHeight ?? 0;
+  const vp = adaptCfg.value.viewportType;
+
+  if (vp === 'Viewport') {
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+  if (vp === 'Screen') {
+    // 物理屏幕（含 DPR 修正，取 CSS 像素维度）
+    const dpr = window.devicePixelRatio || 1;
+    return { w: Math.round(screen.width / dpr), h: Math.round(screen.height / dpr) };
+  }
+  if (vp === 'Preset') {
+    const preset = VIEWPORT_PRESETS[props.adaptConfig?.viewportPreset ?? '1920x1080'];
+    if (preset) return { w: preset.w, h: preset.h };
+  }
+  if (vp === 'Custom') {
+    const cw = props.adaptConfig?.viewportWidth;
+    const ch = props.adaptConfig?.viewportHeight;
+    if (cw && cw > 0 && ch && ch > 0) return { w: cw, h: ch };
+  }
+  // 默认 Workspace：工作区容器尺寸
+  return { w: workspaceW, h: workspaceH };
+});
+
+// 适配留白背景色：'background' 时取页面背景色，否则用配置的颜色或透明
+const fitPaddingColor = computed<string>(() => {
+  const pc = adaptCfg.value.paddingColor;
+  if (pc === 'transparent') return 'transparent';
+  if (pc === 'background') {
+    const bg = props.background;
+    if (bg?.type === 'color') return bg.color || '#ffffff';
+    if (bg?.type === 'gradient') return bg.gradientStart || '#ffffff';
+    return '#ffffff';
+  }
+  return pc;
+});
+
 let fitObserver: ResizeObserver | null = null;
 
-const applyFitZoom = () => {
-  if (!props.readonly) return;
-  const el = workspaceRef.value;
-  if (!el) return;
-  const availW = el.clientWidth;
-  const availH = el.clientHeight;
+/**
+ * 按指定模式计算缩放比例并应用到 zoom/zoomY。
+ * mode 缺省时取 props.adaptMode（未配置时回退 Contain）。
+ * @param forceMode 一键适配时显式指定模式，覆盖页面配置
+ */
+const applyFitZoom = (forceMode?: PageAdaptMode) => {
+  const mode: PageAdaptMode = forceMode ?? props.adaptMode ?? 'Contain';
+  const { w: availW, h: availH } = viewportRect.value;
   if (availW <= 0 || availH <= 0) return;
 
-  if (props.adaptMode === 'Stretch') {
-    // 拉伸填满：X/Y 各自独立缩放（向下取整，避免取整后溢出视口出现滚动条）
-    zoom.value = Math.max(0.05, Math.floor((availW / props.canvasWidth) * 100) / 100);
-    zoomY.value = Math.max(0.05, Math.floor((availH / props.canvasHeight) * 100) / 100);
-    return;
-  }
+  const cw = props.canvasWidth;
+  const ch = props.canvasHeight;
+  const floor2 = (v: number) => Math.floor(v * 100) / 100;
 
-  let fit: number;
-  if (props.adaptMode === 'FitScaleUp') {
-    // 等比完整可见，允许放大
-    fit = Math.min(availW / props.canvasWidth, availH / props.canvasHeight);
-  } else {
-    // 兼容默认：等比缩小，上限 100%
-    fit = Math.min(1, availW / props.canvasWidth, availH / props.canvasHeight);
+  switch (mode) {
+    case 'Stretch': {
+      // 拉伸填满：X/Y 各自独立缩放
+      zoom.value = Math.max(0.05, floor2(availW / cw));
+      zoomY.value = Math.max(0.05, floor2(availH / ch));
+      break;
+    }
+    case 'Cover': {
+      // 等比铺满，溢出裁切
+      const fit = Math.max(availW / cw, availH / ch);
+      zoom.value = Math.max(0.05, floor2(fit));
+      zoomY.value = zoom.value;
+      break;
+    }
+    case 'FitWidth': {
+      // 宽度适配，高度溢出可滚动
+      zoom.value = Math.max(0.05, floor2(availW / cw));
+      zoomY.value = zoom.value;
+      break;
+    }
+    case 'FitHeight': {
+      // 高度适配，宽度溢出可滚动
+      zoom.value = Math.max(0.05, floor2(availH / ch));
+      zoomY.value = zoom.value;
+      break;
+    }
+    case 'Actual': {
+      // 1:1 原始尺寸
+      zoom.value = 1;
+      zoomY.value = 1;
+      break;
+    }
+    case 'ContainScaleUp': {
+      // 等比完整显示，允许放大
+      const fit = Math.min(availW / cw, availH / ch);
+      zoom.value = Math.max(0.05, floor2(fit));
+      zoomY.value = zoom.value;
+      break;
+    }
+    case 'Contain':
+    default: {
+      // 等比完整显示，不放大（上限 100%）
+      const fit = Math.min(1, availW / cw, availH / ch);
+      zoom.value = Math.max(0.05, floor2(fit));
+      zoomY.value = zoom.value;
+      break;
+    }
   }
-  zoom.value = Math.max(0.2, Math.floor(fit * 100) / 100);
-  zoomY.value = zoom.value;
+  // 自动适配时重置平移偏移（避免上次手动平移残留）
+  if (forceMode) panOffset.value = { x: 0, y: 0 };
 };
+
+// 一键适配：显式指定模式（设计态/运行态均可调用）
+const fitToMode = (mode: PageAdaptMode) => {
+  applyFitZoom(mode);
+};
+
+// 组件包围盒适配：计算所有可见组件的包围盒，缩放使内容完整可见
+const fitToContent = () => {
+  const visible = props.components.filter((c) => isComponentVisible(c));
+  if (visible.length === 0) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  visible.forEach((c) => {
+    minX = Math.min(minX, c.x);
+    minY = Math.min(minY, c.y);
+    maxX = Math.max(maxX, c.x + c.width);
+    maxY = Math.max(maxY, c.y + c.height);
+  });
+  const contentW = Math.max(1, maxX - minX);
+  const contentH = Math.max(1, maxY - minY);
+  const { w: availW, h: availH } = viewportRect.value;
+  if (availW <= 0 || availH <= 0) return;
+  const fit = Math.min(availW / contentW, availH / contentH);
+  const z = Math.max(0.05, Math.floor(fit * 100) / 100);
+  zoom.value = z;
+  zoomY.value = z;
+  // 平移使内容左上角对齐到显示区域（扣除包围盒偏移）
+  panOffset.value = { x: -minX * z, y: -minY * z };
+};
+
+// ===== 全屏模式 =====
+const isFullscreen = ref(false);
+const fullscreenContainerRef = ref<HTMLDivElement | null>(null);
+
+const toggleFullscreen = async () => {
+  try {
+    if (!document.fullscreenElement) {
+      const el = fullscreenContainerRef.value;
+      if (el && el.requestFullscreen) {
+        await el.requestFullscreen();
+      }
+    } else {
+      await document.exitFullscreen();
+    }
+  } catch {
+    // Fullscreen API 被拒绝（如非用户手势、iframe 限制）时静默降级
+  }
+};
+
+const onFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement;
+  // 全屏切换后重新适配（显示区域可能变化）
+  if (props.readonly) applyFitZoom();
+};
+
+// 画布在显示区域内的对齐偏移（基于对齐配置与剩余空间）
+const fitAlignOffset = computed<{ x: number; y: number }>(() => {
+  const { w: availW, h: availH } = viewportRect.value;
+  const scaledW = props.canvasWidth * zoom.value;
+  const scaledH = props.canvasHeight * zoomY.value;
+  const remainX = Math.max(0, availW - scaledW);
+  const remainY = Math.max(0, availH - scaledH);
+  const hAlign = adaptCfg.value.hAlign;
+  const vAlign = adaptCfg.value.vAlign;
+  const x = hAlign === 'left' ? 0 : hAlign === 'right' ? remainX : remainX / 2;
+  const y = vAlign === 'top' ? 0 : vAlign === 'bottom' ? remainY : remainY / 2;
+  return { x, y };
+});
 
 // ===== 页面属性：画布背景渲染（纯色/渐变/图片 + 设计模式辅助网格叠加） =====
 // 辅助网格仅设计模式显示，运行端纯净渲染页面背景
@@ -855,16 +1024,21 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('pointerup', handleMouseUp);
   window.addEventListener('pointerup', handleStageMouseUp);
-  // 阶段5-7：只读模式监听工作区尺寸变化，画布自动适配
-  if (props.readonly && workspaceRef.value) {
-    fitObserver = new ResizeObserver(applyFitZoom);
+  // 监听工作区尺寸变化，画布自动适配（运行态按页面配置；设计态仅在用户主动触发后保持）
+  if (workspaceRef.value) {
+    fitObserver = new ResizeObserver(() => {
+      if (props.readonly) applyFitZoom();
+    });
     fitObserver.observe(workspaceRef.value);
-    applyFitZoom();
   }
+  // 运行态挂载即按页面配置适配
+  if (props.readonly) applyFitZoom();
+  // 全屏状态监听
+  document.addEventListener('fullscreenchange', onFullscreenChange);
 });
 
 watch(
-  () => [props.readonly, props.canvasWidth, props.canvasHeight, props.adaptMode],
+  () => [props.readonly, props.canvasWidth, props.canvasHeight, props.adaptMode, props.adaptConfig],
   () => {
     if (props.readonly) applyFitZoom();
   }
@@ -873,6 +1047,7 @@ watch(
 onUnmounted(() => {
   fitObserver?.disconnect();
   fitObserver = null;
+  document.removeEventListener('fullscreenchange', onFullscreenChange);
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('pointerup', handleMouseUp);
   window.removeEventListener('pointerup', handleStageMouseUp);
@@ -880,7 +1055,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none"
+  <div ref="fullscreenContainerRef"
+    class="flex-1 flex flex-col bg-[#eaeaea] text-[#262626] overflow-hidden relative select-none"
+    :style="{ backgroundColor: readonly ? fitPaddingColor : undefined }"
     @pointerup="handleMouseUp">
     <!-- Top Toolbar controls（只读/运行时模式隐藏编辑器工具条） -->
     <div v-if="!readonly"
@@ -1039,6 +1216,32 @@ onUnmounted(() => {
           </select>
         </div>
 
+        <div class="h-5 w-[1px] bg-gray-300" />
+
+        <!-- 一键适配按钮组（设计态） -->
+        <div class="hidden lg:flex items-center gap-1 bg-white border border-[#d9d9d9] rounded p-0.5" title="一键适配到屏幕显示区域">
+          <button @click="fitToMode('Contain')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="完整显示（不放大）">
+            <Minimize2 class="w-3.5 h-3.5" />
+          </button>
+          <button @click="fitToMode('ContainScaleUp')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="等比缩放（允许放大）">
+            <Maximize2 class="w-3.5 h-3.5" />
+          </button>
+          <button @click="fitToMode('Cover')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer" title="等比铺满（裁切）">
+            <Scan class="w-3.5 h-3.5" />
+          </button>
+          <button @click="fitToMode('FitWidth')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer text-[10px] font-bold w-7" title="宽度适配">W</button>
+          <button @click="fitToMode('FitHeight')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer text-[10px] font-bold w-7" title="高度适配">H</button>
+          <button @click="fitToMode('Actual')"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer text-[10px] font-bold w-7" title="1:1 原始尺寸">1:1</button>
+          <button @click="fitToContent"
+            class="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-[#1890ff] cursor-pointer text-[10px] font-bold" title="适配到内容包围盒">内容</button>
+        </div>
+
         <button @click="emit('clearCanvas')"
           class="text-xs border border-red-200 hover:bg-red-50 text-red-500 font-bold px-2.5 py-1 rounded transition-all cursor-pointer">
           清空画布
@@ -1051,14 +1254,43 @@ onUnmounted(() => {
       class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
       :class="readonly ? 'p-0' : 'p-8'" @pointerdown="handleStageMouseDown" @pointermove="handleMouseMove"
       @pointerup="handleStageMouseUp" :style="{ touchAction: readonly ? 'auto' : 'none' }">
+      <!-- 运行态浮动适配工具栏（全屏 + 一键适配） -->
+      <div v-if="readonly"
+        class="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white/95 backdrop-blur border border-[#d9d9d9] rounded-full shadow-lg px-2 py-1">
+        <button @click="fitToMode('Contain')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer" title="完整显示（不放大）">
+          <Minimize2 class="w-4 h-4" />
+        </button>
+        <button @click="fitToMode('ContainScaleUp')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer" title="等比缩放（允许放大）">
+          <Maximize2 class="w-4 h-4" />
+        </button>
+        <button @click="fitToMode('Cover')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer" title="等比铺满（裁切）">
+          <Scan class="w-4 h-4" />
+        </button>
+        <button @click="fitToMode('FitWidth')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer text-[11px] font-bold w-7" title="宽度适配">W</button>
+        <button @click="fitToMode('FitHeight')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer text-[11px] font-bold w-7" title="高度适配">H</button>
+        <button @click="fitToMode('Actual')"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer text-[11px] font-bold w-9" title="1:1 原始尺寸">1:1</button>
+        <div class="w-px h-5 bg-[#e0e0e0]" />
+        <button @click="toggleFullscreen"
+          class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer" :title="isFullscreen ? '退出全屏' : '全屏显示'">
+          <Fullscreen v-if="!isFullscreen" class="w-4 h-4" />
+          <Minimize2 v-else class="w-4 h-4" />
+        </button>
+      </div>
+
       <!-- Canvas bounding card container -->
       <!-- 外层占位 div：宽高按 zoom 缩放后的真实尺寸参与滚动区计算，避免缩小留白/放大被裁剪无法滚动 -->
-      <!-- 阶段5-7：只读模式 mx-auto 水平居中、垂直顶部对齐（避免上方留白，溢出时可滚动） -->
+      <!-- 对齐由 fitAlignOffset 控制（含水平/垂直对齐配置）；平移由 panOffset 控制 -->
       <!-- 拉伸填满（Stretch）模式下 X/Y 独立缩放，占位宽高分别按各轴 zoom 计算 -->
-      <div class="relative shrink-0" :class="readonly ? 'mx-auto' : ''" :style="{
+      <div class="relative shrink-0" :style="{
         width: canvasWidth * zoom + 'px',
         height: canvasHeight * zoomY + 'px',
-        transform: `translate(${panOffset.x}px, ${panOffset.y}px)`
+        transform: `translate(${panOffset.x + (readonly ? fitAlignOffset.x : 0)}px, ${panOffset.y + (readonly ? fitAlignOffset.y : 0)}px)`
       }">
         <!-- 边框/圆角/阴影仅设计态显示：运行态（readonly）纯净铺满，无边框卡片感 -->
         <div ref="canvasRef"

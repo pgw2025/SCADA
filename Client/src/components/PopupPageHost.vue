@@ -38,7 +38,7 @@ const emit = defineEmits<{
       :component-values="componentValues ?? {}" :component-qualities="componentQualities"
       :canvas-width="page.width" :canvas-height="page.height"
       :can-control-write="canControlWrite" :readonly="true"
-      :background="page.background" :adapt-mode="page.adaptMode"
+      :background="page.background" :adapt-mode="page.adaptMode" :adapt-config="page.adaptConfig"
       :layers="page.layers" :current-page-id="page.id"
       @trigger-toggle-value="(...a: any[]) => emit('triggerToggleValue', ...a)"
       @navigate-to-page="(id: string) => emit('navigateToPage', id)"

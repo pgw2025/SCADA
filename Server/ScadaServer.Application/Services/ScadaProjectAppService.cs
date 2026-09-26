@@ -220,6 +220,7 @@ namespace ScadaServer.Application.Services
                     Height = page.Height,
                     BackgroundJson = page.BackgroundJson,
                     AdaptMode = page.AdaptMode,
+                    AdaptConfigJson = page.AdaptConfigJson,
                     LayersJson = page.LayersJson,
                     Components = pageComponents
                 });
@@ -416,6 +417,7 @@ namespace ScadaServer.Application.Services
                         Height = page.Height,
                         BackgroundJson = page.BackgroundJson,
                         AdaptMode = page.AdaptMode,
+                        AdaptConfigJson = page.AdaptConfigJson,
                         LayersJson = page.LayersJson,
                         Components = components.Select(c => new HmiComponentDto
                         {
@@ -486,6 +488,7 @@ namespace ScadaServer.Application.Services
                     Height = source.Height > 0 ? source.Height : 700,
                     BackgroundJson = NormalizeBackgroundJson(source.BackgroundJson),
                     AdaptMode = NormalizeAdaptMode(source.AdaptMode),
+                    AdaptConfigJson = NormalizeAdaptConfigJson(source.AdaptConfigJson),
                     LayersJson = ScadaLayerJson.Normalize(source.LayersJson)
                 };
                 await _pageRepository.InsertAsync(pageEntity);
@@ -512,6 +515,7 @@ namespace ScadaServer.Application.Services
                 Height = page.Height,
                 BackgroundJson = page.BackgroundJson,
                 AdaptMode = page.AdaptMode,
+                AdaptConfigJson = page.AdaptConfigJson,
                 LayersJson = page.LayersJson,
                 Components = page.Components.Select(c => new ScadaComponentTransferDto
                 {
@@ -564,6 +568,7 @@ namespace ScadaServer.Application.Services
                 Height = page.Height > 0 ? page.Height : 700,
                 BackgroundJson = NormalizeBackgroundJson(page.BackgroundJson),
                 AdaptMode = NormalizeAdaptMode(page.AdaptMode),
+                AdaptConfigJson = NormalizeAdaptConfigJson(page.AdaptConfigJson),
                 LayersJson = ScadaLayerJson.Normalize(page.LayersJson)
             };
             await _pageRepository.InsertAsync(entity);
@@ -650,17 +655,30 @@ namespace ScadaServer.Application.Services
         private static string? NormalizeBackgroundJson(string? json)
             => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
 
-        /// <summary>归一化自适应模式：仅 FitScaleUp / Stretch，其余归 NULL。</summary>
+        /// <summary>
+        /// 归一化自适应模式：允许 Contain / ContainScaleUp / Cover / Stretch / FitWidth / FitHeight / Actual，
+        /// 兼容历史值 FitScaleUp → 归一化为 ContainScaleUp；其余归 NULL。
+        /// </summary>
         private static string? NormalizeAdaptMode(string? mode)
         {
             if (string.IsNullOrWhiteSpace(mode)) return null;
             return mode.Trim() switch
             {
-                "FitScaleUp" => "FitScaleUp",
+                "Contain" => "Contain",
+                "ContainScaleUp" => "ContainScaleUp",
+                "FitScaleUp" => "ContainScaleUp", // 历史值兼容
+                "Cover" => "Cover",
                 "Stretch" => "Stretch",
+                "FitWidth" => "FitWidth",
+                "FitHeight" => "FitHeight",
+                "Actual" => "Actual",
                 _ => null
             };
         }
+
+        /// <summary>归一化自适应扩展配置 JSON：空白归 NULL；内容结构由前端负责，后端透传。</summary>
+        private static string? NormalizeAdaptConfigJson(string? json)
+            => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
 
         #endregion
     }

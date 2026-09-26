@@ -122,6 +122,9 @@ namespace ScadaServer.Application.DTOs
         /// <summary>运行端自适应模式（可空）</summary>
         public string? AdaptMode { get; set; }
 
+        /// <summary>自适应屏幕扩展配置 JSON（导入导出透传；旧版包缺失时为 null，兼容）</summary>
+        public string? AdaptConfigJson { get; set; }
+
         /// <summary>页面图层配置 JSON（导入导出透传；旧版包缺失时为 null，兼容）</summary>
         public string? LayersJson { get; set; }
 

@@ -57,11 +57,18 @@ namespace ScadaServer.Application.DTOs
         public string? BackgroundJson { get; set; }
 
         /// <summary>
-        /// 运行端自适应屏幕模式：FitScaleUp（等比缩放-允许放大）/ Stretch（拉伸填满）。
+        /// 运行端自适应屏幕模式：
+        /// Contain / ContainScaleUp / Cover / Stretch / FitWidth / FitHeight / Actual。
         /// NULL/空=未配置（回退兼容行为：等比缩小不放大）。
         /// </summary>
         [StringLength(30, ErrorMessage = "适配模式不能超过30个字符")]
         public string? AdaptMode { get; set; }
+
+        /// <summary>
+        /// 自适应屏幕扩展配置 JSON（显示区域类型、对齐、留白颜色等）。NULL=未配置（前端回退默认）。
+        /// </summary>
+        [StringLength(10000, ErrorMessage = "适配配置不能超过10000个字符")]
+        public string? AdaptConfigJson { get; set; }
 
         /// <summary>
         /// 页面图层配置 JSON 数组。NULL=未配置（前端回退默认单图层）。

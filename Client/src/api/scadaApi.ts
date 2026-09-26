@@ -1,6 +1,6 @@
 import { http } from './http';
 import { systemConfig } from '../store/configStore';
-import { HMIComponent, HMILayer, ScadaPage, ScadaPageFolder, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode } from '../types';
+import { HMIComponent, HMILayer, ScadaPage, ScadaPageFolder, ScadaScreenProject, ComponentType, PageBackground, PageAdaptMode, PageAdaptConfig } from '../types';
 
 /**
  * 组态设计后端 API 封装（对应阶段1的 ScadaProject / ScadaPage / HmiComponent 三组端点）。
@@ -64,6 +64,7 @@ export interface PageWithComponentsDto {
   height: number;
   backgroundJson: string | null;
   adaptMode: string | null;
+  adaptConfigJson: string | null;
   layersJson: string | null;
   components: ComponentDto[];
 }
@@ -79,6 +80,7 @@ export interface PageDto {
   height: number;
   backgroundJson?: string | null;
   adaptMode?: string | null;
+  adaptConfigJson?: string | null;
   layersJson?: string | null;
 }
 export interface ComponentDto {
@@ -241,6 +243,8 @@ export const toPageDto = (pg: ScadaPage, projectId: number, folderMap?: Map<stri
   // 背景配置对象 <-> 后端 BackgroundJson 字符串；未配置传 null（后端归一化为 NULL）
   backgroundJson: pg.background ? JSON.stringify(pg.background) : null,
   adaptMode: pg.adaptMode ?? null,
+  // 自适应扩展配置对象 <-> 后端 AdaptConfigJson 字符串；未配置传 null
+  adaptConfigJson: pg.adaptConfig ? JSON.stringify(pg.adaptConfig) : null,
   // 图层数组 <-> 后端 LayersJson 字符串；未配置/空数组传 null（后端归一化为 NULL，前端回退默认层）
   layersJson: pg.layers && pg.layers.length > 0 ? JSON.stringify(pg.layers) : null,
 });
@@ -295,7 +299,8 @@ export const fromPageDto = (d: PageWithComponentsDto): ScadaPage => ({
   width: d.width,
   height: d.height,
   background: parseBackgroundJson(d.backgroundJson),
-  adaptMode: d.adaptMode === 'FitScaleUp' || d.adaptMode === 'Stretch' ? (d.adaptMode as PageAdaptMode) : null,
+  adaptMode: parseAdaptMode(d.adaptMode),
+  adaptConfig: parseAdaptConfigJson(d.adaptConfigJson),
   layers: parseLayersJson(d.layersJson),
   components: (d.components || []).map(fromComponentDto),
 });
@@ -341,6 +346,33 @@ const parseBackgroundJson = (json: string | null | undefined): PageBackground | 
     if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string'
       && ['color', 'gradient', 'image'].includes(parsed.type)) {
       return parsed as PageBackground;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+/** 合法的自适应模式集合（含历史值 FitScaleUp 兼容映射） */
+const VALID_ADAPT_MODES = new Set<PageAdaptMode>([
+  'Contain', 'ContainScaleUp', 'Cover', 'Stretch', 'FitWidth', 'FitHeight', 'Actual'
+]);
+
+/** 后端 AdaptMode 字符串 -> 前端 PageAdaptMode；非法/缺失返回 null。历史值 FitScaleUp → ContainScaleUp。 */
+const parseAdaptMode = (mode: string | null | undefined): PageAdaptMode | null => {
+  if (!mode) return null;
+  const m = mode.trim();
+  if (m === 'FitScaleUp') return 'ContainScaleUp';
+  return VALID_ADAPT_MODES.has(m as PageAdaptMode) ? (m as PageAdaptMode) : null;
+};
+
+/** 后端 AdaptConfigJson 字符串 -> 前端 PageAdaptConfig 对象；非法/缺失返回 null（未配置） */
+const parseAdaptConfigJson = (json: string | null | undefined): PageAdaptConfig | null => {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as PageAdaptConfig;
     }
     return null;
   } catch {
@@ -398,6 +430,7 @@ export interface TransferPageDto {
   name: string; isHome: boolean; platform: string;
   width: number; height: number;
   backgroundJson: string | null; adaptMode: string | null;
+  adaptConfigJson: string | null;
   layersJson: string | null;
   components: TransferComponentDto[];
 }

@@ -538,6 +538,11 @@ namespace ScadaServer.Infrastructure.Persistence
                 .Property(p => p.AdaptMode)
                 .HasMaxLength(32);
 
+            // 自适应屏幕扩展配置 JSON（长文本，结构由前端负责，后端透传）
+            modelBuilder.Entity<ScadaPage>()
+                .Property(p => p.AdaptConfigJson)
+                .HasColumnType("longtext");
+
             // 画面文件夹化：FolderId 可空外键→ScadaPageFolders（Restrict，删除前应用层先还引用）；
             // SortOrder 默认 0（存量由迁移回填连续值）；folderid 索引支撑按文件夹检索画面。
             modelBuilder.Entity<ScadaPage>()

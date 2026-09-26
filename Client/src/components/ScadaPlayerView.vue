@@ -504,6 +504,7 @@ onUnmounted(() => {
         :isActiveMode="true" :component-values="componentValues" :component-qualities="componentQualities"
         :canvas-width="pageWidth" :canvas-height="pageHeight" :can-control-write="canControlWrite" :readonly="true"
         :background="currentPage.background" :adapt-mode="currentPage.adaptMode"
+        :adapt-config="currentPage.adaptConfig"
         :layers="currentPage.layers" :current-page-id="currentPage.id"
         @triggerToggleValue="handleTriggerToggleValue" @navigateToPage="handleNavigate"
         @triggerRunScript="handleTriggerRunScript" @component-event="handleComponentEvent"
