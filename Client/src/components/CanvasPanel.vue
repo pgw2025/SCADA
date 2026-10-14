@@ -1338,6 +1338,10 @@ onUnmounted(() => {
             }" />
 
           <!-- Render individual canvas components -->
+          <!-- 运行态 nav-menu（移动端底部 Tab 栏/桌面端顶部导航条）为导航级 UI：图元 wrapper 的 z-index 形成独立堆叠上下文，
+               其二级菜单弹层的 z-index 无法跨出与其它图元竞争（会被看板等高层级图元盖住），
+               故运行态直接把 wrapper 提到 999 保证弹层始终盖住画布图元，并保留用户手动设置的更高层级；
+               设计态不提升，保持图元层级编辑语义不变。 -->
           <div v-for="component in components" :key="component.id" v-show="isComponentVisible(component)"
             @pointerdown="handleDragStart($event, component)" @click.stop :class="[
               'absolute rounded transition-shadow',
@@ -1354,7 +1358,9 @@ onUnmounted(() => {
               top: `${component.y}px`,
               width: `${component.width}px`,
               height: `${component.height}px`,
-              zIndex: component.zIndex || 1,
+              zIndex: isActiveMode && component.type === 'nav-menu'
+                ? Math.max(999, component.zIndex || 1)
+                : (component.zIndex || 1),
               opacity: getComponentOpacity(component),
               '--tw-ring-color': isComponentLocked(component) ? '#f43f5e' : '#1890ff'
             }">
