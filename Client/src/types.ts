@@ -1106,6 +1106,8 @@ export interface PageAdaptConfig {
   vAlign?: PageVAlign;
   /** 留白颜色：'transparent'=透明、'background'=页面背景色延伸、或具体 CSS 颜色值；默认 'background' */
   paddingColor?: string;
+  /** 运行时是否默认显示适配工具栏（一键适配/全屏按钮组）；默认 false=隐藏 */
+  toolbarAutoShow?: boolean;
 }
 
 export interface ScadaScreenProject {

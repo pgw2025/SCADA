@@ -564,6 +564,23 @@ const applyThemePreset = (preset: typeof THEME_CANVAS_PRESETS[0]) => {
             画布未铺满显示区域时，剩余空间的填充颜色。
           </p>
         </div>
+
+        <!-- 运行态适配工具栏显隐开关 -->
+        <div class="mb-3.5">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] text-gray-600 dark:text-slate-300">运行时显示适配工具栏</label>
+            <button type="button" @click="updateAdaptConfig({ toolbarAutoShow: !adaptConfig.toolbarAutoShow })"
+              class="relative inline-flex h-[18px] w-[32px] items-center rounded-full transition-colors shrink-0"
+              :class="adaptConfig.toolbarAutoShow ? 'bg-[#1890ff]' : 'bg-gray-300'">
+              <span
+                class="inline-block h-[14px] w-[14px] transform rounded-full bg-white shadow transition-transform"
+                :class="adaptConfig.toolbarAutoShow ? 'translate-x-[16px]' : 'translate-x-[2px]'" />
+            </button>
+          </div>
+          <p class="text-[9px] text-gray-400 dark:text-slate-500 mt-1 leading-relaxed">
+            开启后，运行态画面顶部将显示一键适配与全屏按钮组；默认隐藏以保持画面纯净。
+          </p>
+        </div>
       </section>
     </div>
   </div>

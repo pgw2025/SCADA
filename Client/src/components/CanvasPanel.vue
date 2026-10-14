@@ -784,13 +784,14 @@ const onDrop = (e: DragEvent) => {
 
 // ===== 自适应屏幕系统 =====
 // 适配配置：合并默认值（显示区域=工作区容器、居中对齐、留白=页面背景色延伸）
-const adaptCfg = computed<Required<Pick<PageAdaptConfig, 'viewportType' | 'hAlign' | 'vAlign' | 'paddingColor'>>>(() => {
+const adaptCfg = computed<Required<Pick<PageAdaptConfig, 'viewportType' | 'hAlign' | 'vAlign' | 'paddingColor'>> & { toolbarAutoShow: boolean }>(() => {
   const c = props.adaptConfig ?? {};
   return {
     viewportType: (c.viewportType ?? 'Workspace') as PageViewportType,
     hAlign: (c.hAlign ?? 'center') as PageHAlign,
     vAlign: (c.vAlign ?? 'center') as PageVAlign,
     paddingColor: c.paddingColor ?? 'background',
+    toolbarAutoShow: c.toolbarAutoShow === true,
   };
 });
 
@@ -1254,8 +1255,8 @@ onUnmounted(() => {
       class="flex-1 overflow-auto relative flex items-start justify-start custom-scrollbar bg-[#f0f2f5]"
       :class="readonly ? 'p-0' : 'p-8'" @pointerdown="handleStageMouseDown" @pointermove="handleMouseMove"
       @pointerup="handleStageMouseUp" :style="{ touchAction: readonly ? 'auto' : 'none' }">
-      <!-- 运行态浮动适配工具栏（全屏 + 一键适配） -->
-      <div v-if="readonly"
+      <!-- 运行态浮动适配工具栏（全屏 + 一键适配）；默认隐藏，由页面属性 toolbarAutoShow 控制 -->
+      <div v-if="readonly && adaptCfg.toolbarAutoShow"
         class="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white/95 backdrop-blur border border-[#d9d9d9] rounded-full shadow-lg px-2 py-1">
         <button @click="fitToMode('Contain')"
           class="p-1 hover:bg-gray-100 rounded-full text-gray-500 hover:text-[#1890ff] cursor-pointer" title="完整显示（不放大）">
