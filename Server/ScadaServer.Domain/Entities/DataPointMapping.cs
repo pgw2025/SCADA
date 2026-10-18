@@ -124,6 +124,17 @@ namespace ScadaServer.Domain.Entities
         public string? AccessModeOverride { get; set; }
 
         /// <summary>
+        /// 下限覆盖值（设备实例级）。允许为空：为空时使用 <see cref="DataPoint.Min"/> 模板值。
+        /// <para>仅非 BOOL 类型的模拟量有意义；BOOL/BIT 变量保存时应为 null。</para>
+        /// </summary>
+        public double? MinOverride { get; set; }
+
+        /// <summary>
+        /// 上限覆盖值（设备实例级）。允许为空：为空时使用 <see cref="DataPoint.Max"/> 模板值。
+        /// </summary>
+        public double? MaxOverride { get; set; }
+
+        /// <summary>
         /// 变量级连接覆盖（阶段 4 新增，可空 FK → <see cref="DeviceConnection"/>）。
         /// <para>空 = 使用设备默认连接（<c>Device.ConnectionId</c>）。存量数据迁移时按所属设备回填；
         /// 运行时本阶段不读该列，列的启用放阶段 6。</para>

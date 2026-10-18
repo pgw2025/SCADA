@@ -330,13 +330,19 @@ namespace ScadaServer.Application.Services
                 ScaleExpressionOverride = dv.ScaleExpressionOverride,
                 DeadBandOverride = dv.DeadBandOverride,
                 AccessModeOverride = dv.AccessModeOverride,
+                MinOverride = dv.MinOverride,
+                MaxOverride = dv.MaxOverride,
                 // 权限回显：实例覆盖优先，空则继承模板 AccessMode（供前端实时监控可写门控）。
                 TemplateScaleExpression = mv?.ScaleExpression,
                 TemplateDeadBand = mv?.DeadBand,
                 TemplateAccessMode = templateAccessMode,
                 EffectiveAccessMode = string.IsNullOrWhiteSpace(dv.AccessModeOverride)
                     ? templateAccessMode
-                    : dv.AccessModeOverride!
+                    : dv.AccessModeOverride!,
+                TemplateMin = mv?.Min,
+                TemplateMax = mv?.Max,
+                EffectiveMin = dv.MinOverride ?? mv?.Min,
+                EffectiveMax = dv.MaxOverride ?? mv?.Max
             };
         }
 

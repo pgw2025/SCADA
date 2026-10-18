@@ -38,11 +38,11 @@ public class VariableRuntime : IRuntimeVariable
     /// <summary>单位（来自 DataPoint.Unit）。</summary>
     public string? Unit => Definition.Unit;
 
-    /// <summary>最小值（来自 DataPoint.Min）。</summary>
-    public double? Min => Definition.Min;
+    /// <summary>最小值。来源：DataPointMapping.MinOverride 优先，否则模板 DataPoint.Min。</summary>
+    public double? Min => Instance?.MinOverride ?? Definition.Min;
 
-    /// <summary>最大值（来自 DataPoint.Max）。</summary>
-    public double? Max => Definition.Max;
+    /// <summary>最大值。来源：DataPointMapping.MaxOverride 优先，否则模板 DataPoint.Max。</summary>
+    public double? Max => Instance?.MaxOverride ?? Definition.Max;
 
     // ===================== 设备配置（来自 DataPointMapping，回退模板） =====================
 

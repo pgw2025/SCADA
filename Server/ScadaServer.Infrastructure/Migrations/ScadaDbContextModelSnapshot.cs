@@ -507,6 +507,12 @@ namespace ScadaServer.Infrastructure.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<double?>("MaxOverride")
+                        .HasColumnType("double");
+
+                    b.Property<double?>("MinOverride")
+                        .HasColumnType("double");
+
                     b.Property<int?>("PollingIntervalMs")
                         .HasColumnType("int");
 

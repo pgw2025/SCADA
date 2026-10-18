@@ -73,6 +73,12 @@ public class DataPointMappingDto
     [StringLength(16, ErrorMessage = "读写模式不能超过16个字符")]
     public string? AccessModeOverride { get; set; }
 
+    /// <summary>下限覆盖值。空 → 使用模板 Min（继承）。</summary>
+    public double? MinOverride { get; set; }
+
+    /// <summary>上限覆盖值。空 → 使用模板 Max（继承）。</summary>
+    public double? MaxOverride { get; set; }
+
     /// <summary>
     /// 变量级连接覆盖（阶段 4 新增，可空 → <c>DeviceConnections.Id</c>）。空 = 使用设备默认连接。
     /// </summary>
@@ -107,6 +113,20 @@ public class DataPointMappingDto
     /// 有效读写模式 = 实例覆盖（<see cref="AccessModeOverride"/>）?? 模板（只出不进，运行时实际生效值）。
     /// </summary>
     public string EffectiveAccessMode { get; set; } = "Read";
+
+    // ===== 回显字段：上下限模板值与有效值 =====
+
+    /// <summary>模板定义的下限（只出不进，前端"继承模板"时浅色展示）。</summary>
+    public double? TemplateMin { get; set; }
+
+    /// <summary>模板定义的上限（只出不进）。</summary>
+    public double? TemplateMax { get; set; }
+
+    /// <summary>有效下限 = 实例 MinOverride ?? 模板 Min（只出不进，运行时实际生效值）。</summary>
+    public double? EffectiveMin { get; set; }
+
+    /// <summary>有效上限 = 实例 MaxOverride ?? 模板 Max（只出不进）。</summary>
+    public double? EffectiveMax { get; set; }
 }
 
 /// <summary>

@@ -169,7 +169,7 @@ const renderedVariables = computed(() => {
     const liveValue = selectedDevice.value?.variables?.[dv.key];
     const value = liveValue !== undefined && liveValue !== null
       ? liveValue
-      : (type === 'digital' ? false : tpl?.min ?? 0);
+      : (type === 'digital' ? false : (dv.effectiveMin ?? tpl?.min ?? 0));
 
     return {
       key: dv.key,
@@ -179,8 +179,8 @@ const renderedVariables = computed(() => {
       type,
       dataType: dv.dataType || '',
       unit: dv.unit || tpl?.unit || '',
-      min: tpl?.min ?? 0,
-      max: tpl?.max ?? 100,
+      min: dv.effectiveMin ?? tpl?.min ?? 0,
+      max: dv.effectiveMax ?? tpl?.max ?? 100,
       description: tpl?.description || '现场控制元件回写值',
       value,
       // 是否为该实例启用采集（isEnabled=false 时交由页面置灰/标停用）

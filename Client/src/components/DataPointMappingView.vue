@@ -246,10 +246,33 @@ const deadBandPlaceholder = computed(() => {
   return '留空=继承模板（模型未配置）';
 });
 
+// 下限覆盖占位三态
+const minPlaceholder = computed(() => {
+  const ov = editingForm.value?.minOverride;
+  const tpl = editingForm.value?.templateMin;
+  if (ov != null) return '已设置下限，清空则继承模板';
+  if (tpl != null) return `继承模板：${tpl}`;
+  return '留空=继承模板（模型未配置）';
+});
+
+// 上限覆盖占位三态
+const maxPlaceholder = computed(() => {
+  const ov = editingForm.value?.maxOverride;
+  const tpl = editingForm.value?.templateMax;
+  if (ov != null) return '已设置上限，清空则继承模板';
+  if (tpl != null) return `继承模板：${tpl}`;
+  return '留空=继承模板（模型未配置）';
+});
+
 /** 校验编辑表单，返回错误文案；空串表示通过。 */
 const validateEditForm = (): string => {
   const cfg = editingCfg.value;
   if (!editingForm.value || !cfg) return '地址配置缺失';
+  // 上下限覆盖前端预校验（后端兜底）
+  const f = editingForm.value;
+  if (f.minOverride != null && f.maxOverride != null && f.minOverride > f.maxOverride) {
+    return '下限覆盖值不能大于上限覆盖值';
+  }
   for (const f of fieldConfig.value.addressFields || []) {
     const val = (cfg as any)[f.key];
     if (f.required && (val == null || val === '')) return `请填写地址字段：${f.label}`;
@@ -274,6 +297,8 @@ const saveEdit = async () => {
   editingForm.value.pollingIntervalMs = normNullableNum(editingForm.value.pollingIntervalMs);
   editingForm.value.deadBandOverride = normNullableNum(editingForm.value.deadBandOverride);
   editingForm.value.bitOffset = normNullableNum(editingForm.value.bitOffset);
+  editingForm.value.minOverride = normNullableNum(editingForm.value.minOverride);
+  editingForm.value.maxOverride = normNullableNum(editingForm.value.maxOverride);
   // ---- 换算表达式覆盖：空白 → null（继承模板），否则去首尾空格 ----
   const expr = editingForm.value.scaleExpressionOverride;
   editingForm.value.scaleExpressionOverride =
@@ -1198,6 +1223,21 @@ onMounted(async () => {
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">死区</label>
               <input v-model.number="editingForm.deadBandOverride" type="number" step="0.1"
                 :placeholder="deadBandPlaceholder"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
+            </div>
+          </div>
+          <!-- 上下限覆盖：仅模拟量显示（BOOL/BIT 变量无工程值量程） -->
+          <div v-if="!isBitType(editingForm.dataType)" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">下限（覆盖）</label>
+              <input v-model.number="editingForm.minOverride" type="number" step="0.1"
+                :placeholder="minPlaceholder"
+                class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">上限（覆盖）</label>
+              <input v-model.number="editingForm.maxOverride" type="number" step="0.1"
+                :placeholder="maxPlaceholder"
                 class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-[#1890ff] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none" />
             </div>
           </div>

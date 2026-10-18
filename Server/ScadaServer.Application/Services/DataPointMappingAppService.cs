@@ -207,6 +207,11 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             string.IsNullOrWhiteSpace(dto.ScaleExpressionOverride) ? null : dto.ScaleExpressionOverride.Trim();
         entity.DeadBandOverride = dto.DeadBandOverride;
         entity.AccessModeOverride = NormalizeAccessModeOverride(dto.AccessModeOverride);
+        // 上下限覆盖赋值（空 = 继承模板）；校验需与模板另一侧交叉比较，故提前加载模板复用一次查询。
+        entity.MinOverride = dto.MinOverride;
+        entity.MaxOverride = dto.MaxOverride;
+        var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
+        ValidateEffectiveRange(entity, dto, mv);
         // 阶段 4 新增列透传：变量级连接覆盖 + 原始类型字符串（空串归一化为 null，保持"未配置"语义）
         entity.ConnectionId = dto.ConnectionId;
         entity.RawDataType = string.IsNullOrWhiteSpace(dto.RawDataType) ? null : dto.RawDataType.Trim();
@@ -228,7 +233,6 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             await _runtimeDeviceManager.ReloadDeviceVariablesAsync(entity.DeviceId);
         }
 
-        var mv = await _dataPointRepository.GetByIdAsync(entity.DataPointId);
         return MapToDto(entity, mv);
     }
 
@@ -282,6 +286,37 @@ public class DataPointMappingAppService : IDataPointMappingAppService
         return mode;
     }
 
+    /// <summary>
+    /// 校验设备级上下限覆盖值与有效区间的一致性：
+    /// 任一侧覆盖后，有效区间必须满足 Min ≤ Max（单侧覆盖时与模板另一侧交叉比较）。
+    /// <para>
+    /// 约定：BOOL/BIT 类型变量不做上下限覆盖，前端已隐藏输入框；后端兜底若出现覆盖值也不拒绝
+    /// （避免前端/后端版本不一致导致保存失败），但运行时 BOOL 不消费 Min/Max。
+    /// </para>
+    /// </summary>
+    private static void ValidateEffectiveRange(DataPointMapping entity, DataPointMappingDto dto, DataPoint? mv)
+    {
+        // 双侧都覆盖：直接比较
+        if (dto.MinOverride.HasValue && dto.MaxOverride.HasValue
+            && dto.MinOverride.Value > dto.MaxOverride.Value)
+        {
+            throw new BusinessException($"下限覆盖值 {dto.MinOverride} 不能大于上限覆盖值 {dto.MaxOverride}");
+        }
+
+        // 单侧覆盖：需与模板另一侧交叉比较，确保有效区间 Min ≤ Max
+        var effMin = dto.MinOverride ?? mv?.Min;
+        var effMax = dto.MaxOverride ?? mv?.Max;
+
+        if (dto.MinOverride.HasValue && effMax.HasValue && dto.MinOverride.Value > effMax.Value)
+        {
+            throw new BusinessException($"下限覆盖值 {dto.MinOverride} 超过有效上限 {effMax}");
+        }
+        if (dto.MaxOverride.HasValue && effMin.HasValue && dto.MaxOverride.Value < effMin.Value)
+        {
+            throw new BusinessException($"上限覆盖值 {dto.MaxOverride} 低于有效下限 {effMin}");
+        }
+    }
+
     /// <summary>将设备变量实体与其模板映射为 DTO；模板缺失时以空串/默认值兜底。</summary>
     private static DataPointMappingDto MapToDto(DataPointMapping dv, DataPoint? mv)
     {
@@ -307,13 +342,19 @@ public class DataPointMappingAppService : IDataPointMappingAppService
             ScaleExpressionOverride = dv.ScaleExpressionOverride,
             DeadBandOverride = dv.DeadBandOverride,
             AccessModeOverride = dv.AccessModeOverride,
+            MinOverride = dv.MinOverride,
+            MaxOverride = dv.MaxOverride,
             ConnectionId = dv.ConnectionId,
             RawDataType = dv.RawDataType,
             UpdateMode = dv.UpdateMode,
             TemplateScaleExpression = mv?.ScaleExpression,
             TemplateDeadBand = mv?.DeadBand,
             TemplateAccessMode = templateAccessMode,
-            EffectiveAccessMode = effectiveAccessMode
+            EffectiveAccessMode = effectiveAccessMode,
+            TemplateMin = mv?.Min,
+            TemplateMax = mv?.Max,
+            EffectiveMin = dv.MinOverride ?? mv?.Min,
+            EffectiveMax = dv.MaxOverride ?? mv?.Max
         };
     }
 
