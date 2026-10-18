@@ -85,6 +85,8 @@ const isMobileCanvas = computed(() => props.platform === 'Mobile');
 const zoom = ref<number>(1);
 // 双轴缩放：设计模式恒等（等比）；运行端 Stretch（拉伸填满）模式下 X/Y 独立
 const zoomY = ref<number>(1);
+// 设计态缩放：标记用户是否手动调整过缩放（手动后自动适配不再跟随 resize 重算）
+const userHasManualZoom = ref<boolean>(false);
 const showGrid = ref<boolean>(true);
 const snapToGrid = ref<boolean>(true);
 
@@ -442,6 +444,7 @@ const handleMouseMove = (e: PointerEvent) => {
     const nextZoom = Math.max(0.1, Math.min(2.5, pinchStartZoom.value * ratio));
     zoom.value = nextZoom;
     zoomY.value = nextZoom;
+    userHasManualZoom.value = true; // 双指捏合同属用户手动缩放，阻止自动适配覆盖
     // 缩放后调整平移偏移，使锚点（双指中点对应的画布坐标）在屏幕上的位置保持不变
     panOffset.value = {
       x: pinchStartOffset.value.x + pinchAnchorCanvas.value.x * (pinchStartZoom.value - nextZoom),
@@ -752,11 +755,13 @@ const zoomIn = () => {
   const v = Math.min(2.5, zoom.value + 0.1);
   zoom.value = v;
   zoomY.value = v;
+  userHasManualZoom.value = true;
 };
 const zoomOut = () => {
   const v = Math.max(0.1, zoom.value - 0.1);
   zoom.value = v;
   zoomY.value = v;
+  userHasManualZoom.value = true;
 };
 
 // 阶段5-4：组件库拖拽投放（按 zoom 反算 + 网格吸附得到画布坐标）
@@ -807,8 +812,13 @@ const VIEWPORT_PRESETS: Record<string, { w: number; h: number; label: string }> 
 // 显示区域矩形：根据 viewportType 计算目标适配宽高
 const viewportRect = computed<{ w: number; h: number }>(() => {
   const el = workspaceRef.value;
-  const workspaceW = el?.clientWidth ?? 0;
-  const workspaceH = el?.clientHeight ?? 0;
+  let workspaceW = el?.clientWidth ?? 0;
+  let workspaceH = el?.clientHeight ?? 0;
+  // 设计态 workspaceRef 有 p-8（32px×2），扣除后才是画布真正可用的空间
+  if (!props.readonly) {
+    workspaceW = Math.max(0, workspaceW - 64);
+    workspaceH = Math.max(0, workspaceH - 64);
+  }
   const vp = adaptCfg.value.viewportType;
 
   if (vp === 'Viewport') {
@@ -915,6 +925,7 @@ const applyFitZoom = (forceMode?: PageAdaptMode) => {
 
 // 一键适配：显式指定模式（设计态/运行态均可调用）
 const fitToMode = (mode: PageAdaptMode) => {
+  userHasManualZoom.value = false; // 让自动适配重新接管
   applyFitZoom(mode);
 };
 
@@ -922,6 +933,7 @@ const fitToMode = (mode: PageAdaptMode) => {
 const fitToContent = () => {
   const visible = props.components.filter((c) => isComponentVisible(c));
   if (visible.length === 0) return;
+  userHasManualZoom.value = false; // 让自动适配重新接管
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   visible.forEach((c) => {
     minX = Math.min(minX, c.x);
@@ -963,7 +975,11 @@ const toggleFullscreen = async () => {
 const onFullscreenChange = () => {
   isFullscreen.value = !!document.fullscreenElement;
   // 全屏切换后重新适配（显示区域可能变化）
-  if (props.readonly) applyFitZoom();
+  if (props.readonly) {
+    applyFitZoom();
+  } else if (!userHasManualZoom.value) {
+    applyFitZoom();
+  }
 };
 
 // 画布在显示区域内的对齐偏移（基于对齐配置与剩余空间）
@@ -1025,23 +1041,35 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('pointerup', handleMouseUp);
   window.addEventListener('pointerup', handleStageMouseUp);
-  // 监听工作区尺寸变化，画布自动适配（运行态按页面配置；设计态仅在用户主动触发后保持）
+  // 监听工作区尺寸变化，画布自动适配：
+  //   运行态始终按页面配置适配；
+  //   设计态仅在用户未手动缩放时跟随适配，用户手动后不再重算。
   if (workspaceRef.value) {
     fitObserver = new ResizeObserver(() => {
-      if (props.readonly) applyFitZoom();
+      if (props.readonly) {
+        applyFitZoom();
+      } else if (!userHasManualZoom.value) {
+        applyFitZoom();
+      }
     });
     fitObserver.observe(workspaceRef.value);
   }
-  // 运行态挂载即按页面配置适配
-  if (props.readonly) applyFitZoom();
+  // 挂载即做一次初始适配（运行态 + 设计态）
+  applyFitZoom();
   // 全屏状态监听
   document.addEventListener('fullscreenchange', onFullscreenChange);
 });
 
 watch(
   () => [props.readonly, props.canvasWidth, props.canvasHeight, props.adaptMode, props.adaptConfig],
-  () => {
-    if (props.readonly) applyFitZoom();
+  ([readonly, w, h], [prevReadonly, prevW, prevH]) => {
+    // 运行/设计态切换、画布尺寸变化、适配配置变化时：重置手动缩放标记并重新适配
+    if (prevReadonly !== readonly || prevW !== w || prevH !== h) {
+      userHasManualZoom.value = false;
+    }
+    if (props.readonly || !userHasManualZoom.value) {
+      applyFitZoom();
+    }
   }
 );
 
@@ -1100,6 +1128,14 @@ onUnmounted(() => {
             <Maximize class="w-3.5 h-3.5" />
           </button>
         </div>
+
+        <!-- 重置自适应按钮：手动缩放后点击可恢复自动适配（让画布完整可见） -->
+        <button v-if="userHasManualZoom" @click="userHasManualZoom = false; applyFitZoom()"
+          class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer bg-amber-50 border-amber-300 text-amber-600 hover:bg-amber-100"
+          title="恢复自动适配（让画布完整显示在工作区）">
+          <Maximize2 class="w-3 h-3" />
+          适配
+        </button>
 
         <div class="h-5 w-[1px] bg-gray-300 hidden md:block" />
 
@@ -1291,7 +1327,7 @@ onUnmounted(() => {
       <div class="relative shrink-0" :style="{
         width: canvasWidth * zoom + 'px',
         height: canvasHeight * zoomY + 'px',
-        transform: `translate(${panOffset.x + (readonly ? fitAlignOffset.x : 0)}px, ${panOffset.y + (readonly ? fitAlignOffset.y : 0)}px)`
+        transform: `translate(${panOffset.x + fitAlignOffset.x}px, ${panOffset.y + fitAlignOffset.y}px)`
       }">
         <!-- 边框/圆角/阴影仅设计态显示：运行态（readonly）纯净铺满，无边框卡片感 -->
         <div ref="canvasRef"
